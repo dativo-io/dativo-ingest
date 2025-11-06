@@ -1,0 +1,36 @@
+# configs/jobs/postgres.yaml
+
+tenant_id: acme
+environment: prod
+
+source:
+  type: postgres
+  description: "Warehouse orders table"
+  credentials:
+    file: /secrets/acme/postgres.env
+    scope: tenant
+  dsn: "postgresql://user:pass@postgres:5432/warehouse" # or compose from env
+  tables:
+    - name: public.orders
+      object: db_orders
+      cursor_field: updated_at
+  incremental:
+    strategy: updated_at              # REQUIRED when incremental used
+    cursor_field: updated_at          # REQUIRED for row-based strategies
+    lookback_days: 1
+    state_path: /state/acme/postgres.orders.state.json
+
+target:
+  type: iceberg
+  catalog: nessie
+  branch: acme
+  warehouse: s3://lake/acme/
+  file_format: parquet
+  partitioning: [ingest_date]
+
+asset_definition: /app/specs/postgres/v1.0/db_orders.yaml
+
+logging:
+  redaction: true
+  level: INFO
+

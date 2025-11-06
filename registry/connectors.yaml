@@ -1,0 +1,185 @@
+# versioned registry of connector TYPES & DEFAULTS (not full recipes)
+# - validator uses this to check: supported types, allowed engines, cloud mode, required auth
+# - runner uses this for: default engines, default strategies, default rate limits (if job omits)
+
+version: 2
+
+sources:
+  hubspot:
+    category: crm
+    default_engine: airbyte
+    engines_supported: [airbyte, singer, native]
+    allowed_in_cloud: true
+    supports_incremental: true
+    incremental_strategy_default: updated_after
+
+    auth:
+      type: oauth2                         # oauth2 | api_key | service_account | basic | none
+      scopes: []                           # optional list for oauth2 connectors
+      credentials_spec:                    # minimal declaration of expected secret bindings
+        from_env: [HUBSPOT_TOKEN]          # env vars the job must provide
+        file: []                           # or file-mounts if used
+
+    api:
+      base_url: "https://api.hubapi.com"
+      pagination:
+        style: cursor                      # cursor | offset_limit | token | none
+        request:
+          cursor_param: "after"            # query param carrying the cursor
+          page_size_param: "limit"         # query param for page size (if supported)
+          page_size_default: 100           # safe default, override in job if needed
+        response:
+          next_cursor_jsonpath: "$.paging.next.after"   # JSONPath to next cursor in response
+      rate_limits:
+        rps_default: 5
+        burst_default: 10
+      objects_supported: ["contacts", "deals", "companies"]
+      template_ref: "/registry/templates/hubspot.yaml"
+
+  stripe:
+    category: payments
+    default_engine: airbyte
+    engines_supported: [airbyte, singer, native]
+    allowed_in_cloud: true
+    supports_incremental: true
+    incremental_strategy_default: created
+
+    auth:
+      type: api_key
+      credentials_spec:
+        from_env: [STRIPE_API_KEY]
+        file: []
+
+    api:
+      base_url: "https://api.stripe.com/v1"
+      pagination:
+        style: cursor
+        request:
+          cursor_param: "starting_after"
+          page_size_param: "limit"
+          page_size_default: 100
+        response:
+          next_cursor_jsonpath: "$.data[-1].id"        # last item id → next cursor
+      rate_limits:
+        rps_default: 7
+        burst_default: 14
+      objects_supported: ["charges", "customers", "invoices"]
+      template_ref: "/registry/templates/stripe.yaml"
+
+  gdrive_csv:
+    category: files
+    default_engine: native
+    engines_supported: [native]
+    allowed_in_cloud: true
+    supports_incremental: true
+    incremental_strategy_default: file_modified_time
+
+    auth:
+      type: service_account
+      credentials_spec:
+        from_env: [GOOGLE_APPLICATION_CREDENTIALS]      # path set via env
+        file: ["/secrets/<tenant>/gdrive.env"]
+
+    api:
+      base_url: "https://www.googleapis.com/drive/v3"
+      pagination:
+        style: none
+      rate_limits:
+        rps_default: 10
+        burst_default: 20
+      objects_supported: ["file"]                       # file_id required in job
+      template_ref: "/registry/templates/gdrive_csv.yaml"
+
+  google_sheets:
+    category: files
+    default_engine: native
+    engines_supported: [native]
+    allowed_in_cloud: true
+    supports_incremental: true
+    incremental_strategy_default: spreadsheet_modified_time
+
+    auth:
+      type: service_account
+      credentials_spec:
+        from_env: [GOOGLE_APPLICATION_CREDENTIALS]
+        file: ["/secrets/<tenant>/gsheets.env"]
+
+    api:
+      base_url: "https://sheets.googleapis.com/v4/spreadsheets"
+      pagination:
+        style: none                                    # full snapshot by default
+      rate_limits:
+        rps_default: 10
+        burst_default: 20
+      objects_supported: ["sheet"]                     # spreadsheet_id + sheet_id in job
+      template_ref: "/registry/templates/google_sheets.yaml"
+
+  postgres:
+    category: database
+    default_engine: jdbc
+    engines_supported: [jdbc, meltano]
+    allowed_in_cloud: false                            # blocked in SaaS
+    supports_incremental: true
+    incremental_strategy_default: updated_at
+    requires_tables: true
+    supports_queries: true
+
+    auth:
+      type: basic                                      # or connection_string
+      credentials_spec:
+        from_env: [PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE]
+        file: ["/secrets/<tenant>/postgres.env"]
+
+    db:
+      driver: "postgresql"
+      defaults:
+        fetch_size: 10000
+      rate_limits:
+        rps_default: 0                                 # not applicable; controlled by DB
+        burst_default: 0
+    template_ref: "/registry/templates/postgres.yaml"
+
+  mysql:
+    category: database
+    default_engine: jdbc
+    engines_supported: [jdbc, meltano]
+    allowed_in_cloud: false
+    supports_incremental: true
+    incremental_strategy_default: updated_at
+    requires_tables: true
+    supports_queries: true
+
+    auth:
+      type: basic
+      credentials_spec:
+        from_env: [MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB]
+        file: ["/secrets/<tenant>/mysql.env"]
+
+    db:
+      driver: "mysql"
+      defaults:
+        fetch_size: 10000
+      rate_limits:
+        rps_default: 0
+        burst_default: 0
+    template_ref: "/registry/templates/mysql.yaml"
+
+targets:
+  iceberg:
+    default_engine: native
+    engines_supported: [native, spark]
+    file_formats: [parquet]
+    supports_schema_evolution: true
+
+  s3:
+    default_engine: native
+    engines_supported: [native]
+
+  minio:
+    default_engine: native
+    engines_supported: [native]
+
+  azure_blob:
+    default_engine: native
+    engines_supported: [native]
+

@@ -1,0 +1,26 @@
+# specs/google_sheets/v1.0/vendors_master.yaml
+
+asset:
+  tenant_id: acme
+  source: google_sheets
+  object: vendors_master
+  mode: strict
+  schema:
+    - name: vendor_id
+      type: string
+      required: true
+    - name: name
+      type: string
+      required: false
+    - name: email
+      type: string
+      required: false
+      classification: PII
+  file_format: parquet
+  partitioning: [ingest_date]
+  target_path: s3://lake/acme/raw/gsheets/vendors_master/
+  iceberg:
+    catalog: nessie
+    branch: acme
+  retention_days: 30
+

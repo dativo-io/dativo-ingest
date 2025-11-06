@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dativo.io/schemas/connectors.schema.json",
+  "title": "Dativo Connectors Registry",
+  "type": "object",
+  "required": ["version", "sources", "targets"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "sources": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/sourceConnector" }
+    },
+    "targets": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/targetConnector" }
+    }
+  },
+  "$defs": {
+    "engineType": {
+      "type": "string",
+      "enum": ["airbyte", "singer", "meltano", "native", "jdbc", "spark"]
+    },
+    "incrementalStrategy": {
+      "type": "string",
+      "enum": ["updated_after", "updated_at", "created", "file_modified_time", "spreadsheet_modified_time", "cdc"]
+    },
+    "authType": {
+      "type": "string",
+      "enum": ["oauth2", "api_key", "service_account", "basic", "connection_string", "none"]
+    },
+    "paginationStyle": {
+      "type": "string",
+      "enum": ["cursor", "offset_limit", "token", "none"]
+    },
+    "rateLimits": {
+      "type": "object",
+      "properties": {
+        "rps_default": { "type": "number", "minimum": 0 },
+        "burst_default": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "retryBackoff": {
+      "type": "object",
+      "properties": {
+        "max_retries": { "type": "integer", "minimum": 0 },
+        "backoff": { "type": "string", "enum": ["fixed", "exponential", "jitter"] },
+        "max_backoff_seconds": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "credentialsSpec": {
+      "type": "object",
+      "properties": {
+        "from_env": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z0-9_]+$" }
+        },
+        "file": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "apiBlock": {
+      "type": "object",
+      "properties": {
+        "base_url": { "type": "string", "minLength": 1 },
+        "pagination": {
+          "type": "object",
+          "properties": {
+            "style": { "$ref": "#/$defs/paginationStyle" },
+            "request": {
+              "type": "object",
+              "properties": {
+                "cursor_param": { "type": "string" },
+                "page_size_param": { "type": "string" },
+                "page_size_default": { "type": "integer", "minimum": 1 }
+              },
+              "additionalProperties": false
+            },
+            "response": {
+              "type": "object",
+              "properties": {
+                "next_cursor_jsonpath": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "rate_limits": { "$ref": "#/$defs/rateLimits" }
+      },
+      "additionalProperties": false
+    },
+    "dbBlock": {
+      "type": "object",
+      "properties": {
+        "driver": { "type": "string", "enum": ["postgresql", "mysql", "mssql", "oracle", "snowflake", "bigquery"] },
+        "defaults": {
+          "type": "object",
+          "properties": {
+            "fetch_size": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": true
+        },
+        "rate_limits": { "$ref": "#/$defs/rateLimits" }
+      },
+      "additionalProperties": false
+    },
+    "sourceConnector": {
+      "type": "object",
+      "required": ["category", "default_engine", "engines_supported", "allowed_in_cloud", "supports_incremental", "incremental_strategy_default"],
+      "properties": {
+        "category": { "type": "string", "minLength": 1 },
+        "default_engine": { "$ref": "#/$defs/engineType" },
+        "engines_supported": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/engineType" },
+          "minItems": 1
+        },
+        "allowed_in_cloud": { "type": "boolean" },
+        "supports_incremental": { "type": "boolean" },
+        "incremental_strategy_default": { "$ref": "#/$defs/incrementalStrategy" },
+
+        "auth": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "$ref": "#/$defs/authType" },
+            "scopes": { "type": "array", "items": { "type": "string" } },
+            "credentials_spec": { "$ref": "#/$defs/credentialsSpec" }
+          },
+          "additionalProperties": false
+        },
+
+        "api": { "$ref": "#/$defs/apiBlock" },
+        "db": { "$ref": "#/$defs/dbBlock" },
+
+        "objects_supported": { "type": "array", "items": { "type": "string" } },
+        "requires_tables": { "type": "boolean" },
+        "supports_queries": { "type": "boolean" },
+        "template_ref": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "targetConnector": {
+      "type": "object",
+      "required": ["default_engine", "engines_supported"],
+      "properties": {
+        "default_engine": { "$ref": "#/$defs/engineType" },
+        "engines_supported": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/engineType" },
+          "minItems": 1
+        },
+        "file_formats": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["parquet", "orc", "csv", "json"] }
+        },
+        "supports_schema_evolution": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
+

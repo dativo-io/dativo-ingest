@@ -1,0 +1,10 @@
+policy:
+  retention_days: 30                   # days to keep data; loader/enforcer applies lifecycle
+  pii_fields: ["email", "full name"]       # field list for classification checks
+  classification_rules:                # optional, expands static pii_fields
+    - field: full name
+      classification: PII
+    - field: email
+      classification: PII
+  contract_enforcement: strict         # strict = fail if asset schema deviates from spec
+
