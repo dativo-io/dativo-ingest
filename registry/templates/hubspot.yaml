@@ -1,0 +1,63 @@
+name: hubspot
+version: 1
+
+auth:
+  scheme: bearer_api_key
+  header: Authorization
+  format: "Bearer {token}"
+  env: HUBSPOT_TOKEN
+
+endpoints:
+  contacts:
+    path: "/crm/v3/objects/contacts"
+    method: GET
+    incremental:
+      strategy: updated_after
+      cursor_param: "after"
+      lookback_days_default: 1
+    pagination:
+      style: cursor
+      request:
+        cursor_param: "after"
+        page_size_param: "limit"
+      response:
+        next_cursor_jsonpath: "$.paging.next.after"
+
+  deals:
+    path: "/crm/v3/objects/deals"
+    method: GET
+    incremental:
+      strategy: updated_after
+      cursor_param: "after"
+      lookback_days_default: 1
+    pagination:
+      style: cursor
+      request:
+        cursor_param: "after"
+        page_size_param: "limit"
+      response:
+        next_cursor_jsonpath: "$.paging.next.after"
+
+  companies:
+    path: "/crm/v3/objects/companies"
+    method: GET
+    incremental:
+      strategy: updated_after
+      cursor_param: "after"
+      lookback_days_default: 1
+    pagination:
+      style: cursor
+      request:
+        cursor_param: "after"
+        page_size_param: "limit"
+      response:
+        next_cursor_jsonpath: "$.paging.next.after"
+
+rate_limits:
+  rps_default: 5
+  burst_default: 10
+  retry:
+    max_retries: 5
+    backoff: exponential
+    max_backoff_seconds: 64
+
