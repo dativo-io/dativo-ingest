@@ -1,0 +1,18 @@
+# Dependencies for Dativo ingestion runner
+# Note: Package version is defined in pyproject.toml
+# This file is kept for Docker builds and should match pyproject.toml dependencies
+
+# Core dependencies
+pydantic>=2.0.0
+pyyaml>=6.0
+
+# Orchestration
+dagster>=1.5.0
+
+# Logging
+python-json-logger>=2.0.0
+
+# Testing (optional, for development)
+pytest>=7.0.0
+pytest-mock>=3.0.0
+

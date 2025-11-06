@@ -1,0 +1,63 @@
+name: stripe
+version: 1
+
+auth:
+  scheme: bearer_api_key
+  header: Authorization
+  format: "Bearer {token}"
+  env: STRIPE_API_KEY
+
+endpoints:
+  customers:
+    path: "/v1/customers"
+    method: GET
+    incremental:
+      strategy: created
+      cursor_param: "starting_after"
+      lookback_days_default: 1
+    pagination:
+      style: cursor
+      request:
+        cursor_param: "starting_after"
+        page_size_param: "limit"
+      response:
+        next_cursor_jsonpath: "$.data[-1].id"
+
+  charges:
+    path: "/v1/charges"
+    method: GET
+    incremental:
+      strategy: created
+      cursor_param: "starting_after"
+      lookback_days_default: 1
+    pagination:
+      style: cursor
+      request:
+        cursor_param: "starting_after"
+        page_size_param: "limit"
+      response:
+        next_cursor_jsonpath: "$.data[-1].id"
+
+  invoices:
+    path: "/v1/invoices"
+    method: GET
+    incremental:
+      strategy: created
+      cursor_param: "starting_after"
+      lookback_days_default: 1
+    pagination:
+      style: cursor
+      request:
+        cursor_param: "starting_after"
+        page_size_param: "limit"
+      response:
+        next_cursor_jsonpath: "$.data[-1].id"
+
+rate_limits:
+  rps_default: 7
+  burst_default: 14
+  retry:
+    max_retries: 5
+    backoff: exponential
+    max_backoff_seconds: 64
+

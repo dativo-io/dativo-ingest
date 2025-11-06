@@ -1,50 +1,31 @@
-# .github/workflows/schema-validate.yml
-name: Validate Schemas
+name: Schema Validation
 
 on:
-  pull_request:
-    paths:
-      - "registry/**"
-      - "schemas/**"
-      - ".github/workflows/schema-validate.yml"
   push:
-    branches: [ main ]
-    paths:
-      - "registry/**"
-      - "schemas/**"
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '18'
+          cache: 'npm'
 
-      - name: Install ajv-cli
-        run: |
-          npm i -D ajv-cli ajv-formats
-          echo 'export PATH=$(pwd)/node_modules/.bin:$PATH' >> $GITHUB_ENV
+      - name: Install dependencies
+        run: npm install --include=dev
 
-      - name: Install yq
-        uses: mikefarah/yq@v4.44.3
+      - name: Validate connector registry
+        run: make schema-connectors
 
-      - name: Validate connectors.yaml
-        run: |
-          yq -o=json '. ' registry/connectors.yaml \
-          | npx ajv validate -s schemas/connectors.schema.json -d /dev/stdin --strict=false
-
-      - name: Validate all connector templates
-        shell: bash
-        run: |
-          shopt -s nullglob
-          for f in registry/templates/*.yaml; do
-            echo "Validating $f"
-            yq -o=json '. ' "$f" \
-            | npx ajv validate -s schemas/connector_template.schema.json -d /dev/stdin --strict=false
-          done
-
+      - name: Validate connector templates
+        run: make schema-templates

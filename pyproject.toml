@@ -1,0 +1,29 @@
+[project]
+name = "dativo-ingest"
+version = "1.1.0"
+description = "Dativo ingestion runner - config-driven data ingestion engine"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "dagster>=1.5.0",
+    "python-json-logger>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-mock>=3.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["dativo_ingest"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+

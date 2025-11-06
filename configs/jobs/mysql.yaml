@@ -1,0 +1,34 @@
+tenant_id: acme
+environment: prod
+
+source:
+  type: mysql
+  description: "Warehouse customers table"
+  credentials:
+    file: /secrets/acme/mysql.env
+    scope: tenant
+  dsn: "mysql://user:pass@mysql:3306/warehouse" # or compose from env
+  tables:
+    - name: public.customers
+      object: db_customers
+      cursor_field: updated_at
+  incremental:
+    strategy: updated_at              # REQUIRED when incremental used
+    cursor_field: updated_at          # REQUIRED for row-based strategies
+    lookback_days: 1
+    state_path: /state/acme/mysql.customers.state.json
+
+target:
+  type: iceberg
+  catalog: nessie
+  branch: acme
+  warehouse: s3://lake/acme/
+  file_format: parquet
+  partitioning: [ingest_date]
+
+asset_definition: /app/specs/mysql/v1.0/db_customers.yaml
+
+logging:
+  redaction: true
+  level: INFO
+

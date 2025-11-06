@@ -1,0 +1,25 @@
+name: postgres
+version: 1
+
+connection:
+  driver: "postgresql"
+  dsn_env: "PGHOST,PGPORT,PGUSER,PGPASSWORD,PGDATABASE"
+  defaults:
+    fetch_size: 10000
+    session_parameters: {}
+
+capabilities:
+  requires_tables: true
+  supports_queries: true
+  supports_incremental: true
+
+incremental:
+  strategy: updated_at
+  cursor_field_default: "updated_at"
+  lookback_days_default: 1
+
+retry:
+  max_retries: 3
+  backoff: exponential
+  max_backoff_seconds: 64
+
