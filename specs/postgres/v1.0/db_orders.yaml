@@ -1,0 +1,25 @@
+# specs/postgres/v1.0/db_orders.yaml
+
+asset:
+  tenant_id: acme
+  source: postgres
+  object: db_orders
+  mode: strict
+  schema:
+    - name: id
+      type: bigint
+      required: true
+    - name: updated_at
+      type: timestamp
+      required: true
+    - name: total_amount
+      type: double
+      required: false
+  file_format: parquet
+  partitioning: [ingest_date]
+  target_path: s3://lake/acme/raw/postgres/orders/
+  iceberg:
+    catalog: nessie
+    branch: acme
+  retention_days: 30
+

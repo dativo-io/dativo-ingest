@@ -1,0 +1,18 @@
+runner:
+  mode: orchestrated                  # orchestrated | oneshot
+  orchestrator:
+    type: dagster
+    schedules:
+      - name: stripe_hourly
+	config: /app/configs/jobs/stripe.yaml
+        cron: "0 * * * *"            # adjust as needed
+      - name: hubspot_daily
+        config: /app/configs/jobs/hubspot.yaml
+        cron: "15 2 * * *"
+      - name: gdrive_csv_daily
+        config: /app/configs/jobs/gdrive_csv.yaml
+        cron: "5 1 * * *"
+      - name: gsheets_daily
+        config: /app/configs/jobs/google_sheets.yaml
+        cron: "10 1 * * *"
+    concurrency_per_tenant: 1         # serialize per-tenant to protect Nessie commits

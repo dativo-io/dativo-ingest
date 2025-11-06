@@ -1,0 +1,24 @@
+asset:
+  tenant_id: acme
+  source: gdrive_csv
+  object: deals_daily
+  mode: strict
+  schema:
+    - name: deal_id
+      type: string
+      required: true
+    - name: amount
+      type: double
+      required: false
+    - name: closed_at
+      type: timestamp
+      required: false
+  file_format: parquet
+  partitioning: [ingest_date]
+  target_path: s3://lake/acme/raw/gdrive/deals_daily/
+  iceberg:
+    catalog: nessie
+    branch: acme
+  on_object_error: skip_commit
+  retention_days: 30
+
