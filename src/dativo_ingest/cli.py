@@ -568,14 +568,31 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         else:
             exit_code = 0  # Success
 
+        # Calculate total bytes written (estimate from file count if metadata available)
+        total_bytes = sum(
+            file_meta.get("size_bytes", 0) for file_meta in all_file_metadata
+        ) if all_file_metadata else 0
+
+        # Emit enhanced metadata
         logger.info(
             "Job execution completed",
             extra={
                 "total_records": total_records,
                 "valid_records": total_valid_records,
                 "files_written": total_files_written,
+                "total_bytes": total_bytes,
                 "exit_code": exit_code,
                 "event_type": "job_finished",
+                # Enhanced metadata for observability
+                "metadata": {
+                    "records_extracted": total_records,
+                    "records_valid": total_valid_records,
+                    "records_invalid": total_records - total_valid_records,
+                    "files_written": total_files_written,
+                    "total_bytes": total_bytes,
+                    "validation_mode": validation_mode,
+                    "has_errors": has_errors,
+                },
             },
         )
 

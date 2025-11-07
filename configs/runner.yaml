@@ -3,16 +3,38 @@ runner:
   orchestrator:
     type: dagster
     schedules:
+      # Example: Cron-based schedule with retry configuration
       - name: stripe_customers_hourly
         config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
-        cron: "0 * * * *"            # adjust as needed
+        cron: "0 * * * *"            # Every hour at minute 0
+        enabled: true                 # Enable/disable without deployment
+        timezone: "UTC"               # Timezone for schedule execution
+        max_concurrent_runs: 1        # Maximum concurrent runs for this schedule
+        tags:                         # Custom tags for filtering
+          environment: "production"
+          priority: "high"
+      
+      # Example: Interval-based schedule (every 6 hours)
       - name: hubspot_contacts_daily
         config: /app/jobs/acme/hubspot_contacts_to_iceberg.yaml
-        cron: "15 2 * * *"
+        interval_seconds: 21600       # 6 hours (alternative to cron)
+        enabled: true
+        timezone: "America/New_York"
+        tags:
+          environment: "production"
+      
+      # Example: Daily schedule with timezone
       - name: gdrive_deals_daily
         config: /app/jobs/acme/gdrive_deals_to_iceberg.yaml
-        cron: "5 1 * * *"
+        cron: "5 1 * * *"            # 1:05 AM daily
+        enabled: true
+        timezone: "UTC"
+      
+      # Example: Disabled schedule (won't run until enabled)
       - name: gsheets_vendors_daily
         config: /app/jobs/acme/gsheets_vendors_to_minio.yaml
         cron: "10 1 * * *"
-    concurrency_per_tenant: 1         # serialize per-tenant to protect Nessie commits
+        enabled: false                # Disabled - won't run
+        timezone: "UTC"
+    
+    concurrency_per_tenant: 1         # Serialize per-tenant to protect Nessie commits

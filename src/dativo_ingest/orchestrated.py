@@ -2,11 +2,13 @@
 
 import subprocess
 import sys
-from typing import Any, Dict
+import time
+from typing import Any, Dict, Optional
 
 from dagster import (
     AssetExecutionContext,
     Definitions,
+    RetryPolicy,
     ScheduleDefinition,
     asset,
     define_asset_job,
@@ -14,7 +16,135 @@ from dagster import (
 
 from .config import JobConfig, RunnerConfig
 from .logging import get_logger, setup_logging
+from .retry_policy import RetryPolicy as CustomRetryPolicy
 from .validator import ConnectorValidator
+
+
+def _create_dagster_retry_policy(job_config: JobConfig) -> Optional[RetryPolicy]:
+    """Create Dagster RetryPolicy from job configuration.
+
+    Args:
+        job_config: Job configuration
+
+    Returns:
+        Dagster RetryPolicy or None if no retry config
+    """
+    if not job_config.retry_config:
+        return None
+
+    retry_config = job_config.retry_config
+
+    # Map exit codes to retryable errors
+    # Dagster retry policy uses exceptions, so we'll handle exit codes in our wrapper
+    return RetryPolicy(
+        max_retries=retry_config.max_retries,
+        delay=retry_config.initial_delay_seconds,
+    )
+
+
+def _execute_job_with_retry(
+    schedule_config: Any,
+    job_config: JobConfig,
+    custom_retry_policy: Optional[CustomRetryPolicy],
+) -> Dict[str, Any]:
+    """Execute job with retry logic.
+
+    Args:
+        schedule_config: Schedule configuration
+        job_config: Job configuration
+        custom_retry_policy: Custom retry policy instance
+
+    Returns:
+        Job execution result
+
+    Raises:
+        Exception: If job fails after all retries
+    """
+    job_logger = get_logger()
+    tenant_id = job_config.tenant_id
+    source_config = job_config.get_source()
+    connector_type = source_config.type
+
+    attempt = 0
+    last_exit_code = None
+    last_error = None
+
+    while True:
+        try:
+            # Execute job via CLI run command
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "dativo_ingest.cli",
+                    "run",
+                    "--config",
+                    schedule_config.config,
+                    "--mode",
+                    "self_hosted",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            last_exit_code = result.returncode
+
+            if result.returncode == 0:
+                job_logger.info(
+                    "Job completed successfully",
+                    extra={
+                        "job_name": schedule_config.name,
+                        "tenant_id": tenant_id,
+                        "connector_type": connector_type,
+                        "event_type": "job_finished",
+                        "attempt": attempt + 1,
+                    },
+                )
+                return {
+                    "status": "success",
+                    "job_name": schedule_config.name,
+                    "tenant_id": tenant_id,
+                    "attempt": attempt + 1,
+                }
+
+            # Check if we should retry
+            if custom_retry_policy and custom_retry_policy.should_retry(
+                result.returncode, result.stderr, attempt
+            ):
+                custom_retry_policy.log_retry_attempt(
+                    attempt, result.returncode, result.stderr
+                )
+                custom_retry_policy.wait_for_retry(attempt)
+                attempt += 1
+                continue
+
+            # No retry or retries exhausted
+            last_error = result.stderr
+            break
+
+        except Exception as e:
+            last_error = str(e)
+            if custom_retry_policy and custom_retry_policy.should_retry(2, str(e), attempt):
+                custom_retry_policy.log_retry_attempt(attempt, 2, str(e))
+                custom_retry_policy.wait_for_retry(attempt)
+                attempt += 1
+                continue
+            raise
+
+    # All retries exhausted or non-retryable error
+    job_logger.error(
+        f"Job failed after {attempt + 1} attempt(s)",
+        extra={
+            "job_name": schedule_config.name,
+            "tenant_id": tenant_id,
+            "connector_type": connector_type,
+            "event_type": "job_error",
+            "exit_code": last_exit_code,
+            "attempts": attempt + 1,
+            "stderr": last_error[:500] if last_error else None,
+        },
+    )
+    raise Exception(f"Job execution failed after {attempt + 1} attempt(s): {last_error}")
 
 
 def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
@@ -31,48 +161,70 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
     schedules = []
 
     for schedule_config in runner_config.orchestrator.schedules:
+        # Skip disabled schedules
+        if not schedule_config.enabled:
+            logger.info(
+                f"Schedule '{schedule_config.name}' is disabled, skipping",
+                extra={"event_type": "schedule_skipped", "schedule_name": schedule_config.name},
+            )
+            continue
+
+        # Load job config early to get tenant_id and retry config
+        try:
+            job_config = JobConfig.from_yaml(schedule_config.config)
+            tenant_id = job_config.tenant_id
+            source_config = job_config.get_source()
+            connector_type = source_config.type
+
+            # Create custom retry policy if configured
+            custom_retry_policy = None
+            if job_config.retry_config:
+                custom_retry_policy = CustomRetryPolicy(job_config.retry_config)
+
+            # Create Dagster retry policy
+            dagster_retry_policy = _create_dagster_retry_policy(job_config)
+
+        except Exception as e:
+            logger.error(
+                f"Failed to load job config for schedule '{schedule_config.name}': {e}",
+                extra={"event_type": "schedule_config_error", "schedule_name": schedule_config.name},
+            )
+            continue
+
         # Create an asset for each schedule
         asset_name = f"{schedule_config.name}_asset"
+
+        # Build asset tags
+        asset_tags = {
+            "tenant": tenant_id,
+            "job_name": schedule_config.name,
+            "connector_type": connector_type,
+        }
+        if schedule_config.tags:
+            asset_tags.update(schedule_config.tags)
 
         @asset(
             name=asset_name,
             description=f"Asset for {schedule_config.name}",
-            tags={"tenant": "unknown", "job_name": schedule_config.name},
+            tags=asset_tags,
+            retry_policy=dagster_retry_policy,
         )
         def create_asset(context: AssetExecutionContext) -> Dict[str, Any]:
             """Execute job for this schedule."""
             job_logger = get_logger()
+            start_time = time.time()
+
             job_logger.info(
                 "Executing scheduled job",
                 extra={
                     "job_name": schedule_config.name,
+                    "tenant_id": tenant_id,
                     "event_type": "job_running",
                     "config_path": schedule_config.config,
                 },
             )
 
-            # Load job config to get tenant_id
             try:
-                job_config = JobConfig.from_yaml(schedule_config.config)
-                tenant_id = job_config.tenant_id
-                source_config = job_config.get_source()
-                connector_type = source_config.type
-
-                # Update asset tags with tenant_id
-                context.add_output_metadata(
-                    {"tenant_id": tenant_id, "connector_type": connector_type}
-                )
-
-                job_logger.info(
-                    "Job validated",
-                    extra={
-                        "job_name": schedule_config.name,
-                        "tenant_id": tenant_id,
-                        "connector_type": connector_type,
-                        "event_type": "job_validated",
-                    },
-                )
-
                 # Validate schema presence
                 job_config.validate_schema_presence()
 
@@ -80,57 +232,34 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
                 validator = ConnectorValidator()
                 validator.validate_job(job_config, mode="self_hosted")
 
-                # Execute job via CLI run command
-                # In a real implementation, this would call the actual extraction logic
-                # For now, we'll use subprocess to call the CLI
-                result = subprocess.run(
-                    [
-                        sys.executable,
-                        "-m",
-                        "dativo_ingest.cli",
-                        "run",
-                        "--config",
-                        schedule_config.config,
-                        "--mode",
-                        "self_hosted",
-                    ],
-                    capture_output=True,
-                    text=True,
+                # Execute job with retry logic
+                result = _execute_job_with_retry(
+                    schedule_config, job_config, custom_retry_policy
                 )
 
-                if result.returncode == 0:
-                    job_logger.info(
-                        "Job completed successfully",
-                        extra={
-                            "job_name": schedule_config.name,
-                            "tenant_id": tenant_id,
-                            "connector_type": connector_type,
-                            "event_type": "job_finished",
-                        },
-                    )
-                    return {
-                        "status": "success",
-                        "job_name": schedule_config.name,
+                # Calculate execution time
+                execution_time = time.time() - start_time
+
+                # Add enhanced metadata
+                context.add_output_metadata(
+                    {
                         "tenant_id": tenant_id,
+                        "connector_type": connector_type,
+                        "execution_time_seconds": execution_time,
+                        "status": result.get("status", "unknown"),
                     }
-                else:
-                    job_logger.error(
-                        f"Job failed with exit code {result.returncode}",
-                        extra={
-                            "job_name": schedule_config.name,
-                            "tenant_id": tenant_id,
-                            "connector_type": connector_type,
-                            "event_type": "job_error",
-                            "exit_code": result.returncode,
-                            "stderr": result.stderr,
-                        },
-                    )
-                    raise Exception(f"Job execution failed: {result.stderr}")
+                )
+
+                return result
+
             except Exception as e:
+                execution_time = time.time() - start_time
                 job_logger.error(
                     f"Job execution error: {e}",
                     extra={
                         "job_name": schedule_config.name,
+                        "tenant_id": tenant_id,
+                        "execution_time_seconds": execution_time,
                         "event_type": "job_error",
                     },
                 )
@@ -138,16 +267,65 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
 
         assets.append(create_asset)
 
-        # Create schedule
-        schedule_def = ScheduleDefinition(
-            name=schedule_config.name,
-            job=define_asset_job(
-                name=f"{schedule_config.name}_job",
-                selection=[asset_name],
-                tags={"tenant": "unknown"},
-            ),
-            cron_schedule=schedule_config.cron,
+        # Create schedule with cron or interval
+        job_tags = {"tenant": tenant_id}
+        if schedule_config.tags:
+            job_tags.update(schedule_config.tags)
+
+        job_def = define_asset_job(
+            name=f"{schedule_config.name}_job",
+            selection=[asset_name],
+            tags=job_tags,
         )
+
+        if schedule_config.cron:
+            schedule_def = ScheduleDefinition(
+                name=schedule_config.name,
+                job=job_def,
+                cron_schedule=schedule_config.cron,
+            )
+        elif schedule_config.interval_seconds:
+            try:
+                from dagster import IntervalSchedule
+            except ImportError:
+                # Fallback for older Dagster versions - use cron equivalent
+                # Convert interval_seconds to approximate cron expression
+                interval_minutes = schedule_config.interval_seconds // 60
+                if interval_minutes < 60:
+                    cron_expr = f"*/{interval_minutes} * * * *"
+                else:
+                    interval_hours = interval_minutes // 60
+                    cron_expr = f"0 */{interval_hours} * * *"
+                
+                logger.warning(
+                    f"IntervalSchedule not available, using cron equivalent: {cron_expr}",
+                    extra={
+                        "event_type": "schedule_fallback",
+                        "schedule_name": schedule_config.name,
+                        "interval_seconds": schedule_config.interval_seconds,
+                        "cron_equivalent": cron_expr,
+                    },
+                )
+                schedule_def = ScheduleDefinition(
+                    name=schedule_config.name,
+                    job=job_def,
+                    cron_schedule=cron_expr,
+                )
+            else:
+                schedule_def = ScheduleDefinition(
+                    name=schedule_config.name,
+                    job=job_def,
+                    schedule=IntervalSchedule(
+                        interval_seconds=schedule_config.interval_seconds,
+                    ),
+                )
+        else:
+            logger.warning(
+                f"Schedule '{schedule_config.name}' has no cron or interval, skipping",
+                extra={"event_type": "schedule_invalid", "schedule_name": schedule_config.name},
+            )
+            continue
+
         schedules.append(schedule_def)
 
     # Create run queue configuration for tenant-level serialization
