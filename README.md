@@ -363,6 +363,13 @@ make schema-validate
 - [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
 - [ROADMAP.md](ROADMAP.md) - Development roadmap and future plans
 
+### Strategic Planning
+- **[Roadmap Executive Summary](docs/ROADMAP_EXECUTIVE_SUMMARY.md)** - Strategic vision, business model, go-to-market
+- **[12-Month Technical Roadmap](docs/TECHNICAL_ROADMAP_12M.md)** - Detailed sprint-level planning with technical specs
+- **[MVP Execution Plan](docs/MVP_EXECUTION_PLAN.md)** - Week-by-week breakdown for next 12 weeks
+- **[Sprint Planning Template](docs/SPRINT_PLANNING_TEMPLATE.md)** - Template for sprint execution
+- [Competitive Positioning](docs/dativo_competitive_positioning.md) - Market analysis and differentiation
+
 ### Detailed Guides
 - [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) - Configuration reference
 - [INGESTION_EXECUTION.md](docs/INGESTION_EXECUTION.md) - Execution flow documentation

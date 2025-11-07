@@ -329,6 +329,42 @@ Production-ready features including observability, security, multi-tenancy, and 
 
 ---
 
+## 📋 Detailed Technical Roadmap
+
+For a comprehensive 12-month technical roadmap with sprint-level details, see:
+- **[Roadmap Executive Summary](docs/ROADMAP_EXECUTIVE_SUMMARY.md)** - Strategic vision, business model, go-to-market strategy
+- **[Visual Roadmap](docs/ROADMAP_VISUAL.md)** - Visual timeline, milestones, and metrics
+- **[12-Month Technical Roadmap](docs/TECHNICAL_ROADMAP_12M.md)** - Detailed sprint planning, technical specifications, and architecture evolution
+- **[MVP Execution Plan](docs/MVP_EXECUTION_PLAN.md)** - Week-by-week breakdown for next 12 weeks
+- **[Sprint Planning Template](docs/SPRINT_PLANNING_TEMPLATE.md)** - Template for sprint execution
+
+### Key Highlights from Technical Roadmap
+
+**Q1 (Months 1-3): MVP Completion**
+- Sprint 1-2: Stripe & HubSpot connectors
+- Sprint 3-4: Error handling framework & MySQL connector
+- Sprint 5-6: Google Drive/Sheets connectors & observability
+
+**Q2 (Months 4-6): Production Hardening**
+- Security & compliance (SOC2 ready)
+- Additional connectors (Salesforce, Snowflake, MongoDB)
+- Performance optimization (parallel processing)
+- v2.0.0 release
+
+**Q3 (Months 7-9): Scale & Performance**
+- Data quality framework
+- CDC support
+- SSO/RBAC
+- Multi-region support
+
+**Q4 (Months 10-12): Enterprise Features**
+- Feature store integration
+- Event-driven orchestration
+- Cost optimization
+- v2.5.0 release
+
+---
+
 ## Contributing
 
 We welcome contributions! If you'd like to contribute to any of the planned features:
@@ -336,7 +372,8 @@ We welcome contributions! If you'd like to contribute to any of the planned feat
 1. Check the issue tracker for the version milestone
 2. Comment on the issue to express interest
 3. Review the handoff documentation for context
-4. Submit a PR with tests and documentation
+4. Review the [Technical Roadmap](docs/TECHNICAL_ROADMAP_12M.md) for implementation details
+5. Submit a PR with tests and documentation
 
 ## Feedback
 
