@@ -1,4 +1,4 @@
-.PHONY: schema-validate schema-connectors test-unit test-smoke test
+.PHONY: schema-validate schema-connectors test-unit test-smoke test clean clean-state clean-temp
 
 schema-validate: schema-connectors
 
@@ -16,5 +16,26 @@ test-smoke:
 
 # Run all tests
 test: test-unit test-smoke
+
+# Clean up state files (development)
+clean-state:
+	@echo "🧹 Cleaning up state files..."
+	@rm -rf .local/state
+	@rm -rf state
+	@echo "✅ State files cleaned"
+
+# Clean up temporary files (Parquet files, logs, etc.)
+clean-temp:
+	@echo "🧹 Cleaning up temporary files..."
+	@rm -rf /tmp/dativo_ingest* 2>/dev/null || true
+	@rm -rf /tmp/dativo-state 2>/dev/null || true
+	@rm -f *.log 2>/dev/null || true
+	@find . -maxdepth 1 -name "*.tmp" -type f -delete 2>/dev/null || true
+	@find . -maxdepth 1 -name "*.temp" -type f -delete 2>/dev/null || true
+	@echo "✅ Temporary files cleaned"
+
+# Clean up everything (state + temp files)
+clean: clean-state clean-temp
+	@echo "✅ All cleanup complete"
 
 

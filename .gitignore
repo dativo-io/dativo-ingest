@@ -201,6 +201,12 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# State files (incremental sync cursors)
+# Runtime state should not be committed to version control
+state/
+.local/
+*.state.json
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

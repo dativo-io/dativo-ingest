@@ -118,8 +118,11 @@ source .env
 ### 5. Create State Directory
 
 ```bash
-mkdir -p state/test_tenant
+# State directory is created automatically, but you can pre-create it:
+mkdir -p .local/state/test_tenant
 ```
+
+**Note:** State files are stored in `.local/state/` by default (hidden directory, gitignored). For production, set `STATE_DIR` environment variable to point to your state storage (database, S3, etc.).
 
 ### 6. Run End-to-End Test
 
@@ -234,7 +237,7 @@ mc mb local/test-bucket
 
 **Solution**: Create state directory locally:
 ```bash
-mkdir -p state/test_tenant
+mkdir -p .local/state/test_tenant
 ```
 
 Or update the job config to use a local path.

@@ -19,6 +19,8 @@ ENV PYTHONPATH=/app
 
 # Create mount point directories
 RUN mkdir -p /configs /specs /secrets /state /logs
+# Note: /state is for production use when STATE_DIR is set to /state
+# Default development location is .local/state (gitignored)
 
 # Set entrypoint
 ENTRYPOINT ["python", "-m", "dativo_ingest.cli"]

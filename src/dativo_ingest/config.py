@@ -573,8 +573,10 @@ class JobConfig(BaseModel):
                     elif self.source.get("tables") and len(self.source["tables"]) > 0:
                         object_name = self.source["tables"][0].get("object", "default")
                 
-                # Use relative state directory (state/tenant_id/...) instead of absolute /state/...
-                state_dir = os.getenv("STATE_DIR", "state")
+                # Use relative state directory (.local/state/tenant_id/...) for development
+                # Can be overridden with STATE_DIR env var for production (e.g., database, S3)
+                # Default to .local/state to keep state out of repo root
+                state_dir = os.getenv("STATE_DIR", ".local/state")
                 source_data["incremental"]["state_path"] = (
                     f"{state_dir}/{self.tenant_id}/{recipe.type}.{object_name}.state.json"
                 )

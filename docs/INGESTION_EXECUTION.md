@@ -167,7 +167,7 @@ source:
   incremental:
     strategy: file_modified_time
     lookback_days: 1
-    state_path: /state/tenant/csv.customers.state.json
+    state_path: .local/state/tenant/csv.customers.state.json
 ```
 
 The system:
@@ -178,10 +178,20 @@ The system:
 
 ### State Management
 
-State files are stored at:
+State files are stored at (default for development):
 ```
-/state/{tenant_id}/{connector_type}.{object_name}.state.json
+.local/state/{tenant_id}/{connector_type}.{object_name}.state.json
 ```
+
+**Environment-specific locations:**
+- **Development**: `.local/state/` (default, gitignored)
+- **Testing/CI**: `/tmp/dativo-state/` (temporary, cleaned after tests)
+- **Production**: Set `STATE_DIR` environment variable to:
+  - Database path (future: database backend)
+  - S3 path: `s3://bucket/state/` (future: S3 backend)
+  - Custom path: Any writable directory
+
+**Note:** State files are runtime data and should not be committed to version control. The `.local/` directory is automatically gitignored.
 
 State format:
 ```json

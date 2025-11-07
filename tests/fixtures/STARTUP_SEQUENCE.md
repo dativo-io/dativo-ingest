@@ -290,6 +290,7 @@ For smoke tests, you'll need:
 
 4. **State Directory**:
    ```bash
-   mkdir -p tests/fixtures/state
+   mkdir -p .local/state/test_tenant
+   # Or use STATE_DIR env var: export STATE_DIR=/tmp/dativo-state
    ```
 
