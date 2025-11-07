@@ -1,7 +1,7 @@
-# Iceberg target connector - writes Parquet files to S3
-# Catalog is optional - can be configured per job or omitted for S3-only writes
+# Iceberg connector - target only
 name: iceberg
 type: iceberg
+roles: [target]  # Target only - data lake format
 description: "Iceberg table - writes Parquet files to S3 (catalog optional)"
 default_engine:
   type: native
@@ -43,3 +43,4 @@ partitioning_default: [ingest_date]
 #     * "document_level": One row per document with nested sections (compact)
 #     * "hybrid": Both patterns (requires dual-write or two asset definitions)
 #   - Example: target.markdown_kv_storage.mode: "structured", structured_pattern: "row_per_kv"
+

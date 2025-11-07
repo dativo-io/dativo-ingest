@@ -1,7 +1,8 @@
-# S3 target connector
-name: s3
-type: s3
-description: "S3 object storage connector"
+# MinIO connector - supports both source and target roles
+name: minio
+type: minio
+roles: [source, target]  # Can read and write from MinIO
+description: "MinIO object storage connector (S3-compatible, bidirectional)"
 default_engine:
   type: native
   options:
@@ -13,13 +14,15 @@ default_engine:
       compression: "snappy"
       partition_by_default: ["ingest_date"]
 connection_template:
-  bucket: "${S3_BUCKET}"
-  endpoint: "s3.amazonaws.com"
-  access_key_id: "${AWS_ACCESS_KEY_ID}"
-  secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
-  region: "${AWS_REGION}"
+  endpoint: "${MINIO_ENDPOINT}"  # e.g., "minio:9000"
+  bucket: "${MINIO_BUCKET}"
+  access_key_id: "${MINIO_ACCESS_KEY}"
+  secret_access_key: "${MINIO_SECRET_KEY}"
+  secure: false  # true for HTTPS
+  path_style_access: true  # required for MinIO
 # File storage modes:
 # - "parquet": Store data as Parquet files (default)
 # - "raw": Store raw files as-is
 # - "markdown_kv": Store Markdown-KV files with .md or .mdkv extension
 # When using markdown_kv mode, specify path_pattern in target config (e.g., "docs/{doc_id}.mdkv")
+

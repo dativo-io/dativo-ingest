@@ -63,8 +63,8 @@ def valid_job_config(temp_dir):
     config_path = temp_dir / "job.yaml"
     config_data = {
         "tenant_id": "test_tenant",
-        "source_connector_path": "connectors/sources/stripe.yaml",
-        "target_connector_path": "connectors/targets/iceberg.yaml",
+        "source_connector_path": "connectors/stripe.yaml",
+        "target_connector_path": "connectors/iceberg.yaml",
         "asset_path": str(temp_dir / "asset.yaml"),
         "source": {
             "objects": ["customers"],
@@ -106,8 +106,8 @@ class TestModeRestrictionValidation:
         config_path = temp_dir / "postgres_job.yaml"
         config_data = {
             "tenant_id": "test",
-            "source_connector_path": "connectors/sources/postgres.yaml",
-            "target_connector_path": "connectors/targets/iceberg.yaml",
+            "source_connector_path": "connectors/postgres.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
             "asset_path": str(temp_dir / "asset.yaml"),
             "source": {"tables": [{"name": "test"}]},
             "target": {"warehouse": "s3://test/"},
@@ -131,8 +131,8 @@ class TestModeRestrictionValidation:
         config_path = temp_dir / "postgres_job.yaml"
         config_data = {
             "tenant_id": "test",
-            "source_connector_path": "connectors/sources/postgres.yaml",
-            "target_connector_path": "connectors/targets/iceberg.yaml",
+            "source_connector_path": "connectors/postgres.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
             "asset_path": str(temp_dir / "asset.yaml"),
             "source": {"tables": [{"name": "test"}]},
             "target": {"warehouse": "s3://test/"},
@@ -227,8 +227,8 @@ class TestErrorMessages:
         config_path = temp_dir / "job.yaml"
         config_data = {
             "tenant_id": "test",
-            "source_connector_path": "connectors/sources/nonexistent.yaml",
-            "target_connector_path": "connectors/targets/iceberg.yaml",
+            "source_connector_path": "connectors/nonexistent.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
             "asset_path": str(temp_dir / "asset.yaml"),
             "source": {},
             "target": {"warehouse": "s3://test/"},

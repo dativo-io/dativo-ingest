@@ -26,8 +26,8 @@ def valid_job_config(temp_dir):
     config_path = temp_dir / "job.yaml"
     config_data = {
         "tenant_id": "test_tenant",
-        "source_connector_path": "connectors/sources/stripe.yaml",
-        "target_connector_path": "connectors/targets/iceberg.yaml",
+        "source_connector_path": "connectors/stripe.yaml",
+        "target_connector_path": "connectors/iceberg.yaml",
         "asset_path": str(temp_dir / "asset.yaml"),
         "source": {
             "objects": ["customers"],
@@ -79,8 +79,8 @@ class TestJobConfigLoading:
         """Test loading a valid job config."""
         config = JobConfig.from_yaml(valid_job_config)
         assert config.tenant_id == "test_tenant"
-        assert config.source_connector_path == "connectors/sources/stripe.yaml"
-        assert config.target_connector_path == "connectors/targets/iceberg.yaml"
+        assert config.source_connector_path == "connectors/stripe.yaml"
+        assert config.target_connector_path == "connectors/iceberg.yaml"
 
     def test_load_missing_config_file(self, temp_dir):
         """Test error when config file doesn't exist."""

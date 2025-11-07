@@ -35,9 +35,9 @@ def generate_job_config(dataset_name: str, asset_info: dict) -> dict:
         "tenant_id": "test_tenant",
         "environment": "test",
         "source_connector": "csv",
-        "source_connector_path": "connectors/sources/csv.yaml",
+        "source_connector_path": "connectors/csv.yaml",
         "target_connector": "iceberg",
-        "target_connector_path": "connectors/targets/iceberg.yaml",
+        "target_connector_path": "connectors/iceberg.yaml",
         "asset": asset_name,
         "asset_path": asset_path,
         "source": {

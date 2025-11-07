@@ -1,6 +1,7 @@
-# Stripe source connector
+# Stripe connector - source only
 name: stripe
 type: stripe
+roles: [source]  # Source only - API connector
 description: "Stripe connector"
 default_engine:
   type: airbyte

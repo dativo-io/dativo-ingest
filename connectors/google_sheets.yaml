@@ -1,7 +1,8 @@
-# Google Sheets source connector
+# Google Sheets connector - supports both source and target roles
 name: google_sheets
 type: google_sheets
-description: "Google Sheets connector"
+roles: [source, target]  # Can read and write Google Sheets
+description: "Google Sheets connector (bidirectional)"
 default_engine:
   type: native
   options:

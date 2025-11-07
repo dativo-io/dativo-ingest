@@ -7,11 +7,11 @@ environment: test
 
 # Source connector
 source_connector: csv
-source_connector_path: connectors/sources/csv.yaml
+source_connector_path: connectors/csv.yaml
 
 # Target connector
 target_connector: iceberg
-target_connector_path: connectors/targets/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 # Asset definition
 asset: csv_person

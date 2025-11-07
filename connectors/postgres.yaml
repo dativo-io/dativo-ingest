@@ -1,7 +1,8 @@
-# PostgreSQL source connector
+# PostgreSQL connector - supports both source and target roles
 name: postgres
 type: postgres
-description: "PostgreSQL connector"
+roles: [source, target]  # Can read and write from PostgreSQL
+description: "PostgreSQL connector (bidirectional)"
 default_engine:
   type: meltano
   options:
