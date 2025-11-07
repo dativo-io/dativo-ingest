@@ -12,37 +12,42 @@ All behavior is driven by YAML configs, validated by a connectors registry and a
 
 ### Components
 
-- **Runner Engine**: Dockerized CLI entrypoint that executes `run` and `start` commands # TODO: Add generate config command
+- **Runner Engine**: Dockerized CLI entrypoint that executes `run` and `start` commands
 - **Orchestrator**: Bundled Dagster instance that reads `runner.yaml`, registers schedules, and enforces tenant-level serialization
 - **Config Loader**: Parses job configs, resolves env vars, validates against registry
 - **Registry Validator**: Confirms supported connector types, auth methods, and allowed modes
 - **Specs-as-Code**: Versioned dataset schema references with presence validation
+- **Schema Validator**: Validates records against asset schemas with configurable strict/warn modes
+- **Data Extractors**: Native Python extractors for CSV and file-based sources (extensible for API/database sources)
+- **Parquet Writer**: Writes validated data to Parquet files with target file sizing and partitioning
+- **Iceberg Committer**: Commits Parquet files to Iceberg tables via catalog (optional - can write to S3 without catalog)
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.10+
-- Docker (for containerized deployment)
+- Docker and Docker Compose (for local infrastructure)
 - Node.js 18+ (for schema validation)
 
-### Local Development
+### Local Development Setup
 
-1. Install dependencies:
+**Quick Start (Recommended):**
+
 ```bash
-pip install -r requirements.txt
-npm install --include=dev
+# Run automated setup
+./scripts/setup-dev.sh
+
+# Source environment variables
+source .env
+
+# Run end-to-end test
+dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
-2. Validate schemas:
-```bash
-make schema-validate
-```
-
-3. Run a job:
-```bash
-python -m dativo_ingest.cli run --config configs/jobs/stripe.yaml --mode self_hosted
-```
+**For detailed instructions, see:**
+- [QUICKSTART.md](QUICKSTART.md) - Quick reference guide
+- [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Comprehensive setup guide
 
 ### Docker Deployment
 
@@ -110,6 +115,39 @@ dativo start orchestrated --runner-config <path>
 dativo start orchestrated --runner-config /app/configs/runner.yaml
 ```
 
+## Execution Flow
+
+The ingestion pipeline executes the following steps:
+
+1. **Extract**: Read data from source (CSV, API, database, etc.)
+2. **Validate**: Validate records against asset schema (strict or warn mode)
+3. **Write**: Write validated records to Parquet files (target size: 128-200 MB)
+4. **Commit**: Commit Parquet files to Iceberg table via catalog (optional - files always written to S3)
+5. **Update State**: Update incremental sync state (if applicable)
+
+### Schema Validation
+
+- **Strict Mode** (default): Fails job if any record has validation errors
+- **Warn Mode**: Logs errors but continues processing
+
+### Parquet Writing
+
+- Target file size: 128-200 MB (configurable)
+- Supports partitioning (e.g., by `ingest_date`)
+- Handles schema evolution
+
+### Iceberg/Catalog Integration
+
+**Note**: Catalog configuration is **optional**. If no catalog is configured, Parquet files are written directly to S3/MinIO without Iceberg metadata registration. See [docs/CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md) for details.
+
+#### Iceberg/Nessie Integration (Optional)
+
+- Automatic table creation from asset schema
+- Branch management (defaults to tenant_id)
+- Atomic commits with conflict handling
+
+See [INGESTION_EXECUTION.md](docs/INGESTION_EXECUTION.md) for detailed execution documentation.
+
 ## Configuration
 
 ### Job Configuration
@@ -127,6 +165,7 @@ source_connector_path: /app/connectors/sources/stripe.yaml
 # Reference to target connector recipe
 target_connector: iceberg
 target_connector_path: /app/connectors/targets/iceberg.yaml
+# Note: catalog is optional - omit to write Parquet files directly to S3
 
 # Reference to asset definition
 asset: stripe_customers
@@ -208,7 +247,7 @@ asset:
 - **HubSpot**: CRM data (contacts, deals, companies)
 - **Google Drive CSV**: CSV files from Google Drive
 - **Google Sheets**: Spreadsheet data
-- **CSV**: Local CSV files (for testing and development)
+- **CSV**: Local CSV files
 - **Markdown-KV**: Markdown-KV files for LLM-optimized data ingestion
 - **PostgreSQL**: Database tables (self-hosted only)
 - **MySQL**: Database tables (self-hosted only)

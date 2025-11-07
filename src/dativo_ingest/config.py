@@ -335,13 +335,14 @@ class TargetConfig(BaseModel):
 
     type: str
     catalog: Optional[str] = None
-    branch: Optional[str] = None
+    branch: Optional[str] = None  # Defaults to tenant_id if not provided
     warehouse: Optional[str] = None
     file_format: Optional[str] = None
     partitioning: Optional[List[str]] = None
     engine: Optional[Dict[str, Any]] = None
     connection: Optional[Dict[str, Any]] = None  # For storage connection details
     markdown_kv_storage: Optional[Dict[str, Any]] = None  # Markdown-KV storage configuration
+    parquet_target_size_mb: Optional[int] = None  # Target Parquet file size in MB (default: 128-200 MB range)
 
     @model_validator(mode="after")
     def validate_markdown_kv_storage(self) -> "TargetConfig":
@@ -377,6 +378,14 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class RetryConfig(BaseModel):
+    """Retry configuration for transient failures."""
+
+    max_retries: int = 3
+    retry_delay_seconds: int = 5
+    retryable_errors: Optional[List[str]] = None  # List of error types to retry
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -394,6 +403,10 @@ class JobConfig(BaseModel):
     # Source and target configurations (flat structure, merged with recipes)
     source: Optional[Dict[str, Any]] = None  # Source configuration
     target: Optional[Dict[str, Any]] = None  # Target configuration
+    
+    # Execution configuration
+    schema_validation_mode: str = "strict"  # 'strict' or 'warn'
+    retry_config: Optional[RetryConfig] = None
     
     logging: Optional[LoggingConfig] = None
 
@@ -466,8 +479,10 @@ class JobConfig(BaseModel):
                     elif self.source.get("tables") and len(self.source["tables"]) > 0:
                         object_name = self.source["tables"][0].get("object", "default")
                 
+                # Use relative state directory (state/tenant_id/...) instead of absolute /state/...
+                state_dir = os.getenv("STATE_DIR", "state")
                 source_data["incremental"]["state_path"] = (
-                    f"/state/{self.tenant_id}/{recipe.type}.{object_name}.state.json"
+                    f"{state_dir}/{self.tenant_id}/{recipe.type}.{object_name}.state.json"
                 )
         
         return SourceConfig(**source_data)
@@ -477,7 +492,7 @@ class JobConfig(BaseModel):
         # Start with recipe defaults
         target_data = {
             "type": recipe.type,
-            "catalog": recipe.catalog,
+            "catalog": recipe.catalog,  # Can be None if not set in recipe
             "file_format": recipe.file_format,
             "partitioning": recipe.partitioning_default,
             "engine": recipe.default_engine,
@@ -495,6 +510,10 @@ class JobConfig(BaseModel):
                     target_data[key] = {**target_data[key], **value}
                 else:
                     target_data[key] = value
+        
+        # Set branch default to tenant_id if not provided (only if catalog is configured)
+        if target_data.get("catalog") and ("branch" not in target_data or target_data["branch"] is None):
+            target_data["branch"] = self.tenant_id
         
         return TargetConfig(**target_data)
 

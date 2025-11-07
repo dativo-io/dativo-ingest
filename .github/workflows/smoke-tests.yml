@@ -1,0 +1,121 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl
+          
+      - name: Start MinIO
+        run: |
+          # Start MinIO in background using Docker (GitHub Actions runners have Docker pre-installed)
+          docker run -d \
+            --name minio \
+            -p 9000:9000 \
+            -p 9001:9001 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:latest server /data --console-address ":9001"
+          
+          # Wait for MinIO to be ready
+          echo "Waiting for MinIO to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:9000/minio/health/live 2>/dev/null; then
+              echo "✅ MinIO is ready"
+              break
+            fi
+            echo "Attempt $i/30: MinIO not ready yet, waiting..."
+            sleep 2
+          done
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Set up MinIO bucket
+        run: |
+          # Install MinIO client
+          wget -q https://dl.min.io/client/mc/release/linux-amd64/mc
+          chmod +x mc
+          sudo mv mc /usr/local/bin/
+          
+          # Configure MinIO client and create bucket
+          mc alias set local http://localhost:9000 minioadmin minioadmin
+          mc mb local/test-bucket || true  # Ignore if bucket already exists
+          echo "✅ MinIO bucket 'test-bucket' created"
+
+      - name: Set up environment variables
+        run: |
+          mkdir -p .github/workflows
+          cat > .github/workflows/test.env << EOF
+          # S3/MinIO configuration
+          S3_ENDPOINT=http://localhost:9000
+          AWS_ACCESS_KEY_ID=minioadmin
+          AWS_SECRET_ACCESS_KEY=minioadmin
+          AWS_REGION=us-east-1
+          
+          # Nessie (optional - not needed for smoke test)
+          # NESSIE_URI=http://localhost:19120/api/v1
+          EOF
+          cat .github/workflows/test.env
+
+      - name: Create state directory
+        run: |
+          mkdir -p state/test_tenant
+
+      - name: Run smoke tests
+        env:
+          S3_ENDPOINT: http://localhost:9000
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+          PYTHONPATH: src
+        run: |
+          # Clear any existing state to ensure fresh test run
+          rm -rf state/test_tenant
+          
+          # Run smoke test
+          python -m dativo_ingest.cli run \
+            --job-dir tests/fixtures/jobs \
+            --secrets-dir tests/fixtures/secrets \
+            --mode self_hosted
+          
+          echo "✅ Smoke test completed successfully"
+
+      - name: Verify files in MinIO
+        run: |
+          mc ls local/test-bucket --recursive || echo "⚠️  Could not list files (non-critical)"
+
+      - name: Upload test artifacts (if test fails)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            state/
+            *.log
+          retention-days: 1
+
