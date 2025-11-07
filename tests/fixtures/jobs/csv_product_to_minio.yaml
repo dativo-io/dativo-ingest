@@ -1,0 +1,38 @@
+# CSV Product to MinIO job for smoke tests
+tenant_id: test_tenant
+environment: test
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: minio
+target_connector_path: connectors/minio.yaml
+
+# Asset definition
+asset: csv_product
+asset_path: tests/fixtures/assets/csv/v1.0/product.yaml
+
+# Source configuration
+source:
+  files:
+    - path: tests/fixtures/seeds/adventureworks/Product.csv
+      object: Product
+
+# Target configuration
+target:
+  connection:
+    endpoint: "${MINIO_ENDPOINT}"
+    bucket: test-bucket
+    prefix: raw/csv/product
+    access_key_id: "${MINIO_ACCESS_KEY}"
+    secret_access_key: "${MINIO_SECRET_KEY}"
+    secure: false
+    path_style_access: true
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+

@@ -1,0 +1,37 @@
+# CSV Sales Order to S3 job for smoke tests
+tenant_id: test_tenant
+environment: test
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: s3
+target_connector_path: connectors/s3.yaml
+
+# Asset definition
+asset: csv_sales_order_header
+asset_path: tests/fixtures/assets/csv/v1.0/sales_order_header.yaml
+
+# Source configuration
+source:
+  files:
+    - path: tests/fixtures/seeds/adventureworks/SalesOrderHeader.csv
+      object: SalesOrderHeader
+
+# Target configuration
+target:
+  connection:
+    bucket: test-bucket
+    prefix: raw/csv/sales_order_header
+    endpoint: "${S3_ENDPOINT}"
+    access_key_id: "${AWS_ACCESS_KEY_ID}"
+    secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+    region: "${AWS_REGION}"
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+

@@ -33,7 +33,27 @@ services:
       timeout: 5s
       retries: 5
 
+  postgres:
+    image: postgres:15-alpine
+    container_name: dativo-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=Adventureworks
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./tests/fixtures/seeds/AdventureWorks-oltp-install-script:/docker-entrypoint-initdb.d/adventureworks:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   nessie-data:
   minio-data:
+  postgres-data:
 

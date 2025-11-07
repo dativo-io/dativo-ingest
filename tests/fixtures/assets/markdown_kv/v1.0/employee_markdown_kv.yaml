@@ -1,0 +1,67 @@
+# Asset definition for Postgres Employee table stored as Markdown-KV in Iceberg
+# Uses AdventureWorks-for-Postgres dataset: https://github.com/lorint/AdventureWorks-for-Postgres
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+id: 550e8400-e29b-41d4-a716-446655440014
+name: postgres_employee_markdown_kv
+version: "1.0"
+status: active
+domain: dativo
+dataProduct: adventureworks
+tenant: test_tenant
+description:
+  purpose: "Employee data from AdventureWorks Postgres database stored as Markdown-KV format"
+  limitations: null
+  usage: "Used for LLM-optimized data storage in Markdown-KV format"
+tags: [adventureworks, employee, humanresources, postgres, markdown-kv, llm]
+
+# Dativo extensions
+source_type: postgres
+object: employee
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+  mode: strict
+
+schema:
+  - name: doc_id
+    type: string
+    required: true
+    description: "Document identifier (businessentityid from Employee table)"
+  - name: markdown_kv_content
+    type: string
+    required: false
+    description: "Markdown-KV formatted content from Employee table row"
+
+team:
+  owner: test@example.com
+  roles:
+    - name: Data Engineer
+      email: engineer@example.com
+      responsibility: ingestion
+
+compliance:
+  classification: []
+  regulations: []
+  retention_days: 365
+  security:
+    access_control: role_based
+    encryption_required: false
+  user_consent_required: false
+
+data_quality:
+  expectations: []
+  monitoring:
+    enabled: true
+    oncall_rotation: test@example.com
+  alerts:
+    channels: []
+    thresholds: {}
+
+change_management:
+  policy: non-breaking
+  approval_required: false
+  notification_channels: []
+  version_history: true
+

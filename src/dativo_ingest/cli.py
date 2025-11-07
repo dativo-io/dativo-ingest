@@ -326,6 +326,9 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         if source_config.type == "csv":
             from .connectors.csv_extractor import CSVExtractor
             extractor = CSVExtractor(source_config)
+        elif source_config.type == "postgres":
+            from .connectors.postgres_extractor import PostgresExtractor
+            extractor = PostgresExtractor(source_config)
         else:
             logger.error(
                 f"Unsupported source type: {source_config.type}",
@@ -477,6 +480,66 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         for batch_records in extractor.extract(state_manager=state_manager):
             total_records += len(batch_records)
 
+            # Transform to Markdown-KV format if configured
+            if target_config.markdown_kv_storage:
+                from .markdown_kv import transform_to_markdown_kv, parse_markdown_kv
+                
+                mode = target_config.markdown_kv_storage.get("mode")
+                transformed_records = []
+                
+                for record in batch_records:
+                    if mode == "string":
+                        # Transform to Markdown-KV string format
+                        # Get doc_id from record (try common ID fields)
+                        doc_id = str(record.get("businessentityid") or 
+                                    record.get("productid") or 
+                                    record.get("customerid") or 
+                                    record.get("salesorderid") or 
+                                    record.get("addressid") or 
+                                    record.get("productcategoryid") or
+                                    record.get("id") or
+                                    record.get("doc_id") or
+                                    "unknown")
+                        
+                        # Transform record to Markdown-KV format
+                        markdown_kv_content = transform_to_markdown_kv(record, format="compact", doc_id=doc_id)
+                        
+                        transformed_records.append({
+                            "doc_id": doc_id,
+                            "markdown_kv_content": markdown_kv_content
+                        })
+                    
+                    elif mode == "structured":
+                        # Transform to Markdown-KV first, then parse to structured format
+                        doc_id = str(record.get("businessentityid") or 
+                                    record.get("productid") or 
+                                    record.get("customerid") or 
+                                    record.get("salesorderid") or 
+                                    record.get("addressid") or 
+                                    record.get("productcategoryid") or
+                                    record.get("id") or
+                                    record.get("doc_id") or
+                                    "unknown")
+                        
+                        # Transform to Markdown-KV string
+                        markdown_kv_content = transform_to_markdown_kv(record, format="compact", doc_id=doc_id)
+                        
+                        # Parse to structured format
+                        structured_pattern = target_config.markdown_kv_storage.get("structured_pattern", "row_per_kv")
+                        structured_rows = parse_markdown_kv(markdown_kv_content, doc_id=doc_id, pattern=structured_pattern)
+                        
+                        # structured_rows is a list of rows (for row_per_kv) or a single dict (for document_level)
+                        if isinstance(structured_rows, list):
+                            transformed_records.extend(structured_rows)
+                        else:
+                            transformed_records.append(structured_rows)
+                    
+                    else:
+                        # raw_file mode - not handled here, would be in writer
+                        transformed_records.append(record)
+                
+                batch_records = transformed_records
+
             # Validate batch
             valid_records, validation_errors = validator.validate_batch(batch_records)
             total_valid_records += len(valid_records)
@@ -519,7 +582,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     },
                 )
 
-        # Commit all files to Iceberg (if catalog is configured)
+        # Commit all files to Iceberg (if catalog is configured) or upload to S3 (if no catalog)
         if all_file_metadata:
             if committer:
                 try:
@@ -544,14 +607,31 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                         },
                     )
             else:
-                # No catalog - files already uploaded to S3
-                logger.info(
-                    f"Files written to S3 (no catalog configured): {len(all_file_metadata)} file(s)",
-                    extra={
-                        "files_written": len(all_file_metadata),
-                        "event_type": "files_written_no_catalog",
-                    },
+                # No catalog - still need to upload files to S3/MinIO
+                # Create a minimal committer just for uploading (without catalog operations)
+                from .iceberg_committer import IcebergCommitter
+                upload_committer = IcebergCommitter(
+                    asset_definition=asset_definition,
+                    target_config=target_config,
                 )
+                try:
+                    upload_result = upload_committer.commit_files(all_file_metadata)
+                    logger.info(
+                        f"Files uploaded to S3 (no catalog configured): {upload_result.get('files_added', len(all_file_metadata))} file(s)",
+                        extra={
+                            "files_written": upload_result.get("files_added", len(all_file_metadata)),
+                            "file_paths": upload_result.get("file_paths", []),
+                            "event_type": "files_written_no_catalog",
+                        },
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to upload files to S3: {e}",
+                        extra={
+                            "event_type": "upload_failed",
+                        },
+                    )
+                    return 2
         else:
             logger.warning(
                 "No files to commit",

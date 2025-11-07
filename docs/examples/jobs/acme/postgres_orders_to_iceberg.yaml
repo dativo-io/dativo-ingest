@@ -1,0 +1,39 @@
+# PostgreSQL orders to Iceberg job for tenant acme
+tenant_id: acme
+environment: prod
+
+source_connector: postgres
+source_connector_path: /app/connectors/postgres.yaml
+
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+asset: postgres_orders
+asset_path: /app/assets/postgres/v1.0/db_orders.yaml
+
+source:
+  tables:
+    - name: public.orders
+      object: db_orders
+      cursor_field: updated_at
+  incremental:
+    lookback_days: 1
+  connection:
+    host: "${PGHOST}"
+    port: "${PGPORT}"
+    database: "${PGDATABASE}"
+
+target:
+  branch: acme
+  warehouse: s3://lake/acme/
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/postgres/orders"
+
+logging:
+  redaction: true
+  level: INFO
+
