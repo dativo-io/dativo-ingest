@@ -73,10 +73,11 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping --silent"
+          --health-cmd="mysqladmin ping -h localhost -u root -proot --silent"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=5
+          --health-retries=10
+          --health-start-period=30s
 
     steps:
       - name: Checkout code
@@ -295,23 +296,46 @@ jobs:
       - name: Load MySQL test data
         timeout-minutes: 5
         run: |
-          # Install MySQL client
-          sudo apt-get install -y mysql-client
+          # Install MySQL client and netcat for port checking
+          sudo apt-get install -y mysql-client netcat-openbsd
           
-          # Wait for MySQL to be ready (with timeout)
+          # Wait for MySQL to be ready (with timeout and better diagnostics)
           echo "Waiting for MySQL to be ready..."
-          MAX_WAIT=60  # Maximum wait time in seconds
+          MAX_WAIT=120  # Maximum wait time in seconds (increased for slow startup)
+          WAIT_COUNT=0
+          
+          # First, wait for MySQL port to be accessible
+          echo "Checking if MySQL port 3306 is accessible..."
+          while ! nc -z localhost 3306 2>/dev/null; do
+            if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
+              echo "❌ MySQL port 3306 did not become accessible within $MAX_WAIT seconds"
+              echo "Checking MySQL service status..."
+              docker ps -a | grep mysql || echo "No MySQL container found"
+              exit 1
+            fi
+            echo "Waiting for MySQL port... ($WAIT_COUNT/$MAX_WAIT seconds)"
+            sleep 2
+            WAIT_COUNT=$((WAIT_COUNT + 2))
+          done
+          echo "✅ MySQL port 3306 is accessible"
+          
+          # Then wait for MySQL to accept connections
+          echo "Waiting for MySQL to accept connections..."
           WAIT_COUNT=0
           while ! mysqladmin ping -h localhost -P 3306 -u root -proot --silent 2>/dev/null; do
             if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
               echo "❌ MySQL did not become ready within $MAX_WAIT seconds"
+              echo "Attempting diagnostic connection..."
+              mysqladmin ping -h localhost -P 3306 -u root -proot 2>&1 || true
+              echo "Checking MySQL error log..."
+              docker logs $(docker ps -q --filter "ancestor=mysql:8.0") 2>&1 | tail -20 || echo "Could not retrieve logs"
               exit 1
             fi
-            echo "Waiting for MySQL... ($WAIT_COUNT/$MAX_WAIT seconds)"
+            echo "Waiting for MySQL connection... ($WAIT_COUNT/$MAX_WAIT seconds)"
             sleep 2
             WAIT_COUNT=$((WAIT_COUNT + 2))
           done
-          echo "✅ MySQL is ready"
+          echo "✅ MySQL is ready and accepting connections"
           
           # Create minimal test schema and data (instead of loading full employees database)
           # This is much faster and sufficient for smoke tests
