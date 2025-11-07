@@ -73,7 +73,7 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -u root -proot --silent"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot --silent"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
@@ -319,14 +319,14 @@ jobs:
           done
           echo "✅ MySQL port 3306 is accessible"
           
-          # Then wait for MySQL to accept connections
+          # Then wait for MySQL to accept connections (use TCP, not Unix socket)
           echo "Waiting for MySQL to accept connections..."
           WAIT_COUNT=0
-          while ! mysqladmin ping -h localhost -P 3306 -u root -proot --silent 2>/dev/null; do
+          while ! mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot --silent 2>/dev/null; do
             if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
               echo "❌ MySQL did not become ready within $MAX_WAIT seconds"
               echo "Attempting diagnostic connection..."
-              mysqladmin ping -h localhost -P 3306 -u root -proot 2>&1 || true
+              mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot 2>&1 || true
               echo "Checking MySQL error log..."
               docker logs $(docker ps -q --filter "ancestor=mysql:8.0") 2>&1 | tail -20 || echo "Could not retrieve logs"
               exit 1
@@ -339,7 +339,8 @@ jobs:
           
           # Create minimal test schema and data (instead of loading full employees database)
           # This is much faster and sufficient for smoke tests
-          mysql -h localhost -P 3306 -u root -proot <<'EOF'
+          # Use 127.0.0.1 instead of localhost to force TCP connection (not Unix socket)
+          mysql -h 127.0.0.1 -P 3306 -u root -proot <<'EOF'
           CREATE DATABASE IF NOT EXISTS employees;
           USE employees;
           
@@ -379,7 +380,7 @@ jobs:
           EOF
           
           # Verify MySQL data loaded
-          mysql -h localhost -P 3306 -u test -ptest -e "USE employees; SELECT COUNT(*) as dept_count FROM departments;" || echo "⚠️  Could not verify MySQL data"
+          mysql -h 127.0.0.1 -P 3306 -u test -ptest -e "USE employees; SELECT COUNT(*) as dept_count FROM departments;" || echo "⚠️  Could not verify MySQL data"
           
           echo "✅ MySQL test data loaded (minimal dataset)"
 
