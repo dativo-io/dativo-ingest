@@ -365,10 +365,18 @@ make schema-validate
 
 ### Strategic Planning
 - **[Roadmap Executive Summary](docs/ROADMAP_EXECUTIVE_SUMMARY.md)** - Strategic vision, business model, go-to-market
+- **[Enhanced Roadmap Summary](docs/ENHANCED_ROADMAP_SUMMARY.md)** - NEW: Data contracts, compliance, ML features, OpenMetadata
 - **[12-Month Technical Roadmap](docs/TECHNICAL_ROADMAP_12M.md)** - Detailed sprint-level planning with technical specs
 - **[MVP Execution Plan](docs/MVP_EXECUTION_PLAN.md)** - Week-by-week breakdown for next 12 weeks
+- **[Visual Roadmap](docs/ROADMAP_VISUAL.md)** - Visual timeline, milestones, and metrics
 - **[Sprint Planning Template](docs/SPRINT_PLANNING_TEMPLATE.md)** - Template for sprint execution
 - [Competitive Positioning](docs/dativo_competitive_positioning.md) - Market analysis and differentiation
+
+### Enterprise Features (NEW)
+- **[Data Contracts & Quality](docs/DATA_CONTRACTS_AND_QUALITY.md)** - Soda + Great Expectations integration, contract enforcement
+- **[Compliance Operations](docs/COMPLIANCE_OPERATIONS.md)** - SOC2/GDPR: Data download, deletion, account termination
+- **[ML Teams Positioning](docs/ML_TEAMS_POSITIONING.md)** - Feature engineering, versioning, drift monitoring, feature store
+- **[OpenMetadata Integration](docs/OPENMETADATA_INTEGRATION.md)** - Metadata catalog, lineage, governance
 
 ### Detailed Guides
 - [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) - Configuration reference

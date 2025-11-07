@@ -1455,15 +1455,15 @@ Performance Targets (v2.0.0):
 
 **Goal**: Handle enterprise scale (10TB+ daily, 100+ tenants)
 
-### Month 7: Data Quality - Sprint 13-14
+### Month 7: Data Quality & Metadata - Sprint 13-14
 
-#### **Sprint 13: Data Quality Framework (Weeks 25-26)**
+#### **Sprint 13: Data Contracts & Quality Framework (Weeks 25-26)**
 
 **Objectives**:
-- Data quality rules engine
-- Anomaly detection
-- Schema drift detection
-- Data profiling
+- Data contract specification and enforcement
+- Integration with Soda (SQL-based quality checks)
+- Integration with Great Expectations (Python-based checks)
+- Quality check orchestration with DLQ
 
 **Technical Specifications**:
 
