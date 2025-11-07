@@ -1,0 +1,338 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install psycopg2-binary  # Required for Postgres extractor tests
+
+      - name: Run unit tests
+        run: make test-unit
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: |
+            pytest-results.xml
+            .pytest_cache/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: Adventureworks
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl
+
+      - name: Start MinIO
+        run: |
+          docker run -d \
+            --name minio \
+            -p 9000:9000 \
+            -p 9001:9001 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:latest server /data --console-address ":9001"
+          
+          # Wait for MinIO to be ready
+          echo "Waiting for MinIO to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:9000/minio/health/live 2>/dev/null; then
+              echo "✅ MinIO is ready"
+              break
+            fi
+            echo "Attempt $i/30: MinIO not ready yet, waiting..."
+            sleep 2
+          done
+
+      - name: Start Nessie (optional)
+        run: |
+          docker run -d \
+            --name nessie \
+            -p 19120:19120 \
+            -e QUARKUS_HTTP_PORT=19120 \
+            -e QUARKUS_HTTP_CORS_ORIGINS=* \
+            projectnessie/nessie:latest
+          
+          # Wait for Nessie to be ready
+          echo "Waiting for Nessie to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:19120/api/v1/config 2>/dev/null; then
+              echo "✅ Nessie is ready"
+              break
+            fi
+            echo "Attempt $i/30: Nessie not ready yet, waiting..."
+            sleep 2
+          done
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install psycopg2-binary  # Required for Postgres extractor
+
+      - name: Set up MinIO bucket
+        run: |
+          # Install MinIO client
+          wget -q https://dl.min.io/client/mc/release/linux-amd64/mc
+          chmod +x mc
+          sudo mv mc /usr/local/bin/
+          
+          # Configure MinIO client and create bucket
+          mc alias set local http://localhost:9000 minioadmin minioadmin
+          mc mb local/test-bucket || true  # Ignore if bucket already exists
+          echo "✅ MinIO bucket 'test-bucket' created"
+
+      - name: Load AdventureWorks test data
+        run: |
+          # Install PostgreSQL client
+          sudo apt-get install -y postgresql-client
+          
+          # Wait for Postgres to be ready
+          until pg_isready -h localhost -p 5432 -U postgres; do
+            echo "Waiting for Postgres..."
+            sleep 2
+          done
+          
+          # Load minimal test data
+          PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d Adventureworks <<'EOF'
+          CREATE SCHEMA IF NOT EXISTS person;
+          CREATE SCHEMA IF NOT EXISTS production;
+          CREATE SCHEMA IF NOT EXISTS sales;
+          CREATE SCHEMA IF NOT EXISTS humanresources;
+          
+          CREATE TABLE IF NOT EXISTS person.person (
+            businessentityid INTEGER PRIMARY KEY,
+            persontype VARCHAR(2),
+            namestyle BOOLEAN,
+            firstname VARCHAR(50),
+            lastname VARCHAR(50),
+            emailpromotion INTEGER,
+            modifieddate TIMESTAMP
+          );
+          
+          INSERT INTO person.person (businessentityid, persontype, namestyle, firstname, lastname, emailpromotion, modifieddate) VALUES
+          (1, 'EM', false, 'Ken', 'Sánchez', 0, '2009-01-07 00:00:00'),
+          (2, 'SC', false, 'Terri', 'Duffy', 1, '2008-01-24 00:00:00'),
+          (3, 'EM', false, 'Roberto', 'Tamburello', 0, '2007-11-04 00:00:00')
+          ON CONFLICT (businessentityid) DO NOTHING;
+          
+          CREATE TABLE IF NOT EXISTS production.product (
+            productid INTEGER PRIMARY KEY,
+            name VARCHAR(100),
+            productnumber VARCHAR(25),
+            makeflag BOOLEAN,
+            finishedgoodsflag BOOLEAN,
+            safetystocklevel SMALLINT,
+            reorderpoint SMALLINT,
+            standardcost NUMERIC,
+            listprice NUMERIC,
+            sellstartdate TIMESTAMP,
+            modifieddate TIMESTAMP
+          );
+          
+          INSERT INTO production.product (productid, name, productnumber, makeflag, finishedgoodsflag, safetystocklevel, reorderpoint, standardcost, listprice, sellstartdate, modifieddate) VALUES
+          (1, 'Adjustable Race', 'AR-5381', false, true, 750, 375, 0.00, 0.00, '2008-04-30 00:00:00', '2008-04-30 00:00:00'),
+          (2, 'Bearing Ball', 'BB-7421', false, true, 800, 400, 0.00, 0.00, '2008-04-30 00:00:00', '2008-04-30 00:00:00'),
+          (3, 'BB Ball Bearing', 'BE-2349', true, false, 1000, 500, 0.00, 0.00, '2008-04-30 00:00:00', '2008-04-30 00:00:00')
+          ON CONFLICT (productid) DO NOTHING;
+          
+          CREATE TABLE IF NOT EXISTS sales.customer (
+            customerid INTEGER PRIMARY KEY,
+            personid INTEGER,
+            storeid INTEGER,
+            territoryid INTEGER,
+            accountnumber VARCHAR(10),
+            modifieddate TIMESTAMP
+          );
+          
+          INSERT INTO sales.customer (customerid, personid, storeid, territoryid, accountnumber, modifieddate) VALUES
+          (1, 1, NULL, 1, 'AW00000001', '2007-12-19 00:00:00'),
+          (2, 2, NULL, 1, 'AW00000002', '2007-12-19 00:00:00'),
+          (3, 3, NULL, 1, 'AW00000003', '2007-12-19 00:00:00')
+          ON CONFLICT (customerid) DO NOTHING;
+          
+          CREATE TABLE IF NOT EXISTS sales.salesorderheader (
+            salesorderid INTEGER PRIMARY KEY,
+            revisionnumber SMALLINT,
+            orderdate TIMESTAMP,
+            duedate TIMESTAMP,
+            shipdate TIMESTAMP,
+            status SMALLINT,
+            onlineorderflag BOOLEAN,
+            customerid INTEGER,
+            subtotal NUMERIC,
+            taxamt NUMERIC,
+            freight NUMERIC,
+            totaldue NUMERIC,
+            modifieddate TIMESTAMP
+          );
+          
+          INSERT INTO sales.salesorderheader (salesorderid, revisionnumber, orderdate, duedate, shipdate, status, onlineorderflag, customerid, subtotal, taxamt, freight, totaldue, modifieddate) VALUES
+          (43659, 8, '2011-05-31 00:00:00', '2011-06-12 00:00:00', '2011-06-07 00:00:00', 5, true, 29825, 1294.2529, 124.2483, 38.8276, 1457.3288, '2011-06-07 00:00:00')
+          ON CONFLICT (salesorderid) DO NOTHING;
+          
+          CREATE TABLE IF NOT EXISTS humanresources.employee (
+            businessentityid INTEGER PRIMARY KEY,
+            nationalidnumber VARCHAR(15),
+            loginid VARCHAR(256),
+            jobtitle VARCHAR(50),
+            birthdate DATE,
+            maritalstatus VARCHAR(1),
+            gender VARCHAR(1),
+            hiredate DATE,
+            salariedflag BOOLEAN,
+            vacationhours SMALLINT,
+            sickleavehours SMALLINT,
+            currentflag BOOLEAN,
+            modifieddate TIMESTAMP
+          );
+          
+          INSERT INTO humanresources.employee (businessentityid, nationalidnumber, loginid, jobtitle, birthdate, maritalstatus, gender, hiredate, salariedflag, vacationhours, sickleavehours, currentflag, modifieddate) VALUES
+          (1, '295847284', 'adventure-works\ken0', 'Chief Executive Officer', '1969-01-29', 'S', 'M', '2009-01-14', true, 99, 69, true, '2014-06-30 00:00:00'),
+          (2, '245797967', 'adventure-works\terri0', 'Vice President of Engineering', '1971-08-01', 'S', 'F', '2008-01-31', true, 1, 20, true, '2014-06-30 00:00:00')
+          ON CONFLICT (businessentityid) DO NOTHING;
+          
+          CREATE TABLE IF NOT EXISTS person.address (
+            addressid INTEGER PRIMARY KEY,
+            addressline1 VARCHAR(60),
+            city VARCHAR(30),
+            stateprovinceid INTEGER,
+            postalcode VARCHAR(15),
+            modifieddate TIMESTAMP
+          );
+          
+          INSERT INTO person.address (addressid, addressline1, city, stateprovinceid, postalcode, modifieddate) VALUES
+          (1, '1970 Napa Ct.', 'Bothell', 79, '98011', '2007-12-19 00:00:00'),
+          (2, '9833 Mt. Dias Blv.', 'Bothell', 79, '98011', '2007-12-19 00:00:00'),
+          (3, '7484 Roundtree Drive', 'Bothell', 79, '98011', '2007-12-19 00:00:00')
+          ON CONFLICT (addressid) DO NOTHING;
+          
+          CREATE TABLE IF NOT EXISTS production.productcategory (
+            productcategoryid INTEGER PRIMARY KEY,
+            name VARCHAR(50),
+            modifieddate TIMESTAMP
+          );
+          
+          INSERT INTO production.productcategory (productcategoryid, name, modifieddate) VALUES
+          (1, 'Bikes', '2007-12-19 00:00:00'),
+          (2, 'Components', '2007-12-19 00:00:00'),
+          (3, 'Clothing', '2007-12-19 00:00:00')
+          ON CONFLICT (productcategoryid) DO NOTHING;
+          EOF
+          
+          echo "✅ AdventureWorks test data loaded"
+
+      - name: Create state directory
+        run: |
+          mkdir -p state/test_tenant
+
+      - name: Run smoke tests
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGDATABASE: Adventureworks
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          MINIO_ENDPOINT: http://localhost:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          AWS_REGION: us-east-1
+          PYTHONPATH: src
+        run: |
+          # Clear any existing state to ensure fresh test run
+          rm -rf state/test_tenant
+          
+          # Run smoke tests
+          python -m dativo_ingest.cli run \
+            --job-dir tests/fixtures/jobs \
+            --secrets-dir tests/fixtures/secrets \
+            --mode self_hosted
+          
+          echo "✅ Smoke test completed successfully"
+
+      - name: Verify files in MinIO
+        run: |
+          mc ls local/test-bucket --recursive | head -20 || echo "⚠️  Could not list files (non-critical)"
+
+      - name: Upload test artifacts (if test fails)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-logs
+          path: |
+            state/
+            *.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  all-tests:
+    name: All Tests
+    needs: [unit-tests, smoke-tests]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.unit-tests.result }}" != "success" ] || [ "${{ needs.smoke-tests.result }}" != "success" ]; then
+            echo "❌ Some tests failed"
+            exit 1
+          else
+            echo "✅ All tests passed"
+          fi
+
