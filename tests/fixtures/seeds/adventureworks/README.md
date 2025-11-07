@@ -52,10 +52,14 @@ This directory contains CSV files from the AdventureWorks Data Warehouse sample 
 
 ## Usage
 
-These fixtures are used by smoke tests in `test_smoke_csv_to_iceberg.py`. The tests can validate CSV to Iceberg ingestion for any of these tables.
+These fixtures are used by smoke tests. The tests can validate CSV to Iceberg ingestion for any of these tables.
 
 To test with AdventureWorks data:
 ```bash
-pytest tests/test_smoke_csv_to_iceberg.py -m adventureworks -v
+# Run all jobs
+dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
+
+# Or run a specific AdventureWorks job
+dativo_ingest run --config tests/fixtures/jobs/adventureworks_person_to_iceberg.yaml --secrets-dir tests/fixtures/secrets
 ```
 

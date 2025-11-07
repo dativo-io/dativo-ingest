@@ -1,8 +1,10 @@
 # Available test datasets for smoke tests
 # Users can select datasets using pytest markers or command line arguments
 # 
-# Note: Asset definitions are in tests/assets/csv/v1.0/
-#       Job configurations are generated in tests/jobs/smoke/
+# Note: Asset definitions are in tests/fixtures/assets/csv/v1.0/
+#       Job configurations are generated in tests/fixtures/jobs/
+#       CSV data files are in tests/fixtures/seeds/
+#       See tests/fixtures/STARTUP_SEQUENCE.md for E2E smoke test startup requirements
 
 datasets:
   adventureworks:

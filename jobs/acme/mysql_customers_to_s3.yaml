@@ -11,7 +11,7 @@ target_connector_path: /app/connectors/targets/s3.yaml
 asset: mysql_customers
 asset_path: /app/assets/mysql/v1.0/db_customers.yaml
 
-source_overrides:
+source:
   tables:
     - name: public.customers
       object: db_customers
@@ -23,7 +23,7 @@ source_overrides:
     port: "${MYSQL_PORT}"
     database: "${MYSQL_DB}"
 
-target_overrides:
+target:
   connection:
     bucket: "acme-data-lake"
     prefix: "raw/mysql/customers"

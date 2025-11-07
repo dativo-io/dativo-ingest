@@ -10,12 +10,22 @@ Phased implementation plan for the ingestion platform MVP and v1.1, incorporatin
 
 ## 📐 Milestones & Timeline
 
-### ✅ M1 – Core Framework (Weeks 1–2)
-- Repo scaffolding, Docker build
-- Plugin wrapper interface for OSS connectors
-- Config loader + validator using static connector catalog
-- **Bundled Dagster orchestrator scaffold** with `runner.yaml` (default orchestrated mode) and oneshot mode
-- **Assets‑as‑code** under `/assets/**` with path validation (no schema checks yet)
+### ✅ M1.1 – Core Framework (COMPLETE)
+- ✅ Repo scaffolding, Docker build
+- ✅ Config loader + validator using static connector catalog
+- ✅ **Bundled Dagster orchestrator scaffold** with `runner.yaml` (default orchestrated mode) and oneshot mode
+- ✅ **Assets‑as‑code** under `/assets/**` with ODCS v3.0.2 compliance
+- ✅ Decoupled architecture (connectors, assets, jobs)
+- ✅ Structured logging with secret redaction
+- ✅ Secrets management
+- ✅ Infrastructure validation
+- ✅ Startup sequence orchestration
+- ✅ State management for incremental syncs
+- ✅ Markdown-KV storage support (three patterns)
+- ✅ Industry-standard test structure
+- ✅ CLI-first smoke tests
+
+**See**: `docs/MILESTONE_1_1_COMPLETE.md` for full details
 
 ### ✅ M2 – Parquet + Iceberg Commit Path (Weeks 2–3)
 - Schema validator with `required: true` + type enforcement

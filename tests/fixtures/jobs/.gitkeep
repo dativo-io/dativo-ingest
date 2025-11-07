@@ -1,0 +1,3 @@
+# This file ensures the jobs directory is tracked by git
+# Job configurations are generated during test execution
+

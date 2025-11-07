@@ -25,3 +25,18 @@ connection_template:
 catalog: nessie
 file_format: parquet
 partitioning_default: [ingest_date]
+# Markdown-KV support:
+# Markdown-KV format can be stored in Iceberg tables using three options:
+# 
+# Option 1: Store as STRING column in Parquet (mode: "string")
+#   - Markdown-KV content stored as STRING type in Parquet files
+#   - Use when you need to preserve original format and query by document
+#   - Example: target.markdown_kv_storage.mode: "string"
+#
+# Option 3: Parse and store as structured data (mode: "structured")
+#   - Parse Markdown-KV into structured format before storage
+#   - Patterns:
+#     * "row_per_kv": One row per key-value pair (query-friendly, great for filtering)
+#     * "document_level": One row per document with nested sections (compact)
+#     * "hybrid": Both patterns (requires dual-write or two asset definitions)
+#   - Example: target.markdown_kv_storage.mode: "structured", structured_pattern: "row_per_kv"

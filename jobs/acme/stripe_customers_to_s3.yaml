@@ -11,12 +11,12 @@ target_connector_path: /app/connectors/targets/s3.yaml
 asset: stripe_customers
 asset_path: /app/assets/stripe/v1.0/customers.yaml
 
-source_overrides:
+source:
   objects: [customers]
   incremental:
     lookback_days: 1
 
-target_overrides:
+target:
   connection:
     bucket: "acme-data-lake"
     prefix: "raw/stripe/customers"

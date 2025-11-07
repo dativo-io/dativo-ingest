@@ -11,12 +11,12 @@ target_connector_path: /app/connectors/targets/iceberg.yaml
 asset: hubspot_contacts
 asset_path: /app/assets/hubspot/v1.0/contacts.yaml
 
-source_overrides:
+source:
   objects: [contacts]
   incremental:
     lookback_days: 1
 
-target_overrides:
+target:
   branch: acme
   warehouse: s3://lake/acme/
   connection:

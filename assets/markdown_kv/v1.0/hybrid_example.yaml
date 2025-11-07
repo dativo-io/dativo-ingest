@@ -1,0 +1,60 @@
+# Hybrid Pattern Documentation
+# This file documents how to set up hybrid Markdown-KV storage (both row-per-KV and document-level patterns)
+
+# The hybrid pattern requires two asset definitions:
+# 1. assets/markdown_kv/v1.0/kv_lines.yaml (row-per-KV pattern)
+# 2. assets/markdown_kv/v1.0/docs.yaml (document-level pattern)
+
+# Implementation Options:
+#
+# Option A: Dual-Write (Recommended)
+# - Write to both tables in the same job
+# - Requires two asset definitions in job config
+# - Ensures consistency between both representations
+#
+# Option B: Materialized View
+# - Write to docs table (document-level)
+# - Create a "silver" job that materializes kv_lines from docs
+# - More efficient storage but requires additional transformation
+#
+# Option C: Two Separate Jobs
+# - One job writes to kv_lines (row-per-KV)
+# - Another job writes to docs (document-level)
+# - Less efficient but provides flexibility
+
+# Example Job Configuration (Option A - Dual-Write):
+#
+# tenant_id: acme
+# source_connector_path: connectors/sources/markdown_kv.yaml
+# target_connector_path: connectors/targets/iceberg.yaml
+# 
+# # First asset: row-per-KV pattern
+# asset_path: assets/markdown_kv/v1.0/kv_lines.yaml
+# target:
+#   markdown_kv_storage:
+#     mode: "structured"
+#     structured_pattern: "row_per_kv"
+# 
+# # Note: For true dual-write, you would need to run two jobs or
+# # implement dual-write logic in the ingestion engine
+
+# Usage Recommendations:
+#
+# - Use kv_lines table for:
+#   - Filtering by key-value pairs
+#   - Joining across documents
+#   - RAG (Retrieval-Augmented Generation) filters
+#   - Analytics on specific keys
+#
+# - Use docs table for:
+#   - Document reconstruction
+#   - Round-trip operations
+#   - Full document retrieval
+#   - Compact storage
+
+# Performance Considerations:
+#
+# - kv_lines: More rows, better for filtering, larger storage footprint
+# - docs: Fewer rows, better for document retrieval, more complex nested queries
+# - hybrid: Best of both worlds but requires maintaining two tables
+

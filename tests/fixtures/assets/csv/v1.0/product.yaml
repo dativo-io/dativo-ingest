@@ -1,0 +1,125 @@
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+id: 550e8400-e29b-41d4-a716-446655440002
+name: csv_product
+version: "1.0"
+status: active
+domain: dativo
+dataProduct: adventureworks
+tenant: test_tenant
+description:
+  purpose: "Product catalog data from AdventureWorks database"
+  limitations: null
+  usage: "Used for product information and catalog management"
+tags: [adventureworks, product, test-data]
+# Dativo extensions
+source_type: csv
+object: Product
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+  mode: strict
+schema:
+  - name: ProductID
+    type: integer
+    required: true
+  - name: Name
+    type: string
+    required: true
+  - name: ProductNumber
+    type: string
+    required: true
+  - name: MakeFlag
+    type: integer
+    required: true
+  - name: FinishedGoodsFlag
+    type: integer
+    required: true
+  - name: Color
+    type: string
+    required: false
+  - name: SafetyStockLevel
+    type: integer
+    required: true
+  - name: ReorderPoint
+    type: integer
+    required: true
+  - name: StandardCost
+    type: double
+    required: true
+  - name: ListPrice
+    type: double
+    required: true
+  - name: Size
+    type: string
+    required: false
+  - name: SizeUnitMeasureCode
+    type: string
+    required: false
+  - name: WeightUnitMeasureCode
+    type: string
+    required: false
+  - name: Weight
+    type: double
+    required: false
+  - name: DaysToManufacture
+    type: integer
+    required: true
+  - name: ProductLine
+    type: string
+    required: false
+  - name: Class
+    type: string
+    required: false
+  - name: Style
+    type: string
+    required: false
+  - name: ProductSubcategoryID
+    type: integer
+    required: false
+  - name: ProductModelID
+    type: integer
+    required: false
+  - name: SellStartDate
+    type: timestamp
+    required: true
+  - name: SellEndDate
+    type: timestamp
+    required: false
+  - name: DiscontinuedDate
+    type: timestamp
+    required: false
+  - name: rowguid
+    type: string
+    required: true
+  - name: ModifiedDate
+    type: timestamp
+    required: true
+data_quality:
+  expectations: []
+  monitoring:
+    enabled: true
+    oncall_rotation: data-ops-oncall@company.com
+  alerts:
+    channels: [slack, email]
+    thresholds: {}
+team:
+  owner: data-team@company.com
+  roles:
+    - name: Data Engineer
+      email: engineer@company.com
+      responsibility: ingestion
+compliance:
+  classification: []
+  regulations: []
+  retention_days: 90
+  security:
+    access_control: role_based
+    encryption_required: true
+  user_consent_required: false
+change_management:
+  policy: non-breaking
+  approval_required: true
+  notification_channels: [slack, email]
+  version_history: true

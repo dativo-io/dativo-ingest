@@ -11,7 +11,7 @@ target_connector_path: /app/connectors/targets/minio.yaml
 asset: gsheets_vendors_master
 asset_path: /app/assets/google_sheets/v1.0/vendors_master.yaml
 
-source_overrides:
+source:
   sheets:
     - spreadsheet_id: 1AbcDEFsheetID
       sheet_id: 0
@@ -19,7 +19,7 @@ source_overrides:
   incremental:
     lookback_days: 0
 
-target_overrides:
+target:
   connection:
     endpoint: "minio.acme.internal:9000"
     bucket: "acme-data-lake"
