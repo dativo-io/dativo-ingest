@@ -52,8 +52,9 @@ class TestIncrementalStateManager:
             state_path, {"file_123": {"last_modified": "2024-01-02T00:00:00Z"}}
         )
         # Check with older timestamp
+        # Note: should_skip_file prepends "file_" to the file_id, so pass just "123"
         result = IncrementalStateManager.should_skip_file(
-            "file_123", "2024-01-01T00:00:00Z", state_path, lookback_days=0
+            "123", "2024-01-01T00:00:00Z", state_path, lookback_days=0
         )
         assert result is True
 
