@@ -329,6 +329,12 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         elif source_config.type == "postgres":
             from .connectors.postgres_extractor import PostgresExtractor
             extractor = PostgresExtractor(source_config)
+        elif source_config.type == "mysql":
+            from .connectors.mysql_extractor import MySQLExtractor
+            extractor = MySQLExtractor(source_config)
+        elif source_config.type == "stripe":
+            from .connectors.stripe_extractor import StripeExtractor
+            extractor = StripeExtractor(source_config)
         else:
             logger.error(
                 f"Unsupported source type: {source_config.type}",

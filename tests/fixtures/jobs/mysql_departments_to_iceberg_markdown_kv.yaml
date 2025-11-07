@@ -1,0 +1,51 @@
+# MySQL Departments to Iceberg (Markdown-KV) in MinIO job for smoke tests
+# Uses test_db employees dataset: https://github.com/datacharmer/test_db
+tenant_id: test_tenant
+environment: test
+
+# Source connector - MySQL with employees database
+source_connector: mysql
+source_connector_path: connectors/mysql.yaml
+
+# Target connector - Iceberg with MinIO storage
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition - Markdown-KV format (string mode)
+asset: mysql_departments_markdown_kv
+asset_path: tests/fixtures/assets/mysql/v1.0/departments_markdown_kv.yaml
+
+# Source configuration - MySQL departments table
+source:
+  tables:
+    - name: employees.departments
+      object: departments
+  incremental:
+    strategy: updated_at
+    cursor_field: null  # Departments table doesn't have timestamp, will do full sync
+  connection:
+    host: "${MYSQL_HOST:-localhost}"
+    port: "${MYSQL_PORT:-3306}"
+    database: "${MYSQL_DATABASE:-employees}"
+    user: "${MYSQL_USER:-test}"
+    password: "${MYSQL_PASSWORD:-test}"
+
+# Target configuration - Iceberg with MinIO and Markdown-KV storage
+target:
+  file_format: parquet
+  markdown_kv_storage:
+    mode: "string"  # Store Markdown-KV content as STRING column in Parquet
+  connection:
+    s3:
+      endpoint: "${MINIO_ENDPOINT}"  # MinIO endpoint
+      bucket: test-bucket
+      access_key_id: "${MINIO_ACCESS_KEY}"
+      secret_access_key: "${MINIO_SECRET_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true  # Required for MinIO
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+

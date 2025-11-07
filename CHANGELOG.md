@@ -8,10 +8,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- OSS connector wrappers (Stripe, HubSpot, Google Drive, Google Sheets, Postgres, MySQL)
-- Enhanced state tracking with cursor-based incremental syncs
-- Dagster schedule integration with retry policies
+- OSS connector wrappers (Stripe, HubSpot, Google Drive, Google Sheets, MySQL)
 - Per-connector error handling and rate limiting
+
+## [1.3.0] - 2025-11-07
+
+### Added - Enhanced Orchestration & Connectors
+
+#### Enhanced Orchestration
+- **Dagster Schedule Integration** with retry policies
+  - Cron and interval-based scheduling support
+  - Schedule enable/disable configuration
+  - Timezone-aware scheduling
+  - Max concurrent runs control
+  - Custom schedule tags
+- **Retry Policies** with exponential backoff
+  - Configurable initial delay, max delay, and backoff multiplier
+  - Retryable exit codes and error pattern matching
+  - Custom retry logic with Dagster integration
+  - Retry state tracking and recovery
+- **Enhanced Observability**
+  - Metrics collection framework
+  - Distributed tracing with OpenTelemetry
+  - Job execution metadata (tenant_id, connector_type, job_name)
+  - Enhanced asset tags for Dagster UI
+
+#### Unified Connector Architecture
+- **Bidirectional Connectors** support
+  - Unified `ConnectorRecipe` model replacing separate source/target recipes
+  - Connector roles metadata (`[source]`, `[target]`, `[source, target]`)
+  - Registry schema updated to support roles
+  - All connectors migrated to unified structure
+- **Connector Registry v3** with roles-based capabilities
+
+#### Postgres Extractor
+- **Native Postgres Connector** implementation
+  - Full table and incremental sync support
+  - Cursor-based incremental sync with `cursor_field`
+  - Connection parameter handling with environment variable expansion
+  - Bash-style default value syntax (`${VAR:-default}`)
+  - Batch processing with configurable batch sizes
+  - Date/datetime to ISO format conversion
+  - State management integration
+
+#### Markdown-KV Transformations
+- **Postgres to Markdown-KV** transformation pipeline
+  - String mode: Entire Markdown-KV document as single column
+  - Structured mode: Parsed Markdown-KV into key-value rows
+  - Support for `row_per_kv` and `document_level` patterns
+  - Automatic doc_id extraction from common ID fields
+  - Integration with Parquet writer for Iceberg tables
+
+#### Testing & CI/CD
+- **Comprehensive GitHub Actions Workflows**
+  - Unit tests workflow with pytest
+  - Smoke tests workflow with Postgres, MinIO, and Nessie services
+  - Schema validation workflow with ajv-cli and yq
+  - Test data loading for AdventureWorks Postgres dataset
+  - Artifact uploads for debugging
+- **Expanded Smoke Tests**
+  - Postgres to Iceberg Parquet (Markdown-KV) test suite
+  - Multiple table coverage (person, product, customer, sales_order_header, employee, address, product_category)
+  - Both string and structured Markdown-KV modes
+  - MinIO bucket verification
+
+#### Documentation & Examples
+- Job examples moved to `docs/examples/jobs/`
+- AdventureWorks Postgres setup scripts
+- Minimal data loading for faster test execution
+
+### Changed
+- **Unified Connector Structure**: Migrated from `connectors/sources/` and `connectors/targets/` to unified `connectors/` directory
+- **Deprecated Models**: `SourceConnectorRecipe` and `TargetConnectorRecipe` marked as deprecated (use `ConnectorRecipe` instead)
+- **Retry Configuration**: Enhanced `RetryConfig` with exponential backoff parameters (deprecated `retry_delay_seconds`)
+- **Schedule Configuration**: New `ScheduleConfig` model with cron/interval support, timezone, and concurrency control
+- **Dagster Compatibility**: Added fallback for older Dagster versions (IntervalSchedule → cron conversion)
+
+### Fixed
+- Missing dependencies in `pyproject.toml` (`jsonschema`, `requests`)
+- Postgres extractor environment variable expansion for connection parameters
+- Dagster `IntervalSchedule` import compatibility issues
+- GitHub Actions workflow dependencies (ajv-cli, yq installation)
+- Postgres incremental sync cursor field validation
+
+### Technical Details
+- **Dagster Version Compatibility**: Supports Dagster 1.5.0+ with fallback for interval scheduling
+- **Postgres Support**: Uses `psycopg2-binary` for database connectivity
+- **State Management**: Incremental state updates after successful extraction
+- **Error Handling**: Enhanced error classification for retry logic
 
 ## [1.1.0] - 2024-11-07
 
@@ -185,7 +269,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository structure
 - Initial documentation
 
-[Unreleased]: https://github.com/dativo/ingestion-platform/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/dativo/ingestion-platform/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/dativo/ingestion-platform/compare/v1.1.0...v1.3.0
 [1.1.0]: https://github.com/dativo/ingestion-platform/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/dativo/ingestion-platform/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/dativo/ingestion-platform/releases/tag/v0.1.0
