@@ -325,7 +325,8 @@ jobs:
 
       - name: Create state directory
         run: |
-          mkdir -p state/test_tenant
+          # Use temp directory for CI/CD to avoid polluting repo
+          mkdir -p /tmp/dativo-state/test_tenant
 
       - name: Run smoke tests
         env:
@@ -346,10 +347,11 @@ jobs:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
           AWS_REGION: us-east-1
+          STATE_DIR: /tmp/dativo-state
           PYTHONPATH: src
         run: |
           # Clear any existing state to ensure fresh test run
-          rm -rf state/test_tenant
+          rm -rf /tmp/dativo-state/test_tenant
           
           # Run smoke tests
           # Note: Some jobs may fail due to missing CSV files (environmental issue)
@@ -423,10 +425,40 @@ jobs:
         with:
           name: smoke-test-logs
           path: |
-            state/
+            /tmp/dativo-state/
             *.log
           retention-days: 7
           if-no-files-found: ignore
+      
+      - name: Cleanup test artifacts
+        if: always()
+        run: |
+          echo "🧹 Cleaning up test artifacts..."
+          
+          # Clean up state files
+          echo "  - Removing state directory..."
+          rm -rf /tmp/dativo-state
+          
+          # Clean up temporary Parquet files (written to system temp during processing)
+          echo "  - Removing temporary Parquet files..."
+          rm -rf /tmp/dativo_ingest* 2>/dev/null || true
+          rm -rf /tmp/*.parquet 2>/dev/null || true
+          
+          # Clean up any log files
+          echo "  - Removing log files..."
+          rm -f *.log 2>/dev/null || true
+          rm -f **/*.log 2>/dev/null || true
+          
+          # Clean up any other temporary files in project root
+          echo "  - Removing other temporary files..."
+          find . -maxdepth 1 -name "*.tmp" -type f -delete 2>/dev/null || true
+          find . -maxdepth 1 -name "*.temp" -type f -delete 2>/dev/null || true
+          
+          # Note: MinIO test bucket data is kept for verification
+          # To clean MinIO bucket, uncomment:
+          # mc rm --recursive --force local/test-bucket/ || true
+          
+          echo "✅ Cleanup complete"
 
   all-tests:
     name: All Tests

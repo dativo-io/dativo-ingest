@@ -169,10 +169,10 @@ else
     echo "   Or use the web console at http://localhost:9001"
 fi
 
-# Create state directory
+# Create state directory (in .local to keep it out of repo)
 echo "📁 Creating state directory..."
-mkdir -p state/test_tenant
-echo "✅ State directory created"
+mkdir -p .local/state/test_tenant
+echo "✅ State directory created at .local/state/"
 
 # Export environment variables
 echo "🔧 Setting up environment variables..."
