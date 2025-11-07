@@ -3,7 +3,7 @@
 schema-validate: schema-connectors
 
 schema-connectors:
-	@yq -o=json '. ' registry/connectors.yaml | npx ajv-cli validate -s schemas/connectors.schema.json -d /dev/stdin --strict=false
+	@yq -o=json '. ' registry/connectors.yaml > /tmp/connectors.json && npx ajv-cli validate -s schemas/connectors.schema.json -d /tmp/connectors.json --strict=false && rm -f /tmp/connectors.json
 
 # Unit tests: Test internal functions (config loading, validation, etc.)
 test-unit:
