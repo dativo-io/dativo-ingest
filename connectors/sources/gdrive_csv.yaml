@@ -1,0 +1,17 @@
+# Google Drive CSV source connector
+name: gdrive_csv
+type: gdrive_csv
+description: "Google Drive CSV connector"
+default_engine:
+  type: native
+  options:
+    native:
+      api_version: "v3"
+      chunk_size: 10485760  # 10MB chunks
+credentials:
+  type: service_account
+  file_template: "/secrets/{tenant}/gdrive.json"
+incremental:
+  strategy: file_modified_time
+  lookback_days_default: 0
+

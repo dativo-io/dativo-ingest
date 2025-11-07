@@ -1,0 +1,36 @@
+# Stripe customers to Iceberg job for tenant acme
+tenant_id: acme
+environment: prod
+
+# Reference to source connector recipe
+source_connector: stripe
+source_connector_path: /app/connectors/sources/stripe.yaml
+
+# Reference to target connector recipe
+target_connector: iceberg
+target_connector_path: /app/connectors/targets/iceberg.yaml
+
+# Reference to asset definition
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+# Tenant-specific overrides and configuration
+source_overrides:
+  objects: [customers]  # Override default streams
+  incremental:
+    lookback_days: 1
+
+target_overrides:
+  branch: acme  # Tenant-specific branch
+  warehouse: s3://lake/acme/  # Tenant-specific warehouse
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/stripe/customers"
+
+logging:
+  redaction: true
+  level: INFO
+

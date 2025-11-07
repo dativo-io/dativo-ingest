@@ -1,0 +1,11 @@
+user_id,track_id,artist_name,track_name,album_name,playlist_name,playlist_id,playlist_genre,playlist_subgenre,playlist_track_id,duration_ms,played_at,skip_1,skip_2,skip_3,context_type,hist_user_behavior_reason_start,hist_user_behavior_reason_end,hist_user_behavior_n_seekfwd,hist_user_behavior_n_seekback,hist_user_behavior_n_pause,hist_user_behavior_is_shuffle,date,premium_user
+user_001,track_001,The Beatles,Hey Jude,The Beatles 1967-1970,Classic Rock Hits,playlist_001,rock,classic rock,1,431000,2024-01-15 10:30:00,0,0,0,playlist,forward_button,back_button,0,0,0,true,2024-01-15,true
+user_001,track_002,Queen,Bohemian Rhapsody,A Night at the Opera,Classic Rock Hits,playlist_001,rock,classic rock,2,355000,2024-01-15 10:37:00,0,0,0,playlist,forward_button,back_button,0,0,0,true,2024-01-15,true
+user_002,track_003,Taylor Swift,Shake It Off,1989,Pop Party,playlist_002,pop,pop,1,219000,2024-01-16 14:20:00,0,0,0,playlist,forward_button,back_button,0,0,0,true,2024-01-16,false
+user_002,track_004,Ed Sheeran,Shape of You,÷,Pop Party,playlist_002,pop,pop,2,233000,2024-01-16 14:24:00,0,0,0,playlist,forward_button,back_button,0,0,0,true,2024-01-16,false
+user_003,track_005,Kendrick Lamar,HUMBLE.,DAMN.,Hip Hop Essentials,playlist_003,hip-hop,hip-hop,1,177000,2024-01-17 18:45:00,0,0,0,playlist,forward_button,back_button,0,0,0,true,2024-01-17,true
+user_003,track_006,Drake,God's Plan,Scorpion,Hip Hop Essentials,playlist_003,hip-hop,hip-hop,2,198000,2024-01-17 18:48:00,0,0,0,playlist,forward_button,back_button,0,0,0,true,2024-01-17,true
+user_004,track_007,Billie Eilish,bad guy,WHEN WE ALL FALL ASLEEP WHERE DO WE GO,Indie Pop,playlist_004,pop,indie pop,1,194000,2024-01-18 09:15:00,0,0,0,playlist,forward_button,back_button,0,0,0,true,2024-01-18,false
+user_004,track_008,The Weeknd,Blinding Lights,After Hours,Indie Pop,playlist_004,pop,indie pop,2,200000,2024-01-18 09:19:00,0,0,0,playlist,forward_button,back_button,0,0,0,true,2024-01-18,false
+user_005,track_009,Post Malone,Circles,Hollywood's Bleeding,Chill Vibes,playlist_005,pop,indie pop,1,215000,2024-01-19 20:30:00,0,0,0,playlist,forward_button,back_button,0,0,0,true,2024-01-19,true
+user_005,track_010,Ariana Grande,7 rings,thank u next,Chill Vibes,playlist_005,pop,indie pop,2,179000,2024-01-19 20:33:00,0,0,0,playlist,forward_button,back_button,0,0,0,true,2024-01-19,true

@@ -1,0 +1,28 @@
+asset:
+  name: gsheets_vendors_master
+  source_type: google_sheets
+  object: vendors_master
+  version: "1.0"
+  
+  schema:
+    - name: vendor_id
+      type: string
+      required: true
+    - name: name
+      type: string
+      required: false
+    - name: email
+      type: string
+      required: false
+      classification: PII
+  
+  governance:
+    owner: data-team@company.com
+    tags: [vendors, master-data]
+    classification: [PII]
+    retention_days: 30
+  
+  target:
+  file_format: parquet
+  partitioning: [ingest_date]
+    mode: strict

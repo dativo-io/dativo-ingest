@@ -1,0 +1,26 @@
+# Stripe source connector
+name: stripe
+type: stripe
+description: "Stripe connector"
+default_engine:
+  type: airbyte
+  options:
+    airbyte:
+      docker_image: "airbyte/source-stripe:2.1.5"
+      streams_default: ["customers", "charges", "invoices"]
+      start_date_default: "2024-01-01"
+credentials:
+  type: api_key
+  from_env: STRIPE_API_KEY
+incremental:
+  strategy: created
+  cursor_field_default: created
+  lookback_days_default: 1
+rate_limits:
+  rps_default: 7
+  burst_default: 14
+  retry:
+    max_retries: 5
+    backoff: exponential
+    max_backoff_seconds: 64
+

@@ -1,0 +1,93 @@
+asset:
+  name: csv_product
+  source_type: csv
+  object: Product
+  version: "1.0"
+  
+  schema:
+    - name: ProductID
+      type: integer
+      required: true
+    - name: Name
+      type: string
+      required: true
+    - name: ProductNumber
+      type: string
+      required: true
+    - name: MakeFlag
+      type: integer
+      required: true
+    - name: FinishedGoodsFlag
+      type: integer
+      required: true
+    - name: Color
+      type: string
+      required: false
+    - name: SafetyStockLevel
+      type: integer
+      required: true
+    - name: ReorderPoint
+      type: integer
+      required: true
+    - name: StandardCost
+      type: double
+      required: true
+    - name: ListPrice
+      type: double
+      required: true
+    - name: Size
+      type: string
+      required: false
+    - name: SizeUnitMeasureCode
+      type: string
+      required: false
+    - name: WeightUnitMeasureCode
+      type: string
+      required: false
+    - name: Weight
+      type: double
+      required: false
+    - name: DaysToManufacture
+      type: integer
+      required: true
+    - name: ProductLine
+      type: string
+      required: false
+    - name: Class
+      type: string
+      required: false
+    - name: Style
+      type: string
+      required: false
+    - name: ProductSubcategoryID
+      type: integer
+      required: false
+    - name: ProductModelID
+      type: integer
+      required: false
+    - name: SellStartDate
+      type: timestamp
+      required: true
+    - name: SellEndDate
+      type: timestamp
+      required: false
+    - name: DiscontinuedDate
+      type: timestamp
+      required: false
+    - name: rowguid
+      type: string
+      required: true
+    - name: ModifiedDate
+      type: timestamp
+      required: true
+  
+  governance:
+    owner: data-team@company.com
+    tags: [adventureworks, product, test-data]
+    retention_days: 90
+  
+  target:
+    file_format: parquet
+    partitioning: [ingest_date]
+    mode: strict
+

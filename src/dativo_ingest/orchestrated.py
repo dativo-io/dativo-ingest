@@ -55,7 +55,8 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
             try:
                 job_config = JobConfig.from_yaml(schedule_config.config)
                 tenant_id = job_config.tenant_id
-                connector_type = job_config.source.type
+                source_config = job_config.get_source()
+                connector_type = source_config.type
 
                 # Update asset tags with tenant_id
                 context.add_output_metadata(

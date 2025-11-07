@@ -1,0 +1,34 @@
+# Google Drive deals to Iceberg job for tenant acme
+tenant_id: acme
+environment: prod
+
+source_connector: gdrive_csv
+source_connector_path: /app/connectors/sources/gdrive_csv.yaml
+
+target_connector: iceberg
+target_connector_path: /app/connectors/targets/iceberg.yaml
+
+asset: gdrive_deals_daily
+asset_path: /app/assets/gdrive_csv/v1.0/deals_daily.yaml
+
+source_overrides:
+  files:
+    - file_id: 1a2B3cGDRIVEID
+      object: deals_daily
+  incremental:
+    lookback_days: 0
+
+target_overrides:
+  branch: acme
+  warehouse: s3://lake/acme/
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/gdrive/deals_daily"
+
+logging:
+  redaction: true
+  level: INFO
+

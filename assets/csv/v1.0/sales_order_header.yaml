@@ -1,0 +1,93 @@
+asset:
+  name: csv_sales_order_header
+  source_type: csv
+  object: SalesOrderHeader
+  version: "1.0"
+  
+  schema:
+    - name: SalesOrderID
+      type: integer
+      required: true
+    - name: RevisionNumber
+      type: integer
+      required: true
+    - name: OrderDate
+      type: timestamp
+      required: true
+    - name: DueDate
+      type: timestamp
+      required: true
+    - name: ShipDate
+      type: timestamp
+      required: false
+    - name: Status
+      type: integer
+      required: true
+    - name: SalesOrderNumber
+      type: string
+      required: true
+    - name: PurchaseOrderNumber
+      type: string
+      required: false
+    - name: AccountNumber
+      type: string
+      required: false
+    - name: CustomerID
+      type: integer
+      required: true
+    - name: SalesPersonID
+      type: integer
+      required: false
+    - name: TerritoryID
+      type: integer
+      required: false
+    - name: BillToAddressID
+      type: integer
+      required: true
+    - name: ShipToAddressID
+      type: integer
+      required: true
+    - name: ShipMethodID
+      type: integer
+      required: true
+    - name: CreditCardID
+      type: integer
+      required: false
+    - name: CreditCardApprovalCode
+      type: string
+      required: false
+    - name: CurrencyRateID
+      type: integer
+      required: false
+    - name: SubTotal
+      type: double
+      required: true
+    - name: TaxAmt
+      type: double
+      required: true
+    - name: Freight
+      type: double
+      required: true
+    - name: TotalDue
+      type: double
+      required: true
+    - name: Comment
+      type: string
+      required: false
+    - name: rowguid
+      type: string
+      required: true
+    - name: ModifiedDate
+      type: timestamp
+      required: true
+  
+  governance:
+    owner: data-team@company.com
+    tags: [adventureworks, sales, orders, test-data]
+    retention_days: 90
+  
+  target:
+    file_format: parquet
+    partitioning: [ingest_date]
+    mode: strict
+

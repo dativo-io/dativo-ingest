@@ -1,0 +1,26 @@
+# MySQL source connector
+name: mysql
+type: mysql
+description: "MySQL connector"
+default_engine:
+  type: meltano
+  options:
+    meltano:
+      tap: "tap-mysql"
+      tap_package: "transferwise/tap-mysql"
+      tap_version: "1.5.0"
+      tap_config:
+        replication_method: "INCREMENTAL"  # or "LOG_BASED" for binlog CDC
+        server_id: 1001  # required for LOG_BASED
+credentials:
+  type: basic
+  file_template: "/secrets/{tenant}/mysql.env"
+connection_template:
+  host: "${MYSQL_HOST}"
+  port: "${MYSQL_PORT}"
+  database: "${MYSQL_DB}"
+incremental:
+  strategy: updated_at
+  cursor_field_default: updated_at
+  lookback_days_default: 1
+

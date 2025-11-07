@@ -1,0 +1,90 @@
+asset:
+  name: csv_listening_history
+  source_type: csv
+  object: listening_history
+  version: "1.0"
+  
+  schema:
+    - name: user_id
+      type: string
+      required: true
+    - name: track_id
+      type: string
+      required: true
+    - name: artist_name
+      type: string
+      required: true
+    - name: track_name
+      type: string
+      required: true
+    - name: album_name
+      type: string
+      required: false
+    - name: playlist_name
+      type: string
+      required: false
+    - name: playlist_id
+      type: string
+      required: false
+    - name: playlist_genre
+      type: string
+      required: false
+    - name: playlist_subgenre
+      type: string
+      required: false
+    - name: playlist_track_id
+      type: integer
+      required: false
+    - name: duration_ms
+      type: integer
+      required: true
+    - name: played_at
+      type: timestamp
+      required: true
+    - name: skip_1
+      type: integer
+      required: false
+    - name: skip_2
+      type: integer
+      required: false
+    - name: skip_3
+      type: integer
+      required: false
+    - name: context_type
+      type: string
+      required: false
+    - name: hist_user_behavior_reason_start
+      type: string
+      required: false
+    - name: hist_user_behavior_reason_end
+      type: string
+      required: false
+    - name: hist_user_behavior_n_seekfwd
+      type: integer
+      required: false
+    - name: hist_user_behavior_n_seekback
+      type: integer
+      required: false
+    - name: hist_user_behavior_n_pause
+      type: integer
+      required: false
+    - name: hist_user_behavior_is_shuffle
+      type: boolean
+      required: false
+    - name: date
+      type: date
+      required: true
+    - name: premium_user
+      type: boolean
+      required: false
+  
+  governance:
+    owner: data-team@company.com
+    tags: [music, listening, streaming, test-data]
+    retention_days: 90
+  
+  target:
+    file_format: parquet
+    partitioning: [ingest_date]
+    mode: strict
+

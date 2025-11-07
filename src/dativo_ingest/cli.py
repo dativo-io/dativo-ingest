@@ -24,6 +24,10 @@ def run_command(args: argparse.Namespace) -> int:
     except SystemExit as e:
         return e.code if e.code else 2
 
+    # Resolve source and target configs
+    source_config = job_config.get_source()
+    target_config = job_config.get_target()
+
     # Set up logging
     log_level = job_config.logging.level if job_config.logging else "INFO"
     redact = job_config.logging.redaction if job_config.logging else False
@@ -32,7 +36,7 @@ def run_command(args: argparse.Namespace) -> int:
     logger.info(
         "Starting job execution",
         extra={
-            "connector_type": job_config.source.type,
+            "connector_type": source_config.type,
             "tenant_id": job_config.tenant_id,
             "event_type": "job_started",
         },
@@ -44,7 +48,7 @@ def run_command(args: argparse.Namespace) -> int:
         logger.info(
             "Schema validation passed",
             extra={
-                "connector_type": job_config.source.type,
+                "connector_type": source_config.type,
                 "tenant_id": job_config.tenant_id,
                 "event_type": "job_validated",
             },
@@ -53,7 +57,7 @@ def run_command(args: argparse.Namespace) -> int:
         logger.error(
             "Schema validation failed",
             extra={
-                "connector_type": job_config.source.type,
+                "connector_type": source_config.type,
                 "tenant_id": job_config.tenant_id,
                 "event_type": "job_error",
             },
@@ -67,7 +71,7 @@ def run_command(args: argparse.Namespace) -> int:
         logger.info(
             "Connector validation passed",
             extra={
-                "connector_type": job_config.source.type,
+                "connector_type": source_config.type,
                 "tenant_id": job_config.tenant_id,
                 "event_type": "job_validated",
             },
@@ -76,7 +80,7 @@ def run_command(args: argparse.Namespace) -> int:
         logger.error(
             "Connector validation failed",
             extra={
-                "connector_type": job_config.source.type,
+                "connector_type": source_config.type,
                 "tenant_id": job_config.tenant_id,
                 "event_type": "job_error",
             },
@@ -84,19 +88,19 @@ def run_command(args: argparse.Namespace) -> int:
         return e.code if e.code else 2
 
     # Handle incremental strategies for file/sheet sources
-    if job_config.source.incremental:
-        strategy = job_config.source.incremental.get("strategy")
-        state_path = Path(job_config.source.incremental.get("state_path", ""))
-        lookback_days = job_config.source.incremental.get("lookback_days", 0)
+    if source_config.incremental:
+        strategy = source_config.incremental.get("strategy")
+        state_path = Path(source_config.incremental.get("state_path", ""))
+        lookback_days = source_config.incremental.get("lookback_days", 0)
 
-        if strategy == "file_modified_time" and job_config.source.files:
+        if strategy == "file_modified_time" and source_config.files:
             # For file-based incremental, check if files need processing
             # In a real implementation, this would fetch modified times from API
             # For now, we'll just log that we're checking state
             logger.info(
                 "Checking file incremental state",
                 extra={
-                    "connector_type": job_config.source.type,
+                    "connector_type": source_config.type,
                     "strategy": strategy,
                     "event_type": "incremental_check",
                 },
@@ -104,12 +108,12 @@ def run_command(args: argparse.Namespace) -> int:
             # Note: Actual file modified time fetching would happen here
             # This is a placeholder for the incremental logic
 
-        elif strategy == "spreadsheet_modified_time" and job_config.source.sheets:
+        elif strategy == "spreadsheet_modified_time" and source_config.sheets:
             # For sheet-based incremental, check if sheets need processing
             logger.info(
                 "Checking spreadsheet incremental state",
                 extra={
-                    "connector_type": job_config.source.type,
+                    "connector_type": source_config.type,
                     "strategy": strategy,
                     "event_type": "incremental_check",
                 },
@@ -120,7 +124,7 @@ def run_command(args: argparse.Namespace) -> int:
     logger.info(
         "Job execution completed",
         extra={
-            "connector_type": job_config.source.type,
+            "connector_type": source_config.type,
             "tenant_id": job_config.tenant_id,
             "event_type": "job_finished",
         },
