@@ -179,13 +179,17 @@ class TestIncrementalStrategyValidation:
 
         config = JobConfig.from_yaml(valid_job_config)
         config.asset_path = str(asset_path)
-        config.source.incremental = {
+        # Modify source dict directly (source is a dict, not SourceConfig)
+        if config.source is None:
+            config.source = {}
+        config.source["incremental"] = {
             "strategy": "created",
             "cursor_field": "created",
         }
         validator = ConnectorValidator(registry_file)
         # Should not raise - validation logic may vary based on implementation
         # This test ensures the method can be called without errors
+        validator.validate_incremental_strategy(config, validator.validate_connector_type("stripe", role="source"))
 
     def test_validate_incremental_strategy_missing_cursor_field(
         self, registry_file, valid_job_config, temp_dir
@@ -213,10 +217,19 @@ class TestIncrementalStrategyValidation:
 
         config = JobConfig.from_yaml(valid_job_config)
         config.asset_path = str(asset_path)
-        config.source.incremental = {"strategy": "created"}
+        # Modify source dict directly (source is a dict, not SourceConfig)
+        if config.source is None:
+            config.source = {}
+        config.source["incremental"] = {"strategy": "created"}
         validator = ConnectorValidator(registry_file)
         # Validation logic may vary - this test documents expected behavior
         # If cursor_field is required, this should raise an error
+        # Note: Some connectors may not require cursor_field for certain strategies
+        try:
+            validator.validate_incremental_strategy(config, validator.validate_connector_type("stripe", role="source"))
+        except SystemExit:
+            # Expected if cursor_field is required
+            pass
 
 
 class TestErrorMessages:

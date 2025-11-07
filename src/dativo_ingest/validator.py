@@ -332,12 +332,16 @@ class IncrementalStateManager:
 
         # Compare timestamps
         # For simplicity, string comparison works for ISO timestamps
+        # If current time is less than or equal to last modified, file hasn't changed
         if current_modified_time <= last_modified:
             # File hasn't been modified since last run
             if lookback_days == 0:
                 return True  # Skip if no lookback
+            # If lookback_days > 0, we still process files within the lookback window
+            # This is handled by the caller, so we return False here
+            return False
 
-        return False  # Process file
+        return False  # Process file (file has been modified)
 
     @staticmethod
     def update_file_state(

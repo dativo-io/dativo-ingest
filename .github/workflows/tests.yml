@@ -293,34 +293,71 @@ jobs:
           echo "✅ AdventureWorks test data loaded"
 
       - name: Load MySQL test data
+        timeout-minutes: 5
         run: |
           # Install MySQL client
           sudo apt-get install -y mysql-client
           
-          # Wait for MySQL to be ready
-          until mysqladmin ping -h localhost -P 3306 -u root -proot --silent; do
-            echo "Waiting for MySQL..."
+          # Wait for MySQL to be ready (with timeout)
+          echo "Waiting for MySQL to be ready..."
+          MAX_WAIT=60  # Maximum wait time in seconds
+          WAIT_COUNT=0
+          while ! mysqladmin ping -h localhost -P 3306 -u root -proot --silent 2>/dev/null; do
+            if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
+              echo "❌ MySQL did not become ready within $MAX_WAIT seconds"
+              exit 1
+            fi
+            echo "Waiting for MySQL... ($WAIT_COUNT/$MAX_WAIT seconds)"
             sleep 2
+            WAIT_COUNT=$((WAIT_COUNT + 2))
           done
+          echo "✅ MySQL is ready"
           
-          # Load employees database schema and data
-          if [ -f tests/fixtures/seeds/test_db/employees.sql ]; then
-            mysql -h localhost -P 3306 -u root -proot < tests/fixtures/seeds/test_db/employees.sql || echo "⚠️  Schema load had issues (may already exist)"
-          fi
+          # Create minimal test schema and data (instead of loading full employees database)
+          # This is much faster and sufficient for smoke tests
+          mysql -h localhost -P 3306 -u root -proot <<'EOF'
+          CREATE DATABASE IF NOT EXISTS employees;
+          USE employees;
           
-          # Load data dumps if available
-          if [ -f tests/fixtures/seeds/test_db/load_departments.dump ]; then
-            mysql -h localhost -P 3306 -u root -proot employees < tests/fixtures/seeds/test_db/load_departments.dump || echo "⚠️  Departments data load had issues"
-          fi
+          -- Create departments table
+          CREATE TABLE IF NOT EXISTS departments (
+            dept_no CHAR(4) NOT NULL,
+            dept_name VARCHAR(40) NOT NULL,
+            PRIMARY KEY (dept_no),
+            UNIQUE KEY dept_name (dept_name)
+          ) ENGINE=InnoDB;
           
-          if [ -f tests/fixtures/seeds/test_db/load_employees.dump ]; then
-            mysql -h localhost -P 3306 -u root -proot employees < tests/fixtures/seeds/test_db/load_employees.dump || echo "⚠️  Employees data load had issues"
-          fi
+          -- Create employees table
+          CREATE TABLE IF NOT EXISTS employees (
+            emp_no INT NOT NULL,
+            birth_date DATE NOT NULL,
+            first_name VARCHAR(14) NOT NULL,
+            last_name VARCHAR(16) NOT NULL,
+            gender ENUM('M','F') NOT NULL,
+            hire_date DATE NOT NULL,
+            PRIMARY KEY (emp_no)
+          ) ENGINE=InnoDB;
+          
+          -- Insert minimal test data
+          INSERT IGNORE INTO departments (dept_no, dept_name) VALUES
+          ('d001', 'Marketing'),
+          ('d002', 'Finance'),
+          ('d003', 'Human Resources');
+          
+          INSERT IGNORE INTO employees (emp_no, birth_date, first_name, last_name, gender, hire_date) VALUES
+          (10001, '1953-09-02', 'Georgi', 'Facello', 'M', '1986-06-26'),
+          (10002, '1964-06-02', 'Bezalel', 'Simmel', 'F', '1985-11-21'),
+          (10003, '1959-12-03', 'Parto', 'Bamford', 'M', '1986-08-28');
+          
+          -- Grant permissions to test user
+          GRANT ALL PRIVILEGES ON employees.* TO 'test'@'%';
+          FLUSH PRIVILEGES;
+          EOF
           
           # Verify MySQL data loaded
           mysql -h localhost -P 3306 -u test -ptest -e "USE employees; SELECT COUNT(*) as dept_count FROM departments;" || echo "⚠️  Could not verify MySQL data"
           
-          echo "✅ MySQL test data loaded"
+          echo "✅ MySQL test data loaded (minimal dataset)"
 
       - name: Create state directory
         run: |

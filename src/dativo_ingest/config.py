@@ -676,6 +676,16 @@ class JobConfig(BaseModel):
                 file=sys.stderr,
             )
             sys.exit(2)
+        
+        # Check if schema is empty
+        schema = asset_data.get("schema", [])
+        if not schema or (isinstance(schema, list) and len(schema) == 0):
+            print(
+                f"ERROR: Asset definition has empty 'schema' field: {asset_path}\n"
+                f"Job: {self.tenant_id}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
     def validate_environment_variables(self) -> None:
         """Validate that all required environment variables are set."""

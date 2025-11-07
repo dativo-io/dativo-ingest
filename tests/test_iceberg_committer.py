@@ -68,7 +68,8 @@ def test_get_nessie_uri(target_config):
         target_config,
     )
     
-    assert committer.nessie_uri == "http://localhost:19120/api/v1"
+    # PyIceberg expects base URI without /api/v1 (it adds /v1/config automatically)
+    assert committer.nessie_uri == "http://localhost:19120"
 
 
 def test_get_storage_config(target_config):
