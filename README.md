@@ -356,6 +356,25 @@ make schema-validate
       logging.py
 ```
 
+## Documentation
+
+### Core Documentation
+- [QUICKSTART.md](QUICKSTART.md) - Quick reference guide
+- [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
+- [ROADMAP.md](ROADMAP.md) - Development roadmap and future plans
+
+### Detailed Guides
+- [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) - Configuration reference
+- [INGESTION_EXECUTION.md](docs/INGESTION_EXECUTION.md) - Execution flow documentation
+- [MARKDOWN_KV_STORAGE.md](docs/MARKDOWN_KV_STORAGE.md) - Markdown-KV storage patterns
+- [CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md) - Catalog compatibility notes
+- [SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Setup and testing guide
+- [RUNNER_AND_ORCHESTRATION.md](docs/RUNNER_AND_ORCHESTRATION.md) - Orchestration documentation
+- [SCHEMA_VALIDATION.md](docs/SCHEMA_VALIDATION.md) - Schema validation guide
+
+### Testing
+- [tests/README.md](tests/README.md) - Testing documentation
+
 ## License
 
 [Add license information]
