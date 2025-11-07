@@ -82,17 +82,40 @@ class IcebergCommitter:
             }
 
         # Expand environment variables in config values
+        import re
         def expand_env(value):
-            if isinstance(value, str) and "${" in value:
-                return os.path.expandvars(value)
+            if isinstance(value, str):
+                # Handle bash-style ${VAR:-default} syntax
+                bash_default_pattern = r'\$\{([^:}]+):-([^}]+)\}'
+                match = re.search(bash_default_pattern, value)
+                if match:
+                    env_var = match.group(1)
+                    default_value = match.group(2)
+                    return os.getenv(env_var, default_value)
+                elif "${" in value:
+                    # Simple ${VAR} syntax - expand and if still has ${}, use env var or None
+                    expanded = os.path.expandvars(value)
+                    if "${" in expanded:
+                        # Variable not set, extract var name and try to get from env
+                        var_match = re.search(r'\$\{([^}]+)\}', expanded)
+                        if var_match:
+                            var_name = var_match.group(1)
+                            return os.getenv(var_name, None)
+                    return expanded
             return value
 
+        endpoint = expand_env(s3_config.get("endpoint")) or os.getenv("S3_ENDPOINT") or os.getenv("MINIO_ENDPOINT") or "http://localhost:9000"
+        bucket = expand_env(s3_config.get("bucket")) or os.getenv("S3_BUCKET") or os.getenv("MINIO_BUCKET") or "test-bucket"
+        access_key_id = expand_env(s3_config.get("access_key_id")) or os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("MINIO_ACCESS_KEY") or "minioadmin"
+        secret_access_key = expand_env(s3_config.get("secret_access_key")) or os.getenv("AWS_SECRET_ACCESS_KEY") or os.getenv("MINIO_SECRET_KEY") or "minioadmin"
+        region = expand_env(s3_config.get("region")) or os.getenv("AWS_REGION") or "us-east-1"
+
         return {
-            "endpoint": expand_env(s3_config.get("endpoint")) or os.getenv("S3_ENDPOINT"),
-            "bucket": expand_env(s3_config.get("bucket")) or os.getenv("S3_BUCKET", "test-bucket"),
-            "access_key_id": expand_env(s3_config.get("access_key_id")) or os.getenv("AWS_ACCESS_KEY_ID"),
-            "secret_access_key": expand_env(s3_config.get("secret_access_key")) or os.getenv("AWS_SECRET_ACCESS_KEY"),
-            "region": expand_env(s3_config.get("region")) or os.getenv("AWS_REGION", "us-east-1"),
+            "endpoint": endpoint,
+            "bucket": bucket,
+            "access_key_id": access_key_id,
+            "secret_access_key": secret_access_key,
+            "region": region,
         }
 
     def _create_pyiceberg_schema(self) -> Any:
