@@ -382,8 +382,20 @@ class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
     max_retries: int = 3
-    retry_delay_seconds: int = 5
-    retryable_errors: Optional[List[str]] = None  # List of error types to retry
+    initial_delay_seconds: Optional[int] = None  # Initial delay in seconds (defaults to retry_delay_seconds for backward compat)
+    max_delay_seconds: int = 300
+    backoff_multiplier: float = 2.0
+    retryable_exit_codes: List[int] = Field(default=[1, 2])  # Exit codes that should trigger retries
+    retryable_error_patterns: Optional[List[str]] = None  # Regex patterns for error messages
+    retry_delay_seconds: Optional[int] = 5  # Deprecated: use initial_delay_seconds
+    retryable_errors: Optional[List[str]] = None  # List of error types to retry (deprecated, use retryable_error_patterns)
+
+    @model_validator(mode="after")
+    def set_initial_delay(self) -> "RetryConfig":
+        """Set initial_delay_seconds from retry_delay_seconds if not provided (backward compat)."""
+        if self.initial_delay_seconds is None:
+            self.initial_delay_seconds = self.retry_delay_seconds or 5
+        return self
 
 
 class JobConfig(BaseModel):
@@ -829,7 +841,21 @@ class ScheduleConfig(BaseModel):
 
     name: str
     config: str
-    cron: str
+    cron: Optional[str] = None  # Cron expression (mutually exclusive with interval_seconds)
+    interval_seconds: Optional[int] = None  # Interval-based scheduling (mutually exclusive with cron)
+    enabled: bool = True  # Enable/disable schedule without deployment
+    timezone: str = "UTC"  # Timezone for schedule execution
+    max_concurrent_runs: int = 1  # Maximum concurrent runs for this schedule
+    tags: Optional[Dict[str, str]] = None  # Custom tags for filtering
+
+    @model_validator(mode="after")
+    def validate_schedule_type(self) -> "ScheduleConfig":
+        """Validate that either cron or interval_seconds is provided, but not both."""
+        if self.cron is None and self.interval_seconds is None:
+            raise ValueError("Either 'cron' or 'interval_seconds' must be provided for schedule")
+        if self.cron is not None and self.interval_seconds is not None:
+            raise ValueError("Cannot specify both 'cron' and 'interval_seconds' for schedule")
+        return self
 
 
 class OrchestratorConfig(BaseModel):
