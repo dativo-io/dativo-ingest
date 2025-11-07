@@ -9,7 +9,7 @@ This document outlines the development roadmap for the Dativo Ingestion Platform
 | v1.0.0 | ✅ Complete | 2024-11-01 | Core Framework & Configuration |
 | v1.1.0 | ✅ Complete | 2024-11-07 | ETL Pipeline & Data Processing |
 | v1.2.0 | 🚧 In Progress | TBD | OSS Connector Wrappers |
-| v1.3.0 | 📋 Planned | TBD | Enhanced Orchestration |
+| v1.3.0 | ✅ Complete | 2025-11-07 | Enhanced Orchestration |
 | v2.0.0 | 📋 Planned | TBD | Production Features & Scale |
 
 ---
@@ -111,11 +111,12 @@ Expand source connector support beyond CSV to include major SaaS APIs and databa
   - Range-based reading
   - OAuth2 authentication
   - Change detection
-- [ ] **PostgreSQL Connector** (self-hosted only)
+- [x] **PostgreSQL Connector** (self-hosted only) ✅ **COMPLETE in v1.3.0**
   - Full table and incremental sync
   - Query-based extraction
   - Connection pooling
   - Configurable batch sizes
+  - Cursor-based incremental sync with state management
 - [ ] **MySQL Connector** (self-hosted only)
   - Full table and incremental sync
   - Query-based extraction
@@ -158,57 +159,79 @@ Expand source connector support beyond CSV to include major SaaS APIs and databa
 
 ---
 
-## 📋 v1.3.0 - Enhanced Orchestration (PLANNED)
+## ✅ v1.3.0 - Enhanced Orchestration (COMPLETE)
 
-**Target**: Q1 2025
+**Status**: Released 2025-11-07
 
 ### Goals
 Enhance Dagster orchestration with schedule management, retry policies, and improved observability.
 
-### Planned Features
+### Key Features
 
 #### Dagster Integration
-- [ ] Map job configurations to Dagster schedules
-- [ ] Cron and interval-based scheduling
-- [ ] Exit code mapping to retry policies
-- [ ] Tenant-level schedule isolation
-- [ ] Configurable retry attempts and backoff
-- [ ] Retryable error classification
+- ✅ Map job configurations to Dagster schedules
+- ✅ Cron and interval-based scheduling
+- ✅ Exit code mapping to retry policies
+- ✅ Tenant-level schedule isolation
+- ✅ Configurable retry attempts and backoff
+- ✅ Retryable error classification
 
 #### Schedule Management
-- [ ] Dynamic schedule registration from `runner.yaml`
-- [ ] Schedule enable/disable without deployment
-- [ ] Schedule history and audit logs
-- [ ] Tenant-specific scheduling constraints
-- [ ] Timezone-aware scheduling
+- ✅ Dynamic schedule registration from `runner.yaml`
+- ✅ Schedule enable/disable without deployment
+- ✅ Tenant-specific scheduling constraints
+- ✅ Timezone-aware scheduling
+- ✅ Max concurrent runs control
+- ✅ Custom schedule tags
 
 #### Retry & Recovery
-- [ ] Intelligent retry with exponential backoff
-- [ ] Partial success handling (exit code 1)
-- [ ] Failed record tracking and reprocessing
-- [ ] Manual retry triggers via Dagster UI
-- [ ] Retry budget management per tenant
+- ✅ Intelligent retry with exponential backoff
+- ✅ Partial success handling (exit code 1)
+- ✅ Custom retry logic with Dagster integration
+- ✅ Retry state tracking and recovery
+- ✅ Retryable exit codes and error pattern matching
 
 #### Observability Enhancements
-- [ ] Metrics collection (extraction rate, file sizes, API calls)
-- [ ] Distributed tracing with OpenTelemetry
-- [ ] Job duration tracking
-- [ ] Cost tracking (API calls, storage, compute)
-- [ ] Dagster UI integration for job monitoring
+- ✅ Metrics collection framework
+- ✅ Distributed tracing with OpenTelemetry
+- ✅ Job duration tracking
+- ✅ Enhanced asset tags for Dagster UI (tenant_id, connector_type, job_name)
+- ✅ Job execution metadata propagation
 
-#### Metadata & Lineage
-- [ ] Enhanced metadata emission (CPU time, API calls, tags)
-- [ ] Data lineage tracking (source → target)
-- [ ] Schema evolution tracking
-- [ ] Governance metadata propagation
-- [ ] Business metadata support
+#### Unified Connector Architecture
+- ✅ Bidirectional connector support
+- ✅ Unified `ConnectorRecipe` model
+- ✅ Connector roles metadata (`[source]`, `[target]`, `[source, target]`)
+- ✅ Registry schema v3 with roles support
+- ✅ All connectors migrated to unified structure
+
+#### Postgres Connector
+- ✅ Native Postgres extractor implementation
+- ✅ Full table and incremental sync support
+- ✅ Cursor-based incremental sync
+- ✅ Environment variable expansion for connection parameters
+- ✅ Batch processing with state management
+
+#### Markdown-KV Transformations
+- ✅ Postgres to Markdown-KV transformation pipeline
+- ✅ String mode (entire document as single column)
+- ✅ Structured mode (parsed into key-value rows)
+- ✅ Integration with Parquet writer for Iceberg tables
+
+#### Testing & CI/CD
+- ✅ Comprehensive GitHub Actions workflows (unit tests, smoke tests, schema validation)
+- ✅ Postgres, MinIO, and Nessie service integration
+- ✅ AdventureWorks test data loading
+- ✅ Expanded smoke test suite
 
 ### Success Criteria
-- Dagster schedules working for all connectors
-- Retry policies functioning correctly
-- Metrics and tracing operational
-- Tenant isolation maintained
-- Cost tracking accurate
+- ✅ Dagster schedules working for all connectors
+- ✅ Retry policies functioning correctly
+- ✅ Metrics and tracing framework operational
+- ✅ Tenant isolation maintained
+- ✅ Postgres connector fully functional
+- ✅ Markdown-KV transformations working
+- ✅ CI/CD pipelines operational
 
 ---
 
@@ -325,4 +348,4 @@ Have suggestions for the roadmap? Please open an issue with:
 
 ---
 
-**Last Updated**: 2024-11-07
+**Last Updated**: 2025-11-07
