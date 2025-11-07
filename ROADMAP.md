@@ -325,26 +325,4 @@ Have suggestions for the roadmap? Please open an issue with:
 
 ---
 
-## Version Planning Process
-
-### Release Cycle
-- **Minor versions** (1.x.0): Every 4-6 weeks
-- **Patch versions** (1.x.y): As needed for bug fixes
-- **Major versions** (x.0.0): Breaking changes only
-
-### Milestone Structure
-1. **Planning**: Define scope and success criteria
-2. **Development**: Implementation with tests
-3. **Testing**: Unit, integration, and smoke tests
-4. **Documentation**: Update all relevant docs
-5. **Release**: Tag, changelog, and deployment
-
-### Prioritization
-- **P0**: Blocking issues, security fixes
-- **P1**: Core features for current milestone
-- **P2**: Nice-to-have features
-- **P3**: Future enhancements
-
----
-
 **Last Updated**: 2024-11-07
