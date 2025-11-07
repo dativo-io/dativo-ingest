@@ -19,13 +19,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm install --include=dev
+          # No npm cache or install needed; we use npx ajv directly
 
       - name: Validate connector registry
         run: make schema-connectors
 
-      - name: Validate connector templates
-        run: make schema-templates
+      # Templates validation step removed (no corresponding Makefile target)
