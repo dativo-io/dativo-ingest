@@ -1,0 +1,89 @@
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+id: 550e8400-e29b-41d4-a716-446655440000
+name: csv_person
+version: "1.0"
+status: active
+domain: dativo
+dataProduct: adventureworks
+tenant: test_tenant
+description:
+  purpose: "Person/contact data from AdventureWorks database"
+  limitations: null
+  usage: "Used for customer contact information and demographics"
+tags: [adventureworks, person, test-data]
+# Dativo extensions
+source_type: csv
+object: Person
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+  mode: strict
+schema:
+  - name: BusinessEntityID
+    type: integer
+    required: true
+  - name: PersonType
+    type: string
+    required: true
+  - name: NameStyle
+    type: integer
+    required: false
+  - name: Title
+    type: string
+    required: false
+  - name: FirstName
+    type: string
+    required: true
+  - name: MiddleName
+    type: string
+    required: false
+  - name: LastName
+    type: string
+    required: true
+  - name: Suffix
+    type: string
+    required: false
+  - name: EmailPromotion
+    type: integer
+    required: false
+  - name: AdditionalContactInfo
+    type: string
+    required: false
+  - name: Demographics
+    type: string
+    required: false
+  - name: rowguid
+    type: string
+    required: true
+  - name: ModifiedDate
+    type: timestamp
+    required: true
+data_quality:
+  expectations: []
+  monitoring:
+    enabled: true
+    oncall_rotation: data-ops-oncall@company.com
+  alerts:
+    channels: [slack, email]
+    thresholds: {}
+team:
+  owner: data-team@company.com
+  roles:
+    - name: Data Engineer
+      email: engineer@company.com
+      responsibility: ingestion
+compliance:
+  classification: []
+  regulations: []
+  retention_days: 90
+  security:
+    access_control: role_based
+    encryption_required: true
+  user_consent_required: false
+change_management:
+  policy: non-breaking
+  approval_required: true
+  notification_channels: [slack, email]
+  version_history: true

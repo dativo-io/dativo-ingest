@@ -1,6 +1,6 @@
 # Dativo Ingestion Platform
 
-A headless, config-driven ingestion engine. Extracts data from third party SaaS APIs(like Stripe or Hubspot) and databases(like Postgres or Mysql) into vendor-owned object storage (S3, MinIO, Azure Blob) as Iceberg-backed datasets.
+A headless, config-driven ingestion engine. Extracts data from third party SaaS APIs(like Stripe or Hubspot) and databases(like Postgres or Mysql) into vendor-owned object storage (S3, MinIO, Azure Blob) as Iceberg-backed datasets. Supports Markdown-KV format for LLM-optimized data ingestion.
 
 ## Architecture
 
@@ -132,13 +132,14 @@ target_connector_path: /app/connectors/targets/iceberg.yaml
 asset: stripe_customers
 asset_path: /app/assets/stripe/v1.0/customers.yaml
 
-# Tenant-specific overrides
-source_overrides:
+# Source configuration
+source:
   objects: [customers]
   incremental:
     lookback_days: 1
 
-target_overrides:
+# Target configuration
+target:
   branch: acme
   warehouse: s3://lake/acme/
   connection:
@@ -208,8 +209,18 @@ asset:
 - **Google Drive CSV**: CSV files from Google Drive
 - **Google Sheets**: Spreadsheet data
 - **CSV**: Local CSV files (for testing and development)
+- **Markdown-KV**: Markdown-KV files for LLM-optimized data ingestion
 - **PostgreSQL**: Database tables (self-hosted only)
 - **MySQL**: Database tables (self-hosted only)
+
+### Markdown-KV Storage Options
+
+Dativo supports three storage patterns for Markdown-KV format:
+1. **STRING storage**: Store as STRING column in Iceberg Parquet tables
+2. **Raw file storage**: Store files directly in S3/MinIO buckets
+3. **Structured storage**: Parse and store as structured data (row-per-KV, document-level, or hybrid)
+
+See [docs/MARKDOWN_KV_STORAGE.md](docs/MARKDOWN_KV_STORAGE.md) for detailed documentation.
 
 ## Exit Codes
 
@@ -219,28 +230,41 @@ asset:
 
 ## Testing
 
-Run unit tests:
+Dativo uses a two-tier testing approach:
+
+### Unit Tests
+
+Test internal functions (config loading, validation, state management):
 
 ```bash
-pytest tests/
+# Run all unit tests
+pytest tests/test_*.py -v
+
+# Or using Makefile
+make test-unit
 ```
 
-Run smoke tests (CSV to Iceberg E2E):
+### Smoke Tests (E2E)
+
+Run actual CLI commands with test fixtures to verify end-to-end execution:
 
 ```bash
-# Run all datasets
-pytest tests/test_smoke_csv_to_iceberg.py -v
+# Direct CLI command (recommended)
+dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 
-# Run specific dataset using marker
-pytest tests/test_smoke_csv_to_iceberg.py -m adventureworks -v
-pytest tests/test_smoke_csv_to_iceberg.py -m music_listening -v
-pytest tests/test_smoke_csv_to_iceberg.py -m employee -v
-
-# Run specific dataset using command line flag
-pytest tests/test_smoke_csv_to_iceberg.py --dataset=adventureworks -v
-pytest tests/test_smoke_csv_to_iceberg.py --dataset=music_listening -v
-pytest tests/test_smoke_csv_to_iceberg.py --dataset=employee -v
+# Or using Makefile
+make test-smoke
 ```
+
+Smoke tests are simply running the CLI directly with test fixtures - no special test code needed!
+
+### Run All Tests
+
+```bash
+make test
+```
+
+See [tests/README.md](tests/README.md) for detailed testing documentation.
 
 Validate schemas:
 

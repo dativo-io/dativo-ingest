@@ -14,15 +14,16 @@ target_connector_path: /app/connectors/targets/iceberg.yaml
 asset: stripe_customers
 asset_path: /app/assets/stripe/v1.0/customers.yaml
 
-# Tenant-specific overrides and configuration
-source_overrides:
-  objects: [customers]  # Override default streams
+# Source configuration
+source:
+  objects: [customers]
   incremental:
     lookback_days: 1
 
-target_overrides:
-  branch: acme  # Tenant-specific branch
-  warehouse: s3://lake/acme/  # Tenant-specific warehouse
+# Target configuration
+target:
+  branch: acme
+  warehouse: s3://lake/acme/
   connection:
     nessie:
       uri: "http://nessie.acme.internal:19120/api/v1"

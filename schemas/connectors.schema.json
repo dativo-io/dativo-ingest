@@ -62,7 +62,7 @@
         },
         "file_formats": {
           "type": "array",
-          "items": { "type": "string", "enum": ["parquet", "orc", "csv", "json"] },
+          "items": { "type": "string", "enum": ["parquet", "orc", "csv", "json", "markdown_kv"] },
           "minItems": 1
         },
         "supports_schema_evolution": { "type": "boolean" }

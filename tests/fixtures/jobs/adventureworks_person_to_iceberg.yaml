@@ -1,0 +1,45 @@
+# Example job configuration for AdventureWorks Person dataset
+# This job demonstrates CSV to Iceberg ingestion
+# Generated for smoke test reference
+
+tenant_id: test_tenant
+environment: test
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/sources/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/targets/iceberg.yaml
+
+# Asset definition
+asset: csv_person
+asset_path: tests/fixtures/assets/csv/v1.0/person.yaml
+
+# Source configuration - specify which CSV file to ingest
+source:
+  files:
+    - file_path: tests/fixtures/seeds/adventureworks/Person.csv
+      object: Person
+
+# Target configuration - Iceberg table configuration
+target:
+  branch: test_tenant
+  warehouse: s3://test-lake/adventureworks/
+  connection:
+    nessie:
+      uri: "${NESSIE_URI}"  # From environment or secrets
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+

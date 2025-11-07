@@ -18,3 +18,8 @@ connection_template:
   access_key_id: "${AWS_ACCESS_KEY_ID}"
   secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
   region: "${AWS_REGION}"
+# File storage modes:
+# - "parquet": Store data as Parquet files (default)
+# - "raw": Store raw files as-is
+# - "markdown_kv": Store Markdown-KV files with .md or .mdkv extension
+# When using markdown_kv mode, specify path_pattern in target config (e.g., "docs/{doc_id}.mdkv")

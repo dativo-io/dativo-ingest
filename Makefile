@@ -1,8 +1,20 @@
-.PHONY: schema-validate schema-connectors
+.PHONY: schema-validate schema-connectors test-unit test-smoke test
 
 schema-validate: schema-connectors
 
 schema-connectors:
 	@yq -o=json '. ' registry/connectors.yaml | npx ajv validate -s schemas/connectors.schema.json -d /dev/stdin --strict=false
+
+# Unit tests: Test internal functions (config loading, validation, etc.)
+test-unit:
+	@pytest tests/test_*.py -v
+
+# Smoke tests: Run actual CLI commands with test fixtures (true E2E)
+# Users can also run: dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
+test-smoke:
+	@python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+
+# Run all tests
+test: test-unit test-smoke
 
 

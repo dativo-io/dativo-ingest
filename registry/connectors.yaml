@@ -41,6 +41,15 @@ sources:
     incremental_strategy_default: file_modified_time
     objects_supported: ["file"]
 
+  markdown_kv:
+    category: files
+    default_engine: native
+    engines_supported: [native]
+    allowed_in_cloud: true
+    supports_incremental: true
+    incremental_strategy_default: file_modified_time
+    objects_supported: ["file"]
+
   google_sheets:
     category: files
     default_engine: native
@@ -74,7 +83,7 @@ targets:
   iceberg:
     default_engine: native
     engines_supported: [native, spark]
-    file_formats: [parquet]
+    file_formats: [parquet, markdown_kv]  # markdown_kv stored as STRING in Parquet
     supports_schema_evolution: true
 
   s3:

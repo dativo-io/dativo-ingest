@@ -11,7 +11,7 @@ target_connector_path: /app/connectors/targets/iceberg.yaml
 asset: postgres_orders
 asset_path: /app/assets/postgres/v1.0/db_orders.yaml
 
-source_overrides:
+source:
   tables:
     - name: public.orders
       object: db_orders
@@ -23,7 +23,7 @@ source_overrides:
     port: "${PGPORT}"
     database: "${PGDATABASE}"
 
-target_overrides:
+target:
   branch: acme
   warehouse: s3://lake/acme/
   connection:

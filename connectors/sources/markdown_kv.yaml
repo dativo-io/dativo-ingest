@@ -1,0 +1,20 @@
+# Markdown-KV file source connector
+name: markdown_kv
+type: markdown_kv
+description: "Local Markdown-KV file connector for LLM-optimized data"
+default_engine:
+  type: native
+  options:
+    native:
+      library: "pandas"
+      library_version: "2.1.0"
+      chunk_size: 10000
+      encoding: "utf-8"
+      # Markdown-KV files are text-based, no delimiter needed
+credentials:
+  type: none  # No credentials needed for local files
+incremental:
+  strategy: file_modified_time
+  cursor_field_default: file_modified_time
+  lookback_days_default: 0
+

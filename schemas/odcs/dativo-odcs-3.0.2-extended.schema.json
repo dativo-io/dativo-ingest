@@ -1,0 +1,172 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dativo.io/schemas/odcs/dativo-odcs-3.0.2-extended.schema.json",
+  "title": "Dativo Extended Open Data Contract Standard (ODCS) v3.0.2",
+  "description": "ODCS v3.0.2 schema extended with dativo-specific fields for data ingestion",
+  "allOf": [
+    { "$ref": "./odcs-3.0.2.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "Reference to this extended schema",
+          "default": "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json"
+        },
+        "source_type": {
+          "type": "string",
+          "description": "Type of source connector (e.g., csv, stripe, hubspot)",
+          "examples": ["csv", "stripe", "hubspot", "postgres", "mysql"]
+        },
+        "object": {
+          "type": "string",
+          "description": "Name of the source object/table/file being ingested"
+        },
+        "target": {
+          "type": "object",
+          "description": "Target configuration for data storage",
+          "properties": {
+            "file_format": {
+              "type": "string",
+              "description": "File format for target storage",
+              "examples": ["parquet", "iceberg", "delta"]
+            },
+            "partitioning": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Partition columns for target storage"
+            },
+            "mode": {
+              "type": "string",
+              "description": "Schema evolution mode",
+              "enum": ["strict", "merge", "relaxed"],
+              "default": "strict"
+            }
+          }
+        },
+        "compliance": {
+          "type": "object",
+          "description": "Compliance and regulatory information",
+          "properties": {
+            "classification": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Data classification tags (e.g., PII, SENSITIVE)",
+              "examples": [["PII"], ["SENSITIVE"], ["PII", "SENSITIVE"]]
+            },
+            "regulations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Applicable regulations (e.g., GDPR, CCPA, HIPAA)",
+              "examples": [["GDPR"], ["CCPA"], ["GDPR", "CCPA"]]
+            },
+            "retention_days": {
+              "type": "integer",
+              "description": "Data retention period in days"
+            },
+            "security": {
+              "type": "object",
+              "description": "Security configuration",
+              "properties": {
+                "access_control": {
+                  "type": "string",
+                  "description": "Access control mechanism",
+                  "examples": ["role_based", "attribute_based", "none"]
+                },
+                "encryption_required": {
+                  "type": "boolean",
+                  "description": "Whether encryption is required"
+                }
+              }
+            },
+            "user_consent_required": {
+              "type": "boolean",
+              "description": "Whether user consent is required for data processing"
+            }
+          }
+        },
+        "change_management": {
+          "type": "object",
+          "description": "Change management configuration",
+          "properties": {
+            "policy": {
+              "type": "string",
+              "description": "Change policy type",
+              "enum": ["breaking", "non-breaking"],
+              "default": "non-breaking"
+            },
+            "approval_required": {
+              "type": "boolean",
+              "description": "Whether approval is required for changes"
+            },
+            "notification_channels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Channels for change notifications",
+              "examples": [["slack"], ["email"], ["slack", "email"]]
+            },
+            "version_history": {
+              "type": "boolean",
+              "description": "Whether to track version history"
+            }
+          }
+        },
+        "data_quality": {
+          "type": "object",
+          "description": "Data quality configuration",
+          "properties": {
+            "expectations": {
+              "type": "array",
+              "description": "Data quality expectations/rules",
+              "items": {
+                "type": "object"
+              }
+            },
+            "monitoring": {
+              "type": "object",
+              "description": "Data quality monitoring configuration",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Whether monitoring is enabled"
+                },
+                "oncall_rotation": {
+                  "type": "string",
+                  "description": "Oncall rotation contact (email or channel)"
+                }
+              },
+              "required": ["enabled"]
+            },
+            "alerts": {
+              "type": "object",
+              "description": "Alerting configuration",
+              "properties": {
+                "channels": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Alert channels"
+                },
+                "thresholds": {
+                  "type": "object",
+                  "description": "Alert thresholds"
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": ["source_type", "object"]
+    }
+  ]
+}
+

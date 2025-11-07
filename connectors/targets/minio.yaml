@@ -19,3 +19,8 @@ connection_template:
   secret_access_key: "${MINIO_SECRET_KEY}"
   secure: false  # true for HTTPS
   path_style_access: true  # required for MinIO
+# File storage modes:
+# - "parquet": Store data as Parquet files (default)
+# - "raw": Store raw files as-is
+# - "markdown_kv": Store Markdown-KV files with .md or .mdkv extension
+# When using markdown_kv mode, specify path_pattern in target config (e.g., "docs/{doc_id}.mdkv")

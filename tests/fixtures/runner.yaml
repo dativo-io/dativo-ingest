@@ -1,0 +1,32 @@
+# Runner configuration for smoke tests
+# This file can be used with orchestrated mode to run smoke test jobs
+#
+# Note: Before using this runner config, ensure jobs have been generated in tests/fixtures/jobs/
+#
+# To generate jobs, run:
+#   python tests/fixtures/jobs/generate_example_jobs.py
+#
+# Then update the schedules below to reference the actual generated job files.
+
+runner:
+  mode: orchestrated
+  orchestrator:
+    type: dagster
+    schedules:
+      # Example schedules for smoke test jobs
+      # Uncomment and update paths after jobs are generated
+      
+      # - name: adventureworks_person_hourly
+      #   config: tests/fixtures/jobs/adventureworks_person_to_iceberg.yaml
+      #   cron: "0 * * * *"
+      
+      # - name: music_listening_history_hourly
+      #   config: tests/fixtures/jobs/music_listening_listening_history_to_iceberg.yaml
+      #   cron: "0 * * * *"
+      
+      # - name: employee_daily
+      #   config: tests/fixtures/jobs/employee_employee_to_iceberg.yaml
+      #   cron: "0 2 * * *"
+    
+    concurrency_per_tenant: 1  # Serialize per-tenant to protect Nessie commits
+

@@ -1,12 +1,15 @@
 """Configuration models and schema validation for Dativo jobs."""
 
+import json
 import os
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+import jsonschema
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class SourceConnectorRecipe(BaseModel):
@@ -59,20 +62,221 @@ class TargetConnectorRecipe(BaseModel):
         return cls(**data)
 
 
-class AssetDefinition(BaseModel):
-    """Asset definition - schema and governance metadata."""
+class DescriptionModel(BaseModel):
+    """Description model for ODCS data contracts."""
 
+    purpose: Optional[str] = None
+    limitations: Optional[str] = None
+    usage: Optional[str] = None
+
+
+class DataQualityMonitoringModel(BaseModel):
+    """Data quality monitoring configuration."""
+
+    enabled: bool
+    oncall_rotation: Optional[str] = None
+
+
+class DataQualityAlertsModel(BaseModel):
+    """Data quality alerting configuration."""
+
+    channels: Optional[List[str]] = None
+    thresholds: Optional[Dict[str, Any]] = None
+
+
+class DataQualityModel(BaseModel):
+    """Data quality configuration."""
+
+    expectations: Optional[List[Dict[str, Any]]] = None
+    monitoring: Optional[DataQualityMonitoringModel] = None
+    alerts: Optional[DataQualityAlertsModel] = None
+
+
+class TeamRoleModel(BaseModel):
+    """Team role definition."""
+
+    name: Optional[str] = None
+    email: Optional[str] = None
+    responsibility: Optional[str] = None
+
+
+class TeamModel(BaseModel):
+    """Team ownership and roles."""
+
+    owner: str
+    roles: Optional[List[TeamRoleModel]] = None
+
+
+class ComplianceSecurityModel(BaseModel):
+    """Security configuration for compliance."""
+
+    access_control: Optional[str] = None
+    encryption_required: Optional[bool] = None
+
+
+class ComplianceModel(BaseModel):
+    """Compliance and regulatory information."""
+
+    classification: Optional[List[str]] = None
+    regulations: Optional[List[str]] = None
+    retention_days: Optional[int] = None
+    security: Optional[ComplianceSecurityModel] = None
+    user_consent_required: Optional[bool] = None
+
+
+class ChangeManagementModel(BaseModel):
+    """Change management configuration."""
+
+    policy: Optional[str] = None
+    approval_required: Optional[bool] = None
+    notification_channels: Optional[List[str]] = None
+    version_history: Optional[bool] = None
+
+
+class AssetDefinition(BaseModel):
+    """Asset definition - ODCS v3.0.2 aligned with dativo extensions."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    # ODCS top-level fields
+    schema_ref: Optional[str] = Field(None, alias="$schema")
+    apiVersion: str = "v3.0.2"
+    kind: str = "DataContract"
+    id: Optional[str] = None
     name: str
+    version: str
+    status: str = "active"
+    domain: Optional[str] = None
+    dataProduct: Optional[str] = None
+    tenant: Optional[str] = None
+    description: Optional[DescriptionModel] = None
+    tags: Optional[List[str]] = None
+
+    # Dativo extensions (required)
     source_type: str
     object: str
-    version: str
-    schema: List[Dict[str, Any]]
-    governance: Optional[Dict[str, Any]] = None
     target: Optional[Dict[str, Any]] = None
 
+    # ODCS sections
+    schema: List[Dict[str, Any]]  # Schema fields array
+    data_quality: Optional[DataQualityModel] = None
+    team: TeamModel
+    compliance: Optional[ComplianceModel] = None
+    change_management: Optional[ChangeManagementModel] = None
+
+    @model_validator(mode="after")
+    def validate_governance(self) -> "AssetDefinition":
+        """Validate governance requirements."""
+        # Team owner is required
+        if not self.team or not self.team.owner:
+            raise ValueError("team.owner is required (strong ownership requirement)")
+
+        # If monitoring is enabled, oncall_rotation is required
+        if (
+            self.data_quality
+            and self.data_quality.monitoring
+            and self.data_quality.monitoring.enabled
+            and not self.data_quality.monitoring.oncall_rotation
+        ):
+            raise ValueError(
+                "data_quality.monitoring.oncall_rotation is required when monitoring.enabled is true"
+            )
+
+        return self
+
     @classmethod
-    def from_yaml(cls, path: Union[str, Path]) -> "AssetDefinition":
-        """Load asset definition from YAML file."""
+    def _migrate_old_format(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Migrate old nested format to new ODCS flat format."""
+        if "asset" in data:
+            asset_data = data["asset"].copy()
+
+            # Generate ID if not present
+            if "id" not in asset_data:
+                asset_data["id"] = str(uuid.uuid4())
+
+            # Set ODCS fields
+            asset_data.setdefault("apiVersion", "v3.0.2")
+            asset_data.setdefault("kind", "DataContract")
+            asset_data.setdefault("status", "active")
+
+            # Migrate governance to team
+            if "governance" in asset_data:
+                governance = asset_data.pop("governance")
+                if "owner" in governance:
+                    asset_data["team"] = {"owner": governance["owner"]}
+                    if "tags" in governance:
+                        asset_data.setdefault("tags", governance.get("tags", []))
+
+                # Migrate classification and retention_days to compliance
+                if "classification" in governance or "retention_days" in governance:
+                    compliance = {}
+                    if "classification" in governance:
+                        compliance["classification"] = governance["classification"]
+                    if "retention_days" in governance:
+                        compliance["retention_days"] = governance["retention_days"]
+                    if compliance:
+                        asset_data["compliance"] = compliance
+
+            # Set schema reference
+            asset_data.setdefault(
+                "$schema", "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json"
+            )
+
+            return asset_data
+        return data
+
+    @classmethod
+    def validate_against_schema(
+        cls, data: Dict[str, Any], schema_path: Optional[Path] = None
+    ) -> None:
+        """Validate asset definition against JSON schema.
+
+        Args:
+            data: Asset definition data dictionary
+            schema_path: Optional path to extended schema file
+
+        Raises:
+            jsonschema.ValidationError: If validation fails
+        """
+        if schema_path is None:
+            # Default to extended schema in schemas/odcs/
+            schema_path = (
+                Path(__file__).parent.parent.parent
+                / "schemas"
+                / "odcs"
+                / "dativo-odcs-3.0.2-extended.schema.json"
+            )
+
+        if not schema_path.exists():
+            raise FileNotFoundError(f"Schema file not found: {schema_path}")
+
+        with open(schema_path, "r") as f:
+            schema = json.load(f)
+
+        # Create resolver for relative $refs
+        resolver = jsonschema.RefResolver(
+            base_uri=f"file://{schema_path.parent}/",
+            referrer=schema,
+        )
+
+        try:
+            jsonschema.validate(instance=data, schema=schema, resolver=resolver)
+        except jsonschema.ValidationError as e:
+            raise ValueError(f"Schema validation failed: {e.message}") from e
+
+    @classmethod
+    def from_yaml(
+        cls, path: Union[str, Path], validate_schema: bool = False
+    ) -> "AssetDefinition":
+        """Load asset definition from YAML file.
+
+        Args:
+            path: Path to YAML file
+            validate_schema: Whether to validate against JSON schema (default: False)
+
+        Returns:
+            AssetDefinition instance
+        """
         path = Path(path)
         if not path.exists():
             raise ValueError(f"Asset definition not found: {path}")
@@ -80,10 +284,33 @@ class AssetDefinition(BaseModel):
         with open(path, "r") as f:
             data = yaml.safe_load(f)
 
-        if "asset" not in data:
-            raise ValueError(f"Asset definition missing 'asset' field: {path}")
+        if data is None:
+            raise ValueError(f"Asset definition file is empty: {path}")
 
-        return cls(**data["asset"])
+        # Support both old nested format and new flat ODCS format
+        if "asset" in data:
+            # Old format - migrate to new format
+            data = cls._migrate_old_format(data)
+        else:
+            # New format - ensure required fields
+            if "id" not in data:
+                data["id"] = str(uuid.uuid4())
+            if "$schema" not in data:
+                data["$schema"] = "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json"
+
+        # Map $schema to schema_ref for Pydantic (since $schema is not a valid Python identifier)
+        if "$schema" in data:
+            data["schema_ref"] = data.pop("$schema")
+
+        # Validate against JSON schema if requested
+        if validate_schema:
+            # Restore $schema for validation
+            validation_data = data.copy()
+            if "schema_ref" in validation_data:
+                validation_data["$schema"] = validation_data.pop("schema_ref")
+            cls.validate_against_schema(validation_data)
+
+        return cls(**data)
 
 
 class SourceConfig(BaseModel):
@@ -114,6 +341,33 @@ class TargetConfig(BaseModel):
     partitioning: Optional[List[str]] = None
     engine: Optional[Dict[str, Any]] = None
     connection: Optional[Dict[str, Any]] = None  # For storage connection details
+    markdown_kv_storage: Optional[Dict[str, Any]] = None  # Markdown-KV storage configuration
+
+    @model_validator(mode="after")
+    def validate_markdown_kv_storage(self) -> "TargetConfig":
+        """Validate markdown_kv_storage configuration."""
+        if self.markdown_kv_storage:
+            mode = self.markdown_kv_storage.get("mode")
+            if mode not in ["string", "raw_file", "structured"]:
+                raise ValueError(
+                    f"markdown_kv_storage.mode must be one of: 'string', 'raw_file', 'structured'. Got: {mode}"
+                )
+            
+            if mode == "structured":
+                pattern = self.markdown_kv_storage.get("structured_pattern")
+                if pattern not in ["row_per_kv", "document_level", "hybrid"]:
+                    raise ValueError(
+                        f"markdown_kv_storage.structured_pattern must be one of: 'row_per_kv', 'document_level', 'hybrid'. Got: {pattern}"
+                    )
+            
+            if mode == "raw_file":
+                file_extension = self.markdown_kv_storage.get("file_extension", ".mdkv")
+                if file_extension not in [".md", ".mdkv"]:
+                    raise ValueError(
+                        f"markdown_kv_storage.file_extension must be '.md' or '.mdkv'. Got: {file_extension}"
+                    )
+        
+        return self
 
 
 class LoggingConfig(BaseModel):
@@ -136,8 +390,10 @@ class JobConfig(BaseModel):
     target_connector_path: str  # Path to target connector recipe
     asset: Optional[str] = None  # Asset name
     asset_path: str  # Path to asset definition
-    source_overrides: Optional[Dict[str, Any]] = None  # Tenant-specific overrides
-    target_overrides: Optional[Dict[str, Any]] = None  # Tenant-specific overrides
+    
+    # Source and target configurations (flat structure, merged with recipes)
+    source: Optional[Dict[str, Any]] = None  # Source configuration
+    target: Optional[Dict[str, Any]] = None  # Target configuration
     
     logging: Optional[LoggingConfig] = None
 
@@ -176,8 +432,9 @@ class JobConfig(BaseModel):
         path = Path(os.path.expandvars(self.asset_path))
         return AssetDefinition.from_yaml(path)
 
-    def _merge_source_with_overrides(self, recipe: SourceConnectorRecipe) -> SourceConfig:
-        """Merge source connector recipe with job overrides."""
+    def _merge_source_with_recipe(self, recipe: SourceConnectorRecipe) -> SourceConfig:
+        """Merge source connector recipe with job source configuration."""
+        # Start with recipe defaults
         source_data = {
             "type": recipe.type,
             "description": recipe.description,
@@ -187,25 +444,27 @@ class JobConfig(BaseModel):
             "rate_limits": recipe.rate_limits,
         }
         
-        # Apply overrides
-        if self.source_overrides:
-            source_data.update(self.source_overrides)
+        # Apply job-specific source configuration (overrides/extends recipe)
+        if self.source:
             # Deep merge for nested dicts
-            if "incremental" in self.source_overrides and source_data.get("incremental"):
-                source_data["incremental"].update(self.source_overrides["incremental"])
+            for key, value in self.source.items():
+                if isinstance(value, dict) and key in source_data and isinstance(source_data[key], dict):
+                    source_data[key] = {**source_data[key], **value}
+                else:
+                    source_data[key] = value
         
         # Add tenant-specific state_path if incremental is present
         if source_data.get("incremental") and "state_path" not in source_data.get("incremental", {}):
             if self.tenant_id:
-                # Determine object name from overrides
+                # Determine object name from source config
                 object_name = "default"
-                if self.source_overrides:
-                    if self.source_overrides.get("objects"):
-                        object_name = self.source_overrides["objects"][0]
-                    elif self.source_overrides.get("files") and len(self.source_overrides["files"]) > 0:
-                        object_name = self.source_overrides["files"][0].get("object", "default")
-                    elif self.source_overrides.get("tables") and len(self.source_overrides["tables"]) > 0:
-                        object_name = self.source_overrides["tables"][0].get("object", "default")
+                if self.source:
+                    if self.source.get("objects"):
+                        object_name = self.source["objects"][0] if isinstance(self.source["objects"], list) else str(self.source["objects"])
+                    elif self.source.get("files") and len(self.source["files"]) > 0:
+                        object_name = self.source["files"][0].get("object", "default")
+                    elif self.source.get("tables") and len(self.source["tables"]) > 0:
+                        object_name = self.source["tables"][0].get("object", "default")
                 
                 source_data["incremental"]["state_path"] = (
                     f"/state/{self.tenant_id}/{recipe.type}.{object_name}.state.json"
@@ -213,32 +472,28 @@ class JobConfig(BaseModel):
         
         return SourceConfig(**source_data)
 
-    def _merge_target_with_overrides(self, recipe: TargetConnectorRecipe) -> TargetConfig:
-        """Merge target connector recipe with job overrides."""
+    def _merge_target_with_recipe(self, recipe: TargetConnectorRecipe) -> TargetConfig:
+        """Merge target connector recipe with job target configuration."""
+        # Start with recipe defaults
         target_data = {
             "type": recipe.type,
             "catalog": recipe.catalog,
-            "file_format": recipe.file_format or (self.target_overrides.get("file_format") if self.target_overrides else None),
-            "partitioning": recipe.partitioning_default or (self.target_overrides.get("partitioning") if self.target_overrides else None),
+            "file_format": recipe.file_format,
+            "partitioning": recipe.partitioning_default,
             "engine": recipe.default_engine,
         }
         
-        # Apply connection template and overrides
+        # Apply connection template from recipe
         if recipe.connection_template:
-            connection = recipe.connection_template.copy()
-            if self.target_overrides and "connection" in self.target_overrides:
-                # Deep merge connection
-                for key, value in self.target_overrides["connection"].items():
-                    if isinstance(value, dict) and key in connection:
-                        connection[key].update(value)
-                    else:
-                        connection[key] = value
-            target_data["connection"] = connection
+            target_data["connection"] = recipe.connection_template.copy()
         
-        # Apply other overrides
-        if self.target_overrides:
-            for key, value in self.target_overrides.items():
-                if key != "connection":
+        # Apply job-specific target configuration (overrides/extends recipe)
+        if self.target:
+            # Deep merge for nested dicts
+            for key, value in self.target.items():
+                if isinstance(value, dict) and key in target_data and isinstance(target_data[key], dict):
+                    target_data[key] = {**target_data[key], **value}
+                else:
                     target_data[key] = value
         
         return TargetConfig(**target_data)
@@ -246,12 +501,12 @@ class JobConfig(BaseModel):
     def _resolve_source(self) -> SourceConfig:
         """Resolve source config from connector recipe."""
         recipe = self._resolve_source_recipe()
-        return self._merge_source_with_overrides(recipe)
+        return self._merge_source_with_recipe(recipe)
 
     def _resolve_target(self) -> TargetConfig:
         """Resolve target config from connector recipe."""
         recipe = self._resolve_target_recipe()
-        return self._merge_target_with_overrides(recipe)
+        return self._merge_target_with_recipe(recipe)
 
     def get_source(self) -> SourceConfig:
         """Get resolved source config."""
@@ -309,31 +564,33 @@ class JobConfig(BaseModel):
             )
             sys.exit(2)
 
-        # Check if asset field exists
-        if not isinstance(spec_data, dict) or "asset" not in spec_data:
+        # Support both ODCS flat format and legacy nested format
+        if not isinstance(spec_data, dict):
             print(
-                f"ERROR: Asset definition missing 'asset' field: {asset_path}",
+                f"ERROR: Asset definition must be an object: {asset_path}",
                 file=sys.stderr,
             )
             sys.exit(2)
 
-        asset = spec_data["asset"]
-        if not isinstance(asset, dict):
+        # Check for ODCS flat format (schema at top level)
+        if "schema" in spec_data:
+            schema = spec_data["schema"]
+        # Check for legacy nested format (asset.schema)
+        elif "asset" in spec_data and isinstance(spec_data["asset"], dict):
+            asset = spec_data["asset"]
+            if "schema" not in asset:
+                print(
+                    f"ERROR: Asset definition missing 'schema' field: {asset_path}",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            schema = asset["schema"]
+        else:
             print(
-                f"ERROR: Asset definition 'asset' field must be an object: {asset_path}",
+                f"ERROR: Asset definition missing 'schema' field (ODCS format) or 'asset' field (legacy format): {asset_path}",
                 file=sys.stderr,
             )
             sys.exit(2)
-
-        # Check if schema field exists
-        if "schema" not in asset:
-            print(
-                f"ERROR: Asset definition missing 'schema' field: {asset_path}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-
-        schema = asset["schema"]
 
         # Check if schema is an array
         if not isinstance(schema, list):
@@ -371,6 +628,126 @@ class JobConfig(BaseModel):
                     file=sys.stderr,
                 )
                 sys.exit(2)
+
+    def validate_environment_variables(self) -> None:
+        """Validate that all required environment variables are set.
+
+        Raises:
+            ValueError: If required environment variables are missing
+        """
+        missing_vars = []
+        
+        # Extract environment variables from paths
+        paths_to_check = [
+            self.asset_path,
+            self.source_connector_path,
+            self.target_connector_path,
+        ]
+        
+        # Check paths for env var references
+        import re
+        env_var_pattern = re.compile(r'\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)')
+        
+        for path in paths_to_check:
+            if path:
+                matches = env_var_pattern.findall(path)
+                for match in matches:
+                    var_name = match[0] if match[0] else match[1]
+                    if not os.getenv(var_name):
+                        missing_vars.append(var_name)
+        
+        # Check connector recipes for env var references
+        try:
+            source_recipe = self._resolve_source_recipe()
+            target_recipe = self._resolve_target_recipe()
+            
+            # Check source connector connection template
+            if source_recipe.connection_template:
+                template_str = str(source_recipe.connection_template)
+                matches = env_var_pattern.findall(template_str)
+                for match in matches:
+                    var_name = match[0] if match[0] else match[1]
+                    if not os.getenv(var_name):
+                        missing_vars.append(var_name)
+            
+            # Check target connector connection template
+            if target_recipe.connection_template:
+                template_str = str(target_recipe.connection_template)
+                matches = env_var_pattern.findall(template_str)
+                for match in matches:
+                    var_name = match[0] if match[0] else match[1]
+                    if not os.getenv(var_name):
+                        missing_vars.append(var_name)
+        except Exception:
+            # If we can't load recipes, skip env var validation from templates
+            pass
+        
+        # Remove duplicates
+        missing_vars = list(set(missing_vars))
+        
+        if missing_vars:
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(sorted(missing_vars))}"
+            )
+
+    @classmethod
+    def load_jobs_from_directory(cls, job_dir: Path) -> List["JobConfig"]:
+        """Load all job configurations from a directory.
+
+        Args:
+            job_dir: Directory containing job YAML files
+
+        Returns:
+            List of JobConfig instances
+
+        Raises:
+            ValueError: If directory doesn't exist or no valid jobs found
+        """
+        job_dir = Path(job_dir)
+        if not job_dir.exists():
+            raise ValueError(f"Job directory not found: {job_dir}")
+        if not job_dir.is_dir():
+            raise ValueError(f"Path is not a directory: {job_dir}")
+
+        jobs = []
+        errors = []
+
+        # Scan directory recursively for YAML files
+        for job_file in job_dir.rglob("*.yaml"):
+            if job_file.is_file():
+                try:
+                    job = cls.from_yaml(job_file)
+                    jobs.append(job)
+                except SystemExit as e:
+                    errors.append(f"{job_file}: SystemExit {e.code}")
+                except Exception as e:
+                    errors.append(f"{job_file}: {e}")
+
+        # Also check for .yml files
+        for job_file in job_dir.rglob("*.yml"):
+            if job_file.is_file():
+                try:
+                    job = cls.from_yaml(job_file)
+                    jobs.append(job)
+                except SystemExit as e:
+                    errors.append(f"{job_file}: SystemExit {e.code}")
+                except Exception as e:
+                    errors.append(f"{job_file}: {e}")
+
+        # Report errors but don't fail if some jobs loaded successfully
+        if errors and not jobs:
+            raise ValueError(
+                f"Failed to load any jobs from {job_dir}. Errors:\n" + "\n".join(errors)
+            )
+        elif errors:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Some jobs failed to load from {job_dir}",
+                extra={"errors": errors, "loaded_count": len(jobs)},
+            )
+
+        return jobs
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "JobConfig":
