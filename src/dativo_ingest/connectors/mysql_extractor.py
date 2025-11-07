@@ -232,6 +232,13 @@ class MySQLExtractor:
             "autocommit": self.connection.get("autocommit", False),
         }
         
+        # Add authentication plugin if specified (for MySQL 8.0 compatibility)
+        if "auth_plugin" in self.connection:
+            connect_config["auth_plugin"] = self.connection["auth_plugin"]
+        elif self.connection.get("use_native_auth", False):
+            # Use mysql_native_password for compatibility with older clients
+            connect_config["auth_plugin"] = "mysql_native_password"
+        
         # Add SSL options if provided
         if "ssl_ca" in self.connection:
             connect_config["ssl_ca"] = self.connection["ssl_ca"]
