@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from .config import JobConfig, RunnerConfig
 from .infrastructure import validate_infrastructure
-from .logging import get_logger, setup_logging
+from .logging import setup_logging
 from .secrets import load_secrets
 from .validator import ConnectorValidator, IncrementalStateManager
 
@@ -78,7 +78,7 @@ def startup_sequence(
         logger = setup_logging(level="INFO", redact_secrets=True, tenant_id=tenant_id)
         logger.info(
             f"Inferred tenant_id '{tenant_id}' from job configurations",
-            extra={"event_type": "tenant_inferred", "tenant_id": tenant_id},
+            extra={"event_type": "tenant_inferred"},
         )
     else:
         # Validate that all jobs match the provided tenant_id
@@ -91,12 +91,12 @@ def startup_sequence(
         logger = setup_logging(level="INFO", redact_secrets=True, tenant_id=tenant_id)
         logger.info(
             f"Using tenant_id '{tenant_id}' from command line",
-            extra={"event_type": "tenant_override", "tenant_id": tenant_id},
+            extra={"event_type": "tenant_override"},
         )
 
     logger.info(
         f"Starting E2E smoke test startup sequence for tenant '{tenant_id}'",
-        extra={"event_type": "startup_begin", "tenant_id": tenant_id, "job_count": len(jobs)},
+        extra={"event_type": "startup_begin", "job_count": len(jobs)},
     )
 
     # 3. Load secrets using inferred/validated tenant_id
@@ -104,13 +104,13 @@ def startup_sequence(
         secrets = load_secrets(tenant_id, secrets_dir)
         logger.info(
             f"Secrets loaded for tenant {tenant_id}",
-            extra={"event_type": "secrets_loaded", "tenant_id": tenant_id, "secret_count": len(secrets)},
+            extra={"event_type": "secrets_loaded", "secret_count": len(secrets)},
         )
     except ValueError as e:
-        logger.warning(
-            f"Secrets loading failed (may be optional): {e}",
-            extra={"event_type": "secrets_warning", "tenant_id": tenant_id},
-        )
+            logger.warning(
+                f"Secrets loading failed (may be optional): {e}",
+                extra={"event_type": "secrets_warning"},
+            )
 
     # 4. Validate environment variables for all jobs
     for job in jobs:
@@ -119,12 +119,12 @@ def startup_sequence(
         except ValueError as e:
             logger.warning(
                 f"Environment variable validation warning for job: {e}",
-                extra={"event_type": "env_validation_warning", "tenant_id": job.tenant_id},
+                extra={"event_type": "env_validation_warning"},
             )
 
     logger.info(
         "Environment variables validated",
-        extra={"event_type": "env_validated", "tenant_id": tenant_id},
+        extra={"event_type": "env_validated"},
     )
 
     # 5. Validate infrastructure for all jobs
@@ -134,12 +134,12 @@ def startup_sequence(
         except ValueError as e:
             logger.warning(
                 f"Infrastructure validation warning for job: {e}",
-                extra={"event_type": "infrastructure_warning", "tenant_id": job.tenant_id},
+                extra={"event_type": "infrastructure_warning"},
             )
 
     logger.info(
         "Infrastructure validated",
-        extra={"event_type": "infra_validated", "tenant_id": tenant_id},
+        extra={"event_type": "infra_validated"},
     )
 
     # 6. Initialize state management for all jobs
@@ -149,12 +149,12 @@ def startup_sequence(
         except Exception as e:
             logger.warning(
                 f"State directory initialization warning for job: {e}",
-                extra={"event_type": "state_warning", "tenant_id": job.tenant_id},
+                extra={"event_type": "state_warning"},
             )
 
     logger.info(
         "State management initialized",
-        extra={"event_type": "state_initialized", "tenant_id": tenant_id},
+        extra={"event_type": "state_initialized"},
     )
 
     # 7. Validate all job configurations
@@ -166,13 +166,13 @@ def startup_sequence(
         except (SystemExit, ValueError) as e:
             logger.error(
                 f"Job validation failed: {e}",
-                extra={"event_type": "job_validation_error", "tenant_id": job.tenant_id},
+                extra={"event_type": "job_validation_error"},
             )
             # Continue with other jobs
 
     logger.info(
         "Startup sequence completed",
-        extra={"event_type": "startup_complete", "tenant_id": tenant_id, "job_count": len(jobs)},
+        extra={"event_type": "startup_complete", "job_count": len(jobs)},
     )
 
     return jobs
@@ -243,7 +243,6 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         "Starting job execution",
         extra={
             "connector_type": source_config.type,
-            "tenant_id": job_config.tenant_id,
             "event_type": "job_started",
         },
     )
@@ -255,7 +254,6 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             "Schema validation passed",
             extra={
                 "connector_type": source_config.type,
-                "tenant_id": job_config.tenant_id,
                 "event_type": "job_validated",
             },
         )
@@ -264,7 +262,6 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             "Schema validation failed",
             extra={
                 "connector_type": source_config.type,
-                "tenant_id": job_config.tenant_id,
                 "event_type": "job_error",
             },
         )
@@ -278,7 +275,6 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             "Connector validation passed",
             extra={
                 "connector_type": source_config.type,
-                "tenant_id": job_config.tenant_id,
                 "event_type": "job_validated",
             },
         )
@@ -287,56 +283,313 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             "Connector validation failed",
             extra={
                 "connector_type": source_config.type,
-                "tenant_id": job_config.tenant_id,
                 "event_type": "job_error",
             },
         )
         return e.code if e.code else 2
 
-    # Handle incremental strategies for file/sheet sources
+    # Load asset definition
+    try:
+        asset_definition = job_config._resolve_asset()
+        logger.info(
+            "Asset definition loaded",
+            extra={
+                "asset_name": asset_definition.name,
+                "event_type": "asset_loaded",
+            },
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to load asset definition: {e}",
+            extra={
+                "event_type": "asset_error",
+            },
+        )
+        return 2
+
+    # Initialize state manager for incremental syncs
+    state_manager = None
     if source_config.incremental:
-        strategy = source_config.incremental.get("strategy")
-        state_path = Path(source_config.incremental.get("state_path", ""))
-        lookback_days = source_config.incremental.get("lookback_days", 0)
-
-        if strategy == "file_modified_time" and source_config.files:
-            # For file-based incremental, check if files need processing
-            # In a real implementation, this would fetch modified times from API
-            # For now, we'll just log that we're checking state
+        state_path_str = source_config.incremental.get("state_path", "")
+        if state_path_str:
+            state_manager = IncrementalStateManager()
             logger.info(
-                "Checking file incremental state",
+                "Incremental state manager initialized",
                 extra={
-                    "connector_type": source_config.type,
-                    "strategy": strategy,
-                    "event_type": "incremental_check",
+                    "state_path": state_path_str,
+                    "event_type": "state_initialized",
                 },
             )
-            # Note: Actual file modified time fetching would happen here
-            # This is a placeholder for the incremental logic
 
-        elif strategy == "spreadsheet_modified_time" and source_config.sheets:
-            # For sheet-based incremental, check if sheets need processing
-            logger.info(
-                "Checking spreadsheet incremental state",
+    # Initialize extractor based on source type
+    try:
+        if source_config.type == "csv":
+            from .connectors.csv_extractor import CSVExtractor
+            extractor = CSVExtractor(source_config)
+        else:
+            logger.error(
+                f"Unsupported source type: {source_config.type}",
                 extra={
-                    "connector_type": source_config.type,
-                    "strategy": strategy,
-                    "event_type": "incremental_check",
+                    "event_type": "extractor_error",
                 },
             )
-            # Note: Actual spreadsheet modified time fetching would happen here
+            return 2
 
-    # Execute job (placeholder - actual execution would happen here)
-    logger.info(
-        "Job execution completed",
-        extra={
-            "connector_type": source_config.type,
-            "tenant_id": job_config.tenant_id,
-            "event_type": "job_finished",
-        },
-    )
+        logger.info(
+            "Extractor initialized",
+            extra={
+                "source_type": source_config.type,
+                "event_type": "extractor_initialized",
+            },
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to initialize extractor: {e}",
+            extra={
+                "event_type": "extractor_error",
+            },
+        )
+        return 2
 
-    return 0
+    # Initialize schema validator
+    try:
+        from .schema_validator import SchemaValidator
+
+        validation_mode = job_config.schema_validation_mode or "strict"
+        validator = SchemaValidator(asset_definition, validation_mode=validation_mode)
+        logger.info(
+            "Schema validator initialized",
+            extra={
+                "validation_mode": validation_mode,
+                "event_type": "validator_initialized",
+            },
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to initialize schema validator: {e}",
+            extra={
+                "event_type": "validator_error",
+            },
+        )
+        return 2
+
+    # Initialize Parquet writer
+    try:
+        from .parquet_writer import ParquetWriter
+
+        # Get output base path from target config following industry standards
+        # Standard path structure: s3://bucket/domain/data_product/table/
+        # Always build standard path regardless of warehouse config to ensure consistency
+        
+        # Extract bucket from connection config
+        connection = target_config.connection or {}
+        s3_config = connection.get("s3") or connection.get("minio", {})
+        bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET", "test-bucket")
+        
+        # Build path following industry standards:
+        # s3://bucket/domain/data_product/table/
+        # - Use domain from asset definition (required for organization)
+        # - Use dataProduct from asset definition (logical grouping)
+        # - Use table name (asset name, normalized)
+        domain = asset_definition.domain or "default"
+        data_product = getattr(asset_definition, 'dataProduct', None) or "default"
+        table_name = asset_definition.name.lower().replace("-", "_").replace(" ", "_")
+        
+        # Always build standard path structure (industry best practice)
+        # This ensures consistent organization and makes it easy to:
+        # - Find data by domain
+        # - Find data by data product
+        # - Find data by table
+        # - Apply access policies at domain/data_product level
+        output_base = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
+
+        writer = ParquetWriter(asset_definition, target_config, output_base)
+        logger.info(
+            "Parquet writer initialized",
+            extra={
+                "output_base": output_base,
+                "event_type": "writer_initialized",
+            },
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to initialize Parquet writer: {e}",
+            extra={
+                "event_type": "writer_error",
+            },
+        )
+        return 2
+
+    # Initialize Iceberg committer (only if catalog is configured)
+    committer = None
+    if target_config.catalog:
+        try:
+            from .iceberg_committer import IcebergCommitter
+
+            committer = IcebergCommitter(asset_definition, target_config)
+            logger.info(
+                "Iceberg committer initialized",
+                extra={
+                    "branch": target_config.branch,
+                    "catalog": target_config.catalog,
+                    "event_type": "committer_initialized",
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize Iceberg catalog (catalog: {target_config.catalog}): {e}. "
+                "Will write Parquet files to S3 without Iceberg metadata.",
+                extra={
+                    "event_type": "catalog_init_failed",
+                    "catalog": target_config.catalog,
+                },
+            )
+            committer = None
+    else:
+        logger.info(
+            "No catalog configured - writing Parquet files directly to S3 without Iceberg metadata",
+            extra={
+                "event_type": "no_catalog_mode",
+            },
+        )
+
+    # Execute ETL pipeline
+    total_records = 0
+    total_valid_records = 0
+    total_files_written = 0
+    file_counter = 0
+    all_file_metadata = []
+    has_errors = False
+
+    try:
+        # Ensure table exists (only if catalog is configured)
+        if committer:
+            committer.ensure_table_exists()
+            logger.info(
+                "Iceberg table ensured",
+                extra={
+                    "table_name": asset_definition.name,
+                    "event_type": "table_ensured",
+                },
+            )
+
+        # Extract, validate, and write in batches
+        for batch_records in extractor.extract(state_manager=state_manager):
+            total_records += len(batch_records)
+
+            # Validate batch
+            valid_records, validation_errors = validator.validate_batch(batch_records)
+            total_valid_records += len(valid_records)
+
+            # Log validation errors if any
+            if validation_errors:
+                has_errors = True
+                error_summary = validator.get_error_summary()
+                logger.warning(
+                    f"Validation errors in batch: {error_summary['total_errors']} errors",
+                    extra={
+                        "error_summary": error_summary,
+                        "event_type": "validation_errors",
+                    },
+                )
+
+                # In strict mode, fail if there are errors
+                if validation_mode == "strict" and len(valid_records) < len(batch_records):
+                    logger.error(
+                        "Strict validation mode: failing due to validation errors",
+                        extra={
+                            "event_type": "validation_failed",
+                        },
+                    )
+                    return 2
+
+            # Write valid records to Parquet
+            if valid_records:
+                file_metadata = writer.write_batch(valid_records, file_counter)
+                all_file_metadata.extend(file_metadata)
+                total_files_written += len(file_metadata)
+                file_counter += len(file_metadata)
+
+                logger.info(
+                    f"Wrote batch: {len(valid_records)} records, {len(file_metadata)} files",
+                    extra={
+                        "records": len(valid_records),
+                        "files": len(file_metadata),
+                        "event_type": "batch_written",
+                    },
+                )
+
+        # Commit all files to Iceberg (if catalog is configured)
+        if all_file_metadata:
+            if committer:
+                try:
+                    commit_result = committer.commit_files(all_file_metadata)
+                    logger.info(
+                        "Files committed to Iceberg catalog",
+                        extra={
+                            "commit_id": commit_result.get("commit_id"),
+                            "files_added": commit_result.get("files_added"),
+                            "table_name": commit_result.get("table_name"),
+                            "branch": commit_result.get("branch"),
+                            "event_type": "commit_success",
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to commit files to Iceberg catalog: {e}. "
+                        "Files were uploaded to S3 but not registered in catalog.",
+                        extra={
+                            "event_type": "commit_failed",
+                            "files_uploaded": len(all_file_metadata),
+                        },
+                    )
+            else:
+                # No catalog - files already uploaded to S3
+                logger.info(
+                    f"Files written to S3 (no catalog configured): {len(all_file_metadata)} file(s)",
+                    extra={
+                        "files_written": len(all_file_metadata),
+                        "event_type": "files_written_no_catalog",
+                    },
+                )
+        else:
+            logger.warning(
+                "No files to commit",
+                extra={
+                    "event_type": "no_files",
+                },
+            )
+
+        # Determine exit code
+        if has_errors and validation_mode == "warn":
+            exit_code = 1  # Partial success
+        elif total_valid_records == 0:
+            exit_code = 2  # Failure - no valid records
+        else:
+            exit_code = 0  # Success
+
+        logger.info(
+            "Job execution completed",
+            extra={
+                "total_records": total_records,
+                "valid_records": total_valid_records,
+                "files_written": total_files_written,
+                "exit_code": exit_code,
+                "event_type": "job_finished",
+            },
+        )
+
+        return exit_code
+
+    except Exception as e:
+        logger.error(
+            f"Job execution failed: {e}",
+            extra={
+                "event_type": "job_error",
+            },
+            exc_info=True,
+        )
+        return 2
 
 
 def start_command(args: argparse.Namespace) -> int:

@@ -1,7 +1,8 @@
-# Iceberg target connector via Nessie catalog
+# Iceberg target connector - writes Parquet files to S3
+# Catalog is optional - can be configured per job or omitted for S3-only writes
 name: iceberg
 type: iceberg
-description: "Iceberg table via Nessie catalog"
+description: "Iceberg table - writes Parquet files to S3 (catalog optional)"
 default_engine:
   type: native
   options:
@@ -12,17 +13,19 @@ default_engine:
       max_file_size_mb: 200
       compression: "snappy"
 connection_template:
-  nessie:
-    uri: "${NESSIE_URI}"  # Tenant provides this
-    ref: "main"
-    default_branch: "main"
+  # Nessie catalog (optional - omit for S3-only writes)
+  # nessie:
+  #   uri: "${NESSIE_URI}"  # Tenant provides this
+  #   ref: "main"
+  #   default_branch: "main"
   s3:
     endpoint: "${S3_ENDPOINT}"
     access_key_id: "${AWS_ACCESS_KEY_ID}"
     secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
     region: "${AWS_REGION}"
     path_style_access: false
-catalog: nessie
+# Catalog is optional - set to null or omit to write Parquet files directly to S3
+# catalog: nessie  # Optional - can be set per job or omitted
 file_format: parquet
 partitioning_default: [ingest_date]
 # Markdown-KV support:

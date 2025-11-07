@@ -20,16 +20,15 @@ asset_path: tests/fixtures/assets/csv/v1.0/person.yaml
 # Source configuration - specify which CSV file to ingest
 source:
   files:
-    - file_path: tests/fixtures/seeds/adventureworks/Person.csv
+    - path: tests/fixtures/seeds/adventureworks/Person.csv
       object: Person
 
 # Target configuration - Iceberg table configuration
+# Note: No catalog configured - Parquet files will be written directly to S3
 target:
-  branch: test_tenant
-  warehouse: s3://test-lake/adventureworks/
+  # branch: test_tenant  # Not needed without catalog
+  # warehouse: s3://test-lake/adventureworks/  # Not needed without catalog
   connection:
-    nessie:
-      uri: "${NESSIE_URI}"  # From environment or secrets
     s3:
       endpoint: "${S3_ENDPOINT}"
       bucket: test-bucket

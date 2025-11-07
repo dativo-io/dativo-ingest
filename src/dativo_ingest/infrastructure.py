@@ -150,19 +150,9 @@ def validate_infrastructure(job_config: JobConfig) -> None:
 
     target_type = target_config.type
 
-    # Validate Iceberg/Nessie connectivity
+    # Validate Iceberg/Nessie connectivity (only if catalog is configured)
     if target_type == "iceberg":
-        # Check for Nessie URI
-        nessie_uri = os.getenv("NESSIE_URI")
-        if not nessie_uri:
-            errors.append("NESSIE_URI environment variable is not set")
-        else:
-            try:
-                check_nessie_connectivity(nessie_uri)
-            except ValueError as e:
-                errors.append(f"Nessie connectivity failed: {e}")
-
-        # Check for S3 credentials
+        # S3 is always required for storage
         s3_endpoint = os.getenv("S3_ENDPOINT")
         if not s3_endpoint:
             errors.append("S3_ENDPOINT environment variable is not set")
@@ -171,17 +161,30 @@ def validate_infrastructure(job_config: JobConfig) -> None:
                 check_s3_connectivity(s3_endpoint)
             except ValueError as e:
                 errors.append(f"S3 connectivity failed: {e}")
-
-        # Check required ports (Nessie default: 19120, MinIO default: 9000)
-        try:
-            nessie_port = 19120
-            if nessie_uri:
-                parsed = urlparse(nessie_uri)
-                if parsed.port:
-                    nessie_port = parsed.port
-            validate_required_ports([nessie_port])
-        except ValueError as e:
-            warnings.append(f"Nessie port check: {e}")
+        
+        # Nessie is only required if catalog is configured
+        if target_config.catalog:
+            nessie_uri = os.getenv("NESSIE_URI")
+            if not nessie_uri:
+                errors.append("NESSIE_URI environment variable is not set (required for catalog)")
+            else:
+                try:
+                    check_nessie_connectivity(nessie_uri)
+                except ValueError as e:
+                    errors.append(f"Nessie connectivity failed: {e}")
+            
+            # Check required ports (Nessie default: 19120, MinIO default: 9000)
+            try:
+                nessie_port = 19120
+                if nessie_uri:
+                    parsed = urlparse(nessie_uri)
+                    if parsed.port:
+                        nessie_port = parsed.port
+                validate_required_ports([nessie_port])
+            except ValueError as e:
+                warnings.append(f"Nessie port check: {e}")
+        else:
+            warnings.append("No catalog configured - Iceberg metadata operations will be skipped")
 
         try:
             s3_port = 9000
