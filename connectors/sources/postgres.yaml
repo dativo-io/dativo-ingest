@@ -1,0 +1,27 @@
+# PostgreSQL source connector
+name: postgres
+type: postgres
+description: "PostgreSQL connector"
+default_engine:
+  type: meltano
+  options:
+    meltano:
+      tap: "tap-postgres"
+      tap_package: "meltanolabs/tap-postgres"
+      tap_version: "2.0.0"
+      tap_config:
+        replication_method: "INCREMENTAL"  # or "LOG_BASED" for CDC
+        replication_slot: "dativo_slot"  # required for LOG_BASED
+        publication: "dativo_pub"  # required for LOG_BASED
+credentials:
+  type: basic
+  file_template: "/secrets/{tenant}/postgres.env"
+connection_template:
+  host: "${PGHOST}"
+  port: "${PGPORT}"
+  database: "${PGDATABASE}"
+incremental:
+  strategy: updated_at
+  cursor_field_default: updated_at
+  lookback_days_default: 1
+

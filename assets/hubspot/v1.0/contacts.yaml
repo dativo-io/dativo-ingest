@@ -1,0 +1,28 @@
+asset:
+  name: hubspot_contacts
+  source_type: hubspot
+  object: contacts
+  version: "1.0"
+  
+  schema:
+    - name: id
+      type: string
+      required: true
+    - name: email
+      type: string
+      required: false
+      classification: PII
+    - name: updatedAt
+      type: timestamp
+      required: true
+  
+  governance:
+    owner: data-team@company.com
+    tags: [crm, contacts]
+    classification: [PII]
+    retention_days: 30
+  
+  target:
+  file_format: parquet
+  partitioning: [ingest_date]
+    mode: strict

@@ -1,0 +1,18 @@
+# Google Sheets source connector
+name: google_sheets
+type: google_sheets
+description: "Google Sheets connector"
+default_engine:
+  type: native
+  options:
+    native:
+      api_version: "v4"
+      value_render_option: "UNFORMATTED_VALUE"
+      date_time_render_option: "SERIAL_NUMBER"
+credentials:
+  type: service_account
+  file_template: "/secrets/{tenant}/gsheets.json"
+incremental:
+  strategy: spreadsheet_modified_time
+  lookback_days_default: 0
+

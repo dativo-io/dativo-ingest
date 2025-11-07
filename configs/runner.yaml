@@ -3,16 +3,16 @@ runner:
   orchestrator:
     type: dagster
     schedules:
-      - name: stripe_hourly
-	config: /app/configs/jobs/stripe.yaml
+      - name: stripe_customers_hourly
+        config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
         cron: "0 * * * *"            # adjust as needed
-      - name: hubspot_daily
-        config: /app/configs/jobs/hubspot.yaml
+      - name: hubspot_contacts_daily
+        config: /app/jobs/acme/hubspot_contacts_to_iceberg.yaml
         cron: "15 2 * * *"
-      - name: gdrive_csv_daily
-        config: /app/configs/jobs/gdrive_csv.yaml
+      - name: gdrive_deals_daily
+        config: /app/jobs/acme/gdrive_deals_to_iceberg.yaml
         cron: "5 1 * * *"
-      - name: gsheets_daily
-        config: /app/configs/jobs/google_sheets.yaml
+      - name: gsheets_vendors_daily
+        config: /app/jobs/acme/gsheets_vendors_to_minio.yaml
         cron: "10 1 * * *"
     concurrency_per_tenant: 1         # serialize per-tenant to protect Nessie commits

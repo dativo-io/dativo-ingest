@@ -6,7 +6,6 @@ This repo keeps **YAML** registry files validated against **JSON Schemas**.
 
 ## What we validate
 - `/registry/connectors.yaml` → `/schemas/connectors.schema.json`
-- `/registry/templates/*.yaml` → `/schemas/connector_template.schema.json`
 
 ## Local setup
 

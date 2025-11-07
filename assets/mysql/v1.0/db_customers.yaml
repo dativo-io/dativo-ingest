@@ -1,0 +1,31 @@
+asset:
+  name: mysql_customers
+  source_type: mysql
+  object: db_customers
+  version: "1.0"
+  
+  schema:
+    - name: id
+      type: bigint
+      required: true
+    - name: email
+      type: string
+      required: false
+      classification: PII
+    - name: name
+      type: string
+      required: false
+    - name: updated_at
+      type: timestamp
+      required: true
+  
+  governance:
+    owner: data-team@company.com
+    tags: [customers, database]
+    classification: [PII]
+    retention_days: 30
+  
+  target:
+  file_format: parquet
+  partitioning: [ingest_date]
+    mode: strict

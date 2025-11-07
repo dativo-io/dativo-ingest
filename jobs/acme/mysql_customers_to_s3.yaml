@@ -1,0 +1,34 @@
+# MySQL customers to S3 job for tenant acme
+tenant_id: acme
+environment: prod
+
+source_connector: mysql
+source_connector_path: /app/connectors/sources/mysql.yaml
+
+target_connector: s3
+target_connector_path: /app/connectors/targets/s3.yaml
+
+asset: mysql_customers
+asset_path: /app/assets/mysql/v1.0/db_customers.yaml
+
+source_overrides:
+  tables:
+    - name: public.customers
+      object: db_customers
+      cursor_field: updated_at
+  incremental:
+    lookback_days: 1
+  connection:
+    host: "${MYSQL_HOST}"
+    port: "${MYSQL_PORT}"
+    database: "${MYSQL_DB}"
+
+target_overrides:
+  connection:
+    bucket: "acme-data-lake"
+    prefix: "raw/mysql/customers"
+
+logging:
+  redaction: true
+  level: INFO
+

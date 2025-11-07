@@ -17,7 +17,7 @@ The ingestion platform is a **headless, config‑driven ingestion engine** desig
 - **Metadata Emitter**: outputs OpenMetadata‑compatible run record (M4).
 
 ### 🧭 Engines (optional overrides)
-Default extraction/loader engines come from **/registry/connectors.yaml**; execution metadata and endpoint/pagination hints are in **/registry/templates/<connector>.yaml**.Advanced jobs may override:
+Default extraction/loader engines come from **/registry/connectors.yaml**. Advanced jobs may override:
 
 ```yaml
 source:
@@ -64,7 +64,9 @@ target:
 logging:
   redaction: true
 
-asset_definition: /app/specs/gdrive_csv/v1.0/deals_daily.yaml
+source_connector_path: /app/connectors/sources/gdrive_csv.yaml
+target_connector_path: /app/connectors/targets/iceberg.yaml
+asset_path: /app/assets/gdrive_csv/v1.0/deals_daily.yaml
 ```
 
 ### 🧑‍✈️ Runner Orchestration Config
@@ -75,7 +77,7 @@ runner:
     type: dagster
     schedules:
       - name: stripe_hourly
-        config: /app/configs/examples/stripe.yaml
+        config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
         cron: "0 * * * *"
     concurrency_per_tenant: 1
 ```

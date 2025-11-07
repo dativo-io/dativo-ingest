@@ -54,18 +54,22 @@ docker build -t dativo:1.1.0 .
 2. Run a single job (oneshot mode):
 ```bash
 docker run --rm \
+  -v $(pwd)/connectors:/app/connectors:ro \
+  -v $(pwd)/assets:/app/assets:ro \
+  -v $(pwd)/jobs:/app/jobs \
   -v $(pwd)/configs:/app/configs \
-  -v $(pwd)/specs:/app/specs:ro \
   -v $(pwd)/secrets:/app/secrets \
   -v $(pwd)/state:/app/state \
-  dativo:1.1.0 run --config /app/configs/jobs/stripe.yaml --mode self_hosted
+  dativo:1.1.0 run --config /app/jobs/acme/stripe_customers_to_iceberg.yaml --mode self_hosted
 ```
 
 3. Start orchestrated mode:
 ```bash
 docker run --rm -p 3000:3000 \
+  -v $(pwd)/connectors:/app/connectors:ro \
+  -v $(pwd)/assets:/app/assets:ro \
+  -v $(pwd)/jobs:/app/jobs \
   -v $(pwd)/configs:/app/configs \
-  -v $(pwd)/specs:/app/specs:ro \
   -v $(pwd)/secrets:/app/secrets \
   -v $(pwd)/state:/app/state \
   dativo:1.1.0 start orchestrated --runner-config /app/configs/runner.yaml
@@ -110,31 +114,39 @@ dativo start orchestrated --runner-config /app/configs/runner.yaml
 
 ### Job Configuration
 
-Job configs define the source, target, and execution parameters:
+Job configs define the source connector, target connector, asset, and tenant-specific overrides:
 
 ```yaml
 tenant_id: acme
 environment: prod
 
-source:
-  type: stripe
-  credentials:
-    from_env: STRIPE_API_KEY
+# Reference to source connector recipe
+source_connector: stripe
+source_connector_path: /app/connectors/sources/stripe.yaml
+
+# Reference to target connector recipe
+target_connector: iceberg
+target_connector_path: /app/connectors/targets/iceberg.yaml
+
+# Reference to asset definition
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+# Tenant-specific overrides
+source_overrides:
   objects: [customers]
   incremental:
-    strategy: created
-    cursor_field: created
     lookback_days: 1
-    state_path: /state/acme/stripe.customers.state.json
 
-target:
-  type: iceberg
-  catalog: nessie
+target_overrides:
   branch: acme
   warehouse: s3://lake/acme/
-  file_format: parquet
-
-asset_definition: /app/specs/stripe/v1.0/customers.yaml
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/stripe/customers"
 
 logging:
   redaction: true
@@ -151,22 +163,23 @@ runner:
   orchestrator:
     type: dagster
     schedules:
-      - name: stripe_hourly
-        config: /app/configs/jobs/stripe.yaml
+      - name: stripe_customers_hourly
+        config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
         cron: "0 * * * *"
     concurrency_per_tenant: 1
 ```
 
 ### Asset Definitions
 
-Asset specs define the schema and metadata for datasets:
+Asset definitions define the schema, governance metadata, and target configuration:
 
 ```yaml
 asset:
-  tenant_id: acme
-  source: stripe
+  name: stripe_customers
+  source_type: stripe
   object: customers
-  mode: strict
+  version: "1.0"
+  
   schema:
     - name: id
       type: string
@@ -174,12 +187,18 @@ asset:
     - name: email
       type: string
       required: false
-  file_format: parquet
-  partitioning: [ingest_date]
-  target_path: s3://lake/acme/raw/stripe/customers/
-  iceberg:
-    catalog: nessie
-    branch: acme
+      classification: PII
+  
+  governance:
+    owner: data-team@company.com
+    tags: [payments, customer-data]
+    classification: [PII]
+    retention_days: 30
+  
+  target:
+    file_format: parquet
+    partitioning: [ingest_date]
+    mode: strict
 ```
 
 ## Supported Connectors
@@ -188,6 +207,7 @@ asset:
 - **HubSpot**: CRM data (contacts, deals, companies)
 - **Google Drive CSV**: CSV files from Google Drive
 - **Google Sheets**: Spreadsheet data
+- **CSV**: Local CSV files (for testing and development)
 - **PostgreSQL**: Database tables (self-hosted only)
 - **MySQL**: Database tables (self-hosted only)
 
@@ -205,6 +225,23 @@ Run unit tests:
 pytest tests/
 ```
 
+Run smoke tests (CSV to Iceberg E2E):
+
+```bash
+# Run all datasets
+pytest tests/test_smoke_csv_to_iceberg.py -v
+
+# Run specific dataset using marker
+pytest tests/test_smoke_csv_to_iceberg.py -m adventureworks -v
+pytest tests/test_smoke_csv_to_iceberg.py -m music_listening -v
+pytest tests/test_smoke_csv_to_iceberg.py -m employee -v
+
+# Run specific dataset using command line flag
+pytest tests/test_smoke_csv_to_iceberg.py --dataset=adventureworks -v
+pytest tests/test_smoke_csv_to_iceberg.py --dataset=music_listening -v
+pytest tests/test_smoke_csv_to_iceberg.py --dataset=employee -v
+```
+
 Validate schemas:
 
 ```bash
@@ -215,21 +252,38 @@ make schema-validate
 
 ```
 /app
-  configs/
-    runner.yaml
-    jobs/
+  connectors/
+    sources/
       stripe.yaml
       hubspot.yaml
-      gdrive_csv.yaml
-      google_sheets.yaml
       postgres.yaml
       mysql.yaml
+      gdrive_csv.yaml
+      google_sheets.yaml
+    targets/
+      iceberg.yaml
+      s3.yaml
+      minio.yaml
+  assets/
+    stripe/v1.0/customers.yaml
+    hubspot/v1.0/contacts.yaml
+    postgres/v1.0/db_orders.yaml
+    mysql/v1.0/db_customers.yaml
+    gdrive_csv/v1.0/deals_daily.yaml
+    google_sheets/v1.0/vendors_master.yaml
+  jobs/
+    acme/
+      stripe_customers_to_iceberg.yaml
+      hubspot_contacts_to_iceberg.yaml
+      postgres_orders_to_iceberg.yaml
+      mysql_customers_to_s3.yaml
+      gdrive_deals_to_iceberg.yaml
+      gsheets_vendors_to_minio.yaml
+  configs/
+    runner.yaml
+    policy.yaml
   registry/
     connectors.yaml
-    templates/
-      *.yaml
-  specs/
-    <connector>/v1.0/*.yaml
   src/
     dativo_ingest/
       cli.py

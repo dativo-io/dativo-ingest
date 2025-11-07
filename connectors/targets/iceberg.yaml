@@ -1,0 +1,27 @@
+# Iceberg target connector via Nessie catalog
+name: iceberg
+type: iceberg
+description: "Iceberg table via Nessie catalog"
+default_engine:
+  type: native
+  options:
+    native:
+      library: "pyiceberg"
+      library_version: "0.6.0"
+      batch_size_rows: 50000
+      max_file_size_mb: 200
+      compression: "snappy"
+connection_template:
+  nessie:
+    uri: "${NESSIE_URI}"  # Tenant provides this
+    ref: "main"
+    default_branch: "main"
+  s3:
+    endpoint: "${S3_ENDPOINT}"
+    access_key_id: "${AWS_ACCESS_KEY_ID}"
+    secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+    region: "${AWS_REGION}"
+    path_style_access: false
+catalog: nessie
+file_format: parquet
+partitioning_default: [ingest_date]

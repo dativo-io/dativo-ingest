@@ -1,0 +1,20 @@
+# S3 target connector
+name: s3
+type: s3
+description: "S3 object storage connector"
+default_engine:
+  type: native
+  options:
+    native:
+      library: "boto3"
+      library_version: "1.34.0"
+      batch_size_rows: 100000
+      max_file_size_mb: 128
+      compression: "snappy"
+      partition_by_default: ["ingest_date"]
+connection_template:
+  bucket: "${S3_BUCKET}"
+  endpoint: "s3.amazonaws.com"
+  access_key_id: "${AWS_ACCESS_KEY_ID}"
+  secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+  region: "${AWS_REGION}"

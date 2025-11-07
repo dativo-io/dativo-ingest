@@ -1,0 +1,25 @@
+# HubSpot source connector
+name: hubspot
+type: hubspot
+description: "HubSpot connector"
+default_engine:
+  type: airbyte
+  options:
+    airbyte:
+      docker_image: "airbyte/source-hubspot:0.2.12"
+      start_date_default: "2024-01-01"
+credentials:
+  type: oauth2
+  from_env: HUBSPOT_TOKEN
+incremental:
+  strategy: updated_after
+  cursor_field_default: updatedAt
+  lookback_days_default: 1
+rate_limits:
+  rps_default: 5
+  burst_default: 10
+  retry:
+    max_retries: 5
+    backoff: exponential
+    max_backoff_seconds: 64
+

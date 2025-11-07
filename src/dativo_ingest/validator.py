@@ -138,14 +138,16 @@ class ConnectorValidator:
         Raises:
             SystemExit: Exit code 2 if strategy is invalid
         """
-        if not job_config.source.incremental:
+        source_config = job_config.get_source()
+        
+        if not source_config.incremental:
             return  # No incremental config, skip validation
 
-        strategy = job_config.source.incremental.get("strategy")
+        strategy = source_config.incremental.get("strategy")
         if not strategy:
             print(
                 f"ERROR: Incremental configuration missing 'strategy' field.\n"
-                f"Connector: {job_config.source.type}\n"
+                f"Connector: {source_config.type}\n"
                 f"Config: {job_config.tenant_id}",
                 file=sys.stderr,
             )
@@ -154,7 +156,7 @@ class ConnectorValidator:
         # Check if connector supports incremental
         if not connector_def.get("supports_incremental", False):
             print(
-                f"ERROR: Connector '{job_config.source.type}' does not support incremental extraction.\n"
+                f"ERROR: Connector '{source_config.type}' does not support incremental extraction.\n"
                 f"Config: {job_config.tenant_id}",
                 file=sys.stderr,
             )
@@ -168,7 +170,7 @@ class ConnectorValidator:
             if strategy not in file_strategies:
                 print(
                     f"ERROR: Incremental strategy '{strategy}' does not match connector default '{default_strategy}'.\n"
-                    f"Connector: {job_config.source.type}\n"
+                    f"Connector: {source_config.type}\n"
                     f"Config: {job_config.tenant_id}",
                     file=sys.stderr,
                 )
@@ -176,30 +178,30 @@ class ConnectorValidator:
 
         # Validate required fields based on strategy
         if strategy in ["updated_at", "created", "updated_after"]:
-            if "cursor_field" not in job_config.source.incremental:
+            if "cursor_field" not in source_config.incremental:
                 print(
                     f"ERROR: Incremental strategy '{strategy}' requires 'cursor_field'.\n"
-                    f"Connector: {job_config.source.type}\n"
+                    f"Connector: {source_config.type}\n"
                     f"Config: {job_config.tenant_id}",
                     file=sys.stderr,
                 )
                 sys.exit(2)
 
         elif strategy == "file_modified_time":
-            if not job_config.source.files:
+            if not source_config.files:
                 print(
                     f"ERROR: Incremental strategy 'file_modified_time' requires 'files' configuration.\n"
-                    f"Connector: {job_config.source.type}\n"
+                    f"Connector: {source_config.type}\n"
                     f"Config: {job_config.tenant_id}",
                     file=sys.stderr,
                 )
                 sys.exit(2)
 
         elif strategy == "spreadsheet_modified_time":
-            if not job_config.source.sheets:
+            if not source_config.sheets:
                 print(
                     f"ERROR: Incremental strategy 'spreadsheet_modified_time' requires 'sheets' configuration.\n"
-                    f"Connector: {job_config.source.type}\n"
+                    f"Connector: {source_config.type}\n"
                     f"Config: {job_config.tenant_id}",
                     file=sys.stderr,
                 )
@@ -217,12 +219,14 @@ class ConnectorValidator:
         Raises:
             SystemExit: Exit code 2 on validation failure
         """
+        source_config = job_config.get_source()
+        
         # Validate connector type
-        connector_def = self.validate_connector_type(job_config.source.type)
+        connector_def = self.validate_connector_type(source_config.type)
 
         # Validate mode restrictions
         self.validate_mode_restriction(
-            job_config.source.type, mode, connector_def
+            source_config.type, mode, connector_def
         )
 
         # Validate incremental strategy

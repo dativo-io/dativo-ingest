@@ -16,24 +16,38 @@ runner:
   orchestrator:
     type: dagster
     schedules:
-      - name: stripe_hourly
-        config: /app/configs/examples/stripe.yaml
+      - name: stripe_customers_hourly
+        config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
         cron: "0 * * * *"
-      - name: hubspot_daily
-        config: /app/configs/examples/hubspot.yaml
+      - name: hubspot_contacts_daily
+        config: /app/jobs/acme/hubspot_contacts_to_iceberg.yaml
         cron: "15 2 * * *"
     concurrency_per_tenant: 1
 ```
 
 **Start:**
 ```bash
-docker run --rm -p 3000:3000   -v $(pwd)/configs:/app/configs   -v $(pwd)/specs:/app/specs:ro   our-registry/ingestion:1.0 start orchestrated --runner-config /app/configs/runner.yaml
+docker run --rm -p 3000:3000 \
+  -v $(pwd)/connectors:/app/connectors:ro \
+  -v $(pwd)/assets:/app/assets:ro \
+  -v $(pwd)/jobs:/app/jobs \
+  -v $(pwd)/configs:/app/configs \
+  -v $(pwd)/secrets:/app/secrets \
+  -v $(pwd)/state:/app/state \
+  our-registry/ingestion:1.0 start orchestrated --runner-config /app/configs/runner.yaml
 ```
 
 ### One‑shot
 Run a single job and exit:
 ```bash
-docker run --rm   -v $(pwd)/configs:/app/configs   -v $(pwd)/specs:/app/specs:ro   our-registry/ingestion:1.0 run --config /app/configs/examples/stripe.yaml --mode self_hosted
+docker run --rm \
+  -v $(pwd)/connectors:/app/connectors:ro \
+  -v $(pwd)/assets:/app/assets:ro \
+  -v $(pwd)/jobs:/app/jobs \
+  -v $(pwd)/configs:/app/configs \
+  -v $(pwd)/secrets:/app/secrets \
+  -v $(pwd)/state:/app/state \
+  our-registry/ingestion:1.0 run --config /app/jobs/acme/stripe_customers_to_iceberg.yaml --mode self_hosted
 ```
 
 ## Logs & Exit Codes

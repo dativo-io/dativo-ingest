@@ -15,12 +15,12 @@ Phased implementation plan for the ingestion platform MVP and v1.1, incorporatin
 - Plugin wrapper interface for OSS connectors
 - Config loader + validator using static connector catalog
 - **Bundled Dagster orchestrator scaffold** with `runner.yaml` (default orchestrated mode) and oneshot mode
-- **Specs‑as‑code** under `/specs/**` with path validation (no schema checks yet)
+- **Assets‑as‑code** under `/assets/**` with path validation (no schema checks yet)
 
 ### ✅ M2 – Parquet + Iceberg Commit Path (Weeks 2–3)
 - Schema validator with `required: true` + type enforcement
 - Parquet writer + Nessie commit logic
-- Validate `asset_definition` against spec (enable strict mode)
+- Validate `asset_path` against asset definition (enable strict mode)
 
 ### ✅ M3 – OSS Connector Wrappers (Weeks 3–5)
 - Stripe, HubSpot, GDrive CSV, GSheets, Postgres/MySQL (self‑hosted only)
@@ -45,7 +45,7 @@ Phased implementation plan for the ingestion platform MVP and v1.1, incorporatin
 ## 📤 Deliverables
 - Docker image: `ingestion:<semver>`
 - Volumes: `/configs`, `/specs` (ro), `/secrets`, `/state`, `/logs`
-- /registry/connectors.yaml (types & defaults), /registry/templates/*.yaml (execution metadata), /schemas/*.json (CI validation).
+- /registry/connectors.yaml (types & defaults), /schemas/*.json (CI validation).
 - Examples: YAMLs, metadata payload, asset definitions, `runner.yaml`
 
 ---
