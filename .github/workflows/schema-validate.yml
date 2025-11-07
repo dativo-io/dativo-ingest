@@ -21,10 +21,13 @@ jobs:
           node-version: '18'
 
       - name: Install ajv-cli
-        run: npm install -g ajv-cli
+        run: npm install -g ajv-cli@latest
 
-      - name: Install yq
-        run: sudo apt-get update && sudo apt-get install -y yq
+      - name: Install yq (Go version)
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
 
       - name: Validate connector registry
         run: make schema-connectors
