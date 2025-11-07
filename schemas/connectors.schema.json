@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://dativo.io/schemas/connectors.schema.json",
   "title": "Dativo Connectors Registry",
   "type": "object",
