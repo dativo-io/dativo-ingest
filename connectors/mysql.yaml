@@ -1,7 +1,8 @@
-# MySQL source connector
+# MySQL connector - supports both source and target roles
 name: mysql
 type: mysql
-description: "MySQL connector"
+roles: [source, target]  # Can read and write from MySQL
+description: "MySQL connector (bidirectional)"
 default_engine:
   type: meltano
   options:

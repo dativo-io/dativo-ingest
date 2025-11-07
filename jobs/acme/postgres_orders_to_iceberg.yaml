@@ -3,10 +3,10 @@ tenant_id: acme
 environment: prod
 
 source_connector: postgres
-source_connector_path: /app/connectors/sources/postgres.yaml
+source_connector_path: /app/connectors/postgres.yaml
 
 target_connector: iceberg
-target_connector_path: /app/connectors/targets/iceberg.yaml
+target_connector_path: /app/connectors/iceberg.yaml
 
 asset: postgres_orders
 asset_path: /app/assets/postgres/v1.0/db_orders.yaml

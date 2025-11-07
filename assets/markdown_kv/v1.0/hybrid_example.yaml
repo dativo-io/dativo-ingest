@@ -25,8 +25,8 @@
 # Example Job Configuration (Option A - Dual-Write):
 #
 # tenant_id: acme
-# source_connector_path: connectors/sources/markdown_kv.yaml
-# target_connector_path: connectors/targets/iceberg.yaml
+# source_connector_path: connectors/markdown_kv.yaml
+# target_connector_path: connectors/iceberg.yaml
 # 
 # # First asset: row-per-KV pattern
 # asset_path: assets/markdown_kv/v1.0/kv_lines.yaml

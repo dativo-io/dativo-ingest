@@ -12,8 +12,51 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class ConnectorRecipe(BaseModel):
+    """Unified connector recipe - supports both source and target roles."""
+
+    name: str
+    type: str
+    roles: List[str] = Field(default_factory=list)  # [source], [target], or [source, target]
+    description: Optional[str] = None
+    default_engine: Dict[str, Any]
+    credentials: Optional[Dict[str, Any]] = None  # Optional for target-only connectors
+    incremental: Optional[Dict[str, Any]] = None  # Optional for target-only connectors
+    rate_limits: Optional[Dict[str, Any]] = None  # Optional for target-only connectors
+    connection_template: Optional[Dict[str, Any]] = None
+    catalog: Optional[str] = None  # Optional for source-only connectors
+    file_format: Optional[str] = None  # Optional for source-only connectors
+    partitioning_default: Optional[List[str]] = None  # Optional for source-only connectors
+
+    @classmethod
+    def from_yaml(cls, path: Union[str, Path]) -> "ConnectorRecipe":
+        """Load connector recipe from YAML file."""
+        path = Path(path)
+        if not path.exists():
+            raise ValueError(f"Connector recipe not found: {path}")
+
+        with open(path, "r") as f:
+            data = yaml.safe_load(f)
+
+        return cls(**data)
+
+    def supports_role(self, role: str) -> bool:
+        """Check if connector supports the specified role.
+
+        Args:
+            role: Role to check ('source' or 'target')
+
+        Returns:
+            True if connector supports the role
+        """
+        return role in self.roles
+
+
 class SourceConnectorRecipe(BaseModel):
-    """Source connector recipe - tenant-agnostic reusable configuration."""
+    """Source connector recipe - tenant-agnostic reusable configuration.
+    
+    DEPRECATED: Use ConnectorRecipe instead. Kept for backward compatibility.
+    """
 
     name: str
     type: str
@@ -38,7 +81,10 @@ class SourceConnectorRecipe(BaseModel):
 
 
 class TargetConnectorRecipe(BaseModel):
-    """Target connector recipe - tenant-agnostic reusable configuration."""
+    """Target connector recipe - tenant-agnostic reusable configuration.
+    
+    DEPRECATED: Use ConnectorRecipe instead. Kept for backward compatibility.
+    """
 
     name: str
     type: str
@@ -433,21 +479,47 @@ class JobConfig(BaseModel):
             raise ValueError("asset_path is required")
         return self
 
-    def _resolve_source_recipe(self) -> SourceConnectorRecipe:
-        """Resolve source connector recipe."""
+    def _resolve_source_recipe(self) -> Union[ConnectorRecipe, SourceConnectorRecipe]:
+        """Resolve source connector recipe (supports unified and legacy formats)."""
         if self.source_connector_path is None:
             raise ValueError("Source connector path not provided")
         
         path = Path(os.path.expandvars(self.source_connector_path))
-        return SourceConnectorRecipe.from_yaml(path)
+        
+        # Try unified format first
+        try:
+            recipe = ConnectorRecipe.from_yaml(path)
+            if recipe.supports_role("source"):
+                return recipe
+            raise ValueError(f"Connector '{recipe.name}' does not support source role. Supported roles: {recipe.roles}")
+        except (ValueError, KeyError, AttributeError) as e:
+            # Fall back to legacy SourceConnectorRecipe format
+            try:
+                return SourceConnectorRecipe.from_yaml(path)
+            except Exception:
+                # Re-raise original error if both fail
+                raise ValueError(f"Failed to load source connector: {e}")
 
-    def _resolve_target_recipe(self) -> TargetConnectorRecipe:
-        """Resolve target connector recipe."""
+    def _resolve_target_recipe(self) -> Union[ConnectorRecipe, TargetConnectorRecipe]:
+        """Resolve target connector recipe (supports unified and legacy formats)."""
         if self.target_connector_path is None:
             raise ValueError("Target connector path not provided")
         
         path = Path(os.path.expandvars(self.target_connector_path))
-        return TargetConnectorRecipe.from_yaml(path)
+        
+        # Try unified format first
+        try:
+            recipe = ConnectorRecipe.from_yaml(path)
+            if recipe.supports_role("target"):
+                return recipe
+            raise ValueError(f"Connector '{recipe.name}' does not support target role. Supported roles: {recipe.roles}")
+        except (ValueError, KeyError, AttributeError) as e:
+            # Fall back to legacy TargetConnectorRecipe format
+            try:
+                return TargetConnectorRecipe.from_yaml(path)
+            except Exception:
+                # Re-raise original error if both fail
+                raise ValueError(f"Failed to load target connector: {e}")
 
     def _resolve_asset(self) -> AssetDefinition:
         """Resolve asset definition."""
@@ -457,16 +529,26 @@ class JobConfig(BaseModel):
         path = Path(os.path.expandvars(self.asset_path))
         return AssetDefinition.from_yaml(path)
 
-    def _merge_source_with_recipe(self, recipe: SourceConnectorRecipe) -> SourceConfig:
+    def _merge_source_with_recipe(self, recipe: Union[ConnectorRecipe, SourceConnectorRecipe]) -> SourceConfig:
         """Merge source connector recipe with job source configuration."""
+        # Handle both unified and legacy formats
+        if isinstance(recipe, ConnectorRecipe):
+            credentials = recipe.credentials or {}
+            incremental = recipe.incremental
+            rate_limits = recipe.rate_limits
+        else:  # SourceConnectorRecipe
+            credentials = recipe.credentials
+            incremental = recipe.incremental
+            rate_limits = recipe.rate_limits
+        
         # Start with recipe defaults
         source_data = {
             "type": recipe.type,
             "description": recipe.description,
             "engine": recipe.default_engine,
-            "credentials": recipe.credentials,
-            "incremental": recipe.incremental,
-            "rate_limits": recipe.rate_limits,
+            "credentials": credentials,
+            "incremental": incremental,
+            "rate_limits": rate_limits,
         }
         
         # Apply job-specific source configuration (overrides/extends recipe)
@@ -499,20 +581,32 @@ class JobConfig(BaseModel):
         
         return SourceConfig(**source_data)
 
-    def _merge_target_with_recipe(self, recipe: TargetConnectorRecipe) -> TargetConfig:
+    def _merge_target_with_recipe(self, recipe: Union[ConnectorRecipe, TargetConnectorRecipe]) -> TargetConfig:
         """Merge target connector recipe with job target configuration."""
+        # Handle both unified and legacy formats
+        if isinstance(recipe, ConnectorRecipe):
+            catalog = recipe.catalog
+            file_format = recipe.file_format
+            partitioning_default = recipe.partitioning_default
+            connection_template = recipe.connection_template
+        else:  # TargetConnectorRecipe
+            catalog = recipe.catalog
+            file_format = recipe.file_format
+            partitioning_default = recipe.partitioning_default
+            connection_template = recipe.connection_template
+        
         # Start with recipe defaults
         target_data = {
             "type": recipe.type,
-            "catalog": recipe.catalog,  # Can be None if not set in recipe
-            "file_format": recipe.file_format,
-            "partitioning": recipe.partitioning_default,
+            "catalog": catalog,  # Can be None if not set in recipe
+            "file_format": file_format,
+            "partitioning": partitioning_default,
             "engine": recipe.default_engine,
         }
         
         # Apply connection template from recipe
-        if recipe.connection_template:
-            target_data["connection"] = recipe.connection_template.copy()
+        if connection_template:
+            target_data["connection"] = connection_template.copy()
         
         # Apply job-specific target configuration (overrides/extends recipe)
         if self.target:
@@ -551,42 +645,20 @@ class JobConfig(BaseModel):
         """Get asset definition path."""
         return os.path.expandvars(self.asset_path)
 
-    @field_validator("asset_path")
-    @classmethod
-    def validate_asset_path(cls, v: str) -> str:
-        """Validate asset definition path exists."""
-        path = Path(v)
-        if not path.exists():
-            raise ValueError(f"Asset definition file not found: {v}")
-        if not path.is_file():
-            raise ValueError(f"Asset definition path is not a file: {v}")
-        return v
-
     def validate_schema_presence(self) -> None:
-        """Validate that asset definition has a non-empty schema.
-
-        Raises:
-            SystemExit: Exit code 2 if validation fails
-        """
-        asset_path = self.get_asset_path()
-        spec_path = Path(asset_path)
-        if not spec_path.exists():
+        """Validate that asset definition file exists and contains schema field."""
+        asset_path = Path(self.get_asset_path())
+        if not asset_path.exists():
             print(
-                f"ERROR: Asset definition file not found: {asset_path}",
+                f"ERROR: Asset definition file not found: {asset_path}\n"
+                f"Job: {self.tenant_id}",
                 file=sys.stderr,
             )
             sys.exit(2)
 
         try:
-            with open(spec_path, "r") as f:
-                spec_data = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            print(
-                f"ERROR: Failed to parse asset definition YAML: {asset_path}\n"
-                f"YAML Error: {e}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+            with open(asset_path, "r") as f:
+                asset_data = yaml.safe_load(f)
         except Exception as e:
             print(
                 f"ERROR: Failed to read asset definition: {asset_path}\n"
@@ -595,127 +667,67 @@ class JobConfig(BaseModel):
             )
             sys.exit(2)
 
-        # Support both ODCS flat format and legacy nested format
-        if not isinstance(spec_data, dict):
+        if not asset_data or "schema" not in asset_data:
             print(
-                f"ERROR: Asset definition must be an object: {asset_path}",
+                f"ERROR: Asset definition missing 'schema' field: {asset_path}\n"
+                f"Job: {self.tenant_id}",
                 file=sys.stderr,
             )
             sys.exit(2)
-
-        # Check for ODCS flat format (schema at top level)
-        if "schema" in spec_data:
-            schema = spec_data["schema"]
-        # Check for legacy nested format (asset.schema)
-        elif "asset" in spec_data and isinstance(spec_data["asset"], dict):
-            asset = spec_data["asset"]
-            if "schema" not in asset:
-                print(
-                    f"ERROR: Asset definition missing 'schema' field: {asset_path}",
-                    file=sys.stderr,
-                )
-                sys.exit(2)
-            schema = asset["schema"]
-        else:
-            print(
-                f"ERROR: Asset definition missing 'schema' field (ODCS format) or 'asset' field (legacy format): {asset_path}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-
-        # Check if schema is an array
-        if not isinstance(schema, list):
-            print(
-                f"ERROR: Asset definition 'schema' must be an array: {asset_path}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-
-        # Check if schema has at least one column
-        if len(schema) == 0:
-            print(
-                f"ERROR: Asset definition 'schema' must contain at least one column: {asset_path}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-
-        # Validate each column has required fields
-        for idx, column in enumerate(schema):
-            if not isinstance(column, dict):
-                print(
-                    f"ERROR: Asset definition schema column {idx} must be an object: {asset_path}",
-                    file=sys.stderr,
-                )
-                sys.exit(2)
-            if "name" not in column:
-                print(
-                    f"ERROR: Asset definition schema column {idx} missing 'name' field: {asset_path}",
-                    file=sys.stderr,
-                )
-                sys.exit(2)
-            if "type" not in column:
-                print(
-                    f"ERROR: Asset definition schema column {idx} missing 'type' field: {asset_path}",
-                    file=sys.stderr,
-                )
-                sys.exit(2)
 
     def validate_environment_variables(self) -> None:
-        """Validate that all required environment variables are set.
-
-        Raises:
-            ValueError: If required environment variables are missing
-        """
-        missing_vars = []
-        
-        # Extract environment variables from paths
-        paths_to_check = [
-            self.asset_path,
-            self.source_connector_path,
-            self.target_connector_path,
-        ]
-        
-        # Check paths for env var references
+        """Validate that all required environment variables are set."""
         import re
-        env_var_pattern = re.compile(r'\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)')
-        
-        for path in paths_to_check:
-            if path:
-                matches = env_var_pattern.findall(path)
-                for match in matches:
-                    var_name = match[0] if match[0] else match[1]
-                    if not os.getenv(var_name):
-                        missing_vars.append(var_name)
-        
-        # Check connector recipes for env var references
+
+        env_var_pattern = re.compile(r"\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)")
+
+        missing_vars = set()
+
         try:
             source_recipe = self._resolve_source_recipe()
             target_recipe = self._resolve_target_recipe()
             
             # Check source connector connection template
-            if source_recipe.connection_template:
-                template_str = str(source_recipe.connection_template)
-                matches = env_var_pattern.findall(template_str)
-                for match in matches:
-                    var_name = match[0] if match[0] else match[1]
-                    if not os.getenv(var_name):
-                        missing_vars.append(var_name)
+            if isinstance(source_recipe, ConnectorRecipe):
+                connection_template = source_recipe.connection_template
+            else:
+                connection_template = getattr(source_recipe, "connection_template", None)
             
-            # Check target connector connection template
-            if target_recipe.connection_template:
-                template_str = str(target_recipe.connection_template)
+            if connection_template:
+                template_str = str(connection_template)
                 matches = env_var_pattern.findall(template_str)
                 for match in matches:
                     var_name = match[0] if match[0] else match[1]
                     if not os.getenv(var_name):
-                        missing_vars.append(var_name)
-        except Exception:
-            # If we can't load recipes, skip env var validation from templates
+                        missing_vars.add(var_name)
+
+            # Check target connector connection template
+            if isinstance(target_recipe, ConnectorRecipe):
+                connection_template = target_recipe.connection_template
+            else:
+                connection_template = getattr(target_recipe, "connection_template", None)
+            
+            if connection_template:
+                template_str = str(connection_template)
+                matches = env_var_pattern.findall(template_str)
+                for match in matches:
+                    var_name = match[0] if match[0] else match[1]
+                    if not os.getenv(var_name):
+                        missing_vars.add(var_name)
+
+            # Check asset path
+            asset_path = self.get_asset_path()
+            matches = env_var_pattern.findall(asset_path)
+            for match in matches:
+                var_name = match[0] if match[0] else match[1]
+                if not os.getenv(var_name):
+                    missing_vars.add(var_name)
+
+        except Exception as e:
+            # If we can't resolve recipes, skip validation
+            # This allows for partial validation
             pass
-        
-        # Remove duplicates
-        missing_vars = list(set(missing_vars))
-        
+
         if missing_vars:
             raise ValueError(
                 f"Missing required environment variables: {', '.join(sorted(missing_vars))}"

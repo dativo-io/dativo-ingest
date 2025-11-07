@@ -1,11 +1,13 @@
 # versioned registry of connector TYPES & CAPABILITIES (not full recipes)
 # - validator uses this to check: supported types, allowed engines, cloud mode, incremental support
 # - connector recipes contain: engine configs, credentials, rate limits, connection templates
+# - roles: [source] = source only, [target] = target only, [source, target] = bidirectional
 
-version: 2
+version: 3
 
-sources:
+connectors:
   hubspot:
+    roles: [source]  # Source only - API connector
     category: crm
     default_engine: airbyte
     engines_supported: [airbyte, singer, native]
@@ -15,6 +17,7 @@ sources:
     objects_supported: ["contacts", "deals", "companies"]
 
   stripe:
+    roles: [source]  # Source only - API connector
     category: payments
     default_engine: airbyte
     engines_supported: [airbyte, singer, native]
@@ -24,6 +27,7 @@ sources:
     objects_supported: ["charges", "customers", "invoices"]
 
   gdrive_csv:
+    roles: [source]  # Source only - file reading
     category: files
     default_engine: native
     engines_supported: [native]
@@ -33,6 +37,7 @@ sources:
     objects_supported: ["file"]
 
   csv:
+    roles: [source, target]  # Bidirectional - can read and write CSV
     category: files
     default_engine: native
     engines_supported: [native]
@@ -42,6 +47,7 @@ sources:
     objects_supported: ["file"]
 
   markdown_kv:
+    roles: [source, target]  # Bidirectional - can read and write Markdown-KV files
     category: files
     default_engine: native
     engines_supported: [native]
@@ -51,6 +57,7 @@ sources:
     objects_supported: ["file"]
 
   google_sheets:
+    roles: [source, target]  # Bidirectional - can read and write Google Sheets
     category: files
     default_engine: native
     engines_supported: [native]
@@ -60,6 +67,7 @@ sources:
     objects_supported: ["sheet"]
 
   postgres:
+    roles: [source, target]  # Bidirectional - can read and write PostgreSQL
     category: database
     default_engine: meltano
     engines_supported: [meltano, airbyte, jdbc]
@@ -70,6 +78,7 @@ sources:
     supports_queries: true
 
   mysql:
+    roles: [source, target]  # Bidirectional - can read and write MySQL
     category: database
     default_engine: meltano
     engines_supported: [meltano, airbyte, jdbc]
@@ -79,21 +88,24 @@ sources:
     requires_tables: true
     supports_queries: true
 
-targets:
   iceberg:
+    roles: [target]  # Target only - data lake format
     default_engine: native
     engines_supported: [native, spark]
     file_formats: [parquet, markdown_kv]  # markdown_kv stored as STRING in Parquet
     supports_schema_evolution: true
 
   s3:
+    roles: [source, target]  # Bidirectional - can read and write from S3
     default_engine: native
     engines_supported: [native]
 
   minio:
+    roles: [source, target]  # Bidirectional - can read and write from MinIO
     default_engine: native
     engines_supported: [native]
 
   azure_blob:
+    roles: [source, target]  # Bidirectional - can read and write from Azure Blob
     default_engine: native
     engines_supported: [native]

@@ -82,28 +82,56 @@ class ConnectorValidator:
 
         return data
 
-    def validate_connector_type(self, connector_type: str) -> Dict[str, Any]:
-        """Validate connector type exists in registry.
+    def validate_connector_type(self, connector_type: str, role: str = "source") -> Dict[str, Any]:
+        """Validate connector type exists in registry and supports the specified role.
 
         Args:
             connector_type: Connector type to validate
+            role: Role to validate ('source' or 'target')
 
         Returns:
             Connector definition from registry
 
         Raises:
-            SystemExit: Exit code 2 if connector not found
+            SystemExit: Exit code 2 if connector not found or doesn't support role
         """
+        # Support both old (sources/targets) and new (connectors) registry formats
+        connectors = self.registry.get("connectors", {})
         sources = self.registry.get("sources", {})
-        if connector_type not in sources:
+        targets = self.registry.get("targets", {})
+        
+        # Try unified format first
+        if connectors and connector_type in connectors:
+            connector_def = connectors[connector_type]
+            roles = connector_def.get("roles", [])
+            if role not in roles:
+                print(
+                    f"ERROR: Connector type '{connector_type}' does not support '{role}' role.\n"
+                    f"Supported roles: {roles}",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            return connector_def
+        
+        # Fall back to legacy format
+        if role == "source":
+            if connector_type in sources:
+                return sources[connector_type]
             print(
                 f"ERROR: Connector type '{connector_type}' not found in registry.\n"
-                f"Available connectors: {', '.join(sources.keys())}",
+                f"Available source connectors: {', '.join(sources.keys())}",
                 file=sys.stderr,
             )
-            sys.exit(2)
-
-        return sources[connector_type]
+        else:  # role == "target"
+            if connector_type in targets:
+                return targets[connector_type]
+            print(
+                f"ERROR: Connector type '{connector_type}' not found in registry.\n"
+                f"Available target connectors: {', '.join(targets.keys())}",
+                file=sys.stderr,
+            )
+        
+        sys.exit(2)
 
     def validate_mode_restriction(
         self, connector_type: str, mode: str, connector_def: Dict[str, Any]
@@ -220,17 +248,21 @@ class ConnectorValidator:
             SystemExit: Exit code 2 on validation failure
         """
         source_config = job_config.get_source()
+        target_config = job_config.get_target()
         
-        # Validate connector type
-        connector_def = self.validate_connector_type(source_config.type)
+        # Validate source connector type and role
+        source_connector_def = self.validate_connector_type(source_config.type, role="source")
 
-        # Validate mode restrictions
+        # Validate target connector type and role
+        target_connector_def = self.validate_connector_type(target_config.type, role="target")
+
+        # Validate mode restrictions for source
         self.validate_mode_restriction(
-            source_config.type, mode, connector_def
+            source_config.type, mode, source_connector_def
         )
 
         # Validate incremental strategy
-        self.validate_incremental_strategy(job_config, connector_def)
+        self.validate_incremental_strategy(job_config, source_connector_def)
 
 
 class IncrementalStateManager:

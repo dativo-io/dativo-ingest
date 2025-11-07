@@ -1,0 +1,17 @@
+# Markdown-KV connector - supports both source and target roles
+name: markdown_kv
+type: markdown_kv
+roles: [source, target]  # Bidirectional - can read and write Markdown-KV files
+description: "Markdown-KV file connector (bidirectional)"
+default_engine:
+  type: native
+  options:
+    native:
+      encoding: "utf-8"
+      parse_mode: "kv"  # key-value pairs
+credentials:
+  type: none  # No credentials needed for local files
+incremental:
+  strategy: file_modified_time
+  lookback_days_default: 0
+

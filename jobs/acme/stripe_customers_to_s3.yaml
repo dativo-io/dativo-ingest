@@ -3,10 +3,10 @@ tenant_id: acme
 environment: prod
 
 source_connector: stripe
-source_connector_path: /app/connectors/sources/stripe.yaml
+source_connector_path: /app/connectors/stripe.yaml
 
 target_connector: s3
-target_connector_path: /app/connectors/targets/s3.yaml
+target_connector_path: /app/connectors/s3.yaml
 
 asset: stripe_customers
 asset_path: /app/assets/stripe/v1.0/customers.yaml

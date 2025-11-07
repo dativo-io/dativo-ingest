@@ -3,10 +3,10 @@ tenant_id: acme
 environment: prod
 
 source_connector: gdrive_csv
-source_connector_path: /app/connectors/sources/gdrive_csv.yaml
+source_connector_path: /app/connectors/gdrive_csv.yaml
 
 target_connector: iceberg
-target_connector_path: /app/connectors/targets/iceberg.yaml
+target_connector_path: /app/connectors/iceberg.yaml
 
 asset: gdrive_deals_daily
 asset_path: /app/assets/gdrive_csv/v1.0/deals_daily.yaml
