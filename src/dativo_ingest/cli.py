@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from .config import JobConfig, RunnerConfig
+from .config import JobConfig, RunnerConfig, SecretsConfig
 from .infrastructure import validate_infrastructure
 from .logging import setup_logging
 from .secrets import load_secrets
@@ -36,14 +36,16 @@ def startup_sequence(
     secrets_dir: Path,
     tenant_id: Optional[str] = None,
     mode: str = "self_hosted",
+    secrets_config: Optional[SecretsConfig] = None,
 ) -> List[JobConfig]:
     """Complete startup sequence for E2E smoke tests.
 
     Args:
         job_dir: Directory containing job YAML files
-        secrets_dir: Directory containing secrets
+        secrets_dir: Directory containing secrets (used only if secrets_config is None)
         tenant_id: Optional tenant identifier (if not provided, inferred from jobs)
         mode: Execution mode (default: self_hosted)
+        secrets_config: Optional secrets manager configuration (defaults to filesystem)
 
     Returns:
         List of validated job configurations
@@ -101,11 +103,19 @@ def startup_sequence(
 
     # 3. Load secrets using inferred/validated tenant_id
     try:
-        secrets = load_secrets(tenant_id, secrets_dir)
-        logger.info(
-            f"Secrets loaded for tenant {tenant_id}",
-            extra={"event_type": "secrets_loaded", "secret_count": len(secrets)},
-        )
+        # Use configured secrets manager or fall back to filesystem
+        if secrets_config:
+            secrets = load_secrets(tenant_id, config=secrets_config.to_dict())
+            logger.info(
+                f"Secrets loaded for tenant {tenant_id} using {secrets_config.type} secret manager",
+                extra={"event_type": "secrets_loaded", "secret_count": len(secrets), "manager_type": secrets_config.type},
+            )
+        else:
+            secrets = load_secrets(tenant_id, secrets_dir)
+            logger.info(
+                f"Secrets loaded for tenant {tenant_id}",
+                extra={"event_type": "secrets_loaded", "secret_count": len(secrets)},
+            )
     except ValueError as e:
             logger.warning(
                 f"Secrets loading failed (may be optional): {e}",

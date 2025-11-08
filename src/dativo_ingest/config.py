@@ -444,6 +444,82 @@ class RetryConfig(BaseModel):
         return self
 
 
+class SecretsConfig(BaseModel):
+    """Secrets management configuration.
+    
+    Supports multiple secret manager backends:
+    - env: Environment variables (default)
+    - filesystem: File-based secrets storage
+    - vault: HashiCorp Vault
+    - aws: AWS Secrets Manager
+    - gcp: Google Cloud Secret Manager
+    - azure: Azure Key Vault
+    """
+    
+    type: str = "env"  # env, filesystem, vault, aws, gcp, azure
+    
+    # Common options
+    prefix: Optional[str] = None  # Prefix for secret names/env vars
+    
+    # Filesystem options
+    secrets_dir: Optional[str] = None  # Path to secrets directory (for filesystem type)
+    
+    # HashiCorp Vault options
+    url: Optional[str] = None  # Vault server URL
+    token: Optional[str] = None  # Vault token (or use VAULT_TOKEN env var)
+    mount_point: Optional[str] = None  # KV secrets engine mount point
+    namespace: Optional[str] = None  # Vault namespace
+    verify: Optional[bool] = True  # Verify SSL certificates
+    
+    # AWS Secrets Manager options
+    region_name: Optional[str] = None  # AWS region
+    
+    # GCP Secret Manager options
+    project_id: Optional[str] = None  # GCP project ID
+    
+    # Azure Key Vault options
+    vault_url: Optional[str] = None  # Azure Key Vault URL
+    
+    @model_validator(mode="after")
+    def validate_type_specific_options(self) -> "SecretsConfig":
+        """Validate type-specific required options."""
+        if self.type == "vault" or self.type == "hashicorp":
+            if not self.url:
+                raise ValueError("url is required for vault secret manager")
+        elif self.type == "azure" or self.type == "azure_keyvault":
+            if not self.vault_url:
+                raise ValueError("vault_url is required for azure secret manager")
+        return self
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for passing to secret manager."""
+        data = {"type": self.type}
+        
+        # Add non-None values
+        if self.prefix:
+            data["prefix"] = self.prefix
+        if self.secrets_dir:
+            data["secrets_dir"] = self.secrets_dir
+        if self.url:
+            data["url"] = self.url
+        if self.token:
+            data["token"] = self.token
+        if self.mount_point:
+            data["mount_point"] = self.mount_point
+        if self.namespace:
+            data["namespace"] = self.namespace
+        if self.verify is not None:
+            data["verify"] = self.verify
+        if self.region_name:
+            data["region_name"] = self.region_name
+        if self.project_id:
+            data["project_id"] = self.project_id
+        if self.vault_url:
+            data["vault_url"] = self.vault_url
+        
+        return data
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -895,6 +971,7 @@ class RunnerConfig(BaseModel):
 
     mode: str = Field(default="orchestrated", pattern="^(orchestrated|oneshot)$")
     orchestrator: OrchestratorConfig
+    secrets: Optional[SecretsConfig] = None  # Secrets management configuration (defaults to env)
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "RunnerConfig":

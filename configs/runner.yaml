@@ -1,5 +1,13 @@
 runner:
   mode: orchestrated                  # orchestrated | oneshot
+  
+  # Secrets management configuration (optional)
+  # Defaults to environment variables if not specified
+  # See docs/SECRETS_MANAGEMENT.md for detailed configuration options
+  # secrets:
+  #   type: env                       # env (default), filesystem, vault, aws, gcp, azure
+  #   prefix: DATIVO_                 # Optional: prefix for env vars or secret names
+  
   orchestrator:
     type: dagster
     schedules:

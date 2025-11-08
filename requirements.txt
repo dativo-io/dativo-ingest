@@ -29,6 +29,12 @@ pynessie>=0.60.0
 # Storage access
 boto3>=1.28.0
 
+# Secret managers
+hvac>=1.2.0  # HashiCorp Vault
+google-cloud-secret-manager>=2.16.0  # Google Cloud Secret Manager
+azure-keyvault-secrets>=4.7.0  # Azure Key Vault
+azure-identity>=1.13.0  # Azure authentication
+
 # Testing (optional, for development)
 pytest>=7.0.0
 pytest-mock>=3.0.0
