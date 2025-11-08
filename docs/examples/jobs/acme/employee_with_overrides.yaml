@@ -1,0 +1,65 @@
+# Employee data with tag overrides
+# Demonstrates classification, governance, and FinOps metadata propagation
+tenant_id: acme
+environment: prod
+
+# Reference to source connector recipe
+source_connector: csv
+source_connector_path: /app/connectors/csv.yaml
+
+# Reference to target connector recipe
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Reference to asset definition
+asset: csv_employee
+asset_path: /app/assets/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - object: Employee_Complete_Dataset
+      path: /app/tests/fixtures/seeds/employee_complete_dataset.csv
+
+# Target configuration
+target:
+  branch: acme
+  warehouse: s3://lake/acme/
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/hr/employees"
+
+# Tag overrides - propagated to Iceberg table properties
+# These override or extend the tags defined in the asset definition
+classification_overrides:
+  # Override field-level classifications
+  email: high_pii
+  phone_number: high_pii
+  salary: financial
+  
+  # Set default table-level classification
+  default: pii
+
+# FinOps metadata - for cost attribution and tracking
+# These are merged with asset-level finops metadata
+finops:
+  cost_center: HR-001
+  business_tags:
+    - hr
+    - payroll
+    - compliance
+  project: employee-data-platform
+  environment: production
+
+# Governance overrides - for retention and ownership
+# These override asset-level governance metadata
+governance_overrides:
+  retention_days: 365  # Override from 90 to 365 days
+  owner: hr-data-team@acme.com
+
+logging:
+  redaction: true
+  level: INFO

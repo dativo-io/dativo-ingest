@@ -435,7 +435,13 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         try:
             from .iceberg_committer import IcebergCommitter
 
-            committer = IcebergCommitter(asset_definition, target_config)
+            committer = IcebergCommitter(
+                asset_definition=asset_definition,
+                target_config=target_config,
+                classification_overrides=job_config.classification_overrides,
+                finops=job_config.finops,
+                governance_overrides=job_config.governance_overrides,
+            )
             logger.info(
                 "Iceberg committer initialized",
                 extra={
@@ -619,6 +625,9 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 upload_committer = IcebergCommitter(
                     asset_definition=asset_definition,
                     target_config=target_config,
+                    classification_overrides=job_config.classification_overrides,
+                    finops=job_config.finops,
+                    governance_overrides=job_config.governance_overrides,
                 )
                 try:
                     upload_result = upload_committer.commit_files(all_file_metadata)

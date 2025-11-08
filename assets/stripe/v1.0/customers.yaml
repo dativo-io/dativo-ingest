@@ -22,10 +22,19 @@ asset:
   governance:
     owner: data-team@company.com
     tags: [payments, customer-data]
+  
+  compliance:
     classification: [PII]
     retention_days: 30
+    regulations: [PCI-DSS, GDPR]
+  
+  finops:
+    cost_center: FIN-001
+    business_tags: [payments, revenue]
+    project: payment-platform
+    environment: production
   
   target:
-  file_format: parquet
-  partitioning: [ingest_date]
+    file_format: parquet
+    partitioning: [ingest_date]
     mode: strict
