@@ -242,6 +242,13 @@ asset:
     mode: strict
 ```
 
+## CI/CD Status
+
+[![CI](https://github.com/YOUR_ORG/dativo-etl/workflows/CI/badge.svg)](https://github.com/YOUR_ORG/dativo-etl/actions)
+[![Plugin Tests](https://github.com/YOUR_ORG/dativo-etl/workflows/Plugin%20System%20Tests/badge.svg)](https://github.com/YOUR_ORG/dativo-etl/actions)
+
+All plugin tests (Python, Rust, integration) run automatically on every PR via GitHub Actions.
+
 ## Supported Connectors
 
 - **Stripe**: Payments data (customers, charges, invoices)
@@ -357,6 +364,16 @@ pytest tests/test_plugins.py -v          # Plugin unit tests
 - ✅ End-to-end pipelines
 
 See [TESTING_SUMMARY.md](TESTING_SUMMARY.md) for complete details.
+
+### CI/CD Integration
+
+All plugin tests run automatically on every PR via GitHub Actions:
+- ✅ Python plugin tests (Python 3.10, 3.11)
+- ✅ Rust plugin builds (Ubuntu, macOS)
+- ✅ Integration tests
+- ✅ Coverage reporting with Codecov
+
+See [.github/workflows/README.md](.github/workflows/README.md) for workflow details and [GITHUB_ACTIONS_INTEGRATION.md](GITHUB_ACTIONS_INTEGRATION.md) for complete CI/CD documentation.
 
 ### Traditional Testing
 
