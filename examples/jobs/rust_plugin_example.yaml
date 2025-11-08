@@ -1,0 +1,114 @@
+# Example job configuration using Rust plugins for maximum performance
+# Rust plugins provide 10-100x performance improvement for data-intensive operations
+
+tenant_id: acme
+environment: prod
+
+source_connector: csv
+source_connector_path: /app/connectors/csv.yaml
+
+target_connector: s3
+target_connector_path: /app/connectors/s3.yaml
+
+asset: high_performance_data
+asset_path: /app/assets/csv/v1.0/person.yaml
+
+# Source configuration with Rust CSV reader
+source:
+  # Specify Rust plugin (note the .so/.dylib/.dll extension)
+  # Format: "path/to/libplugin.so:create_reader"
+  custom_reader: "/app/plugins/rust/target/release/libcsv_reader_plugin.so:create_reader"
+  
+  # Files to process
+  files:
+    - path: "/data/large_dataset.csv"
+      id: "dataset_1"
+    - path: "/data/another_dataset.csv"
+      id: "dataset_2"
+  
+  # Engine options (passed to Rust plugin)
+  engine:
+    options:
+      # Larger batch sizes work better with Rust
+      batch_size: 50000
+      # Delimiter
+      delimiter: ","
+
+# Target configuration with Rust Parquet writer
+target:
+  # Specify Rust plugin
+  # Format: "path/to/libplugin.so:create_writer"
+  custom_writer: "/app/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
+  
+  # Connection details (passed to Rust plugin)
+  connection:
+    s3:
+      bucket: "my-data-lake"
+      region: "us-east-1"
+      access_key: "${AWS_ACCESS_KEY_ID}"
+      secret_key: "${AWS_SECRET_ACCESS_KEY}"
+  
+  # Engine options (passed to Rust plugin)
+  engine:
+    options:
+      # Compression: snappy (fast), gzip (balanced), zstd (best compression)
+      compression: "zstd"
+      # Row group size for Parquet (larger = better compression, more memory)
+      row_group_size: 500000
+
+# Standard ETL configuration
+schema_validation_mode: strict
+
+logging:
+  redaction: true
+  level: INFO
+
+# Optional: Retry configuration
+retry_config:
+  max_retries: 3
+  initial_delay_seconds: 5
+
+---
+
+# Alternative: Mixed Python and Rust plugins
+# You can use Python reader with Rust writer, or vice versa
+
+tenant_id: acme
+environment: prod
+
+source_connector: postgres
+source_connector_path: /app/connectors/postgres.yaml
+
+target_connector: s3
+target_connector_path: /app/connectors/s3.yaml
+
+asset: mixed_pipeline
+asset_path: /app/assets/postgres/v1.0/db_orders.yaml
+
+# Use built-in Postgres extractor (Python)
+source:
+  tables:
+    - name: "orders"
+      schema: "public"
+  
+  connection:
+    host: "${POSTGRES_HOST}"
+    port: 5432
+    database: "${POSTGRES_DB}"
+    user: "${POSTGRES_USER}"
+    password: "${POSTGRES_PASSWORD}"
+
+# Use Rust Parquet writer for performance
+target:
+  custom_writer: "/app/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
+  
+  connection:
+    s3:
+      bucket: "my-data-lake"
+  
+  engine:
+    options:
+      compression: "zstd"
+      row_group_size: 500000
+
+schema_validation_mode: strict

@@ -137,7 +137,33 @@ class BaseWriter(ABC):
 
 
 class PluginLoader:
-    """Utility for loading custom reader and writer plugins."""
+    """Utility for loading custom reader and writer plugins.
+    
+    Supports both Python and Rust plugins:
+    - Python: "path/to/module.py:ClassName"
+    - Rust: "path/to/libplugin.so:function_name" (or .dylib, .dll)
+    """
+    
+    @staticmethod
+    def _detect_plugin_type(plugin_path: str) -> str:
+        """Detect plugin type from file extension.
+        
+        Args:
+            plugin_path: Plugin path
+        
+        Returns:
+            Plugin type: "python" or "rust"
+        """
+        module_path_str = plugin_path.split(":")[0]
+        path = Path(module_path_str)
+        
+        if path.suffix == ".py":
+            return "python"
+        elif path.suffix in [".so", ".dylib", ".dll"]:
+            return "rust"
+        else:
+            # Default to Python for backward compatibility
+            return "python"
     
     @staticmethod
     def load_class_from_path(plugin_path: str, base_class: Type) -> Type:
@@ -201,25 +227,89 @@ class PluginLoader:
         return plugin_class
     
     @staticmethod
-    def load_reader(plugin_path: str) -> Type[BaseReader]:
-        """Load a custom reader class.
+    def load_rust_plugin(plugin_path: str, base_class: Type) -> Type:
+        """Load a Rust plugin as a wrapper class.
         
         Args:
-            plugin_path: Path to reader class (format: "path/to/module.py:ClassName")
+            plugin_path: Path to Rust shared library
+                        Format: "path/to/libplugin.so:create_reader" or "create_writer"
+            base_class: Expected base class (BaseReader or BaseWriter)
+        
+        Returns:
+            Wrapper class that uses Rust plugin
+        
+        Raises:
+            ValueError: If plugin cannot be loaded
+        """
+        if ":" not in plugin_path:
+            raise ValueError(
+                f"Rust plugin path must be in format 'path/to/libplugin.so:function_name', got: {plugin_path}"
+            )
+        
+        lib_path_str, func_name = plugin_path.rsplit(":", 1)
+        lib_path = Path(lib_path_str)
+        
+        if not lib_path.exists():
+            raise ValueError(f"Rust plugin library not found: {lib_path}")
+        
+        if not lib_path.is_file():
+            raise ValueError(f"Rust plugin path is not a file: {lib_path}")
+        
+        # Import Rust plugin loader (optional dependency)
+        try:
+            from .rust_plugin_bridge import create_rust_reader_wrapper, create_rust_writer_wrapper
+        except ImportError:
+            raise ImportError(
+                "Rust plugin support requires additional dependencies. "
+                "Install with: pip install dativo-ingest[rust]"
+            )
+        
+        # Create appropriate wrapper based on base class
+        if base_class == BaseReader:
+            return create_rust_reader_wrapper(str(lib_path), func_name)
+        elif base_class == BaseWriter:
+            return create_rust_writer_wrapper(str(lib_path), func_name)
+        else:
+            raise ValueError(f"Unsupported base class for Rust plugin: {base_class}")
+    
+    @staticmethod
+    def load_reader(plugin_path: str) -> Type[BaseReader]:
+        """Load a custom reader class (Python or Rust).
+        
+        Args:
+            plugin_path: Path to reader plugin
+                        Python: "path/to/module.py:ClassName"
+                        Rust: "path/to/libplugin.so:create_reader"
         
         Returns:
             Reader class inheriting from BaseReader
         """
-        return PluginLoader.load_class_from_path(plugin_path, BaseReader)
+        plugin_type = PluginLoader._detect_plugin_type(plugin_path)
+        
+        if plugin_type == "python":
+            return PluginLoader.load_class_from_path(plugin_path, BaseReader)
+        elif plugin_type == "rust":
+            return PluginLoader.load_rust_plugin(plugin_path, BaseReader)
+        else:
+            raise ValueError(f"Unsupported plugin type: {plugin_type}")
     
     @staticmethod
     def load_writer(plugin_path: str) -> Type[BaseWriter]:
-        """Load a custom writer class.
+        """Load a custom writer class (Python or Rust).
         
         Args:
-            plugin_path: Path to writer class (format: "path/to/module.py:ClassName")
+            plugin_path: Path to writer plugin
+                        Python: "path/to/module.py:ClassName"
+                        Rust: "path/to/libplugin.so:create_writer"
         
         Returns:
             Writer class inheriting from BaseWriter
         """
-        return PluginLoader.load_class_from_path(plugin_path, BaseWriter)
+        plugin_type = PluginLoader._detect_plugin_type(plugin_path)
+        
+        if plugin_type == "python":
+            return PluginLoader.load_class_from_path(plugin_path, BaseWriter)
+        elif plugin_type == "rust":
+            return PluginLoader.load_rust_plugin(plugin_path, BaseWriter)
+        else:
+            raise ValueError(f"Unsupported plugin type: {plugin_type}")
