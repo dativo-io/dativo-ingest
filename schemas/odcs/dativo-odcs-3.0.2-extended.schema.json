@@ -163,6 +163,36 @@
               }
             }
           }
+        },
+        "finops": {
+          "type": "object",
+          "description": "FinOps and cost attribution metadata (Dativo extension)",
+          "properties": {
+            "cost_center": {
+              "type": "string",
+              "description": "Cost center for financial tracking and attribution",
+              "examples": ["FIN-001", "HR-001", "SALES-001"]
+            },
+            "business_tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Business classification tags for cost attribution",
+              "examples": [["finance", "reporting"], ["hr", "payroll"]]
+            },
+            "project": {
+              "type": "string",
+              "description": "Project identifier for cost tracking",
+              "examples": ["data-platform", "customer-analytics"]
+            },
+            "environment": {
+              "type": "string",
+              "description": "Environment identifier",
+              "enum": ["production", "staging", "development", "test"],
+              "examples": ["production", "staging"]
+            }
+          }
         }
       },
       "required": ["source_type", "object"]
