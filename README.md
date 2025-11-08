@@ -332,7 +332,35 @@ See [docs/MARKDOWN_KV_STORAGE.md](docs/MARKDOWN_KV_STORAGE.md) for detailed docu
 
 ## Testing
 
-Dativo uses a two-tier testing approach:
+Dativo has comprehensive test coverage including plugin system tests.
+
+### Quick Start
+
+```bash
+# Run all tests (unit + integration + plugin tests)
+./tests/run_all_plugin_tests.sh
+
+# Or run specific test suites
+pytest tests/test_plugins.py -v          # Plugin unit tests
+./tests/test_plugin_integration.sh       # Plugin integration tests
+./examples/plugins/rust/test_rust_plugins.sh  # Rust plugin tests
+```
+
+### Test Coverage
+
+**76 total tests** across all components:
+- ✅ Default readers and writers (CSV, Parquet)
+- ✅ Custom Python plugins  
+- ✅ Custom Rust plugins
+- ✅ Plugin loading and detection
+- ✅ Error handling and edge cases
+- ✅ End-to-end pipelines
+
+See [TESTING_SUMMARY.md](TESTING_SUMMARY.md) for complete details.
+
+### Traditional Testing
+
+Dativo uses a two-tier testing approach for core functionality:
 
 ### Unit Tests
 
