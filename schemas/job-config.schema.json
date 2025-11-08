@@ -1,0 +1,312 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dativo.io/schemas/job-config.schema.json",
+  "title": "Dativo Job Configuration Schema",
+  "description": "Schema for Dativo ETL job configuration with infrastructure integration support",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "description": "Unique identifier for the tenant/customer"
+    },
+    "environment": {
+      "type": "string",
+      "description": "Deployment environment (e.g., dev, staging, prod)",
+      "examples": ["dev", "staging", "prod"]
+    },
+    "source_connector": {
+      "type": "string",
+      "description": "Name of the source connector"
+    },
+    "source_connector_path": {
+      "type": "string",
+      "description": "Path to source connector recipe YAML file"
+    },
+    "target_connector": {
+      "type": "string",
+      "description": "Name of the target connector"
+    },
+    "target_connector_path": {
+      "type": "string",
+      "description": "Path to target connector recipe YAML file"
+    },
+    "asset": {
+      "type": "string",
+      "description": "Name of the asset definition"
+    },
+    "asset_path": {
+      "type": "string",
+      "description": "Path to asset definition YAML file"
+    },
+    "source": {
+      "type": "object",
+      "description": "Source connector configuration (merged with connector recipe)"
+    },
+    "target": {
+      "type": "object",
+      "description": "Target connector configuration (merged with connector recipe)"
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "Infrastructure configuration for Terraform-managed runtimes",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Cloud provider",
+          "enum": ["aws", "azure", "gcp"]
+        },
+        "runtime": {
+          "type": "object",
+          "description": "Runtime configuration",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Runtime type",
+              "enum": ["aws_fargate", "azure_container_apps", "gcp_cloud_run"]
+            },
+            "image": {
+              "type": "string",
+              "description": "Container image URI"
+            },
+            "cpu": {
+              "type": "string",
+              "description": "CPU allocation (format depends on provider)"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory allocation (format depends on provider)"
+            }
+          },
+          "required": ["type"]
+        },
+        "region": {
+          "type": "string",
+          "description": "Cloud region (e.g., us-east-1, eastus, us-central1)"
+        },
+        "resource_identifiers": {
+          "type": "object",
+          "description": "Resource identifiers from Terraform outputs (supports {{terraform_outputs.*}} placeholders)",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "examples": [
+            {
+              "cluster_name": "{{terraform_outputs.cluster_name}}",
+              "service_name": "{{terraform_outputs.service_name}}"
+            }
+          ]
+        },
+        "tags": {
+          "type": "object",
+          "description": "Resource tags/labels for cost allocation, compliance, and traceability",
+          "properties": {
+            "job_name": {
+              "type": "string",
+              "description": "Unique job identifier (required)"
+            },
+            "team": {
+              "type": "string",
+              "description": "Owning team (required)"
+            },
+            "pipeline_type": {
+              "type": "string",
+              "description": "Pipeline category (required)",
+              "examples": ["ingestion", "transformation", "analytics", "monitoring"]
+            },
+            "environment": {
+              "type": "string",
+              "description": "Deployment environment (required)",
+              "examples": ["dev", "staging", "prod"]
+            },
+            "cost_center": {
+              "type": "string",
+              "description": "Cost allocation identifier (required)"
+            }
+          },
+          "required": ["job_name", "team", "pipeline_type", "environment", "cost_center"],
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["provider", "runtime", "region", "tags"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "provider": { "const": "aws" }
+            }
+          },
+          "then": {
+            "properties": {
+              "runtime": {
+                "properties": {
+                  "type": { "const": "aws_fargate" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider": { "const": "azure" }
+            }
+          },
+          "then": {
+            "properties": {
+              "runtime": {
+                "properties": {
+                  "type": { "const": "azure_container_apps" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider": { "const": "gcp" }
+            }
+          },
+          "then": {
+            "properties": {
+              "runtime": {
+                "properties": {
+                  "type": { "const": "gcp_cloud_run" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "schema_validation_mode": {
+      "type": "string",
+      "description": "Schema validation mode",
+      "enum": ["strict", "warn"],
+      "default": "strict"
+    },
+    "retry_config": {
+      "type": "object",
+      "description": "Retry configuration for transient failures",
+      "properties": {
+        "max_retries": {
+          "type": "integer",
+          "description": "Maximum number of retries",
+          "minimum": 0,
+          "default": 3
+        },
+        "initial_delay_seconds": {
+          "type": "integer",
+          "description": "Initial delay in seconds before first retry",
+          "minimum": 1,
+          "default": 5
+        },
+        "max_delay_seconds": {
+          "type": "integer",
+          "description": "Maximum delay in seconds between retries",
+          "minimum": 1,
+          "default": 300
+        },
+        "backoff_multiplier": {
+          "type": "number",
+          "description": "Exponential backoff multiplier",
+          "minimum": 1,
+          "default": 2.0
+        },
+        "retryable_exit_codes": {
+          "type": "array",
+          "description": "Exit codes that should trigger retries",
+          "items": {
+            "type": "integer"
+          },
+          "default": [1, 2]
+        },
+        "retryable_error_patterns": {
+          "type": "array",
+          "description": "Regex patterns for error messages that should trigger retries",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "description": "Logging configuration",
+      "properties": {
+        "redaction": {
+          "type": "boolean",
+          "description": "Enable sensitive data redaction in logs",
+          "default": false
+        },
+        "level": {
+          "type": "string",
+          "description": "Log level",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "default": "INFO"
+        }
+      }
+    }
+  },
+  "required": [
+    "tenant_id",
+    "source_connector_path",
+    "target_connector_path",
+    "asset_path"
+  ],
+  "examples": [
+    {
+      "tenant_id": "acme",
+      "environment": "prod",
+      "source_connector": "stripe",
+      "source_connector_path": "/app/connectors/stripe.yaml",
+      "target_connector": "iceberg",
+      "target_connector_path": "/app/connectors/iceberg.yaml",
+      "asset": "stripe_customers",
+      "asset_path": "/app/assets/stripe/v1.0/customers.yaml",
+      "source": {
+        "objects": ["customers"],
+        "incremental": {
+          "lookback_days": 1
+        }
+      },
+      "target": {
+        "branch": "acme",
+        "warehouse": "s3://lake/acme/",
+        "connection": {
+          "s3": {
+            "bucket": "acme-data-lake",
+            "prefix": "raw/stripe/customers"
+          }
+        }
+      },
+      "infrastructure": {
+        "provider": "aws",
+        "runtime": {
+          "type": "aws_fargate",
+          "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/dativo:1.1.0",
+          "cpu": "1024",
+          "memory": "2048"
+        },
+        "region": "us-east-1",
+        "resource_identifiers": {
+          "cluster_name": "{{terraform_outputs.cluster_name}}",
+          "task_definition_arn": "{{terraform_outputs.task_definition_arn}}"
+        },
+        "tags": {
+          "job_name": "stripe-customers-etl",
+          "team": "data-engineering",
+          "pipeline_type": "ingestion",
+          "environment": "prod",
+          "cost_center": "data-platform"
+        }
+      },
+      "logging": {
+        "redaction": true,
+        "level": "INFO"
+      }
+    }
+  ]
+}

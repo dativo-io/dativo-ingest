@@ -1,0 +1,64 @@
+# PostgreSQL orders to Iceberg job with GCP Cloud Run infrastructure
+# This example shows how to reference Terraform-managed GCP Cloud Run
+
+tenant_id: acme
+environment: prod
+
+# Reference to source connector recipe
+source_connector: postgres
+source_connector_path: /app/connectors/postgres.yaml
+
+# Reference to target connector recipe
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Reference to asset definition
+asset: postgres_orders
+asset_path: /app/assets/postgres/v1.0/db_orders.yaml
+
+# Source configuration
+source:
+  tables:
+    - name: orders
+      object: orders
+  incremental:
+    strategy: updated_at
+    cursor_field: updated_at
+
+# Target configuration
+target:
+  branch: acme
+  warehouse: s3://lake/acme/
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/postgres/orders"
+
+# Infrastructure configuration (Terraform-managed GCP Cloud Run)
+infrastructure:
+  provider: gcp
+  runtime:
+    type: gcp_cloud_run
+    image: "us-central1-docker.pkg.dev/acme-data-platform/dativo/dativo:1.1.0"
+    cpu: "1"
+    memory: "2Gi"
+  region: us-central1
+  resource_identifiers:
+    # These placeholders are replaced with actual Terraform outputs
+    cluster_name: "{{terraform_outputs.cluster_name}}"
+    service_name: "{{terraform_outputs.service_name}}"
+    service_uri: "{{terraform_outputs.service_uri}}"
+    service_account_email: "{{terraform_outputs.service_account_email}}"
+  tags:
+    # Required tags for cost allocation and compliance
+    job_name: postgres-orders-etl
+    team: data-engineering
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: data-platform
+
+logging:
+  redaction: true
+  level: INFO

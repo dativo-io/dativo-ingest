@@ -241,6 +241,25 @@ asset:
     mode: strict
 ```
 
+## Infrastructure Integration (NEW)
+
+Dativo now supports **Terraform-managed external infrastructure** for cloud-native deployments:
+
+- **AWS Fargate**: Serverless container runtime on ECS
+- **Azure Container Apps**: Managed container platform with scale-to-zero
+- **GCP Cloud Run**: Serverless container execution
+
+**Key Features:**
+- ✅ Cloud-agnostic job definitions
+- ✅ Tag propagation for cost allocation and compliance
+- ✅ Separation of concerns (infrastructure team manages Terraform, data team manages jobs)
+- ✅ Full traceability with resource tagging
+
+**Learn More:**
+- [Terraform Infrastructure Integration Guide](docs/TERRAFORM_INFRASTRUCTURE_INTEGRATION.md)
+- [CI/CD Workflows](docs/TERRAFORM_CICD_WORKFLOWS.md)
+- [Implementation Summary](TERRAFORM_INTEGRATION_SUMMARY.md)
+
 ## Supported Connectors
 
 - **Stripe**: Payments data (customers, charges, invoices)

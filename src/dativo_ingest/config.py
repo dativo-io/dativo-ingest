@@ -424,6 +424,79 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class InfrastructureRuntimeConfig(BaseModel):
+    """Runtime configuration for infrastructure."""
+
+    type: str = Field(..., description="Runtime type: aws_fargate, azure_container_apps, gcp_cloud_run")
+    image: Optional[str] = Field(None, description="Container image URI")
+    cpu: Optional[str] = Field(None, description="CPU allocation (e.g., '1024' for Fargate, '1.0' for Cloud Run)")
+    memory: Optional[str] = Field(None, description="Memory allocation (e.g., '2048' for Fargate MB, '2Gi' for ACA)")
+    
+    @field_validator("type")
+    @classmethod
+    def validate_runtime_type(cls, v: str) -> str:
+        """Validate runtime type is supported."""
+        allowed_types = ["aws_fargate", "azure_container_apps", "gcp_cloud_run"]
+        if v not in allowed_types:
+            raise ValueError(f"Runtime type must be one of: {', '.join(allowed_types)}")
+        return v
+
+
+class InfrastructureConfig(BaseModel):
+    """Infrastructure configuration for external runtime management via Terraform."""
+
+    provider: str = Field(..., description="Cloud provider: aws, azure, gcp")
+    runtime: InfrastructureRuntimeConfig
+    region: str = Field(..., description="Cloud region (e.g., us-east-1, eastus, us-central1)")
+    resource_identifiers: Optional[Dict[str, str]] = Field(
+        default_factory=dict,
+        description="Resource identifiers from Terraform outputs (supports {{terraform_outputs.*}} placeholders)"
+    )
+    tags: Dict[str, str] = Field(
+        ...,
+        description="Resource tags/labels for cost allocation, compliance, and traceability"
+    )
+    
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        """Validate provider is supported."""
+        allowed_providers = ["aws", "azure", "gcp"]
+        if v not in allowed_providers:
+            raise ValueError(f"Provider must be one of: {', '.join(allowed_providers)}")
+        return v
+    
+    @field_validator("tags")
+    @classmethod
+    def validate_required_tags(cls, v: Dict[str, str]) -> Dict[str, str]:
+        """Validate that required tags are present."""
+        required_tags = ["job_name", "team", "pipeline_type", "environment", "cost_center"]
+        missing_tags = [tag for tag in required_tags if tag not in v]
+        if missing_tags:
+            raise ValueError(
+                f"Missing required tags: {', '.join(missing_tags)}. "
+                f"Required tags: {', '.join(required_tags)}"
+            )
+        return v
+    
+    @model_validator(mode="after")
+    def validate_provider_runtime_compatibility(self) -> "InfrastructureConfig":
+        """Validate that provider and runtime type are compatible."""
+        provider_runtime_map = {
+            "aws": ["aws_fargate"],
+            "azure": ["azure_container_apps"],
+            "gcp": ["gcp_cloud_run"]
+        }
+        
+        allowed_runtimes = provider_runtime_map.get(self.provider, [])
+        if self.runtime.type not in allowed_runtimes:
+            raise ValueError(
+                f"Runtime type '{self.runtime.type}' is not compatible with provider '{self.provider}'. "
+                f"Allowed runtimes for {self.provider}: {', '.join(allowed_runtimes)}"
+            )
+        return self
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
@@ -461,6 +534,9 @@ class JobConfig(BaseModel):
     # Source and target configurations (flat structure, merged with recipes)
     source: Optional[Dict[str, Any]] = None  # Source configuration
     target: Optional[Dict[str, Any]] = None  # Target configuration
+    
+    # Infrastructure configuration (optional - for Terraform-managed runtimes)
+    infrastructure: Optional[InfrastructureConfig] = None
     
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'

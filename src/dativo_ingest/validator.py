@@ -235,6 +235,92 @@ class ConnectorValidator:
                 )
                 sys.exit(2)
 
+    def validate_infrastructure_config(
+        self, job_config: JobConfig
+    ) -> None:
+        """Validate infrastructure configuration if present.
+
+        Args:
+            job_config: Job configuration to validate
+
+        Raises:
+            SystemExit: Exit code 2 on validation failure
+        """
+        if not job_config.infrastructure:
+            return  # No infrastructure config, skip validation
+        
+        infra = job_config.infrastructure
+        
+        # Validate required fields are present (Pydantic should catch this, but double-check)
+        if not infra.provider:
+            print(
+                f"ERROR: Infrastructure configuration missing 'provider' field.\n"
+                f"Job: {job_config.tenant_id}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        
+        if not infra.runtime or not infra.runtime.type:
+            print(
+                f"ERROR: Infrastructure configuration missing 'runtime.type' field.\n"
+                f"Job: {job_config.tenant_id}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        
+        if not infra.region:
+            print(
+                f"ERROR: Infrastructure configuration missing 'region' field.\n"
+                f"Job: {job_config.tenant_id}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        
+        # Validate tags contain required fields
+        required_tags = ["job_name", "team", "pipeline_type", "environment", "cost_center"]
+        missing_tags = [tag for tag in required_tags if tag not in infra.tags]
+        if missing_tags:
+            print(
+                f"ERROR: Infrastructure tags missing required fields: {', '.join(missing_tags)}.\n"
+                f"Job: {job_config.tenant_id}\n"
+                f"Required tags: {', '.join(required_tags)}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        
+        # Validate provider-runtime compatibility
+        provider_runtime_map = {
+            "aws": ["aws_fargate"],
+            "azure": ["azure_container_apps"],
+            "gcp": ["gcp_cloud_run"]
+        }
+        
+        allowed_runtimes = provider_runtime_map.get(infra.provider, [])
+        if infra.runtime.type not in allowed_runtimes:
+            print(
+                f"ERROR: Runtime type '{infra.runtime.type}' is not compatible with provider '{infra.provider}'.\n"
+                f"Job: {job_config.tenant_id}\n"
+                f"Allowed runtimes for {infra.provider}: {', '.join(allowed_runtimes)}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        
+        # Validate resource_identifiers don't have malformed placeholders
+        if infra.resource_identifiers:
+            import re
+            placeholder_pattern = re.compile(r'\{\{terraform_outputs\.([a-zA-Z0-9_]+)\}\}')
+            for key, value in infra.resource_identifiers.items():
+                if '{{' in value and '}}' in value:
+                    match = placeholder_pattern.match(value)
+                    if not match:
+                        print(
+                            f"ERROR: Malformed Terraform output placeholder in resource_identifiers.{key}: {value}\n"
+                            f"Job: {job_config.tenant_id}\n"
+                            f"Expected format: {{{{terraform_outputs.<output_name>}}}}",
+                            file=sys.stderr,
+                        )
+                        sys.exit(2)
+
     def validate_job(
         self, job_config: JobConfig, mode: str = "self_hosted"
     ) -> None:
@@ -263,6 +349,9 @@ class ConnectorValidator:
 
         # Validate incremental strategy
         self.validate_incremental_strategy(job_config, source_connector_def)
+        
+        # Validate infrastructure configuration if present
+        self.validate_infrastructure_config(job_config)
 
 
 class IncrementalStateManager:
