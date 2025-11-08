@@ -342,7 +342,7 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
 
 
 def start_orchestrated(runner_config: RunnerConfig) -> None:
-    """Start Dagster orchestrator in long-running mode.
+    """Start orchestrator in long-running mode (Dagster or Airflow).
 
     Args:
         runner_config: Runner configuration
@@ -351,9 +351,23 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
         SystemExit: If orchestrator fails to start
     """
     logger = setup_logging(level="INFO", redact_secrets=False)
+    
+    orchestrator_type = runner_config.orchestrator.type
+    
+    # Route to appropriate orchestrator based on type
+    if orchestrator_type == "airflow":
+        logger.info(
+            "Initializing Airflow orchestrator",
+            extra={"event_type": "orchestrator_initializing", "type": "airflow"},
+        )
+        # Import and delegate to Airflow module
+        from . import orchestrated_airflow
+        return orchestrated_airflow.start_orchestrated(runner_config)
+    
+    # Default to Dagster
     logger.info(
         "Initializing Dagster orchestrator",
-        extra={"event_type": "orchestrator_initializing"},
+        extra={"event_type": "orchestrator_initializing", "type": "dagster"},
     )
 
     # Create Dagster definitions

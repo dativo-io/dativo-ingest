@@ -885,7 +885,7 @@ class ScheduleConfig(BaseModel):
 class OrchestratorConfig(BaseModel):
     """Orchestrator configuration."""
 
-    type: str = "dagster"
+    type: str = Field(default="dagster", pattern="^(dagster|airflow)$")
     schedules: List[ScheduleConfig]
     concurrency_per_tenant: int = Field(default=1, ge=1)
 

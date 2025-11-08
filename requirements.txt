@@ -8,6 +8,7 @@ pyyaml>=6.0
 
 # Orchestration
 dagster>=1.5.0
+apache-airflow>=2.7.0
 
 # Logging
 python-json-logger>=2.0.0
