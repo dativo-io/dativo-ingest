@@ -2,14 +2,16 @@ name: Schema Validation
 
 on:
   push:
-    branches: [main]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main]
+    branches: [main, master, develop]
   workflow_dispatch:
 
 jobs:
-  validate:
+  validate-schemas:
+    name: Validate Schemas
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout code
@@ -29,7 +31,19 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml jsonschema
+
       - name: Validate connector registry
         run: make schema-connectors
 
-      # Templates validation step removed (no corresponding Makefile target)
+      - name: Validate ODCS compliance
+        run: make schema-odcs
