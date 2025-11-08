@@ -321,9 +321,31 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 },
             )
 
-    # Initialize extractor based on source type
+    # Initialize extractor based on source type or custom reader
     try:
-        if source_config.type == "csv":
+        if source_config.custom_reader:
+            # Use custom reader plugin
+            from .plugins import PluginLoader
+            
+            logger.info(
+                f"Loading custom reader from: {source_config.custom_reader}",
+                extra={
+                    "custom_reader": source_config.custom_reader,
+                    "event_type": "custom_reader_loading",
+                },
+            )
+            
+            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            extractor = reader_class(source_config)
+            
+            logger.info(
+                "Custom reader initialized",
+                extra={
+                    "custom_reader": source_config.custom_reader,
+                    "event_type": "custom_reader_initialized",
+                },
+            )
+        elif source_config.type == "csv":
             from .connectors.csv_extractor import CSVExtractor
             extractor = CSVExtractor(source_config)
         elif source_config.type == "postgres":
@@ -337,26 +359,29 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             extractor = StripeExtractor(source_config)
         else:
             logger.error(
-                f"Unsupported source type: {source_config.type}",
+                f"Unsupported source type: {source_config.type}. "
+                f"Either use a supported type or specify a custom_reader in the source configuration.",
                 extra={
                     "event_type": "extractor_error",
                 },
             )
             return 2
 
-        logger.info(
-            "Extractor initialized",
-            extra={
-                "source_type": source_config.type,
-                "event_type": "extractor_initialized",
-            },
-        )
+        if not source_config.custom_reader:
+            logger.info(
+                "Extractor initialized",
+                extra={
+                    "source_type": source_config.type,
+                    "event_type": "extractor_initialized",
+                },
+            )
     except Exception as e:
         logger.error(
             f"Failed to initialize extractor: {e}",
             extra={
                 "event_type": "extractor_error",
             },
+            exc_info=True,
         )
         return 2
 
@@ -382,10 +407,8 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         )
         return 2
 
-    # Initialize Parquet writer
+    # Initialize writer based on target config or custom writer
     try:
-        from .parquet_writer import ParquetWriter
-
         # Get output base path from target config following industry standards
         # Standard path structure: s3://bucket/domain/data_product/table/
         # Always build standard path regardless of warehouse config to ensure consistency
@@ -412,20 +435,48 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         # - Apply access policies at domain/data_product level
         output_base = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
 
-        writer = ParquetWriter(asset_definition, target_config, output_base)
-        logger.info(
-            "Parquet writer initialized",
-            extra={
-                "output_base": output_base,
-                "event_type": "writer_initialized",
-            },
-        )
+        if target_config.custom_writer:
+            # Use custom writer plugin
+            from .plugins import PluginLoader
+            
+            logger.info(
+                f"Loading custom writer from: {target_config.custom_writer}",
+                extra={
+                    "custom_writer": target_config.custom_writer,
+                    "event_type": "custom_writer_loading",
+                },
+            )
+            
+            writer_class = PluginLoader.load_writer(target_config.custom_writer)
+            writer = writer_class(asset_definition, target_config, output_base)
+            
+            logger.info(
+                "Custom writer initialized",
+                extra={
+                    "custom_writer": target_config.custom_writer,
+                    "output_base": output_base,
+                    "event_type": "custom_writer_initialized",
+                },
+            )
+        else:
+            # Use default Parquet writer
+            from .parquet_writer import ParquetWriter
+            writer = ParquetWriter(asset_definition, target_config, output_base)
+            
+            logger.info(
+                "Parquet writer initialized",
+                extra={
+                    "output_base": output_base,
+                    "event_type": "writer_initialized",
+                },
+            )
     except Exception as e:
         logger.error(
-            f"Failed to initialize Parquet writer: {e}",
+            f"Failed to initialize writer: {e}",
             extra={
                 "event_type": "writer_error",
             },
+            exc_info=True,
         )
         return 2
 
@@ -590,7 +641,28 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
 
         # Commit all files to Iceberg (if catalog is configured) or upload to S3 (if no catalog)
         if all_file_metadata:
-            if committer:
+            # Check if writer has custom commit_files method
+            if target_config.custom_writer and hasattr(writer, 'commit_files'):
+                # Use custom writer's commit logic
+                try:
+                    commit_result = writer.commit_files(all_file_metadata)
+                    logger.info(
+                        "Files committed using custom writer",
+                        extra={
+                            "files_added": commit_result.get("files_added", len(all_file_metadata)),
+                            "status": commit_result.get("status"),
+                            "event_type": "custom_writer_commit_success",
+                        },
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to commit files using custom writer: {e}",
+                        extra={
+                            "event_type": "custom_writer_commit_failed",
+                        },
+                    )
+                    return 2
+            elif committer:
                 try:
                     commit_result = committer.commit_files(all_file_metadata)
                     logger.info(
@@ -613,7 +685,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                         },
                     )
             else:
-                # No catalog - still need to upload files to S3/MinIO
+                # No catalog and no custom writer - still need to upload files to S3/MinIO
                 # Create a minimal committer just for uploading (without catalog operations)
                 from .iceberg_committer import IcebergCommitter
                 upload_committer = IcebergCommitter(
