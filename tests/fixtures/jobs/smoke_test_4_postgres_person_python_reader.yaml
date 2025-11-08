@@ -1,0 +1,57 @@
+# Smoke Test 4: Postgres Person with Python Custom Reader
+# Demonstrates: Python custom reader for Postgres Person table
+tenant_id: test_tenant
+environment: test
+
+# Source connector - Postgres with AdventureWorks database
+source_connector: postgres
+source_connector_path: connectors/postgres.yaml
+
+# Target connector - Iceberg with MinIO storage
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition - Markdown-KV format (string mode)
+asset: postgres_person_markdown_kv
+asset_path: tests/fixtures/assets/markdown_kv/v1.0/person_markdown_kv.yaml
+
+# Source configuration - Using Python custom reader
+source:
+  custom_reader: "tests/fixtures/plugins/postgres_person_reader.py:PostgresPersonReader"
+  
+  tables:
+    - name: person.person
+      object: person
+  incremental:
+    strategy: updated_at
+    cursor_field: modifieddate
+    lookback_days: 0
+  connection:
+    host: "${PGHOST:-localhost}"
+    port: "${PGPORT:-5432}"
+    database: "${PGDATABASE:-Adventureworks}"
+    user: "${PGUSER:-postgres}"
+    password: "${PGPASSWORD:-postgres}"
+  engine:
+    options:
+      batch_size: 500
+
+# Target configuration - Iceberg with MinIO and Markdown-KV storage
+target:
+  file_format: parquet
+  markdown_kv_storage:
+    mode: "string"  # Store Markdown-KV content as STRING column in Parquet
+  connection:
+    s3:
+      endpoint: "${MINIO_ENDPOINT}"  # MinIO endpoint
+      bucket: test-bucket
+      access_key_id: "${MINIO_ACCESS_KEY}"
+      secret_access_key: "${MINIO_SECRET_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true  # Required for MinIO
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+
