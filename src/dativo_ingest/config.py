@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -882,12 +883,56 @@ class ScheduleConfig(BaseModel):
         return self
 
 
+class AirflowOrchestratorConfig(BaseModel):
+    """Airflow-specific orchestration settings."""
+
+    dag_output_dir: str = "/airflow/dags"
+    dag_file_prefix: str = "dativo_"
+    python_interpreter: str = "python"
+    catchup: bool = False
+    default_args: Dict[str, Any] = Field(default_factory=dict)
+    start_date: Optional[datetime] = None
+    dag_owner: str = "dativo"
+    dag_tags: List[str] = Field(default_factory=lambda: ["dativo"])
+
+    @field_validator("start_date", mode="before")
+    @classmethod
+    def parse_start_date(cls, value: Optional[Any]) -> Optional[datetime]:
+        """Parse start_date strings into datetime objects."""
+        if value is None or isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            normalized = value.replace("Z", "+00:00")
+            try:
+                return datetime.fromisoformat(normalized)
+            except ValueError as exc:
+                raise ValueError(
+                    "start_date must be an ISO 8601 formatted string (e.g. 2024-01-01T00:00:00Z)"
+                ) from exc
+        raise TypeError("start_date must be a datetime or ISO 8601 formatted string")
+
+
 class OrchestratorConfig(BaseModel):
     """Orchestrator configuration."""
 
     type: str = "dagster"
     schedules: List[ScheduleConfig]
     concurrency_per_tenant: int = Field(default=1, ge=1)
+    airflow: Optional[AirflowOrchestratorConfig] = None
+
+    @model_validator(mode="after")
+    def validate_type(self) -> "OrchestratorConfig":
+        """Validate orchestrator type and required settings."""
+        supported_types = {"dagster", "airflow"}
+        if self.type not in supported_types:
+            raise ValueError(
+                f"Unsupported orchestrator type '{self.type}'. Supported types: {sorted(supported_types)}"
+            )
+
+        if self.type == "airflow":
+            if self.airflow is None:
+                self.airflow = AirflowOrchestratorConfig()
+        return self
 
 
 class RunnerConfig(BaseModel):

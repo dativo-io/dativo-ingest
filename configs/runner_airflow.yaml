@@ -1,0 +1,47 @@
+runner:
+  mode: orchestrated
+  orchestrator:
+    type: airflow
+    airflow:
+      dag_output_dir: /app/dags
+      dag_file_prefix: dativo_
+      python_interpreter: python
+      dag_owner: dativo
+      dag_tags:
+        - dativo
+        - orchestrator:airflow
+      catchup: false
+      start_date: 2024-01-01T00:00:00Z
+      default_args:
+        depends_on_past: false
+        email_on_failure: true
+        email:
+          - data-team@example.com
+    schedules:
+      - name: stripe_customers_hourly
+        config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
+        cron: "0 * * * *"
+        enabled: true
+        timezone: UTC
+        max_concurrent_runs: 1
+        tags:
+          environment: production
+          priority: high
+
+      - name: hubspot_contacts_daily
+        config: /app/jobs/acme/hubspot_contacts_to_iceberg.yaml
+        interval_seconds: 21600
+        enabled: true
+        timezone: America/New_York
+        max_concurrent_runs: 1
+        tags:
+          environment: production
+
+      - name: gdrive_deals_daily
+        config: /app/jobs/acme/gdrive_deals_to_iceberg.yaml
+        cron: "5 1 * * *"
+        enabled: true
+        timezone: UTC
+        max_concurrent_runs: 1
+
+    concurrency_per_tenant: 1

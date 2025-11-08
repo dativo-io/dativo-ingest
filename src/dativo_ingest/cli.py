@@ -696,7 +696,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
 
 
 def start_command(args: argparse.Namespace) -> int:
-    """Start orchestrated mode with Dagster.
+    """Start orchestrated mode with configured orchestrator.
 
     Args:
         args: Parsed command-line arguments
@@ -704,9 +704,6 @@ def start_command(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0=success, 2=failure)
     """
-    # Import here to avoid dependency if not using orchestrated mode
-    from .orchestrated import start_orchestrated
-
     # Load runner configuration
     try:
         runner_config = RunnerConfig.from_yaml(args.runner_config)
@@ -717,12 +714,31 @@ def start_command(args: argparse.Namespace) -> int:
     logger = setup_logging(level="INFO", redact_secrets=False)
     logger.info(
         "Starting orchestrated mode",
-        extra={"event_type": "orchestrator_starting"},
+        extra={
+            "event_type": "orchestrator_starting",
+            "orchestrator_type": runner_config.orchestrator.type,
+        },
     )
+
+    orchestrator_type = runner_config.orchestrator.type
 
     # Start orchestrated mode
     try:
-        start_orchestrated(runner_config)
+        if orchestrator_type == "dagster":
+            # Import here to avoid dependency if not using Dagster
+            from .orchestrated import start_orchestrated
+
+            start_orchestrated(runner_config)
+        elif orchestrator_type == "airflow":
+            from .airflow_runner import start_airflow_orchestrator
+
+            start_airflow_orchestrator(runner_config)
+        else:
+            logger.error(
+                f"Unsupported orchestrator type: {orchestrator_type}",
+                extra={"event_type": "orchestrator_error"},
+            )
+            return 2
     except KeyboardInterrupt:
         logger.info("Orchestrator stopped by user")
         return 0
@@ -790,10 +806,10 @@ Examples:
     # Start command
     start_parser = subparsers.add_parser(
         "start",
-        help="Start orchestrated mode with Dagster",
-        description="Start the Dagster orchestrator in long-running mode. Reads schedules "
-        "from runner.yaml and executes jobs according to cron expressions. "
-        "Ensures tenant-level serialization to avoid conflicts.",
+        help="Start orchestrated mode with Dagster or generate Airflow DAGs",
+        description="Start the configured orchestrator. When type=dagster, runs the Dagster orchestrator "
+        "in long-running mode using runner.yaml. When type=airflow, generates Airflow DAG files "
+        "based on schedules for deployment into an Airflow environment.",
     )
     start_parser.add_argument(
         "mode",
