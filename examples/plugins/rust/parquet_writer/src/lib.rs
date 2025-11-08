@@ -13,7 +13,7 @@ use arrow::array::{ArrayRef, Float64Array, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
-use parquet::basic::Compression;
+use parquet::basic::{Compression, GzipLevel};
 use parquet::file::properties::WriterProperties;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -123,9 +123,9 @@ impl ParquetWriter {
 
         let compression = match self.config.engine.options.compression.as_str() {
             "snappy" => Compression::SNAPPY,
-            "gzip" => Compression::GZIP,
+            "gzip" => Compression::GZIP(GzipLevel::default()),
             "lz4" => Compression::LZ4,
-            "zstd" => Compression::ZSTD,
+            "zstd" => Compression::ZSTD(parquet::basic::ZstdLevel::default()),
             "none" => Compression::UNCOMPRESSED,
             _ => Compression::SNAPPY,
         };

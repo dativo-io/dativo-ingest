@@ -249,8 +249,37 @@ class PluginLoader:
         lib_path_str, func_name = plugin_path.rsplit(":", 1)
         lib_path = Path(lib_path_str)
         
+        # If the specified file doesn't exist, try alternative extensions
         if not lib_path.exists():
-            raise ValueError(f"Rust plugin library not found: {lib_path}")
+            # Try .dylib (macOS), .so (Linux), .dll (Windows)
+            alternatives = []
+            if lib_path.suffix == ".so":
+                alternatives = [lib_path.with_suffix(".dylib"), lib_path.with_suffix(".dll")]
+            elif lib_path.suffix == ".dylib":
+                alternatives = [lib_path.with_suffix(".so"), lib_path.with_suffix(".dll")]
+            elif lib_path.suffix == ".dll":
+                alternatives = [lib_path.with_suffix(".so"), lib_path.with_suffix(".dylib")]
+            else:
+                # No extension or unknown extension, try all
+                alternatives = [
+                    lib_path.with_suffix(".so"),
+                    lib_path.with_suffix(".dylib"),
+                    lib_path.with_suffix(".dll"),
+                ]
+            
+            # Try alternatives
+            found = False
+            for alt_path in alternatives:
+                if alt_path.exists():
+                    lib_path = alt_path
+                    found = True
+                    break
+            
+            if not found:
+                raise ValueError(
+                    f"Rust plugin library not found: {lib_path_str}\n"
+                    f"Tried: {lib_path} and alternatives: {[str(a) for a in alternatives]}"
+                )
         
         if not lib_path.is_file():
             raise ValueError(f"Rust plugin path is not a file: {lib_path}")

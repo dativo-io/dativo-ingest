@@ -17,7 +17,7 @@ asset_path: tests/fixtures/assets/csv/v1.0/listening_history.yaml
 # Source configuration
 source:
   files:
-    - path: tests/fixtures/seeds/adventureworks/ListeningHistory.csv
+    - path: tests/fixtures/seeds/music_listening/listening_history.csv
       object: ListeningHistory
 
 # Target configuration

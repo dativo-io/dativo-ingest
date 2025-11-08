@@ -1,0 +1,51 @@
+# Smoke Test 3: CSV Product with Rust Custom Writer
+# Demonstrates: Built-in CSV extractor + Rust custom writer for Parquet
+tenant_id: test_tenant
+environment: test
+
+# Source connector - CSV files
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector - Iceberg with MinIO storage
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_product
+asset_path: tests/fixtures/assets/csv/v1.0/product.yaml
+
+# Source configuration - Using built-in CSV extractor
+source:
+  files:
+    - path: tests/fixtures/seeds/adventureworks/Product.csv
+      object: Product
+  engine:
+    options:
+      batch_size: 1000
+      delimiter: ","
+      encoding: "utf-8"
+
+# Target configuration - Using Rust custom writer for Parquet
+target:
+  # Rust custom writer (writes Parquet files)
+  custom_writer: "examples/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
+  
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+  engine:
+    options:
+      compression: "gzip"
+      row_group_size: 50000
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+
