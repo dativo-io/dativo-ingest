@@ -37,3 +37,20 @@ logging:
   redaction: true
   level: INFO
 
+# Infrastructure runtime (Azure Container Apps via Terraform)
+infrastructure:
+  provider: azure
+  region: westeurope
+  runtime:
+    type: azure_container_apps
+  resource_identifiers:
+    environment_name: "{{terraform_outputs.container_apps_environment}}"
+    container_app_name: "{{terraform_outputs.container_app_name}}"
+    workload_profile: "{{terraform_outputs.workload_profile}}"
+  tags:
+    job_name: postgres_orders_to_iceberg
+    team: order_ops
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: FINOPS-ACME
+

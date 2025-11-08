@@ -7,7 +7,12 @@ from urllib.parse import urlparse
 
 import requests
 
-from .config import JobConfig
+from .config import (
+    JobConfig,
+    REQUIRED_INFRASTRUCTURE_TAG_KEYS,
+    TERRAFORM_OUTPUT_REFERENCE_PATTERN,
+    get_runtime_spec,
+)
 
 
 def validate_required_ports(ports: List[int], host: str = "localhost") -> bool:
@@ -138,6 +143,65 @@ def validate_infrastructure(job_config: JobConfig) -> None:
     """
     errors = []
     warnings = []
+
+    # Validate external infrastructure metadata
+    infrastructure = None
+    try:
+        infrastructure = job_config.get_infrastructure()
+    except Exception as exc:
+        errors.append(f"Infrastructure configuration error: {exc}")
+
+    if infrastructure:
+        try:
+            runtime_spec = get_runtime_spec(
+                infrastructure.provider, infrastructure.runtime.type
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            missing_required_tags = [
+                tag
+                for tag in REQUIRED_INFRASTRUCTURE_TAG_KEYS
+                if tag not in infrastructure.tags
+            ]
+            if missing_required_tags:
+                errors.append(
+                    "Infrastructure tags missing required keys: "
+                    + ", ".join(sorted(missing_required_tags))
+                )
+
+            unresolved_identifiers = [
+                key
+                for key, value in infrastructure.resource_identifiers.items()
+                if TERRAFORM_OUTPUT_REFERENCE_PATTERN.fullmatch(value) is None
+            ]
+            if unresolved_identifiers:
+                errors.append(
+                    "Infrastructure resource identifiers must reference Terraform outputs: "
+                    + ", ".join(unresolved_identifiers)
+                )
+
+            required_identifiers = runtime_spec.get("required_identifiers", [])
+            missing_identifiers = [
+                identifier
+                for identifier in required_identifiers
+                if identifier not in infrastructure.resource_identifiers
+            ]
+            if missing_identifiers:
+                errors.append(
+                    "Infrastructure configuration missing required resource identifiers for "
+                    f"{infrastructure.provider}/{infrastructure.runtime.type}: "
+                    + ", ".join(sorted(missing_identifiers))
+                )
+
+            if (
+                job_config.environment
+                and infrastructure.tags.get("environment") != job_config.environment
+            ):
+                errors.append(
+                    "Infrastructure environment tag must match job environment "
+                    f"({job_config.environment})"
+                )
 
     # Get target configuration
     try:

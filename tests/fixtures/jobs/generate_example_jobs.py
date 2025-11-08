@@ -65,6 +65,22 @@ def generate_job_config(dataset_name: str, asset_info: dict) -> dict:
                 }
             }
         },
+        "infrastructure": {
+            "provider": "aws",
+            "region": "us-east-1",
+            "runtime": {"type": "aws_fargate"},
+            "resource_identifiers": {
+                "cluster_name": "{{terraform_outputs.cluster_name}}",
+                "service_name": "{{terraform_outputs.service_name}}"
+            },
+            "tags": {
+                "job_name": f"{dataset_name}_{asset_name}_runtime",
+                "team": "data_platform",
+                "pipeline_type": "ingestion",
+                "environment": "test",
+                "cost_center": "FINOPS-TEST"
+            }
+        },
         "logging": {
             "redaction": False,
             "level": "INFO"

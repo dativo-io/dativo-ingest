@@ -30,3 +30,20 @@ logging:
   redaction: true
   level: INFO
 
+# Infrastructure runtime (externally managed via Terraform)
+infrastructure:
+  provider: aws
+  region: us-west-2
+  runtime:
+    type: aws_fargate
+  resource_identifiers:
+    cluster_name: "{{terraform_outputs.cluster_name}}"
+    service_name: "{{terraform_outputs.service_name}}"
+    log_group_name: "{{terraform_outputs.log_group_name}}"
+  tags:
+    job_name: hubspot_contacts_to_iceberg
+    team: marketing_ops
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: FINOPS-ACME
+

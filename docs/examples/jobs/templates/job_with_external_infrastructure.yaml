@@ -1,0 +1,63 @@
+# Example Dativo job definition integrated with Terraform-managed runtime
+tenant_id: example_tenant
+environment: prod
+
+source_connector: stripe
+source_connector_path: /app/connectors/stripe.yaml
+
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+source:
+  objects: [customers]
+  incremental:
+    lookback_days: 1
+
+target:
+  branch: example_tenant
+  warehouse: s3://lake/example_tenant/
+  connection:
+    nessie:
+      uri: "https://nessie.example.internal/api/v1"
+    s3:
+      bucket: "example-data-lake"
+      prefix: "raw/stripe/customers"
+
+retry_config:
+  max_retries: 5
+  backoff_multiplier: 2.0
+
+logging:
+  redaction: true
+  level: INFO
+
+infrastructure:
+  provider: gcp
+  region: us-central1
+  runtime:
+    type: gcp_cloud_run
+  resource_identifiers:
+    service_name: "{{terraform_outputs.service_name}}"
+    project_id: "{{terraform_outputs.project_id}}"
+    service_url: "{{terraform_outputs.service_url}}"
+  tags:
+    job_name: stripe_customers_runtime
+    team: data_platform
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: FINOPS-001
+
+# The Terraform pipeline must pass the tags map into the module input:
+#   tags = {
+#     job_name      = "stripe_customers_runtime"
+#     team          = "data_platform"
+#     pipeline_type = "ingestion"
+#     environment   = "prod"
+#     cost_center   = "FINOPS-001"
+#   }
+# and write module outputs (cluster/service identifiers) to a JSON artifact that the
+# deployment process can use to resolve the {{terraform_outputs.*}} placeholders above.
+

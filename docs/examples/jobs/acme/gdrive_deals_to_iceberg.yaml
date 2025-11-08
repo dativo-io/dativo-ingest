@@ -32,3 +32,20 @@ logging:
   redaction: true
   level: INFO
 
+# Infrastructure runtime (Azure Container Apps via Terraform)
+infrastructure:
+  provider: azure
+  region: eastus
+  runtime:
+    type: azure_container_apps
+  resource_identifiers:
+    environment_name: "{{terraform_outputs.container_apps_environment}}"
+    container_app_name: "{{terraform_outputs.container_app_name}}"
+    endpoint_url: "{{terraform_outputs.ingress_url}}"
+  tags:
+    job_name: gdrive_deals_to_iceberg
+    team: analytics_apps
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: FINOPS-ACME
+

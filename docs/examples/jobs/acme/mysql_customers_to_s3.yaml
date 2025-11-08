@@ -32,3 +32,20 @@ logging:
   redaction: true
   level: INFO
 
+# Infrastructure runtime (externally managed via Terraform)
+infrastructure:
+  provider: aws
+  region: eu-west-1
+  runtime:
+    type: aws_fargate
+  resource_identifiers:
+    cluster_name: "{{terraform_outputs.cluster_name}}"
+    service_name: "{{terraform_outputs.service_name}}"
+    execution_role_arn: "{{terraform_outputs.execution_role_arn}}"
+  tags:
+    job_name: mysql_customers_to_s3
+    team: core_data
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: FINOPS-ACME
+

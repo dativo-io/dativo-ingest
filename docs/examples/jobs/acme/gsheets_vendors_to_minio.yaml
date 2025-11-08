@@ -29,3 +29,20 @@ logging:
   redaction: true
   level: INFO
 
+# Infrastructure runtime (GCP Cloud Run via Terraform)
+infrastructure:
+  provider: gcp
+  region: us-central1
+  runtime:
+    type: gcp_cloud_run
+  resource_identifiers:
+    service_name: "{{terraform_outputs.cloud_run_service_name}}"
+    project_id: "{{terraform_outputs.project_id}}"
+    service_url: "{{terraform_outputs.service_url}}"
+  tags:
+    job_name: gsheets_vendors_to_minio
+    team: finance_ops
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: FINOPS-ACME
+

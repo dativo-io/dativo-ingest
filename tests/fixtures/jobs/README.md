@@ -24,6 +24,7 @@ An example job configuration (`adventureworks_person_to_iceberg.yaml`) is includ
 - Iceberg target connector configuration
 - Asset definition reference
 - Source and target overrides
+- Infrastructure metadata linking to externally managed runtimes (provider, runtime type, resource identifiers, tags)
 - Environment variable usage
 
 ## Usage

@@ -35,3 +35,20 @@ logging:
   redaction: true
   level: INFO
 
+# Infrastructure runtime (externally managed via Terraform)
+infrastructure:
+  provider: aws
+  region: us-east-1
+  runtime:
+    type: aws_fargate
+  resource_identifiers:
+    cluster_name: "{{terraform_outputs.cluster_name}}"
+    service_name: "{{terraform_outputs.service_name}}"
+    endpoint_url: "{{terraform_outputs.service_endpoint}}"
+  tags:
+    job_name: stripe_customers_to_iceberg
+    team: revenue_ops
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: FINOPS-ACME
+
