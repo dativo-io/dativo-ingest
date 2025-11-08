@@ -1,0 +1,58 @@
+# Smoke Test 5: CSV Product with Rust Custom Reader and Writer
+# Demonstrates: Rust custom reader + Rust custom writer for maximum performance
+tenant_id: test_tenant
+environment: test
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_product
+asset_path: tests/fixtures/assets/csv/v1.0/product.yaml
+
+# Source configuration - Using Rust custom reader
+source:
+  # Rust custom reader (adjust path based on build location)
+  custom_reader: "examples/plugins/rust/target/release/libcsv_reader_plugin.so:create_reader"
+  
+  files:
+    - path: tests/fixtures/seeds/adventureworks/Product.csv
+      object: Product
+  
+  # Engine options (passed to Rust plugin)
+  engine:
+    options:
+      batch_size: 10000  # Larger batches work better with Rust
+      delimiter: ","
+      encoding: "utf-8"
+
+# Target configuration - Using Rust custom writer
+target:
+  # Rust custom writer
+  custom_writer: "examples/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
+  
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+  
+  # Engine options (passed to Rust plugin)
+  engine:
+    options:
+      compression: "zstd"  # Best compression
+      row_group_size: 100000
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+

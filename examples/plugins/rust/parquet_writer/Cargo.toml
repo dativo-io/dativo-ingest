@@ -13,6 +13,7 @@ serde_json = { workspace = true }
 libc = { workspace = true }
 parquet = "51.0"
 arrow = "51.0"
+chrono = { workspace = true }
 
 [profile.release]
 opt-level = 3

@@ -1,12 +1,13 @@
-# CSV Employee to Iceberg job for smoke tests
+# Smoke Test 1: CSV Employee with Python Custom Reader and Rust Custom Writer
+# Demonstrates: Python custom reader for CSV + Rust custom writer for Parquet
 tenant_id: test_tenant
 environment: test
 
-# Source connector
+# Source connector - CSV files
 source_connector: csv
 source_connector_path: connectors/csv.yaml
 
-# Target connector
+# Target connector - Iceberg with MinIO storage
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 
@@ -14,18 +15,25 @@ target_connector_path: connectors/iceberg.yaml
 asset: csv_employee
 asset_path: tests/fixtures/assets/csv/v1.0/employee.yaml
 
-# Source configuration
+# Source configuration - Using Python custom reader for CSV
 source:
+  # Python custom reader
+  custom_reader: "tests/fixtures/plugins/csv_employee_reader.py:CSVEmployeeReader"
+  
   files:
     - path: tests/fixtures/seeds/AdventureWorks-oltp-install-script/Employee.csv
       object: Employee
   engine:
     options:
+      batch_size: 100
+      delimiter: ","
       encoding: "utf-16-le"  # File is UTF-16 little-endian
 
-# Target configuration - Iceberg table configuration
-# Note: No catalog configured - Parquet files will be written directly to S3
+# Target configuration - Using Rust custom writer for Parquet
 target:
+  # Rust custom writer (writes Parquet files)
+  custom_writer: "examples/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
+  
   connection:
     s3:
       endpoint: "${S3_ENDPOINT}"
@@ -34,6 +42,10 @@ target:
       secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
       region: "${AWS_REGION}"
       path_style_access: true
+  engine:
+    options:
+      compression: "snappy"
+      row_group_size: 100000
 
 # Logging configuration
 logging:

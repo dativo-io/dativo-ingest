@@ -1,4 +1,5 @@
-# CSV Employee to Iceberg job for smoke tests
+# Smoke Test 2: CSV Employee with Python Custom Reader
+# Demonstrates: Python custom reader for CSV files
 tenant_id: test_tenant
 environment: test
 
@@ -14,17 +15,19 @@ target_connector_path: connectors/iceberg.yaml
 asset: csv_employee
 asset_path: tests/fixtures/assets/csv/v1.0/employee.yaml
 
-# Source configuration
+# Source configuration - Using Python custom reader
 source:
+  custom_reader: "tests/fixtures/plugins/csv_employee_reader.py:CSVEmployeeReader"
   files:
     - path: tests/fixtures/seeds/AdventureWorks-oltp-install-script/Employee.csv
       object: Employee
   engine:
     options:
+      batch_size: 100
+      delimiter: ","
       encoding: "utf-16-le"  # File is UTF-16 little-endian
 
 # Target configuration - Iceberg table configuration
-# Note: No catalog configured - Parquet files will be written directly to S3
 target:
   connection:
     s3:
