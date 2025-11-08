@@ -1,8 +1,13 @@
 """Tag derivation for source metadata → Iceberg table properties.
 
-This module provides automatic classification and governance tag derivation
-from source schemas and asset definitions, preparing tags for propagation
-to Iceberg table properties.
+This module collects explicitly defined tags from asset definitions and
+source metadata, preparing them for propagation to Iceberg table properties.
+
+NO AUTOMATIC CLASSIFICATION: All tags must be explicitly defined in:
+- Asset definition schema (field.classification)
+- Asset definition compliance section
+- Asset definition finops section
+- Job-level overrides
 """
 
 import re
@@ -10,49 +15,12 @@ from typing import Any, Dict, List, Optional, Set
 
 
 class TagDerivation:
-    """Derives metadata tags from schema fields and asset definitions."""
-
-    # Field name patterns for PII detection
-    PII_FIELD_PATTERNS = [
-        r"^email$",
-        r"^e_?mail$",
-        r"phone",
-        r"mobile",
-        r"ssn",
-        r"social_security",
-        r"drivers?_?license",
-        r"passport",
-        r"first_?name",
-        r"last_?name",
-        r"full_?name",
-        r"maiden_?name",
-        r"birth_?date",
-        r"dob",
-        r"date_of_birth",
-        r"address",
-        r"street",
-        r"zip_?code",
-        r"postal_?code",
-        r"credit_?card",
-        r"cc_number",
-        r"account_?number",
-        r"routing_?number",
-        r"tax_?id",
-        r"national_?id",
-    ]
-
-    # Field name patterns for financial/sensitive data
-    SENSITIVE_FIELD_PATTERNS = [
-        r"salary",
-        r"compensation",
-        r"revenue",
-        r"cost",
-        r"price",
-        r"amount",
-        r"balance",
-        r"profit",
-        r"commission",
-    ]
+    """Collects explicitly defined tags from asset definitions and source metadata.
+    
+    NO AUTOMATIC CLASSIFICATION: This class only uses tags that are explicitly
+    defined in the asset definition or provided via overrides. It does NOT
+    perform any automatic pattern matching or field name analysis.
+    """
 
     def __init__(
         self,
@@ -78,31 +46,24 @@ class TagDerivation:
         self.governance_overrides = governance_overrides or {}
 
     def _classify_field(self, field_name: str, field_type: str) -> Optional[str]:
-        """Classify a field based on name and type patterns.
+        """Classify a field - ONLY uses explicit classifications, no auto-detection.
 
         Args:
             field_name: Field name
             field_type: Field type
 
         Returns:
-            Classification string or None
+            Classification string or None (always None - no auto-detection)
         """
-        field_name_lower = field_name.lower()
-
-        # Check PII patterns
-        for pattern in self.PII_FIELD_PATTERNS:
-            if re.search(pattern, field_name_lower):
-                return "pii"
-
-        # Check sensitive patterns
-        for pattern in self.SENSITIVE_FIELD_PATTERNS:
-            if re.search(pattern, field_name_lower):
-                return "sensitive"
-
+        # No automatic classification - only use explicit tags
         return None
 
     def derive_field_classifications(self) -> Dict[str, str]:
-        """Derive field-level classifications.
+        """Derive field-level classifications - ONLY from explicit definitions.
+
+        NO automatic detection. Only uses:
+        1. Explicit classification in schema
+        2. Classification overrides from job config
 
         Returns:
             Dictionary mapping field names to classification strings
@@ -111,33 +72,37 @@ class TagDerivation:
 
         for field in self.asset_definition.schema:
             field_name = field["name"]
-            field_type = field.get("type", "string")
 
             # Check for explicit classification in schema
             if "classification" in field:
                 classifications[field_name] = field["classification"].lower()
                 continue
 
-            # Check for override
+            # Check for override from job config
             if field_name in self.classification_overrides:
                 classifications[field_name] = self.classification_overrides[
                     field_name
                 ].lower()
                 continue
 
-            # Derive from field name/type
-            derived = self._classify_field(field_name, field_type)
-            if derived:
-                classifications[field_name] = derived
+            # NO automatic classification - skip this field
 
         return classifications
 
     def derive_default_classification(self) -> Optional[str]:
-        """Derive default table-level classification.
+        """Derive default table-level classification - ONLY from explicit definitions.
+
+        NO automatic detection. Only uses:
+        1. Explicit classification from compliance section
+        2. Override from job config
 
         Returns:
             Default classification string or None
         """
+        # Check for override first
+        if "default" in self.classification_overrides:
+            return self.classification_overrides["default"].lower()
+
         # Check compliance section
         if self.asset_definition.compliance:
             if self.asset_definition.compliance.classification:
@@ -146,21 +111,7 @@ class TagDerivation:
                 if classifications:
                     return classifications[0].lower()
 
-        # Check for override
-        if "default" in self.classification_overrides:
-            return self.classification_overrides["default"].lower()
-
-        # Derive from field classifications
-        field_classifications = self.derive_field_classifications()
-        if field_classifications:
-            # If any field is PII, default to PII
-            if "pii" in field_classifications.values():
-                return "pii"
-            # Otherwise use the most common classification
-            classification_set = set(field_classifications.values())
-            if classification_set:
-                return list(classification_set)[0]
-
+        # NO automatic derivation from field classifications
         return None
 
     def derive_governance_tags(self) -> Dict[str, str]:

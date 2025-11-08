@@ -34,8 +34,8 @@ def test_module_structure():
     return True
 
 
-def test_pattern_matching():
-    """Test PII pattern matching without full dependencies."""
+def test_explicit_classification_only():
+    """Test that NO automatic classification is performed."""
     from dativo_ingest.tag_derivation import TagDerivation
     
     # Mock asset definition with minimal structure
@@ -48,24 +48,24 @@ def test_pattern_matching():
     
     derivation = TagDerivation(asset_definition=MockAsset())
     
-    # Test PII field detection
+    # Test that NO fields are auto-classified
     test_cases = [
-        ("email", "string", "pii"),
-        ("first_name", "string", "pii"),
-        ("phone", "string", "pii"),
-        ("salary", "double", "sensitive"),
-        ("amount", "double", "sensitive"),
-        ("id", "integer", None),
-        ("status", "string", None),
+        ("email", "string"),
+        ("first_name", "string"),
+        ("phone", "string"),
+        ("salary", "double"),
+        ("amount", "double"),
+        ("id", "integer"),
+        ("status", "string"),
     ]
     
-    for field_name, field_type, expected in test_cases:
+    for field_name, field_type in test_cases:
         result = derivation._classify_field(field_name, field_type)
-        if result != expected:
-            print(f"✗ Pattern match failed: {field_name} -> {result} (expected {expected})")
+        if result is not None:
+            print(f"✗ Unexpected auto-classification: {field_name} -> {result} (should be None)")
             return False
     
-    print("✓ PII pattern matching works correctly")
+    print("✓ No automatic classification (explicit tags only)")
     return True
 
 
@@ -164,7 +164,7 @@ def main():
     
     tests = [
         ("Module structure", test_module_structure),
-        ("Pattern matching", test_pattern_matching),
+        ("Explicit classification only", test_explicit_classification_only),
         ("IcebergCommitter signature", test_iceberg_committer_signature),
         ("Config extensions", test_config_extensions),
     ]

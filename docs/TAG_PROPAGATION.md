@@ -26,23 +26,21 @@ All tags are stored in Iceberg table properties using namespaced keys:
 
 ## Implementation
 
-### 1. Automatic Classification Detection
+### 1. Explicit Classification Only
 
-The system automatically detects PII and sensitive data based on field names:
+**NO AUTOMATIC CLASSIFICATION:** The system only uses tags that are explicitly defined. All classifications must be specified in one of these places:
 
-**PII Detection Patterns:**
-- `email`, `e_mail`, `e-mail`
-- `phone`, `mobile`
-- `ssn`, `social_security`
-- `first_name`, `last_name`, `full_name`
-- `birth_date`, `dob`, `date_of_birth`
-- `address`, `street`, `zip_code`, `postal_code`
-- `credit_card`, `cc_number`, `account_number`
+1. **Asset schema** - Field-level `classification` attribute
+2. **Asset compliance** - Table-level classification
+3. **Job config** - Classification overrides
 
-**Sensitive Data Patterns:**
-- `salary`, `compensation`
-- `revenue`, `cost`, `price`, `amount`
-- `balance`, `profit`, `commission`
+**Example of explicit classification:**
+```yaml
+schema:
+  - name: email
+    type: string
+    classification: PII  # Must be explicit
+```
 
 ### 2. Asset Definition Structure
 
@@ -169,11 +167,12 @@ models:
 
 Tags are merged in this order (later overrides earlier):
 
-1. **Automatic detection** from field names and types
-2. **Asset schema** explicit field-level classifications
-3. **Asset compliance** section for table-level defaults
-4. **Asset finops** section for cost attribution
-5. **Job-level overrides** from job configuration
+1. **Asset schema** explicit field-level classifications
+2. **Asset compliance** section for table-level defaults
+3. **Asset finops** section for cost attribution
+4. **Job-level overrides** from job configuration
+
+**NO AUTOMATIC DETECTION:** All tags must be explicitly defined.
 
 ## Security Notes
 
@@ -184,14 +183,17 @@ Tags are merged in this order (later overrides earlier):
 
 ## Examples
 
-### Example 1: Basic Asset with Auto-Detection
+### Example 1: Basic Asset with Explicit Classifications
 
 ```yaml
 asset:
   schema:
-    - name: email        # Auto-detected as PII
-    - name: first_name   # Auto-detected as PII
-    - name: salary       # Auto-detected as SENSITIVE
+    - name: email
+      classification: PII          # Must be explicit
+    - name: first_name
+      classification: PII          # Must be explicit
+    - name: salary
+      classification: SENSITIVE    # Must be explicit
 ```
 
 **Result:**
