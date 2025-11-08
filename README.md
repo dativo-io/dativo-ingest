@@ -19,6 +19,7 @@ All behavior is driven by YAML configs, validated by a connectors registry and a
 - **Specs-as-Code**: Versioned dataset schema references with presence validation
 - **Schema Validator**: Validates records against asset schemas with configurable strict/warn modes
 - **Data Extractors**: Native Python extractors for CSV and file-based sources (extensible for API/database sources)
+- **Custom Plugins**: Plugin system for custom readers and writers - allows users to implement format-aware, high-performance data processing
 - **Parquet Writer**: Writes validated data to Parquet files with target file sizing and partitioning
 - **Iceberg Committer**: Commits Parquet files to Iceberg tables via catalog (optional - can write to S3 without catalog)
 
@@ -251,6 +252,49 @@ asset:
 - **Markdown-KV**: Markdown-KV files for LLM-optimized data ingestion
 - **PostgreSQL**: Database tables (self-hosted only)
 - **MySQL**: Database tables (self-hosted only)
+
+## Custom Plugins
+
+Dativo supports custom readers and writers, allowing you to:
+- Read from any source format or system (e.g., proprietary APIs, custom file formats)
+- Write to any target format or system (e.g., Delta Lake, custom databases)
+- Implement format-aware, high-performance data processing
+- Leverage domain-specific optimizations
+
+### Quick Example
+
+**1. Create a custom reader:**
+
+```python
+# my_reader.py
+from dativo_ingest.plugins import BaseReader
+
+class MyCustomReader(BaseReader):
+    def extract(self, state_manager=None):
+        # Your extraction logic using self.source_config
+        connection = self.source_config.connection
+        yield batch_of_records
+```
+
+**2. Configure your job:**
+
+```yaml
+source:
+  custom_reader: "/app/plugins/my_reader.py:MyCustomReader"
+  connection:
+    endpoint: "https://api.example.com"
+    api_key: "${API_KEY}"
+```
+
+**3. Run your job:**
+
+```bash
+dativo run --config /app/jobs/my_job.yaml --mode self_hosted
+```
+
+**Documentation:**
+- [Custom Plugins Guide](docs/CUSTOM_PLUGINS.md) - Comprehensive guide with examples
+- [Example Plugins](examples/plugins/) - Working examples (JSON API reader, JSON file writer, etc.)
 
 ### Markdown-KV Storage Options
 

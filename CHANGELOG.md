@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Custom Plugin System**: Support for custom readers and writers
+  - New `BaseReader` and `BaseWriter` base classes for plugin development
+  - `PluginLoader` utility for dynamic plugin loading from file paths
+  - `custom_reader` and `custom_writer` configuration options in job configs
+  - Plugins receive connection details and can implement format-aware, high-performance processing
+  - Comprehensive documentation in `docs/CUSTOM_PLUGINS.md`
+  - Example plugins: JSON API reader and JSON file writer in `examples/plugins/`
+  - Integration with existing ETL pipeline (custom plugins work alongside built-in extractors)
+  
+### Changed
+- Updated `SourceConfig` to include optional `custom_reader` field
+- Updated `TargetConfig` to include optional `custom_writer` field
+- Enhanced CLI to dynamically load and instantiate custom plugins
+- Updated README with custom plugin overview and quick start guide
+
 ### Planned
 - OSS connector wrappers (Stripe, HubSpot, Google Drive, Google Sheets, MySQL)
 - Per-connector error handling and rate limiting
