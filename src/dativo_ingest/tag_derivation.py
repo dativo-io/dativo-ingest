@@ -1,13 +1,20 @@
 """Tag derivation for source metadata → Iceberg table properties.
 
-This module collects explicitly defined tags from asset definitions and
-source metadata, preparing them for propagation to Iceberg table properties.
+This module collects explicitly defined tags from source systems, asset definitions,
+and job configurations, then propagates them to Iceberg table properties.
 
-NO AUTOMATIC CLASSIFICATION: All tags must be explicitly defined in:
-- Asset definition schema (field.classification)
-- Asset definition compliance section
-- Asset definition finops section
-- Job-level overrides
+NO AUTOMATIC CLASSIFICATION: All tags must be explicitly defined.
+
+TAG HIERARCHY (later overrides earlier):
+1. Source system tags (from connector metadata) - LOWEST PRIORITY
+2. Asset definition tags (schema, compliance, finops) - MEDIUM PRIORITY
+3. Job configuration tags (classification_overrides, finops, governance_overrides) - HIGHEST PRIORITY
+
+Example:
+- Source system says: email is "PII"
+- Asset definition says: email is "SENSITIVE_PII"
+- Job config says: email is "HIGH_PII"
+- Result: email → "HIGH_PII" (job config wins)
 """
 
 import re
@@ -59,11 +66,14 @@ class TagDerivation:
         return None
 
     def derive_field_classifications(self) -> Dict[str, str]:
-        """Derive field-level classifications - ONLY from explicit definitions.
+        """Derive field-level classifications with three-level hierarchy.
 
-        NO automatic detection. Only uses:
-        1. Explicit classification in schema
-        2. Classification overrides from job config
+        Precedence (highest to lowest):
+        1. Job config overrides (classification_overrides)
+        2. Asset definition schema (field.classification)
+        3. Source system tags (source_tags)
+
+        NO automatic detection. Only uses explicitly defined tags.
 
         Returns:
             Dictionary mapping field names to classification strings
@@ -73,19 +83,19 @@ class TagDerivation:
         for field in self.asset_definition.schema:
             field_name = field["name"]
 
-            # Check for explicit classification in schema
+            # Level 3: Check source system tags (LOWEST priority)
+            if field_name in self.source_tags:
+                classifications[field_name] = self.source_tags[field_name].lower()
+
+            # Level 2: Check asset definition schema (MEDIUM priority - overrides source)
             if "classification" in field:
                 classifications[field_name] = field["classification"].lower()
-                continue
 
-            # Check for override from job config
+            # Level 1: Check job config overrides (HIGHEST priority - overrides all)
             if field_name in self.classification_overrides:
                 classifications[field_name] = self.classification_overrides[
                     field_name
                 ].lower()
-                continue
-
-            # NO automatic classification - skip this field
 
         return classifications
 

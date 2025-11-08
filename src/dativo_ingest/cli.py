@@ -622,13 +622,14 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 # No catalog - still need to upload files to S3/MinIO
                 # Create a minimal committer just for uploading (without catalog operations)
                 from .iceberg_committer import IcebergCommitter
-                upload_committer = IcebergCommitter(
-                    asset_definition=asset_definition,
-                    target_config=target_config,
-                    classification_overrides=job_config.classification_overrides,
-                    finops=job_config.finops,
-                    governance_overrides=job_config.governance_overrides,
-                )
+            upload_committer = IcebergCommitter(
+                asset_definition=asset_definition,
+                target_config=target_config,
+                classification_overrides=job_config.classification_overrides,
+                finops=job_config.finops,
+                governance_overrides=job_config.governance_overrides,
+                source_tags=None,  # TODO: Get from connector.extract_metadata() if available
+            )
                 try:
                     upload_result = upload_committer.commit_files(all_file_metadata)
                     logger.info(

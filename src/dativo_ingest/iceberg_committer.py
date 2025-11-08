@@ -38,6 +38,7 @@ class IcebergCommitter:
         self.classification_overrides = classification_overrides
         self.finops = finops
         self.governance_overrides = governance_overrides
+        self.source_tags = source_tags
 
         # Get connection details
         connection = target_config.connection or {}
