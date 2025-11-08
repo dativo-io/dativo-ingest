@@ -1,0 +1,66 @@
+# Example job configuration using custom reader and writer plugins
+# This demonstrates how to use custom plugins for sources and targets
+
+tenant_id: acme
+environment: prod
+
+source_connector: custom_api
+source_connector_path: /app/connectors/csv.yaml  # Use any connector as base
+
+target_connector: custom_storage
+target_connector_path: /app/connectors/s3.yaml  # Use any connector as base
+
+asset: custom_data
+asset_path: /app/assets/csv/v1.0/person.yaml  # Use any asset as base
+
+# Source configuration with custom reader
+source:
+  # Specify custom reader plugin
+  # Format: "path/to/module.py:ClassName"
+  custom_reader: "/app/plugins/json_api_reader.py:JSONAPIReader"
+  
+  # Connection details (passed to your custom reader)
+  connection:
+    base_url: "https://api.example.com/v1"
+    timeout: 30
+  
+  # Credentials (passed to your custom reader)
+  credentials:
+    token: "${API_TOKEN}"
+  
+  # Engine options (passed to your custom reader)
+  engine:
+    options:
+      page_size: 100
+      max_pages: null  # null = no limit
+  
+  # Objects to extract (passed to your custom reader)
+  objects: ["users", "orders"]
+
+# Target configuration with custom writer
+target:
+  # Specify custom writer plugin
+  # Format: "path/to/module.py:ClassName"
+  custom_writer: "/app/plugins/json_file_writer.py:JSONFileWriter"
+  
+  # Connection details (passed to your custom writer)
+  connection:
+    s3:
+      bucket: "my-data-lake"
+      region: "us-east-1"
+      access_key: "${AWS_ACCESS_KEY_ID}"
+      secret_key: "${AWS_SECRET_ACCESS_KEY}"
+  
+  # Engine options (passed to your custom writer)
+  engine:
+    options:
+      format: "jsonl"  # or "json"
+      indent: null
+      compress: false
+
+# Standard ETL configuration
+schema_validation_mode: strict
+
+logging:
+  redaction: true
+  level: INFO

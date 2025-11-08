@@ -374,6 +374,7 @@ class SourceConfig(BaseModel):
     engine: Optional[Dict[str, Any]] = None
     dsn: Optional[str] = None
     connection: Optional[Dict[str, Any]] = None  # For database connections
+    custom_reader: Optional[str] = None  # Path to custom reader class (format: "path/to/module.py:ClassName")
 
 
 class TargetConfig(BaseModel):
@@ -389,6 +390,7 @@ class TargetConfig(BaseModel):
     connection: Optional[Dict[str, Any]] = None  # For storage connection details
     markdown_kv_storage: Optional[Dict[str, Any]] = None  # Markdown-KV storage configuration
     parquet_target_size_mb: Optional[int] = None  # Target Parquet file size in MB (default: 128-200 MB range)
+    custom_writer: Optional[str] = None  # Path to custom writer class (format: "path/to/module.py:ClassName")
 
     @model_validator(mode="after")
     def validate_markdown_kv_storage(self) -> "TargetConfig":
