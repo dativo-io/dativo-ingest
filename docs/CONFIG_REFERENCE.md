@@ -42,6 +42,46 @@ logging:
   level: INFO
 ```
 
+### Infrastructure Section
+
+Job definitions can now reference infrastructure provisioned outside of Dativo (Terraform, Spacelift, etc.). Add an `infrastructure` block to describe the runtime environment and metadata that must flow into the Terraform module:
+
+```yaml
+infrastructure:
+  provider: aws            # aws | azure | gcp
+  runtime:
+    type: aws_fargate      # aws_fargate | azure_container_apps | gcp_cloud_run
+  region: us-east-1
+  resource_identifiers:
+    cluster_name: "{{terraform_outputs.cluster_name}}"
+    service_name: "{{ terraform_outputs.service_name }}"
+    endpoint_url: "{{ terraform_outputs.endpoint_url }}"
+  tags:
+    job_name: mysql-customers-to-s3
+    team: data-platform
+    pipeline_type: batch
+    environment: prod
+    cost_center: FINOPS-001
+    data_classification: restricted
+  module:
+    source: git::ssh://example.com/terraform-modules.git//aws_fargate_runtime
+    version: v1.0.0
+    outputs_file: ".terraform-runtime/acme/mysql_customers_to_s3.json"
+```
+
+#### Rules
+
+- `provider` and `runtime.type` must match one of the supported combinations:
+  - `aws` + `aws_fargate`
+  - `azure` + `azure_container_apps`
+  - `gcp` + `gcp_cloud_run`
+- `tags` **must include** at minimum: `job_name`, `team`, `pipeline_type`, `environment`, and `cost_center`. Additional keys are encouraged (e.g., classification, compliance, lifecycle).
+- Every entry in `resource_identifiers` must reference Terraform outputs using `{{terraform_outputs.<name>}}`. These placeholders are resolved by CI/CD before the job is deployed.
+- When the job-level `environment` is present, it must match `infrastructure.tags.environment` to eliminate drift between metadata and runtime configuration.
+- The optional `module` nested object documents the Terraform module source, version pin, and where the pipeline stores JSON outputs for later injection.
+
+A fully worked example is available at [`docs/examples/jobs/acme/mysql_customers_to_s3_infrastructure.yaml`](examples/jobs/acme/mysql_customers_to_s3_infrastructure.yaml).
+
 ## Asset Definition (ODCS v3.0.2)
 
 Asset definitions follow the **Open Data Contract Standard (ODCS) v3.0.2** structure with dativo-specific extensions:

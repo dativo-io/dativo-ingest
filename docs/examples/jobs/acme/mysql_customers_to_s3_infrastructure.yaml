@@ -1,0 +1,56 @@
+# MySQL customers to S3 job for tenant acme leveraging externally managed runtime infrastructure
+tenant_id: acme
+environment: prod
+
+source_connector: mysql
+source_connector_path: /app/connectors/mysql.yaml
+
+target_connector: s3
+target_connector_path: /app/connectors/s3.yaml
+
+asset: mysql_customers
+asset_path: /app/assets/mysql/v1.0/db_customers.yaml
+
+source:
+  tables:
+    - name: public.customers
+      object: db_customers
+      cursor_field: updated_at
+  incremental:
+    strategy: updated_at
+    lookback_days: 1
+  connection:
+    host: "${MYSQL_HOST}"
+    port: "${MYSQL_PORT}"
+    database: "${MYSQL_DB}"
+
+target:
+  connection:
+    bucket: "acme-data-lake"
+    prefix: "raw/mysql/customers"
+    runtime_endpoint: "{{terraform_outputs.endpoint_url}}"
+
+infrastructure:
+  provider: aws
+  runtime:
+    type: aws_fargate
+  region: us-east-1
+  resource_identifiers:
+    cluster_name: "{{terraform_outputs.cluster_name}}"
+    service_name: "{{ terraform_outputs.service_name }}"
+    endpoint_url: "{{ terraform_outputs.endpoint_url }}"
+  tags:
+    job_name: mysql-customers-to-s3
+    team: data-platform
+    pipeline_type: batch
+    environment: prod
+    cost_center: FINOPS-001
+    data_classification: restricted
+  module:
+    source: git::ssh://example.com/terraform-modules.git//aws_fargate_runtime
+    version: v1.0.0
+    outputs_file: ".terraform-runtime/acme/mysql_customers_to_s3.json"
+
+logging:
+  redaction: true
+  level: INFO

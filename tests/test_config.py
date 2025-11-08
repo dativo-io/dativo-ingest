@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -70,6 +71,38 @@ def valid_asset_file(temp_dir):
     with open(asset_path, "w") as f:
         yaml.dump(asset_data, f)
     return asset_path
+
+
+def _base_infrastructure() -> dict:
+    """Return a baseline infrastructure configuration for tests."""
+    return {
+        "provider": "aws",
+        "runtime": {"type": "aws_fargate"},
+        "region": "us-east-1",
+        "resource_identifiers": {
+            "cluster_name": "{{terraform_outputs.cluster_name}}",
+            "service_name": "{{ terraform_outputs.service_name }}",
+        },
+        "tags": {
+            "job_name": "orders-nightly",
+            "team": "data-eng",
+            "pipeline_type": "batch",
+            "environment": "prod",
+            "cost_center": "FIN-123",
+        },
+    }
+
+
+def _create_job_with_infrastructure(infrastructure: dict, environment: str = "prod") -> JobConfig:
+    """Instantiate JobConfig with the provided infrastructure."""
+    return JobConfig(
+        tenant_id="test-tenant",
+        environment=environment,
+        source_connector_path="connectors/source.yaml",
+        target_connector_path="connectors/target.yaml",
+        asset_path="assets/asset.yaml",
+        infrastructure=infrastructure,
+    )
 
 
 class TestJobConfigLoading:
@@ -161,4 +194,39 @@ class TestAssetDefinitionValidation:
         config.asset_path = str(valid_asset_file)
         # Should not raise
         config.validate_schema_presence()
+
+
+class TestInfrastructureConfigValidation:
+    """Validate infrastructure configuration requirements."""
+
+    def test_infrastructure_valid_configuration(self):
+        infra = _base_infrastructure()
+        config = _create_job_with_infrastructure(infra)
+        assert config.infrastructure is not None
+        assert config.infrastructure.provider == "aws"
+        assert config.infrastructure.runtime.type == "aws_fargate"
+
+    def test_infrastructure_missing_required_tag(self):
+        infra = _base_infrastructure()
+        infra["tags"].pop("team")
+        with pytest.raises(ValidationError):
+            _create_job_with_infrastructure(infra)
+
+    def test_infrastructure_missing_placeholder(self):
+        infra = _base_infrastructure()
+        infra["resource_identifiers"]["service_name"] = "fargate-service"
+        with pytest.raises(ValidationError):
+            _create_job_with_infrastructure(infra)
+
+    def test_infrastructure_provider_runtime_mismatch(self):
+        infra = _base_infrastructure()
+        infra["runtime"]["type"] = "gcp_cloud_run"
+        with pytest.raises(ValidationError):
+            _create_job_with_infrastructure(infra)
+
+    def test_infrastructure_environment_mismatch(self):
+        infra = _base_infrastructure()
+        infra["tags"]["environment"] = "staging"
+        with pytest.raises(ValidationError):
+            _create_job_with_infrastructure(infra, environment="prod")
 

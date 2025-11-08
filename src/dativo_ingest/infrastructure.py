@@ -1,13 +1,14 @@
 """Infrastructure health checks for validating dependencies."""
 
 import os
+import re
 import socket
-from typing import List, Optional
+from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse
 
 import requests
 
-from .config import JobConfig
+from .config import JobConfig, REQUIRED_INFRASTRUCTURE_TAGS
 
 
 def validate_required_ports(ports: List[int], host: str = "localhost") -> bool:
@@ -138,6 +139,46 @@ def validate_infrastructure(job_config: JobConfig) -> None:
     """
     errors = []
     warnings = []
+
+    # Validate externally managed infrastructure metadata (Terraform integration)
+    infra_config = job_config.get_infrastructure()
+    if infra_config:
+        # Ensure required tags are present (defensive - should already be enforced by Pydantic)
+        missing_tags = REQUIRED_INFRASTRUCTURE_TAGS - set(infra_config.tags.keys())
+        if missing_tags:
+            errors.append(
+                "Infrastructure tags missing required keys "
+                f"(should include job metadata for Terraform). Missing: {sorted(missing_tags)}"
+            )
+
+        # Validate Terraform output placeholders are referenced and collect names for traceability
+        output_pattern = re.compile(r"\{\{\s*terraform_outputs\.([^\s\}]+)\s*\}\}")
+        referenced_outputs: Set[str] = set()
+        invalid_identifiers: Dict[str, str] = {}
+        for key, value in infra_config.resource_identifiers.items():
+            matches = output_pattern.findall(value)
+            if not matches:
+                invalid_identifiers[key] = value
+            else:
+                referenced_outputs.update(matches)
+
+        if invalid_identifiers:
+            errors.append(
+                "Infrastructure resource_identifiers must reference Terraform outputs using "
+                "'{{terraform_outputs.<name>}}' placeholders. "
+                f"Invalid identifiers: {invalid_identifiers}"
+            )
+
+        if not referenced_outputs:
+            errors.append(
+                "Infrastructure resource_identifiers did not reference any Terraform outputs. "
+                "Ensure terraform apply outputs are captured and injected into the job configuration."
+            )
+    else:
+        warnings.append(
+            "No infrastructure section defined; skipping Terraform runtime validation. "
+            "Jobs referencing externally managed runtimes should include infrastructure metadata."
+        )
 
     # Get target configuration
     try:

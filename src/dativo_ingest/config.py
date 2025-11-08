@@ -2,10 +2,11 @@
 
 import json
 import os
+import re
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Literal
 
 import jsonschema
 import yaml
@@ -444,6 +445,107 @@ class RetryConfig(BaseModel):
         return self
 
 
+SUPPORTED_INFRASTRUCTURE_PROVIDERS = {
+    "aws": {"aws_fargate"},
+    "azure": {"azure_container_apps"},
+    "gcp": {"gcp_cloud_run"},
+}
+
+REQUIRED_INFRASTRUCTURE_TAGS = {
+    "job_name",
+    "team",
+    "pipeline_type",
+    "environment",
+    "cost_center",
+}
+
+TERRAFORM_OUTPUT_PATTERN = re.compile(r"\{\{\s*terraform_outputs\.[^}]+\s*\}\}")
+
+
+class InfrastructureRuntimeConfig(BaseModel):
+    """Supported runtime configuration for externally managed infrastructure."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["aws_fargate", "azure_container_apps", "gcp_cloud_run"]
+
+
+class InfrastructureConfig(BaseModel):
+    """Infrastructure metadata sourced from externally managed Terraform modules."""
+
+    model_config = ConfigDict(extra="allow")
+
+    provider: Literal["aws", "azure", "gcp"]
+    runtime: InfrastructureRuntimeConfig
+    region: str
+    resource_identifiers: Dict[str, str]
+    tags: Dict[str, str]
+    module: Optional[Dict[str, Any]] = None  # Optional metadata for Terraform module integration
+
+    @model_validator(mode="after")
+    def validate_config(self) -> "InfrastructureConfig":
+        """Validate infrastructure provider/runtime combinations and tagging requirements."""
+        if self.provider not in SUPPORTED_INFRASTRUCTURE_PROVIDERS:
+            raise ValueError(
+                f"infrastructure.provider '{self.provider}' is not supported. "
+                f"Supported providers: {sorted(SUPPORTED_INFRASTRUCTURE_PROVIDERS.keys())}"
+            )
+
+        runtime_type = self.runtime.type if self.runtime else None
+        allowed_runtimes = SUPPORTED_INFRASTRUCTURE_PROVIDERS[self.provider]
+        if runtime_type not in allowed_runtimes:
+            raise ValueError(
+                f"infrastructure.runtime.type '{runtime_type}' is not supported for provider '{self.provider}'. "
+                f"Supported runtime types: {sorted(allowed_runtimes)}"
+            )
+
+        if not self.region or not isinstance(self.region, str) or not self.region.strip():
+            raise ValueError("infrastructure.region must be a non-empty string")
+
+        if not self.resource_identifiers:
+            raise ValueError("infrastructure.resource_identifiers must contain at least one identifier")
+
+        invalid_resource_values = [
+            key for key, value in self.resource_identifiers.items() if not isinstance(value, str) or not value.strip()
+        ]
+        if invalid_resource_values:
+            raise ValueError(
+                "infrastructure.resource_identifiers values must be non-empty strings. "
+                f"Invalid keys: {invalid_resource_values}"
+            )
+
+        missing_placeholders = [
+            key
+            for key, value in self.resource_identifiers.items()
+            if not TERRAFORM_OUTPUT_PATTERN.search(value)
+        ]
+        if missing_placeholders:
+            raise ValueError(
+                "infrastructure.resource_identifiers values must reference Terraform outputs "
+                "using the format '{{terraform_outputs.<name>}}'. "
+                f"Identifiers missing placeholders: {missing_placeholders}"
+            )
+
+        if not self.tags:
+            raise ValueError("infrastructure.tags must contain at least the required metadata fields")
+
+        missing_tags = sorted(REQUIRED_INFRASTRUCTURE_TAGS - set(self.tags.keys()))
+        if missing_tags:
+            raise ValueError(
+                "infrastructure.tags is missing required keys. "
+                f"Missing: {missing_tags}"
+            )
+
+        empty_tag_values = [key for key, value in self.tags.items() if not isinstance(value, str) or not value.strip()]
+        if empty_tag_values:
+            raise ValueError(
+                "infrastructure.tags values must be non-empty strings. "
+                f"Invalid tags: {empty_tag_values}"
+            )
+
+        return self
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -461,6 +563,7 @@ class JobConfig(BaseModel):
     # Source and target configurations (flat structure, merged with recipes)
     source: Optional[Dict[str, Any]] = None  # Source configuration
     target: Optional[Dict[str, Any]] = None  # Target configuration
+    infrastructure: Optional[InfrastructureConfig] = None  # Externally managed runtime metadata
     
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'
@@ -477,6 +580,18 @@ class JobConfig(BaseModel):
             raise ValueError("target_connector_path is required")
         if not self.asset_path:
             raise ValueError("asset_path is required")
+        return self
+
+    @model_validator(mode="after")
+    def validate_infrastructure_alignment(self) -> "JobConfig":
+        """Ensure infrastructure metadata aligns with top-level job settings."""
+        if self.infrastructure and self.environment:
+            infra_env = self.infrastructure.tags.get("environment")
+            if infra_env and infra_env != self.environment:
+                raise ValueError(
+                    "infrastructure.tags.environment must match job environment "
+                    f"('{self.environment}') when both are provided"
+                )
         return self
 
     def _resolve_source_recipe(self) -> Union[ConnectorRecipe, SourceConnectorRecipe]:
@@ -642,6 +757,10 @@ class JobConfig(BaseModel):
     def get_target(self) -> TargetConfig:
         """Get resolved target config."""
         return self._resolve_target()
+
+    def get_infrastructure(self) -> Optional[InfrastructureConfig]:
+        """Get infrastructure configuration, if provided."""
+        return self.infrastructure
 
     def get_asset_path(self) -> str:
         """Get asset definition path."""
