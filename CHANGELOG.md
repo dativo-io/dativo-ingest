@@ -41,7 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Master test runner: `run_all_plugin_tests.sh`
 - **100% Feature Coverage**: All plugin types (default, Python, Rust) fully tested
 - **Test Documentation**: Complete testing guide in `tests/PLUGIN_TESTING.md`
-- **CI-Ready**: Automated test suites for continuous integration
+- **GitHub Actions CI/CD**: Automated workflows for all tests
+  - `ci.yml` - Complete CI pipeline (lint, core tests, plugin tests, Rust)
+  - `plugin-tests.yml` - Dedicated plugin system tests (Python + Rust)
+  - Matrix testing across Python 3.10, 3.11 and Ubuntu, macOS
+  - Automatic test coverage reporting with Codecov
 
 ### Planned
 - OSS connector wrappers (Stripe, HubSpot, Google Drive, Google Sheets, MySQL)

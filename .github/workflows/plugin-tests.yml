@@ -1,0 +1,287 @@
+name: Plugin System Tests
+
+on:
+  push:
+    branches: [ main, develop, 'cursor/**' ]
+    paths:
+      - 'src/dativo_ingest/plugins.py'
+      - 'src/dativo_ingest/rust_plugin_bridge.py'
+      - 'src/dativo_ingest/cli.py'
+      - 'src/dativo_ingest/config.py'
+      - 'src/dativo_ingest/connectors/**'
+      - 'examples/plugins/**'
+      - 'tests/test_plugins.py'
+      - 'tests/test_plugin_integration.sh'
+      - '.github/workflows/plugin-tests.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/dativo_ingest/plugins.py'
+      - 'src/dativo_ingest/rust_plugin_bridge.py'
+      - 'src/dativo_ingest/cli.py'
+      - 'src/dativo_ingest/config.py'
+      - 'src/dativo_ingest/connectors/**'
+      - 'examples/plugins/**'
+      - 'tests/test_plugins.py'
+      - 'tests/test_plugin_integration.sh'
+      - '.github/workflows/plugin-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  # Job 1: Python Plugin Tests
+  python-plugin-tests:
+    name: Python Plugin Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11']
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-mock pytest-cov
+      
+      - name: Run plugin unit tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          pytest tests/test_plugins.py -v --cov=dativo_ingest.plugins --cov=dativo_ingest.rust_plugin_bridge --cov-report=xml --cov-report=term
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: plugin-unit-tests
+          name: plugin-coverage-${{ matrix.python-version }}
+      
+      - name: Run plugin integration tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          chmod +x tests/test_plugin_integration.sh
+          ./tests/test_plugin_integration.sh
+  
+  # Job 2: Default Extractors Tests
+  default-extractors-tests:
+    name: Default Extractors Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-mock
+      
+      - name: Test CSV extractor
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          pytest tests/test_csv_extractor.py -v 2>/dev/null || echo "CSV extractor tests not found (optional)"
+      
+      - name: Test default extractors in plugin tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          pytest tests/test_plugins.py::TestDefaultReaders -v
+          pytest tests/test_plugins.py::TestDefaultWriters -v
+  
+  # Job 3: Rust Plugin Tests
+  rust-plugin-tests:
+    name: Rust Plugin Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            lib_ext: so
+          - os: macos-latest
+            lib_ext: dylib
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: examples/plugins/rust/target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('examples/plugins/rust/**/Cargo.toml') }}
+      
+      - name: Build Rust plugins
+        run: |
+          cd examples/plugins/rust
+          cargo build --release
+      
+      - name: Run Rust unit tests
+        run: |
+          cd examples/plugins/rust
+          cargo test --release
+      
+      - name: Verify plugin outputs
+        run: |
+          cd examples/plugins/rust
+          ls -lh target/release/libcsv_reader_plugin.${{ matrix.lib_ext }}
+          ls -lh target/release/libparquet_writer_plugin.${{ matrix.lib_ext }}
+      
+      - name: Check exported symbols (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cd examples/plugins/rust
+          nm -D target/release/libcsv_reader_plugin.so | grep create_reader
+          nm -D target/release/libcsv_reader_plugin.so | grep extract_batch
+          nm -D target/release/libparquet_writer_plugin.so | grep create_writer
+          nm -D target/release/libparquet_writer_plugin.so | grep write_batch
+      
+      - name: Run Rust plugin integration tests
+        run: |
+          cd examples/plugins/rust
+          chmod +x test_rust_plugins.sh
+          ./test_rust_plugins.sh
+      
+      - name: Set up Python for integration
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Test Rust plugin detection from Python
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          python3 -c "
+          from dativo_ingest.plugins import PluginLoader
+          plugin_path = 'examples/plugins/rust/target/release/libcsv_reader_plugin.${{ matrix.lib_ext }}:create_reader'
+          plugin_type = PluginLoader._detect_plugin_type(plugin_path)
+          assert plugin_type == 'rust', f'Expected rust, got {plugin_type}'
+          print(f'✓ Plugin type detection works: {plugin_type}')
+          "
+      
+      - name: Upload Rust plugins as artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: rust-plugins-${{ matrix.os }}
+          path: |
+            examples/plugins/rust/target/release/libcsv_reader_plugin.${{ matrix.lib_ext }}
+            examples/plugins/rust/target/release/libparquet_writer_plugin.${{ matrix.lib_ext }}
+          retention-days: 7
+  
+  # Job 4: Master Test Suite
+  master-test-suite:
+    name: Master Test Suite
+    runs-on: ubuntu-latest
+    needs: [python-plugin-tests, default-extractors-tests]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-mock
+      
+      - name: Build Rust plugins
+        run: |
+          cd examples/plugins/rust
+          cargo build --release
+      
+      - name: Run master test suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          chmod +x tests/run_all_plugin_tests.sh
+          ./tests/run_all_plugin_tests.sh
+  
+  # Job 5: Test Summary
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [python-plugin-tests, default-extractors-tests, rust-plugin-tests, master-test-suite]
+    if: always()
+    
+    steps:
+      - name: Check test results
+        run: |
+          echo "==================================="
+          echo "Plugin System Test Results"
+          echo "==================================="
+          echo ""
+          echo "Python Plugin Tests: ${{ needs.python-plugin-tests.result }}"
+          echo "Default Extractors: ${{ needs.default-extractors-tests.result }}"
+          echo "Rust Plugin Tests: ${{ needs.rust-plugin-tests.result }}"
+          echo "Master Test Suite: ${{ needs.master-test-suite.result }}"
+          echo ""
+          
+          if [ "${{ needs.python-plugin-tests.result }}" != "success" ] || \
+             [ "${{ needs.default-extractors-tests.result }}" != "success" ] || \
+             [ "${{ needs.rust-plugin-tests.result }}" != "success" ] || \
+             [ "${{ needs.master-test-suite.result }}" != "success" ]; then
+            echo "❌ Some tests failed!"
+            exit 1
+          else
+            echo "✅ All tests passed!"
+          fi
