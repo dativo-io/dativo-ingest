@@ -11,7 +11,7 @@ schema-odcs:
 
 # Unit tests: Test internal functions (config loading, validation, etc.)
 test-unit:
-	@pytest tests/test_*.py -v
+	@pytest tests/test_*.py -v --ignore=tests/integration
 
 # Integration tests: Test module integration, tag derivation, and ODCS compliance
 test-integration:
@@ -21,9 +21,10 @@ test-integration:
 	@echo "✅ All integration tests passed"
 
 # Smoke tests: Run actual CLI commands with test fixtures (true E2E)
+# Includes tag propagation verification
 # Users can also run: dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 test-smoke:
-	@python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+	@bash tests/smoke_tests.sh
 
 # Run all tests
 test: test-unit test-integration test-smoke

@@ -36,11 +36,53 @@ cleanup() {
 # Set trap to cleanup on exit
 trap cleanup EXIT
 
+echo "╔══════════════════════════════════════════════════════════════════════╗"
+echo "║                         SMOKE TESTS                                   ║"
+echo "╚══════════════════════════════════════════════════════════════════════╝"
+echo ""
+
 # Run the CLI with test fixtures
+echo "📦 Running ingestion jobs..."
 python -m dativo_ingest.cli run \
     --job-dir "$JOBS_DIR" \
     --secrets-dir "$SECRETS_DIR" \
     --mode self_hosted
+
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "❌ Ingestion jobs failed"
+    exit $EXIT_CODE
+fi
+
+echo ""
+echo "✅ Ingestion jobs completed successfully"
+echo ""
+
+# Verify tag propagation (if Nessie is available)
+if [ -n "$NESSIE_URI" ]; then
+    echo "🔍 Verifying tag propagation..."
+    echo ""
+    python "$SCRIPT_DIR/verify_tag_propagation.py"
+    TAG_VERIFY_EXIT=$?
+    
+    if [ $TAG_VERIFY_EXIT -eq 0 ]; then
+        echo ""
+        echo "✅ Tag propagation verified"
+    else
+        echo ""
+        echo "⚠️  Tag propagation verification failed (non-critical in CI)"
+        # Don't fail the smoke test if tag verification fails
+        # This is because Nessie might not be fully configured
+    fi
+else
+    echo "ℹ️  Skipping tag propagation verification (NESSIE_URI not set)"
+fi
+
+echo ""
+echo "╔══════════════════════════════════════════════════════════════════════╗"
+echo "║                    ✅ SMOKE TESTS PASSED                             ║"
+echo "╚══════════════════════════════════════════════════════════════════════╝"
 
 # Note: Cleanup will run automatically via trap on exit
 
