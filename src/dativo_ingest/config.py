@@ -170,6 +170,15 @@ class ComplianceModel(BaseModel):
     user_consent_required: Optional[bool] = None
 
 
+class FinOpsModel(BaseModel):
+    """FinOps and cost attribution metadata."""
+
+    cost_center: Optional[str] = None
+    business_tags: Optional[List[str]] = None
+    project: Optional[str] = None
+    environment: Optional[str] = None
+
+
 class ChangeManagementModel(BaseModel):
     """Change management configuration."""
 
@@ -209,6 +218,9 @@ class AssetDefinition(BaseModel):
     team: TeamModel
     compliance: Optional[ComplianceModel] = None
     change_management: Optional[ChangeManagementModel] = None
+    
+    # Dativo FinOps extension
+    finops: Optional[FinOpsModel] = None
 
     @model_validator(mode="after")
     def validate_governance(self) -> "AssetDefinition":
@@ -461,6 +473,11 @@ class JobConfig(BaseModel):
     # Source and target configurations (flat structure, merged with recipes)
     source: Optional[Dict[str, Any]] = None  # Source configuration
     target: Optional[Dict[str, Any]] = None  # Target configuration
+    
+    # Metadata overrides for tag propagation
+    classification_overrides: Optional[Dict[str, str]] = None  # Field-level classification overrides
+    finops: Optional[Dict[str, Any]] = None  # FinOps metadata (cost_center, business_tags, etc.)
+    governance_overrides: Optional[Dict[str, Any]] = None  # Governance metadata overrides
     
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'

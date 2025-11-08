@@ -22,10 +22,19 @@ asset:
   governance:
     owner: data-team@company.com
     tags: [customers, database]
+  
+  compliance:
     classification: [PII]
     retention_days: 30
+    regulations: [GDPR, CCPA]
+  
+  finops:
+    cost_center: SALES-001
+    business_tags: [customers, crm]
+    project: customer-platform
+    environment: production
   
   target:
-  file_format: parquet
-  partitioning: [ingest_date]
+    file_format: parquet
+    partitioning: [ingest_date]
     mode: strict

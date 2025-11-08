@@ -46,10 +46,16 @@ def target_config():
 
 def test_iceberg_committer_initialization(sample_asset_definition, target_config):
     """Test Iceberg committer initialization."""
-    committer = IcebergCommitter(sample_asset_definition, target_config)
+    committer = IcebergCommitter(
+        asset_definition=sample_asset_definition,
+        target_config=target_config,
+    )
     
     assert committer.asset_definition == sample_asset_definition
     assert committer.target_config == target_config
+    assert committer.classification_overrides is None
+    assert committer.finops is None
+    assert committer.governance_overrides is None
     assert committer.branch == "test_branch"
     assert committer.catalog_name == "nessie"
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .config import AssetDefinition, TargetConfig
+from .tag_derivation import derive_tags_from_asset
 
 
 class IcebergCommitter:
@@ -14,18 +15,29 @@ class IcebergCommitter:
         self,
         asset_definition: AssetDefinition,
         target_config: TargetConfig,
+        classification_overrides: Optional[Dict[str, str]] = None,
+        finops: Optional[Dict[str, Any]] = None,
+        governance_overrides: Optional[Dict[str, Any]] = None,
     ):
         """Initialize Iceberg committer.
 
         Args:
             asset_definition: Asset definition containing schema
             target_config: Target configuration with Nessie and storage connection
+            classification_overrides: Field-level classification overrides from job config
+            finops: FinOps metadata from job config
+            governance_overrides: Governance metadata overrides from job config
         """
         self.asset_definition = asset_definition
         self.target_config = target_config
         self.branch = target_config.branch or "main"
         self.catalog_name = target_config.catalog or "nessie"
         self.warehouse = target_config.warehouse or "s3://lake/"
+
+        # Store tag override parameters
+        self.classification_overrides = classification_overrides
+        self.finops = finops
+        self.governance_overrides = governance_overrides
 
         # Get connection details
         connection = target_config.connection or {}
@@ -174,6 +186,86 @@ class IcebergCommitter:
 
         return Schema(*fields)
 
+    def _derive_table_properties(self) -> Dict[str, str]:
+        """Derive table properties from asset definition and tag overrides.
+
+        Returns:
+            Dictionary of table properties in namespaced format
+        """
+        # Derive all tags using tag derivation module
+        tags = derive_tags_from_asset(
+            asset_definition=self.asset_definition,
+            classification_overrides=self.classification_overrides,
+            finops=self.finops,
+            governance_overrides=self.governance_overrides,
+        )
+
+        # Add asset metadata
+        tags["asset.name"] = self.asset_definition.name
+        tags["asset.version"] = str(self.asset_definition.version)
+        if self.asset_definition.domain:
+            tags["asset.domain"] = self.asset_definition.domain
+        if hasattr(self.asset_definition, "dataProduct") and self.asset_definition.dataProduct:
+            tags["asset.data_product"] = self.asset_definition.dataProduct
+
+        # Add source metadata
+        tags["asset.source_type"] = self.asset_definition.source_type
+        tags["asset.object"] = self.asset_definition.object
+
+        return tags
+
+    def _update_table_properties(
+        self, catalog: Any, namespace: str, table_name: str
+    ) -> None:
+        """Update table properties idempotently.
+
+        Merges derived tags with existing properties without dropping unrelated ones.
+
+        Args:
+            catalog: PyIceberg catalog instance
+            namespace: Table namespace
+            table_name: Table name
+        """
+        try:
+            table = catalog.load_table((namespace, table_name))
+            
+            # Derive new properties
+            new_properties = self._derive_table_properties()
+            
+            # Get current properties
+            current_properties = table.properties or {}
+            
+            # Check if update is needed
+            needs_update = False
+            for key, value in new_properties.items():
+                if key not in current_properties or current_properties[key] != value:
+                    needs_update = True
+                    break
+            
+            if not needs_update:
+                return
+            
+            # Merge properties (new properties override existing ones)
+            merged_properties = {**current_properties, **new_properties}
+            
+            # Update table properties using transaction
+            with table.transaction() as txn:
+                for key, value in new_properties.items():
+                    txn.set_properties(**{key: value})
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(
+                f"Updated {len(new_properties)} table properties for {namespace}.{table_name}"
+            )
+        except Exception as e:
+            import warnings
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Failed to update table properties for {namespace}.{table_name}: {e}"
+            )
+
     def _ensure_branch_exists(self) -> None:
         """Ensure Nessie branch exists, create if it doesn't.
 
@@ -288,8 +380,10 @@ class IcebergCommitter:
         namespace = self.asset_definition.domain or "default"
 
         try:
-            # Try to load existing table
-            catalog.load_table((namespace, table_name))
+            # Try to load existing table and update its properties
+            table = catalog.load_table((namespace, table_name))
+            # Update properties idempotently
+            self._update_table_properties(catalog, namespace, table_name)
         except Exception:
             # Table doesn't exist, create it
             try:
@@ -327,11 +421,21 @@ class IcebergCommitter:
                         # If partitioning import fails, continue without partitioning
                         pass
 
-                # Create table
+                # Derive table properties
+                table_properties = self._derive_table_properties()
+
+                # Create table with properties
                 catalog.create_table(
                     identifier=(namespace, table_name),
                     schema=schema,
                     partition_spec=partition_spec,
+                    properties=table_properties,
+                )
+                
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(
+                    f"Created Iceberg table with {len(table_properties)} properties: {namespace}.{table_name}"
                 )
             except Exception as e:
                 # If table creation fails, log warning but continue
