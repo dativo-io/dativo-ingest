@@ -1,6 +1,6 @@
 # Enhanced Orchestration (v1.3.0)
 
-This document describes the enhanced orchestration features introduced in version 1.3.0, including retry policies, schedule management, and observability improvements.
+This document describes the enhanced orchestration features introduced in version 1.3.0, including retry policies, schedule management, and observability improvements. The same schedule definitions can now be consumed by either the bundled Dagster engine or exported as Airflow DAGs (`orchestrator.type: airflow`).
 
 ## Overview
 

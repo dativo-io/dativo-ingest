@@ -1,7 +1,5 @@
 """Dagster orchestration with tenant-level serialization."""
 
-import subprocess
-import sys
 import time
 from typing import Any, Dict, Optional
 
@@ -18,6 +16,7 @@ from .config import JobConfig, RunnerConfig
 from .logging import get_logger, setup_logging
 from .retry_policy import RetryPolicy as CustomRetryPolicy
 from .validator import ConnectorValidator
+from .orchestrators.common import execute_job_with_retry
 
 
 def _create_dagster_retry_policy(job_config: JobConfig) -> Optional[RetryPolicy]:
@@ -40,111 +39,6 @@ def _create_dagster_retry_policy(job_config: JobConfig) -> Optional[RetryPolicy]
         max_retries=retry_config.max_retries,
         delay=retry_config.initial_delay_seconds,
     )
-
-
-def _execute_job_with_retry(
-    schedule_config: Any,
-    job_config: JobConfig,
-    custom_retry_policy: Optional[CustomRetryPolicy],
-) -> Dict[str, Any]:
-    """Execute job with retry logic.
-
-    Args:
-        schedule_config: Schedule configuration
-        job_config: Job configuration
-        custom_retry_policy: Custom retry policy instance
-
-    Returns:
-        Job execution result
-
-    Raises:
-        Exception: If job fails after all retries
-    """
-    job_logger = get_logger()
-    tenant_id = job_config.tenant_id
-    source_config = job_config.get_source()
-    connector_type = source_config.type
-
-    attempt = 0
-    last_exit_code = None
-    last_error = None
-
-    while True:
-        try:
-            # Execute job via CLI run command
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "dativo_ingest.cli",
-                    "run",
-                    "--config",
-                    schedule_config.config,
-                    "--mode",
-                    "self_hosted",
-                ],
-                capture_output=True,
-                text=True,
-            )
-
-            last_exit_code = result.returncode
-
-            if result.returncode == 0:
-                job_logger.info(
-                    "Job completed successfully",
-                    extra={
-                        "job_name": schedule_config.name,
-                        "tenant_id": tenant_id,
-                        "connector_type": connector_type,
-                        "event_type": "job_finished",
-                        "attempt": attempt + 1,
-                    },
-                )
-                return {
-                    "status": "success",
-                    "job_name": schedule_config.name,
-                    "tenant_id": tenant_id,
-                    "attempt": attempt + 1,
-                }
-
-            # Check if we should retry
-            if custom_retry_policy and custom_retry_policy.should_retry(
-                result.returncode, result.stderr, attempt
-            ):
-                custom_retry_policy.log_retry_attempt(
-                    attempt, result.returncode, result.stderr
-                )
-                custom_retry_policy.wait_for_retry(attempt)
-                attempt += 1
-                continue
-
-            # No retry or retries exhausted
-            last_error = result.stderr
-            break
-
-        except Exception as e:
-            last_error = str(e)
-            if custom_retry_policy and custom_retry_policy.should_retry(2, str(e), attempt):
-                custom_retry_policy.log_retry_attempt(attempt, 2, str(e))
-                custom_retry_policy.wait_for_retry(attempt)
-                attempt += 1
-                continue
-            raise
-
-    # All retries exhausted or non-retryable error
-    job_logger.error(
-        f"Job failed after {attempt + 1} attempt(s)",
-        extra={
-            "job_name": schedule_config.name,
-            "tenant_id": tenant_id,
-            "connector_type": connector_type,
-            "event_type": "job_error",
-            "exit_code": last_exit_code,
-            "attempts": attempt + 1,
-            "stderr": last_error[:500] if last_error else None,
-        },
-    )
-    raise Exception(f"Job execution failed after {attempt + 1} attempt(s): {last_error}")
 
 
 def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
@@ -233,8 +127,11 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
                 validator.validate_job(job_config, mode="self_hosted")
 
                 # Execute job with retry logic
-                result = _execute_job_with_retry(
-                    schedule_config, job_config, custom_retry_policy
+                result = execute_job_with_retry(
+                    schedule_config,
+                    job_config,
+                    custom_retry_policy,
+                    cli_module="dativo_ingest.cli",
                 )
 
                 # Calculate execution time

@@ -37,6 +37,11 @@ docker run --rm -p 3000:3000 \
   our-registry/ingestion:1.0 start orchestrated --runner-config /app/configs/runner.yaml
 ```
 
+#### Airflow bootstrap
+- Set `orchestrator.type: airflow` in `runner.yaml` (see `configs/runner_airflow.yaml`).
+- Run `dativo start orchestrated --runner-config /app/configs/runner_airflow.yaml`.
+- The CLI writes `dativo_runner_dags.py` (default to `/app/dags` or override with `--airflow-dag-dir`), which you can place in your Airflow DAGs folder to register schedules.
+
 ### One‑shot
 Run a single job and exit:
 ```bash

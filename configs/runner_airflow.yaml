@@ -1,0 +1,33 @@
+runner:
+  mode: orchestrated
+  orchestrator:
+    type: airflow
+    dag_output_path: /app/dags
+    schedules:
+      - name: stripe_customers_hourly
+        config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
+        cron: "0 * * * *"
+        enabled: true
+        timezone: "UTC"
+        max_concurrent_runs: 1
+        tags:
+          environment: production
+          priority: high
+
+      - name: hubspot_contacts_interval
+        config: /app/jobs/acme/hubspot_contacts_to_iceberg.yaml
+        interval_seconds: 21600
+        enabled: true
+        timezone: "America/New_York"
+        max_concurrent_runs: 1
+        tags:
+          environment: production
+
+      - name: gdrive_deals_daily
+        config: /app/jobs/acme/gdrive_deals_to_iceberg.yaml
+        cron: "5 1 * * *"
+        enabled: false
+        timezone: "UTC"
+        max_concurrent_runs: 1
+
+    concurrency_per_tenant: 1

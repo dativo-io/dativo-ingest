@@ -101,19 +101,26 @@ dativo run --config /app/configs/jobs/stripe.yaml --mode self_hosted
 
 ### Start Command
 
-Start Dagster orchestrator in long-running mode:
+Start orchestrated mode based on the runner configuration. When `orchestrator.type` is `dagster` this launches the embedded Dagster engine; when set to `airflow` it generates an Airflow DAG bootstrap file that you can drop into your Airflow deployment.
 
 ```bash
-dativo start orchestrated --runner-config <path>
+dativo start orchestrated --runner-config <path> [--airflow-dag-dir <dir>]
 ```
 
 **Options:**
 - `--runner-config`: Path to runner configuration YAML file (default: `/app/configs/runner.yaml`)
+- `--airflow-dag-dir`: Output directory for the generated Airflow DAG module (defaults to `orchestrator.dag_output_path` or `/app/dags`)
 
-**Example:**
-```bash
-dativo start orchestrated --runner-config /app/configs/runner.yaml
-```
+**Examples:**
+- Launch Dagster directly:
+  ```bash
+  dativo start orchestrated --runner-config /app/configs/runner.yaml
+  ```
+- Generate Airflow DAGs using `configs/runner_airflow.yaml`:
+  ```bash
+  dativo start orchestrated --runner-config /app/configs/runner_airflow.yaml --airflow-dag-dir /airflow/dags
+  ```
+  The command writes `dativo_runner_dags.py` into the target directory, which registers DAG objects via `load_dags_from_runner_config`.
 
 ## Execution Flow
 
@@ -206,6 +213,22 @@ runner:
       - name: stripe_customers_hourly
         config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
         cron: "0 * * * *"
+    concurrency_per_tenant: 1
+```
+
+To generate Airflow DAGs instead of launching Dagster, set `type: airflow`. The repository includes a ready-to-use sample at `configs/runner_airflow.yaml`:
+
+```yaml
+runner:
+  mode: orchestrated
+  orchestrator:
+    type: airflow
+    dag_output_path: /app/dags
+    schedules:
+      - name: stripe_customers_hourly
+        config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
+        cron: "0 * * * *"
+        enabled: true
     concurrency_per_tenant: 1
 ```
 

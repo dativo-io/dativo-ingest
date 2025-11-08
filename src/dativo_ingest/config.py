@@ -5,7 +5,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import jsonschema
 import yaml
@@ -885,9 +885,29 @@ class ScheduleConfig(BaseModel):
 class OrchestratorConfig(BaseModel):
     """Orchestrator configuration."""
 
-    type: str = "dagster"
+    type: Literal["dagster", "airflow"] = "dagster"
     schedules: List[ScheduleConfig]
     concurrency_per_tenant: int = Field(default=1, ge=1)
+    dag_output_path: Optional[str] = Field(
+        default=None,
+        description="Optional output directory for generated Airflow DAG files",
+    )
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalize_type(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.lower()
+        return value
+
+    @model_validator(mode="after")
+    def _validate_airflow_settings(self) -> "OrchestratorConfig":
+        """Validate Airflow-specific settings."""
+        if self.type != "airflow" and self.dag_output_path:
+            raise ValueError(
+                "dag_output_path is only supported when orchestrator type is 'airflow'"
+            )
+        return self
 
 
 class RunnerConfig(BaseModel):
@@ -933,6 +953,25 @@ class RunnerConfig(BaseModel):
         if data is None:
             print(f"ERROR: Runner config file is empty: {path}", file=sys.stderr)
             sys.exit(2)
+
+        if not isinstance(data, dict):
+            print(
+                f"ERROR: Runner config structure invalid (expected mapping): {path}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+        # Support both `runner: {...}` and flat structures
+        if "runner" in data and isinstance(data["runner"], dict):
+            data = data["runner"]
+
+        orchestrator_block = data.get("orchestrator")
+        if isinstance(orchestrator_block, dict):
+            dag_output_path = orchestrator_block.get("dag_output_path")
+            if dag_output_path:
+                orchestrator_block["dag_output_path"] = os.path.expandvars(
+                    dag_output_path
+                )
 
         try:
             return cls(**data)

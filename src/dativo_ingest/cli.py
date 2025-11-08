@@ -715,25 +715,67 @@ def start_command(args: argparse.Namespace) -> int:
 
     # Set up logging
     logger = setup_logging(level="INFO", redact_secrets=False)
+    orchestrator_type = runner_config.orchestrator.type
     logger.info(
         "Starting orchestrated mode",
-        extra={"event_type": "orchestrator_starting"},
+        extra={
+            "event_type": "orchestrator_starting",
+            "orchestrator_type": orchestrator_type,
+        },
     )
 
-    # Start orchestrated mode
-    try:
-        start_orchestrated(runner_config)
-    except KeyboardInterrupt:
-        logger.info("Orchestrator stopped by user")
-        return 0
-    except Exception as e:
-        logger.error(
-            f"Orchestrator failed: {e}",
-            extra={"event_type": "orchestrator_error"},
-        )
-        return 2
+    if orchestrator_type == "dagster":
+        # Start orchestrated mode
+        try:
+            start_orchestrated(runner_config)
+        except KeyboardInterrupt:
+            logger.info("Orchestrator stopped by user")
+            return 0
+        except Exception as e:
+            logger.error(
+                f"Orchestrator failed: {e}",
+                extra={"event_type": "orchestrator_error"},
+            )
+            return 2
 
-    return 0
+        return 0
+
+    if orchestrator_type == "airflow":
+        from .airflow_orchestrator import write_airflow_module
+
+        output_dir = (
+            getattr(args, "airflow_dag_dir", None)
+            or runner_config.orchestrator.dag_output_path
+            or "/app/dags"
+        )
+
+        module_path = write_airflow_module(
+            runner_config, output_dir, args.runner_config
+        )
+
+        logger.info(
+            "Generated Airflow DAG bootstrap at %s",
+            module_path,
+            extra={
+                "event_type": "airflow_module_generated",
+                "dag_module_path": str(module_path),
+            },
+        )
+        logger.info(
+            "Add this file to your Airflow DAGs directory to register Dativo schedules.",
+            extra={"event_type": "airflow_next_steps"},
+        )
+        return 0
+
+    logger.error(
+        "Unsupported orchestrator type '%s'",
+        orchestrator_type,
+        extra={
+            "event_type": "orchestrator_error",
+            "orchestrator_type": orchestrator_type,
+        },
+    )
+    return 2
 
 
 def main() -> int:
@@ -790,10 +832,10 @@ Examples:
     # Start command
     start_parser = subparsers.add_parser(
         "start",
-        help="Start orchestrated mode with Dagster",
-        description="Start the Dagster orchestrator in long-running mode. Reads schedules "
-        "from runner.yaml and executes jobs according to cron expressions. "
-        "Ensures tenant-level serialization to avoid conflicts.",
+        help="Start orchestrated mode (Dagster or Airflow)",
+        description="Start the bundled Dagster orchestrator or generate Airflow DAGs based on "
+        "runner.yaml. Detects the orchestrator type from the configuration and either "
+        "launches Dagster or writes Airflow DAG bootstrap code.",
     )
     start_parser.add_argument(
         "mode",
@@ -804,6 +846,11 @@ Examples:
         "--runner-config",
         default="/app/configs/runner.yaml",
         help="Path to runner configuration YAML file (default: /app/configs/runner.yaml)",
+    )
+    start_parser.add_argument(
+        "--airflow-dag-dir",
+        help="When orchestrator.type=airflow, directory where the generated DAG module will be written. "
+        "Overrides orchestrator.dag_output_path if provided.",
     )
 
     args = parser.parse_args()
