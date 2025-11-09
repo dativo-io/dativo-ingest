@@ -1,0 +1,258 @@
+# ODCS v3.0.2 Compliant Asset Definition - Orders Table
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+id: postgres-orders-001
+name: postgres_orders
+version: "1.0.0"
+status: active
+source_type: postgres
+object: orders
+domain: transaction-data
+dataProduct: orders-analytics
+tenant: acme
+
+# Governance & Ownership
+team:
+  owner: analytics-team@company.com
+  roles:
+    - name: Analytics Lead
+      email: analytics-lead@company.com
+      responsibility: Data product ownership
+    - name: Database Administrator
+      email: dba@company.com
+      responsibility: Database maintenance
+
+# Compliance & Regulatory
+compliance:
+  classification:
+    - SENSITIVE
+    - INTERNAL
+  regulations:
+    - SOX
+    - PCI-DSS
+  retention_days: 2555  # 7 years for financial records
+  security:
+    access_control: attribute_based
+    encryption_required: true
+  user_consent_required: false
+
+# Schema Definition
+schema:
+  - name: order_id
+    type: string
+    required: true
+    unique: true
+    primaryKey: true
+    primaryKeyPosition: 1
+    description: Unique order identifier
+    physicalType: VARCHAR(36)
+    physicalName: order_id
+    businessName: Order ID
+    examples:
+      - ORD-2024-001234
+  
+  - name: customer_id
+    type: string
+    required: true
+    description: Reference to customer
+    physicalType: VARCHAR(36)
+    businessName: Customer ID
+    transformSourceObjects:
+      - customers.customer_id
+    quality:
+      - name: customer_exists
+        type: library
+        rule: validValues
+        dimension: consistency
+  
+  - name: order_date
+    type: timestamp
+    required: true
+    partitioned: true
+    partitionKeyPosition: 1
+    description: Order placement timestamp
+    physicalType: TIMESTAMP WITH TIME ZONE
+    businessName: Order Date
+  
+  - name: status
+    type: string
+    required: true
+    description: Current order status
+    physicalType: VARCHAR(50)
+    businessName: Order Status
+    examples:
+      - pending
+      - processing
+      - shipped
+      - delivered
+      - cancelled
+    quality:
+      - name: valid_status
+        type: library
+        rule: validValues
+        dimension: conformity
+  
+  - name: total_amount
+    type: float
+    required: true
+    classification: SENSITIVE
+    description: Total order amount in USD
+    physicalType: DECIMAL(10,2)
+    businessName: Total Amount
+    criticalDataElement: true
+    quality:
+      - name: amount_positive
+        type: sql
+        query: "SELECT COUNT(*) FROM ${table} WHERE total_amount < 0"
+        dimension: accuracy
+  
+  - name: currency
+    type: string
+    required: true
+    description: Currency code
+    physicalType: VARCHAR(3)
+    businessName: Currency
+    examples:
+      - USD
+  
+  - name: payment_method
+    type: string
+    required: false
+    classification: SENSITIVE
+    description: Payment method used
+    physicalType: VARCHAR(50)
+    businessName: Payment Method
+    encryptedName: payment_method_encrypted
+  
+  - name: shipping_address
+    type: object
+    required: false
+    description: Shipping address details
+    physicalType: JSONB
+    businessName: Shipping Address
+  
+  - name: created_at
+    type: timestamp
+    required: true
+    description: Record creation timestamp
+    physicalType: TIMESTAMP WITH TIME ZONE
+    businessName: Created At
+  
+  - name: updated_at
+    type: timestamp
+    required: true
+    description: Record last update timestamp
+    physicalType: TIMESTAMP WITH TIME ZONE
+    businessName: Updated At
+
+# Data Quality
+data_quality:
+  monitoring:
+    enabled: true
+    oncall_rotation: ops-team@company.com
+  
+  expectations:
+    - type: not_null
+      column: order_id
+      dimension: completeness
+      severity: error
+      description: Order ID must not be null
+    
+    - type: unique
+      column: order_id
+      dimension: uniqueness
+      severity: error
+    
+    - type: not_null
+      column: total_amount
+      dimension: completeness
+      severity: error
+    
+    - type: accepted_values
+      column: status
+      values:
+        - pending
+        - processing
+        - shipped
+        - delivered
+        - cancelled
+        - refunded
+      dimension: conformity
+      severity: error
+    
+    - type: relationships
+      column: customer_id
+      to: ref('customers')
+      field: customer_id
+      dimension: consistency
+      severity: warning
+  
+  alerts:
+    channels:
+      - slack
+      - pagerduty
+    thresholds:
+      error_rate: 0.001  # 0.1% error rate threshold
+      latency_minutes: 15
+
+# Change Management
+change_management:
+  policy: breaking
+  approval_required: true
+  notification_channels:
+    - slack
+    - email
+    - jira
+  version_history: true
+
+# Description
+description:
+  purpose: Transactional order data for revenue analytics and business intelligence
+  usage: |
+    Primary use cases:
+    - Revenue reporting and forecasting
+    - Customer lifetime value (CLV) calculation
+    - Order fulfillment tracking
+    - Payment reconciliation
+    - Fraud detection models
+  limitations: |
+    - Real-time data with ~30 second latency
+    - Test orders excluded from production dataset
+    - Cancelled orders retained for 7 years per SOX compliance
+
+# SLA Properties
+slaProperties:
+  - property: freshness
+    value: 30
+    unit: seconds
+    element: orders
+    driver: operational
+  
+  - property: availability
+    value: 99.9
+    unit: percent
+    driver: operational
+  
+  - property: completeness
+    value: 99.99
+    unit: percent
+    driver: regulatory
+
+# Metadata
+tags:
+  - orders
+  - transactions
+  - revenue
+  - financial
+  - pci-dss
+
+# Target Configuration
+target:
+  file_format: parquet
+  partitioning:
+    - order_date
+  mode: strict
+
+# Contract Creation Timestamp
+contractCreatedTs: "2024-01-15T11:00:00Z"

@@ -6,21 +6,34 @@ from typing import Any, Dict, Optional
 from .logging import get_logger
 
 
+try:
+    from .finops import FinOpsMetrics
+    FINOPS_AVAILABLE = True
+except ImportError:
+    FINOPS_AVAILABLE = False
+
+
 class MetricsCollector:
     """Collects and emits metrics for job execution."""
 
-    def __init__(self, job_name: str, tenant_id: str):
+    def __init__(self, job_name: str, tenant_id: str, enable_finops: bool = True):
         """Initialize metrics collector.
 
         Args:
             job_name: Name of the job
             tenant_id: Tenant identifier
+            enable_finops: Whether to enable FinOps metrics collection
         """
         self.job_name = job_name
         self.tenant_id = tenant_id
         self.logger = get_logger()
         self.start_time: Optional[float] = None
         self.metrics: Dict[str, Any] = {}
+        
+        # Initialize FinOps metrics if available and enabled
+        self.finops_metrics = None
+        if enable_finops and FINOPS_AVAILABLE:
+            self.finops_metrics = FinOpsMetrics(tenant_id, job_name)
 
     def start(self) -> None:
         """Start metrics collection."""
@@ -30,6 +43,10 @@ class MetricsCollector:
             "tenant_id": self.tenant_id,
             "start_time": self.start_time,
         }
+        
+        # Start FinOps metrics
+        if self.finops_metrics:
+            self.finops_metrics.start()
 
     def record_extraction(self, records_count: int, files_count: int = 0) -> None:
         """Record extraction metrics.
@@ -108,6 +125,10 @@ class MetricsCollector:
                 "tenant_id": self.tenant_id,
             },
         )
+        
+        # Record in FinOps metrics
+        if self.finops_metrics:
+            self.finops_metrics.record_data_written(total_bytes)
 
     def record_api_calls(self, api_calls: int, api_type: Optional[str] = None) -> None:
         """Record API call metrics.
@@ -213,6 +234,11 @@ class MetricsCollector:
                 else 0
             )
             self.metrics["records_per_second"] = records_per_second
+
+        # Finish FinOps metrics and include in overall metrics
+        if self.finops_metrics:
+            finops_summary = self.finops_metrics.finish()
+            self.metrics["finops"] = finops_summary
 
         # Emit final metrics
         self.logger.info(

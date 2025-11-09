@@ -1,0 +1,204 @@
+# ODCS v3.0.2 Compliant Asset Definition - Stripe Customers
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+id: stripe-customers-001
+name: stripe_customers
+version: "1.0.0"
+status: active
+source_type: stripe
+object: customers
+domain: customer-data
+dataProduct: customer-360
+tenant: acme
+
+# Governance & Ownership
+team:
+  owner: data-team@company.com
+  roles:
+    - name: Data Steward
+      email: data-steward@company.com
+      responsibility: Data quality oversight and governance
+    - name: Data Engineer
+      email: data-eng@company.com
+      responsibility: Pipeline maintenance and monitoring
+
+# Compliance & Regulatory
+compliance:
+  classification:
+    - PII
+    - SENSITIVE
+  regulations:
+    - GDPR
+    - CCPA
+  retention_days: 90
+  security:
+    access_control: role_based
+    encryption_required: true
+  user_consent_required: true
+
+# Schema Definition
+schema:
+  - name: id
+    type: string
+    required: true
+    unique: true
+    description: Unique Stripe customer identifier
+    physicalType: VARCHAR(255)
+    businessName: Customer ID
+    examples:
+      - cus_1234567890
+      - cus_abcdefghij
+  
+  - name: email
+    type: string
+    required: true
+    classification: PII
+    description: Customer email address
+    physicalType: VARCHAR(255)
+    businessName: Email Address
+    examples:
+      - customer@example.com
+    quality:
+      - name: email_format_check
+        type: library
+        rule: validValues
+        dimension: conformity
+        severity: error
+  
+  - name: name
+    type: string
+    required: false
+    classification: PII
+    description: Customer full name
+    physicalType: VARCHAR(500)
+    businessName: Full Name
+  
+  - name: phone
+    type: string
+    required: false
+    classification: PII
+    description: Customer phone number
+    physicalType: VARCHAR(50)
+    businessName: Phone Number
+  
+  - name: created
+    type: timestamp
+    required: true
+    description: Account creation timestamp (Unix epoch)
+    physicalType: BIGINT
+    businessName: Account Created At
+  
+  - name: currency
+    type: string
+    required: false
+    description: Customer's preferred currency
+    physicalType: VARCHAR(3)
+    businessName: Currency Code
+    examples:
+      - USD
+      - EUR
+      - GBP
+  
+  - name: balance
+    type: integer
+    required: false
+    description: Current account balance in cents
+    physicalType: BIGINT
+    businessName: Account Balance
+    classification: SENSITIVE
+  
+  - name: delinquent
+    type: boolean
+    required: false
+    description: Whether customer has overdue invoices
+    physicalType: BOOLEAN
+    businessName: Delinquent Status
+  
+  - name: metadata
+    type: object
+    required: false
+    description: Custom metadata attached to customer
+    physicalType: JSONB
+    businessName: Custom Metadata
+
+# Data Quality
+data_quality:
+  monitoring:
+    enabled: true
+    oncall_rotation: data-oncall@company.com
+  
+  expectations:
+    - type: not_null
+      column: id
+      dimension: completeness
+      severity: error
+    
+    - type: unique
+      column: id
+      dimension: uniqueness
+      severity: error
+    
+    - type: not_null
+      column: email
+      dimension: completeness
+      severity: error
+    
+    - type: accepted_values
+      column: currency
+      values:
+        - USD
+        - EUR
+        - GBP
+        - CAD
+      dimension: conformity
+      severity: warning
+  
+  alerts:
+    channels:
+      - slack
+      - email
+    thresholds:
+      error_rate: 0.01
+      null_rate: 0.05
+
+# Change Management
+change_management:
+  policy: non-breaking
+  approval_required: true
+  notification_channels:
+    - slack
+    - email
+  version_history: true
+
+# Description
+description:
+  purpose: Customer data from Stripe payments platform for analytics and reporting
+  usage: |
+    This dataset is used for:
+    - Customer analytics and segmentation
+    - Revenue forecasting
+    - Churn prediction models
+    - Marketing campaign targeting
+  limitations: |
+    - Historical data limited to 90 days per GDPR retention policy
+    - Real-time updates may have 5-minute delay
+    - Deleted customers excluded from dataset
+
+# Metadata
+tags:
+  - stripe
+  - customers
+  - payments
+  - pii
+  - gdpr
+
+# Target Configuration (Dativo Extension)
+target:
+  file_format: parquet
+  partitioning:
+    - ingest_date
+  mode: strict
+
+# Contract Creation Timestamp
+contractCreatedTs: "2024-01-15T10:30:00Z"
