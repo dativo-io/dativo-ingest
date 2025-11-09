@@ -3,7 +3,7 @@ asset:
   source_type: csv
   object: SalesOrderHeader
   version: "1.0"
-  
+
   schema:
     - name: SalesOrderID
       type: integer
@@ -80,14 +80,27 @@ asset:
     - name: ModifiedDate
       type: timestamp
       required: true
-  
+
   governance:
     owner: data-team@company.com
+    cost_center: FIN-SALES-005
     tags: [adventureworks, sales, orders, test-data]
-    retention_days: 90
-  
+    classification: [FINANCIAL]
+    retention_days: 1095
+
+  lineage:
+    - from_asset: source.erp.sales_order_header
+      to_asset: csv_sales_order_header
+      contract_version: "1.0"
+      description: Replication of AdventureWorks sales orders into analytics zone
+
+  audit:
+    - author: data-team@company.com
+      change_type: initial_publish
+      timestamp: 2025-01-05T09:30:00Z
+      hash: a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef
+
   target:
     file_format: parquet
     partitioning: [ingest_date]
     mode: strict
-

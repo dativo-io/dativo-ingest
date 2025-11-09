@@ -3,10 +3,10 @@ asset:
   source_type: mysql
   object: db_customers
   version: "1.0"
-  
+
   schema:
     - name: id
-      type: bigint
+      type: integer
       required: true
     - name: email
       type: string
@@ -18,14 +18,27 @@ asset:
     - name: updated_at
       type: timestamp
       required: true
-  
+
   governance:
-    owner: data-team@company.com
+    owner: customer-ops@company.com
+    cost_center: FIN-CUST-DB
     tags: [customers, database]
     classification: [PII]
-    retention_days: 30
-  
+    retention_days: 730
+
+  lineage:
+    - from_asset: source.mysql.core_customers
+      to_asset: mysql_customers
+      contract_version: "1.0"
+      description: MySQL customer table replicated into analytics lakehouse
+
+  audit:
+    - author: customer-ops@company.com
+      change_type: initial_publish
+      timestamp: 2025-01-03T04:45:00Z
+      hash: ffeeddccbbaa99887766554433221100aabbccddeeff00112233445566778899
+
   target:
-  file_format: parquet
-  partitioning: [ingest_date]
+    file_format: parquet
+    partitioning: [ingest_date]
     mode: strict

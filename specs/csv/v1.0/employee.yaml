@@ -1,0 +1,129 @@
+name: csv_employee
+version: "1.0.0"
+domain: dativo
+data_product: employee
+status: active
+tenant: test_tenant
+description:
+  purpose: "Employee dataset with HR and payroll information"
+  limitations: null
+  usage: "Used for HR analytics and employee management"
+tags:
+  - employee
+  - hr
+  - test-data
+source:
+  type: csv
+  object: Employee_Complete_Dataset
+target:
+  file_format: parquet
+  partitioning:
+    - ingest_date
+  mode: strict
+schema:
+  fields:
+    - name: employee_id
+      type: integer
+      required: true
+      classification: PII
+    - name: first_name
+      type: string
+      required: true
+      classification: PII
+    - name: last_name
+      type: string
+      required: true
+      classification: PII
+    - name: email
+      type: string
+      required: true
+      classification: PII
+    - name: phone_number
+      type: string
+      required: false
+      classification: PII
+    - name: hire_date
+      type: date
+      required: true
+    - name: job_id
+      type: string
+      required: true
+    - name: salary
+      type: double
+      required: true
+      classification: SENSITIVE
+    - name: commission_pct
+      type: double
+      required: false
+    - name: manager_id
+      type: integer
+      required: false
+    - name: department_id
+      type: integer
+      required: true
+    - name: status
+      type: string
+      required: true
+    - name: created_at
+      type: timestamp
+      required: true
+    - name: updated_at
+      type: timestamp
+      required: true
+governance:
+  owner: data-team@company.com
+  owner_email: data-team@company.com
+  cost_center: FIN-HR-001
+  classification:
+    - PII
+    - SENSITIVE
+  retention_days: 90
+  regulations:
+    - GDPR
+    - CCPA
+  tags:
+    - employee
+    - workforce
+lineage:
+  - from_asset: source.hr.employees_csv
+    description: "CSV landing zone ingestion into curated employee asset"
+audit:
+  - author: data-team@company.com
+    change_type: initial_publish
+    timestamp: 2025-01-15T12:00:00Z
+    hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+change_management:
+  policy: non-breaking
+  approval_required: true
+  notification_channels:
+    - slack
+    - email
+  version_history: true
+dbt:
+  source:
+    name: hr_csv
+    database: analytics
+    schema: staging_hr
+    table_name: csv_employee
+    description: "Raw CSV ingestion table for employee records"
+  model:
+    name: dim_employee
+    materialized: incremental
+    description: "Curated employee dimension for analytics"
+    tags:
+      - employee
+      - pii
+  exposure:
+    name: employee_dashboard
+    type: dashboard
+    owner_name: Employee Analytics
+    owner_email: analytics@example.com
+    url: https://bi.example.com/dashboards/employee
+    depends_on:
+      - ref('dim_employee')
+    description: "Executive dashboard tracking employee headcount and attrition"
+finops:
+  tags:
+    - hr
+    - payroll
+  budget_guardrails: "Monitor monthly job execution cost against HR allocation."

@@ -3,7 +3,7 @@ asset:
   source_type: csv
   object: Person
   version: "1.0"
-  
+
   schema:
     - name: BusinessEntityID
       type: integer
@@ -20,12 +20,14 @@ asset:
     - name: FirstName
       type: string
       required: true
+      classification: PII
     - name: MiddleName
       type: string
       required: false
     - name: LastName
       type: string
       required: true
+      classification: PII
     - name: Suffix
       type: string
       required: false
@@ -44,14 +46,27 @@ asset:
     - name: ModifiedDate
       type: timestamp
       required: true
-  
+
   governance:
     owner: data-team@company.com
+    cost_center: FIN-CUST-003
     tags: [adventureworks, person, test-data]
-    retention_days: 90
-  
+    classification: [PII]
+    retention_days: 365
+
+  lineage:
+    - from_asset: source.crm.adventureworks_person
+      to_asset: csv_person
+      contract_version: "1.0"
+      description: AdventureWorks CRM export to staging zone
+
+  audit:
+    - author: data-team@company.com
+      change_type: initial_publish
+      timestamp: 2025-01-10T10:00:00Z
+      hash: 3b7d1f7c2e5a4b8d9f0e1a2c3d4b5f6a7c8d9e0f1a2b3c4d5e6f708192a3b4c5
+
   target:
     file_format: parquet
     partitioning: [ingest_date]
     mode: strict
-

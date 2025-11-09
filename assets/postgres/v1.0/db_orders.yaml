@@ -3,10 +3,10 @@ asset:
   source_type: postgres
   object: db_orders
   version: "1.0"
-  
+
   schema:
     - name: id
-      type: bigint
+      type: integer
       required: true
     - name: updated_at
       type: timestamp
@@ -14,13 +14,27 @@ asset:
     - name: total_amount
       type: double
       required: false
-  
+
   governance:
-    owner: data-team@company.com
+    owner: finance-data@company.com
+    cost_center: FIN-LEDGER-009
     tags: [orders, transactions]
-    retention_days: 30
-  
+    classification: [FINANCIAL]
+    retention_days: 1825
+
+  lineage:
+    - from_asset: source.postgres.billing_orders
+      to_asset: postgres_orders
+      contract_version: "1.0"
+      description: Postgres transactional orders replicated into analytics lakehouse
+
+  audit:
+    - author: finance-data@company.com
+      change_type: initial_publish
+      timestamp: 2025-01-02T04:00:00Z
+      hash: abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd
+
   target:
-  file_format: parquet
-  partitioning: [ingest_date]
+    file_format: parquet
+    partitioning: [ingest_date]
     mode: strict

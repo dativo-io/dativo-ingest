@@ -3,7 +3,7 @@ asset:
   source_type: hubspot
   object: contacts
   version: "1.0"
-  
+
   schema:
     - name: id
       type: string
@@ -15,14 +15,27 @@ asset:
     - name: updatedAt
       type: timestamp
       required: true
-  
+
   governance:
-    owner: data-team@company.com
+    owner: marketing-ops@company.com
+    cost_center: FIN-MKT-007
     tags: [crm, contacts]
     classification: [PII]
-    retention_days: 30
-  
+    retention_days: 180
+
+  lineage:
+    - from_asset: source.crm.hubspot_contacts
+      to_asset: hubspot_contacts
+      contract_version: "1.0"
+      description: HubSpot contacts API sync into analytics zone
+
+  audit:
+    - author: marketing-ops@company.com
+      change_type: initial_publish
+      timestamp: 2025-01-07T06:30:00Z
+      hash: d0c1b2a3948576f1e2d3c4b5a6f7980e1d2c3b4a59687766554433221100ffaa
+
   target:
-  file_format: parquet
-  partitioning: [ingest_date]
+    file_format: parquet
+    partitioning: [ingest_date]
     mode: strict

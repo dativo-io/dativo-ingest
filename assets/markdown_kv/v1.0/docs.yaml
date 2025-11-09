@@ -66,13 +66,14 @@ data_quality:
 
 team:
   owner: data-team@company.com
+  cost_center: FIN-DOCS-008
   roles:
     - name: Data Engineer
       email: engineer@company.com
       responsibility: ingestion
 
 compliance:
-  classification: []
+  classification: [DOCUMENTATION]
   regulations: []
   retention_days: 365
   security:
@@ -85,4 +86,16 @@ change_management:
   approval_required: true
   notification_channels: [slack, email]
   version_history: true
+
+lineage:
+  - from_asset: source.docs.markdown_repository
+    to_asset: markdown_kv_docs
+    contract_version: "1.0"
+    description: Markdown documents indexed into Markdown-KV structured store
+
+audit:
+  - author: data-team@company.com
+    change_type: initial_publish
+    timestamp: 2025-01-04T05:00:00Z
+    hash: 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 

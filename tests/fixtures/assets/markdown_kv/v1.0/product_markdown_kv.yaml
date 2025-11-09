@@ -57,13 +57,14 @@ schema:
 
 team:
   owner: test@example.com
+  cost_center: FIN-DOCS-TEST
   roles:
     - name: Data Engineer
       email: engineer@example.com
       responsibility: ingestion
 
 compliance:
-  classification: []
+  classification: [PRODUCT_METADATA]
   regulations: []
   retention_days: 365
   security:
@@ -85,4 +86,14 @@ change_management:
   approval_required: false
   notification_channels: []
   version_history: true
+lineage:
+  - from_asset: source.postgres.adventureworks.product
+    to_asset: postgres_product_markdown_kv
+    contract_version: "1.0"
+    description: Product table converted into Markdown-KV structure
+audit:
+  - author: test@example.com
+    change_type: initial_publish
+    timestamp: 2025-01-06T05:20:00Z
+    hash: 5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d
 

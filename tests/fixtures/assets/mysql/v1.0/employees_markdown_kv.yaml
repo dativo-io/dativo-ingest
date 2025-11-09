@@ -36,13 +36,14 @@ schema:
 
 team:
   owner: test@example.com
+  cost_center: FIN-MYSQL-TEST
   roles:
     - name: Data Engineer
       email: engineer@example.com
       responsibility: ingestion
 
 compliance:
-  classification: []
+  classification: [PII]
   regulations: []
   retention_days: 365
   security:
@@ -64,4 +65,14 @@ change_management:
   approval_required: false
   notification_channels: []
   version_history: true
+lineage:
+  - from_asset: source.mysql.employees.employees
+    to_asset: mysql_employees_markdown_kv
+    contract_version: "1.0"
+    description: MySQL employees table exported to Markdown-KV format
+audit:
+  - author: test@example.com
+    change_type: initial_publish
+    timestamp: 2025-01-06T06:11:00Z
+    hash: 8f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6f
 

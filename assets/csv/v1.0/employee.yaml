@@ -3,7 +3,7 @@ asset:
   source_type: csv
   object: Employee_Complete_Dataset
   version: "1.0"
-  
+
   schema:
     - name: employee_id
       type: integer
@@ -52,15 +52,27 @@ asset:
     - name: updated_at
       type: timestamp
       required: true
-  
+
   governance:
     owner: data-team@company.com
+    cost_center: FIN-HR-001
     tags: [employee, hr, test-data]
     classification: [PII, SENSITIVE]
     retention_days: 90
-  
+
+  lineage:
+    - from_asset: source.hr.employees_csv
+      to_asset: csv_employee
+      contract_version: "1.0"
+      description: CSV landing zone ingestion into curated employee asset
+
+  audit:
+    - author: data-team@company.com
+      change_type: initial_publish
+      timestamp: 2025-01-15T12:00:00Z
+      hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
   target:
     file_format: parquet
     partitioning: [ingest_date]
     mode: strict
-

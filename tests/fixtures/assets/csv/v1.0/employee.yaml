@@ -78,6 +78,7 @@ data_quality:
     thresholds: {}
 team:
   owner: data-team@company.com
+  cost_center: FIN-HR-TEST
   roles:
     - name: Data Engineer
       email: engineer@company.com
@@ -95,3 +96,13 @@ change_management:
   approval_required: true
   notification_channels: [slack, email]
   version_history: true
+lineage:
+  - from_asset: source.hr.employees_csv
+    to_asset: csv_employee
+    contract_version: "1.0"
+    description: Employee CSV ingest into curated HR dataset
+audit:
+  - author: data-team@company.com
+    change_type: initial_publish
+    timestamp: 2025-01-15T12:00:00Z
+    hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855

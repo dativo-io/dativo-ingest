@@ -3,7 +3,7 @@ asset:
   source_type: google_sheets
   object: vendors_master
   version: "1.0"
-  
+
   schema:
     - name: vendor_id
       type: string
@@ -15,14 +15,27 @@ asset:
       type: string
       required: false
       classification: PII
-  
+
   governance:
-    owner: data-team@company.com
+    owner: procurement-ops@company.com
+    cost_center: FIN-PROC-006
     tags: [vendors, master-data]
     classification: [PII]
-    retention_days: 30
-  
+    retention_days: 180
+
+  lineage:
+    - from_asset: source.procurement.gsheets_vendors_master
+      to_asset: gsheets_vendors_master
+      contract_version: "1.0"
+      description: Google Sheets vendor roster synchronized nightly
+
+  audit:
+    - author: procurement-ops@company.com
+      change_type: initial_publish
+      timestamp: 2025-01-09T06:00:00Z
+      hash: bcdef1234567890abcdeffedcba09876543210fedcba9876543210fedcba1234
+
   target:
-  file_format: parquet
-  partitioning: [ingest_date]
+    file_format: parquet
+    partitioning: [ingest_date]
     mode: strict

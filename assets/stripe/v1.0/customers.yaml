@@ -3,7 +3,7 @@ asset:
   source_type: stripe
   object: customers
   version: "1.0"
-  
+
   schema:
     - name: id
       type: string
@@ -18,14 +18,27 @@ asset:
     - name: balance
       type: double
       required: false
-  
+
   governance:
-    owner: data-team@company.com
+    owner: finance-data@company.com
+    cost_center: FIN-PAY-010
     tags: [payments, customer-data]
-    classification: [PII]
-    retention_days: 30
-  
+    classification: [PII, FINANCIAL]
+    retention_days: 1095
+
+  lineage:
+    - from_asset: source.stripe.customers_api
+      to_asset: stripe_customers
+      contract_version: "1.0"
+      description: Stripe customers API ingestion into analytics warehouse
+
+  audit:
+    - author: finance-data@company.com
+      change_type: initial_publish
+      timestamp: 2025-01-01T03:00:00Z
+      hash: fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff
+
   target:
-  file_format: parquet
-  partitioning: [ingest_date]
+    file_format: parquet
+    partitioning: [ingest_date]
     mode: strict

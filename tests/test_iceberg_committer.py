@@ -19,7 +19,23 @@ def sample_asset_definition():
             {"name": "id", "type": "integer", "required": True},
             {"name": "name", "type": "string", "required": True},
         ],
-        team={"owner": "test@example.com"},
+        team={"owner": "test@example.com", "cost_center": "FIN-TEST"},
+        compliance={"classification": ["INTERNAL"], "retention_days": 365},
+        lineage=[
+            {
+                "from_asset": "source.system.test_object",
+                "to_asset": "test_asset",
+                "contract_version": "1.0",
+            }
+        ],
+        audit=[
+            {
+                "author": "test@example.com",
+                "change_type": "initial_publish",
+                "timestamp": "2025-01-01T00:00:00Z",
+                "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            }
+        ],
     )
 
 
@@ -62,8 +78,24 @@ def test_get_nessie_uri(target_config):
             version="1.0",
             source_type="csv",
             object="test",
-            schema=[],
-            team={"owner": "test@example.com"},
+            schema=[{"name": "id", "type": "integer", "required": True}],
+            team={"owner": "test@example.com", "cost_center": "FIN-TEST"},
+            compliance={"classification": ["INTERNAL"], "retention_days": 365},
+            lineage=[
+                {
+                    "from_asset": "source.system.test",
+                    "to_asset": "test",
+                    "contract_version": "1.0",
+                }
+            ],
+            audit=[
+                {
+                    "author": "test@example.com",
+                    "change_type": "initial_publish",
+                    "timestamp": "2025-01-01T00:00:00Z",
+                    "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                }
+            ],
         ),
         target_config,
     )
@@ -80,8 +112,24 @@ def test_get_storage_config(target_config):
             version="1.0",
             source_type="csv",
             object="test",
-            schema=[],
-            team={"owner": "test@example.com"},
+            schema=[{"name": "id", "type": "integer", "required": True}],
+            team={"owner": "test@example.com", "cost_center": "FIN-TEST"},
+            compliance={"classification": ["INTERNAL"], "retention_days": 365},
+            lineage=[
+                {
+                    "from_asset": "source.system.test",
+                    "to_asset": "test",
+                    "contract_version": "1.0",
+                }
+            ],
+            audit=[
+                {
+                    "author": "test@example.com",
+                    "change_type": "initial_publish",
+                    "timestamp": "2025-01-01T00:00:00Z",
+                    "hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                }
+            ],
         ),
         target_config,
     )

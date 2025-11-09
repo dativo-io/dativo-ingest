@@ -56,13 +56,14 @@ schema:
 
 team:
   owner: test@example.com
+  cost_center: FIN-DOCS-TEST
   roles:
     - name: Data Engineer
       email: engineer@example.com
       responsibility: ingestion
 
 compliance:
-  classification: []
+  classification: [GEOSPATIAL]
   regulations: []
   retention_days: 365
   security:
@@ -84,4 +85,14 @@ change_management:
   approval_required: false
   notification_channels: []
   version_history: true
+lineage:
+  - from_asset: source.postgres.adventureworks.address
+    to_asset: postgres_address_markdown_kv
+    contract_version: "1.0"
+    description: Postgres address table transformed into Markdown-KV row-per-kv format
+audit:
+  - author: test@example.com
+    change_type: initial_publish
+    timestamp: 2025-01-06T05:15:00Z
+    hash: 0a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcd
 

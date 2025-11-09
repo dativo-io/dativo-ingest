@@ -2,8 +2,10 @@
 
 import json
 import os
+import re
 import sys
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -150,7 +152,17 @@ class TeamModel(BaseModel):
     """Team ownership and roles."""
 
     owner: str
+    cost_center: str
     roles: Optional[List[TeamRoleModel]] = None
+
+    @model_validator(mode="after")
+    def validate_team(self) -> "TeamModel":
+        """Ensure ownership metadata is complete."""
+        if not self.owner:
+            raise ValueError("team.owner is required")
+        if not self.cost_center:
+            raise ValueError("team.cost_center is required")
+        return self
 
 
 class ComplianceSecurityModel(BaseModel):
@@ -177,6 +189,57 @@ class ChangeManagementModel(BaseModel):
     approval_required: Optional[bool] = None
     notification_channels: Optional[List[str]] = None
     version_history: Optional[bool] = None
+
+
+class LineageLinkModel(BaseModel):
+    """Represents a lineage edge between assets for ODCS compliance."""
+
+    from_asset: str
+    to_asset: str
+    contract_version: str
+    description: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_lineage(self) -> "LineageLinkModel":
+        """Ensure lineage link is semantically valid."""
+        if not self.from_asset or not self.to_asset:
+            raise ValueError("lineage entries require both from_asset and to_asset")
+        if self.from_asset == self.to_asset:
+            raise ValueError("lineage entries must reference distinct assets")
+        if not re.fullmatch(r"\d+\.\d+(\.\d+)?", self.contract_version):
+            raise ValueError(
+                "lineage.contract_version must follow semantic versioning (MAJOR.MINOR or MAJOR.MINOR.PATCH)"
+            )
+        return self
+
+
+class AuditRecordModel(BaseModel):
+    """Audit trail entry for contract changes."""
+
+    author: str
+    timestamp: datetime
+    hash: str
+    change_type: Optional[str] = None
+    comment: Optional[str] = None
+
+    @field_validator("timestamp")
+    @classmethod
+    def ensure_timezone(cls, value: datetime) -> datetime:
+        """Normalize timestamps to UTC and ensure timezone awareness."""
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @field_validator("hash")
+    @classmethod
+    def validate_hash(cls, value: str) -> str:
+        """Ensure audit hash is hexadecimal digest."""
+        normalized = value.lower()
+        if not re.fullmatch(r"[a-f0-9]{40,64}", normalized):
+            raise ValueError(
+                "audit.hash must be a 40-64 character hexadecimal digest (e.g., SHA-1/SHA-256)"
+            )
+        return normalized
 
 
 class AssetDefinition(BaseModel):
@@ -209,13 +272,56 @@ class AssetDefinition(BaseModel):
     team: TeamModel
     compliance: Optional[ComplianceModel] = None
     change_management: Optional[ChangeManagementModel] = None
+    lineage: Optional[List[LineageLinkModel]] = None
+    audit: Optional[List[AuditRecordModel]] = None
+
+    @field_validator("schema")
+    @classmethod
+    def validate_schema_fields(cls, value: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Ensure schema entries contain required ODCS attributes."""
+        if not value or not isinstance(value, list):
+            raise ValueError("schema must contain at least one field definition")
+
+        allowed_types = {
+            "string",
+            "integer",
+            "float",
+            "double",
+            "boolean",
+            "date",
+            "datetime",
+            "timestamp",
+            "array",
+        }
+
+        for field in value:
+            if not isinstance(field, dict):
+                raise ValueError("schema entries must be dictionaries")
+            if "name" not in field or not field["name"]:
+                raise ValueError("schema entries require 'name'")
+            if "type" not in field or not field["type"]:
+                raise ValueError(f"schema field '{field.get('name')}' is missing required 'type'")
+            if field["type"] not in allowed_types:
+                raise ValueError(
+                    f"schema field '{field['name']}' has unsupported type '{field['type']}'. "
+                    f"Allowed types: {sorted(allowed_types)}"
+                )
+        return value
 
     @model_validator(mode="after")
     def validate_governance(self) -> "AssetDefinition":
         """Validate governance requirements."""
-        # Team owner is required
+        # Team requirements
         if not self.team or not self.team.owner:
             raise ValueError("team.owner is required (strong ownership requirement)")
+        if not self.team.cost_center:
+            raise ValueError("team.cost_center is required for FinOps traceability")
+
+        # Version must follow semantic versioning (MAJOR.MINOR or MAJOR.MINOR.PATCH)
+        if not re.fullmatch(r"\d+\.\d+(\.\d+)?", self.version):
+            raise ValueError(
+                f"version '{self.version}' must follow semantic versioning (MAJOR.MINOR or MAJOR.MINOR.PATCH)"
+            )
 
         # If monitoring is enabled, oncall_rotation is required
         if (
@@ -227,6 +333,33 @@ class AssetDefinition(BaseModel):
             raise ValueError(
                 "data_quality.monitoring.oncall_rotation is required when monitoring.enabled is true"
             )
+
+        # Compliance requirements
+        if not self.compliance:
+            raise ValueError("compliance section is required")
+        if not self.compliance.classification:
+            raise ValueError("compliance.classification is required to propagate policy tags")
+        if self.compliance.retention_days is None:
+            raise ValueError("compliance.retention_days is required for retention enforcement")
+
+        # Lineage requirements
+        if not self.lineage:
+            raise ValueError("lineage entries are required to maintain end-to-end traceability")
+        touches_asset = any(
+            link.from_asset == self.name or link.to_asset == self.name for link in self.lineage
+        )
+        if not touches_asset:
+            raise ValueError(
+                f"lineage must reference the asset name '{self.name}' as either from_asset or to_asset"
+            )
+
+        # Audit requirements
+        if not self.audit:
+            raise ValueError("audit trail entries are required for contract change tracking")
+        # Ensure audit entries are sorted chronologically to guarantee atomic updates
+        sorted_audit = sorted(self.audit, key=lambda record: record.timestamp)
+        if sorted_audit != list(self.audit):
+            self.audit = sorted_audit
 
         return self
 
@@ -250,12 +383,15 @@ class AssetDefinition(BaseModel):
                 governance = asset_data.pop("governance")
                 if "owner" in governance:
                     asset_data["team"] = {"owner": governance["owner"]}
-                    if "tags" in governance:
-                        asset_data.setdefault("tags", governance.get("tags", []))
+                if "cost_center" in governance:
+                    asset_data.setdefault("team", {})
+                    asset_data["team"]["cost_center"] = governance["cost_center"]
+                if "tags" in governance:
+                    asset_data.setdefault("tags", governance.get("tags", []))
 
                 # Migrate classification and retention_days to compliance
                 if "classification" in governance or "retention_days" in governance:
-                    compliance = {}
+                    compliance = asset_data.get("compliance", {}) or {}
                     if "classification" in governance:
                         compliance["classification"] = governance["classification"]
                     if "retention_days" in governance:
@@ -689,8 +825,6 @@ class JobConfig(BaseModel):
 
     def validate_environment_variables(self) -> None:
         """Validate that all required environment variables are set."""
-        import re
-
         env_var_pattern = re.compile(r"\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)")
 
         missing_vars = set()

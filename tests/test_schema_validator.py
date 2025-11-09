@@ -23,7 +23,24 @@ def sample_asset_definition():
             {"name": "active", "type": "boolean", "required": False},
             {"name": "created_at", "type": "timestamp", "required": True},
         ],
-        team={"owner": "test@example.com"},
+        team={"owner": "test@example.com", "cost_center": "FIN-TEST"},
+        compliance={"classification": ["INTERNAL"], "retention_days": 90},
+        lineage=[
+            {
+                "from_asset": "source.system.test_object",
+                "to_asset": "test_asset",
+                "contract_version": "1.0",
+                "description": "Unit test lineage edge",
+            }
+        ],
+        audit=[
+            {
+                "author": "test@example.com",
+                "change_type": "initial_publish",
+                "timestamp": "2025-01-01T00:00:00Z",
+                "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            }
+        ],
     )
 
 

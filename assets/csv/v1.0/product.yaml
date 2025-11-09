@@ -3,7 +3,7 @@ asset:
   source_type: csv
   object: Product
   version: "1.0"
-  
+
   schema:
     - name: ProductID
       type: integer
@@ -80,14 +80,27 @@ asset:
     - name: ModifiedDate
       type: timestamp
       required: true
-  
+
   governance:
     owner: data-team@company.com
+    cost_center: FIN-PROD-004
     tags: [adventureworks, product, test-data]
-    retention_days: 90
-  
+    classification: [INTERNAL]
+    retention_days: 365
+
+  lineage:
+    - from_asset: source.erp.adventureworks_product
+      to_asset: csv_product
+      contract_version: "1.0"
+      description: Nightly export from ERP to curated product asset
+
+  audit:
+    - author: data-team@company.com
+      change_type: initial_publish
+      timestamp: 2025-01-08T08:00:00Z
+      hash: 9f5a1c3d7e8b2f4a6c1d3e5f7a9b0c2d4e6f8091a2b3c4d5e6f708192a3b4c5
+
   target:
     file_format: parquet
     partitioning: [ingest_date]
     mode: strict
-

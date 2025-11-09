@@ -3,7 +3,7 @@ asset:
   source_type: gdrive_csv
   object: deals_daily
   version: "1.0"
-  
+
   schema:
     - name: deal_id
       type: string
@@ -14,13 +14,27 @@ asset:
     - name: closed_at
       type: timestamp
       required: false
-  
+
   governance:
-    owner: data-team@company.com
+    owner: sales-ops@company.com
+    cost_center: FIN-SALES-OPS
     tags: [deals, sales]
+    classification: [FINANCIAL]
     retention_days: 30
-  
+
+  lineage:
+    - from_asset: source.crm.gdrive_deals_daily
+      to_asset: gdrive_deals_daily
+      contract_version: "1.0"
+      description: Google Drive CSV export of daily deals for analytics
+
+  audit:
+    - author: sales-ops@company.com
+      change_type: initial_publish
+      timestamp: 2025-01-11T07:00:00Z
+      hash: 4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3
+
   target:
-  file_format: parquet
-  partitioning: [ingest_date]
+    file_format: parquet
+    partitioning: [ingest_date]
     mode: strict

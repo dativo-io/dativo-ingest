@@ -103,12 +103,13 @@ data_quality:
     thresholds: {}
 team:
   owner: data-team@company.com
+  cost_center: FIN-OPS-TEST
   roles:
     - name: Data Engineer
       email: engineer@company.com
       responsibility: ingestion
 compliance:
-  classification: []
+  classification: [NON_SENSITIVE]
   regulations: []
   retention_days: 90
   security:
@@ -120,3 +121,13 @@ change_management:
   approval_required: true
   notification_channels: [slack, email]
   version_history: true
+lineage:
+  - from_asset: source.streaming.platform_listens
+    to_asset: csv_listening_history
+    contract_version: "1.0"
+    description: Streaming platform telemetry ingested nightly
+audit:
+  - author: data-team@company.com
+    change_type: initial_publish
+    timestamp: 2025-01-12T12:00:00Z
+    hash: 6f1a2f4b9d4c3e721aa9d2f18495d1c3ee1f6f8d9a0b2c3d4e5f6a7b8c9d0e1f

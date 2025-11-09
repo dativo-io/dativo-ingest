@@ -10,7 +10,36 @@ from .config import JobConfig, RunnerConfig
 from .infrastructure import validate_infrastructure
 from .logging import setup_logging
 from .secrets import load_secrets
+from .metadata_store import update_asset_metadata
 from .validator import ConnectorValidator, IncrementalStateManager
+
+
+def contracts_command(args: argparse.Namespace) -> int:
+    """Generate ODCS-compliant asset definitions and dbt YAML from Specs-as-Code contracts."""
+    from .contract_specs import generate_contract_artifacts
+
+    spec_path = Path(args.spec)
+    asset_out = Path(args.asset_out)
+    dbt_out = Path(args.dbt_out)
+    existing = Path(args.check_against) if args.check_against else None
+
+    try:
+        generate_contract_artifacts(
+            spec_path=spec_path,
+            asset_output_path=asset_out,
+            dbt_output_path=dbt_out,
+            existing_asset_path=existing,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"ERROR: Failed to generate contract artifacts: {exc}", file=sys.stderr)
+        return 2
+
+    print(
+        f"Contract artifacts generated successfully:\n"
+        f"  Asset definition: {asset_out}\n"
+        f"  dbt metadata:     {dbt_out}"
+    )
+    return 0
 
 
 def initialize_state_directory(job_config: JobConfig) -> None:
@@ -646,7 +675,14 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 },
             )
 
-        # Determine exit code
+        # Determine exit code and validation status
+        if has_errors and validation_mode == "warn":
+            validation_status = "warnings"
+        elif has_errors:
+            validation_status = "failed"
+        else:
+            validation_status = "passed"
+
         if has_errors and validation_mode == "warn":
             exit_code = 1  # Partial success
         elif total_valid_records == 0:
@@ -658,6 +694,30 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         total_bytes = sum(
             file_meta.get("size_bytes", 0) for file_meta in all_file_metadata
         ) if all_file_metadata else 0
+
+        storage_rate = float(os.getenv("FINOPS_COST_PER_GB", "0.02"))
+        compute_rate = float(os.getenv("FINOPS_COST_PER_CPU_HOUR", "0.05"))
+        cost_estimate = (
+            (total_bytes / (1024 ** 3)) * storage_rate
+            + (execution_time / 3600) * compute_rate
+        )
+        finops_metrics = {
+            "cpu_time_sec": execution_time,
+            "data_bytes": total_bytes,
+            "cost_estimate_usd": round(cost_estimate, 6),
+        }
+
+        lineage_edges = []
+        if getattr(asset_definition, "lineage", None):
+            for link in asset_definition.lineage:
+                lineage_edges.append(
+                    {
+                        "from_asset": link.from_asset,
+                        "to_asset": link.to_asset,
+                        "contract_version": link.contract_version,
+                        "description": link.description,
+                    }
+                )
 
         # Emit enhanced metadata
         logger.info(
@@ -678,9 +738,31 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     "total_bytes": total_bytes,
                     "validation_mode": validation_mode,
                     "has_errors": has_errors,
+                    "validation_status": validation_status,
+                    "lineage": lineage_edges,
+                    "finops": finops_metrics,
                 },
             },
         )
+
+        try:
+            update_asset_metadata(
+                asset_definition,
+                metadata={
+                    "validation_status": validation_status,
+                    "lineage": lineage_edges,
+                    "finops": finops_metrics,
+                    "total_records": total_records,
+                    "valid_records": total_valid_records,
+                    "files_written": total_files_written,
+                    "metadata_source": "dativo_ingest.cli.run",
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"Failed to persist metadata for asset '{asset_definition.name}': {exc}",
+                extra={"event_type": "metadata_persist_warning"},
+            )
 
         return exit_code
 
@@ -787,6 +869,35 @@ Examples:
         "allowed in self_hosted mode.",
     )
 
+    contracts_parser = subparsers.add_parser(
+        "contracts",
+        help="Generate contract artifacts from Specs-as-Code definitions",
+        description=(
+            "Generate ODCS v3.0.2-compliant asset definitions and dbt YAML metadata "
+            "from Specs-as-Code contract specifications. "
+            "Applies semantic versioning policies when existing assets are supplied."
+        ),
+    )
+    contracts_parser.add_argument(
+        "--spec",
+        required=True,
+        help="Path to contract spec YAML file (e.g. specs/csv/v1.0/employee.yaml)",
+    )
+    contracts_parser.add_argument(
+        "--asset-out",
+        required=True,
+        help="Destination path for generated ODCS asset definition YAML",
+    )
+    contracts_parser.add_argument(
+        "--dbt-out",
+        required=True,
+        help="Destination path for generated dbt YAML metadata",
+    )
+    contracts_parser.add_argument(
+        "--check-against",
+        help="Optional existing asset definition path to enforce semantic versioning policies",
+    )
+
     # Start command
     start_parser = subparsers.add_parser(
         "start",
@@ -816,6 +927,8 @@ Examples:
         return run_command(args)
     elif args.command == "start":
         return start_command(args)
+    elif args.command == "contracts":
+        return contracts_command(args)
     else:
         parser.print_help()
         return 2
