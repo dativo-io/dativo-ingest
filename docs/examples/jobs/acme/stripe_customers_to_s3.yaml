@@ -9,7 +9,7 @@ target_connector: s3
 target_connector_path: /app/connectors/s3.yaml
 
 asset: stripe_customers
-asset_path: /app/assets/stripe/v1.0/customers.yaml
+asset_path: /app/specs/stripe/v1.0/customers.yaml
 
 source:
   objects: [customers]

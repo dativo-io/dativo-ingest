@@ -91,7 +91,7 @@ dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/sec
 
 All test fixtures are in `tests/fixtures/`:
 - `jobs/` - Job configurations
-- `assets/` - Asset definitions
+- `specs/` - Data contract definitions
 - `seeds/` - Test data files
 - `secrets/` - Test secrets (placeholders)
 

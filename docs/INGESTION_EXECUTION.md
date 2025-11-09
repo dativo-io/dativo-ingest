@@ -295,7 +295,7 @@ dativo_ingest run \
 tenant_id: acme
 source_connector_path: connectors/sources/csv.yaml
 target_connector_path: connectors/targets/iceberg.yaml
-asset_path: assets/csv/v1.0/person.yaml
+asset_path: specs/csv/v1.0/person.yaml
 
 source:
   files:

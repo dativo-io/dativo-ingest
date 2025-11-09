@@ -1,0 +1,129 @@
+apiVersion: v3.0.2
+kind: DataContract
+id: 622b9097-faf3-48fd-8275-136d9cbbb4c3
+name: csv_product
+version: 1.0.0
+status: active
+domain: adventureworks
+dataProduct: null
+tenant: null
+governance_status: approved
+description: null
+tags:
+- adventureworks
+- product
+- test-data
+source_type: csv
+object: Product
+target:
+  file_format: parquet
+  partitioning:
+  - ingest_date
+  mode: strict
+schema:
+- name: ProductID
+  type: integer
+  required: true
+- name: Name
+  type: string
+  required: true
+- name: ProductNumber
+  type: string
+  required: true
+- name: MakeFlag
+  type: integer
+  required: true
+- name: FinishedGoodsFlag
+  type: integer
+  required: true
+- name: Color
+  type: string
+  required: false
+- name: SafetyStockLevel
+  type: integer
+  required: true
+- name: ReorderPoint
+  type: integer
+  required: true
+- name: StandardCost
+  type: double
+  required: true
+- name: ListPrice
+  type: double
+  required: true
+- name: Size
+  type: string
+  required: false
+- name: SizeUnitMeasureCode
+  type: string
+  required: false
+- name: WeightUnitMeasureCode
+  type: string
+  required: false
+- name: Weight
+  type: double
+  required: false
+- name: DaysToManufacture
+  type: integer
+  required: true
+- name: ProductLine
+  type: string
+  required: false
+- name: Class
+  type: string
+  required: false
+- name: Style
+  type: string
+  required: false
+- name: ProductSubcategoryID
+  type: integer
+  required: false
+- name: ProductModelID
+  type: integer
+  required: false
+- name: SellStartDate
+  type: timestamp
+  required: true
+- name: SellEndDate
+  type: timestamp
+  required: false
+- name: DiscontinuedDate
+  type: timestamp
+  required: false
+- name: rowguid
+  type: string
+  required: true
+- name: ModifiedDate
+  type: timestamp
+  required: true
+data_quality: null
+team:
+  owner: data-team@company.com
+  roles: null
+compliance:
+  classification:
+  - INTERNAL
+  regulations: null
+  retention_days: 90
+  security: null
+  user_consent_required: null
+change_management: null
+finops:
+  cost_center: CC-UNSPECIFIED
+  owner: data-team@company.com
+  tags: null
+  budget_usd: null
+  anomaly_contact: null
+lineage:
+- from_asset: csv::Product
+  to_asset: csv_product
+  contract_version: 1.0.0
+  stage: ingest
+  transformation: null
+  description: Auto-generated lineage for missing specification
+audit:
+- author: data-team@company.com
+  timestamp: '2025-11-09T07:40:41.062067Z'
+  hash: 6d37eb5add5fdd86b081b94d8c6e302a5c86552160c7e74f386f9295aa2425bb
+  description: Auto-generated initial audit entry
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

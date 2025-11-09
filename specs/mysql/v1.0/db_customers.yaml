@@ -1,0 +1,62 @@
+apiVersion: v3.0.2
+kind: DataContract
+id: ce429bce-46ad-4621-b491-8b3e2278649c
+name: mysql_customers
+version: 1.0.0
+status: active
+domain: default
+dataProduct: null
+tenant: null
+governance_status: approved
+description: null
+tags:
+- customers
+- database
+source_type: mysql
+object: db_customers
+target: null
+schema:
+- name: id
+  type: bigint
+  required: true
+- name: email
+  type: string
+  required: false
+  classification: PII
+- name: name
+  type: string
+  required: false
+- name: updated_at
+  type: timestamp
+  required: true
+data_quality: null
+team:
+  owner: data-team@company.com
+  roles: null
+compliance:
+  classification:
+  - PII
+  regulations: null
+  retention_days: 30
+  security: null
+  user_consent_required: null
+change_management: null
+finops:
+  cost_center: CC-UNSPECIFIED
+  owner: data-team@company.com
+  tags: null
+  budget_usd: null
+  anomaly_contact: null
+lineage:
+- from_asset: mysql::db_customers
+  to_asset: mysql_customers
+  contract_version: 1.0.0
+  stage: ingest
+  transformation: null
+  description: Auto-generated lineage for missing specification
+audit:
+- author: data-team@company.com
+  timestamp: '2025-11-09T07:40:41.128580Z'
+  hash: 3d2ffaacb486fa182c84a3c93e5a1c54f8214c829ace091a3634df9f9724d8e8
+  description: Auto-generated initial audit entry
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

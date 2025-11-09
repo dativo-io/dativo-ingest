@@ -1,0 +1,58 @@
+apiVersion: v3.0.2
+kind: DataContract
+id: 2137f5e2-2020-4894-a786-76789f529815
+name: gdrive_deals_daily
+version: 1.0.0
+status: active
+domain: default
+dataProduct: null
+tenant: null
+governance_status: approved
+description: null
+tags:
+- deals
+- sales
+source_type: gdrive_csv
+object: deals_daily
+target: null
+schema:
+- name: deal_id
+  type: string
+  required: true
+- name: amount
+  type: double
+  required: false
+- name: closed_at
+  type: timestamp
+  required: false
+data_quality: null
+team:
+  owner: data-team@company.com
+  roles: null
+compliance:
+  classification:
+  - INTERNAL
+  regulations: null
+  retention_days: 30
+  security: null
+  user_consent_required: null
+change_management: null
+finops:
+  cost_center: CC-UNSPECIFIED
+  owner: data-team@company.com
+  tags: null
+  budget_usd: null
+  anomaly_contact: null
+lineage:
+- from_asset: gdrive_csv::deals_daily
+  to_asset: gdrive_deals_daily
+  contract_version: 1.0.0
+  stage: ingest
+  transformation: null
+  description: Auto-generated lineage for missing specification
+audit:
+- author: data-team@company.com
+  timestamp: '2025-11-09T07:40:41.110834Z'
+  hash: 8eb3bfc774ca4cf570ab3dad88ecabd8090666cdc5b4cb5716c21c9d4570525d
+  description: Auto-generated initial audit entry
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

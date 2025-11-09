@@ -9,6 +9,7 @@ from typing import List, Optional
 from .config import JobConfig, RunnerConfig
 from .infrastructure import validate_infrastructure
 from .logging import setup_logging
+from .metadata_exporter import MetadataExporter
 from .secrets import load_secrets
 from .validator import ConnectorValidator, IncrementalStateManager
 
@@ -306,6 +307,8 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             },
         )
         return 2
+
+    metadata_exporter = MetadataExporter(asset_definition)
 
     # Initialize state manager for incremental syncs
     state_manager = None
@@ -681,6 +684,27 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 },
             },
         )
+
+        try:
+            metadata_paths = metadata_exporter.write()
+        except Exception as metadata_error:  # noqa: BLE001
+            logger.warning(
+                f"Metadata export failed: {metadata_error}",
+                extra={
+                    "event_type": "metadata_export_failed",
+                    "asset_name": asset_definition.name,
+                },
+            )
+        else:
+            logger.info(
+                "Metadata exported",
+                extra={
+                    "event_type": "metadata_exported",
+                    "asset_name": asset_definition.name,
+                    "odcs_path": str(metadata_paths.odcs),
+                    "dbt_path": str(metadata_paths.dbt),
+                },
+            )
 
         return exit_code
 

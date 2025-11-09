@@ -6,8 +6,8 @@ This directory contains all test-related files for smoke tests, organized into t
 
 ```
 tests/fixtures/
-├── assets/          # Asset definitions (ODCS YAML schemas)
-│   └── csv/v1.0/   # CSV source connector asset definitions
+├── specs/           # Data contract definitions (ODCS YAML schemas)
+│   └── csv/v1.0/   # CSV source connector contracts
 ├── seeds/          # Test data files (CSV files)
 │   ├── adventureworks/
 │   ├── employee/
@@ -17,12 +17,12 @@ tests/fixtures/
 
 ## Distinction: Assets vs Seeds
 
-### `assets/` - Asset Definitions (Configuration/Metadata)
+### `specs/` - Data Contracts (Configuration/Metadata)
 **Purpose**: Defines the **structure and governance** of data (what the data should look like)
 
 - **Format**: ODCS v3.0.2 YAML files
 - **Content**: Schema definitions, governance metadata, compliance rules
-- **Example**: `assets/csv/v1.0/person.yaml` defines the schema for Person data
+- **Example**: `specs/csv/v1.0/person.yaml` defines the schema for Person data
 - **Used by**: Tests to validate data structure and ensure governance requirements
 
 ### `seeds/` - Test Data Files (Actual Data)
@@ -51,7 +51,7 @@ tests/fixtures/
   - Fact tables: `FactInternetSales.csv`, `FactResellerSales.csv`, `FactFinance.csv`, etc.
   - Legacy tables: `Person.csv`, `SalesOrderHeader.csv`, `Product.csv`
   - See `seeds/adventureworks/README.md` for complete list
-- **Asset Definitions**: `assets/csv/v1.0/person.yaml`, `sales_order_header.yaml`, `product.yaml`
+- **Data Contracts**: `specs/csv/v1.0/person.yaml`, `sales_order_header.yaml`, `product.yaml`
 
 ### Music Listening Data
 - **Source**: https://www.kaggle.com/datasets/gabrielkahen/music-listening-data-500k-users
@@ -59,7 +59,7 @@ tests/fixtures/
 - **Description**: Music listening data for 500k users
 - **Files**:
   - `seeds/music_listening/listening_history.csv` - Music listening history (10 rows)
-- **Asset Definition**: `assets/csv/v1.0/listening_history.yaml`
+- **Data Contract**: `specs/csv/v1.0/listening_history.yaml`
 
 ### Employee Dataset
 - **Source**: https://www.kaggle.com/datasets/rockyt07/cassandra-employee-dataset
@@ -67,7 +67,7 @@ tests/fixtures/
 - **Description**: Employee test dataset
 - **Files**:
   - `seeds/employee/Employee_Complete_Dataset.csv` - Employee records
-- **Asset Definition**: `assets/csv/v1.0/employee.yaml`
+- **Data Contract**: `specs/csv/v1.0/employee.yaml`
 
 ## Usage
 
@@ -81,9 +81,9 @@ dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/sec
 dativo_ingest run --config tests/fixtures/jobs/adventureworks_person_to_iceberg.yaml --secrets-dir tests/fixtures/secrets
 ```
 
-## Asset Definitions (ODCS v3.0.2)
+## Data Contracts (ODCS v3.0.2)
 
-All asset definitions in `assets/` follow the **Open Data Contract Standard (ODCS) v3.0.2** structure:
+All data contracts in `specs/` follow the **Open Data Contract Standard (ODCS) v3.0.2** structure:
 
 - Follow ODCS v3.0.2 flat structure (no nested `asset:` wrapper)
 - Reference the extended schema via `$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json`
@@ -91,4 +91,4 @@ All asset definitions in `assets/` follow the **Open Data Contract Standard (ODC
 - Extend ODCS with dativo-specific fields: `source_type`, `object`, `target`, `compliance`, `change_management`
 - Satisfy governance requirements: strong ownership, compliance, data quality monitoring, change management
 
-See `assets/README.md` for more details on asset definitions.
+See `specs/README.md` for more details on data contracts.

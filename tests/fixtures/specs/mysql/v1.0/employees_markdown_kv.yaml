@@ -1,0 +1,83 @@
+apiVersion: v3.0.2
+kind: DataContract
+id: 550e8400-e29b-41d4-a716-446655440020
+name: mysql_employees_markdown_kv
+version: 1.0.0
+status: active
+domain: dativo
+dataProduct: employees
+tenant: test_tenant
+governance_status: approved
+description:
+  purpose: Employee data from MySQL employees database stored as Markdown-KV format
+  limitations: null
+  usage: Used for LLM-optimized data storage in Markdown-KV format
+tags:
+- employees
+- mysql
+- markdown-kv
+- llm
+- test_db
+source_type: mysql
+object: employees
+target:
+  file_format: parquet
+  partitioning:
+  - ingest_date
+  mode: strict
+schema:
+- name: doc_id
+  type: string
+  required: true
+  description: Document identifier (emp_no from employees table)
+- name: markdown_kv_content
+  type: string
+  required: false
+  description: Markdown-KV formatted content from employees table row
+data_quality:
+  expectations: []
+  monitoring:
+    enabled: true
+    oncall_rotation: test@example.com
+  alerts:
+    channels: []
+    thresholds: {}
+team:
+  owner: test@example.com
+  roles:
+  - name: Data Engineer
+    email: engineer@example.com
+    responsibility: ingestion
+compliance:
+  classification:
+  - INTERNAL
+  regulations: []
+  retention_days: 365
+  security:
+    access_control: role_based
+    encryption_required: false
+  user_consent_required: false
+change_management:
+  policy: non-breaking
+  approval_required: false
+  notification_channels: []
+  version_history: true
+finops:
+  cost_center: CC-UNSPECIFIED
+  owner: test@example.com
+  tags: null
+  budget_usd: null
+  anomaly_contact: null
+lineage:
+- from_asset: mysql::employees
+  to_asset: mysql_employees_markdown_kv
+  contract_version: 1.0.0
+  stage: ingest
+  transformation: null
+  description: Auto-generated lineage for missing specification
+audit:
+- author: test@example.com
+  timestamp: '2025-11-09T07:37:18.346481Z'
+  hash: 4a772a23a15477fa2025c37c899eb45f87eaacfd3958e4e87178f69967fc0116
+  description: Auto-generated initial audit entry
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

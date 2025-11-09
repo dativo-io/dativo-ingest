@@ -9,7 +9,7 @@ target_connector: iceberg
 target_connector_path: /app/connectors/iceberg.yaml
 
 asset: postgres_orders
-asset_path: /app/assets/postgres/v1.0/db_orders.yaml
+asset_path: /app/specs/postgres/v1.0/db_orders.yaml
 
 source:
   tables:

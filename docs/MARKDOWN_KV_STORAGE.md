@@ -84,9 +84,9 @@ target:
 ```
 
 **Asset Definition:**
-Use `assets/markdown_kv/v1.0/kv_lines.yaml`:
+Use `specs/markdown_kv/v1.0/kv_lines.yaml`:
 ```yaml
-asset_path: assets/markdown_kv/v1.0/kv_lines.yaml
+asset_path: specs/markdown_kv/v1.0/kv_lines.yaml
 ```
 
 **Schema:**
@@ -117,9 +117,9 @@ target:
 ```
 
 **Asset Definition:**
-Use `assets/markdown_kv/v1.0/docs.yaml`:
+Use `specs/markdown_kv/v1.0/docs.yaml`:
 ```yaml
-asset_path: assets/markdown_kv/v1.0/docs.yaml
+asset_path: specs/markdown_kv/v1.0/docs.yaml
 ```
 
 **Schema:**
@@ -173,7 +173,7 @@ target:
     structured_pattern: "hybrid"
 ```
 
-See `assets/markdown_kv/v1.0/hybrid_example.yaml` for detailed implementation guidance.
+See `specs/markdown_kv/v1.0/hybrid_example.yaml` for detailed implementation guidance.
 
 ## Markdown-KV Format
 
@@ -265,7 +265,7 @@ markdown_kv = transform_to_markdown_kv(data, format="compact")
 tenant_id: acme
 source_connector_path: connectors/sources/markdown_kv.yaml
 target_connector_path: connectors/targets/iceberg.yaml
-asset_path: assets/markdown_kv/v1.0/string_storage.yaml
+asset_path: specs/markdown_kv/v1.0/string_storage.yaml
 
 source:
   files:
@@ -295,7 +295,7 @@ target:
 tenant_id: acme
 source_connector_path: connectors/sources/markdown_kv.yaml
 target_connector_path: connectors/targets/s3.yaml
-asset_path: assets/markdown_kv/v1.0/raw_files.yaml
+asset_path: specs/markdown_kv/v1.0/raw_files.yaml
 
 source:
   files:
@@ -321,7 +321,7 @@ target:
 tenant_id: acme
 source_connector_path: connectors/sources/markdown_kv.yaml
 target_connector_path: connectors/targets/iceberg.yaml
-asset_path: assets/markdown_kv/v1.0/kv_lines.yaml
+asset_path: specs/markdown_kv/v1.0/kv_lines.yaml
 
 source:
   files:
@@ -352,7 +352,7 @@ target:
 tenant_id: acme
 source_connector_path: connectors/sources/markdown_kv.yaml
 target_connector_path: connectors/targets/iceberg.yaml
-asset_path: assets/markdown_kv/v1.0/docs.yaml
+asset_path: specs/markdown_kv/v1.0/docs.yaml
 
 source:
   files:
@@ -432,5 +432,5 @@ target:
 
 - [Markdown-KV Format Specification](https://www.improvingagents.com/blog/best-input-data-format-for-llms)
 - [Iceberg Nested Types Documentation](https://iceberg.apache.org/docs/latest/spec/#nested-types)
-- [ODCS Asset Definitions](../assets/markdown_kv/v1.0/)
+- [ODCS Data Contracts](../specs/markdown_kv/v1.0/)
 

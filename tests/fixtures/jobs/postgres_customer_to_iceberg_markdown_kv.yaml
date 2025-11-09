@@ -13,7 +13,7 @@ target_connector_path: connectors/iceberg.yaml
 
 # Asset definition - Markdown-KV format (string mode)
 asset: postgres_customer_markdown_kv
-asset_path: tests/fixtures/assets/markdown_kv/v1.0/customer_markdown_kv.yaml
+asset_path: tests/fixtures/specs/markdown_kv/v1.0/customer_markdown_kv.yaml
 
 # Source configuration - AdventureWorks Customer table
 source:

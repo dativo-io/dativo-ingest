@@ -1,0 +1,58 @@
+apiVersion: v3.0.2
+kind: DataContract
+id: 6f592328-65cc-42bf-af4d-59333b7be8e8
+name: postgres_orders
+version: 1.0.0
+status: active
+domain: default
+dataProduct: null
+tenant: null
+governance_status: approved
+description: null
+tags:
+- orders
+- transactions
+source_type: postgres
+object: db_orders
+target: null
+schema:
+- name: id
+  type: bigint
+  required: true
+- name: updated_at
+  type: timestamp
+  required: true
+- name: total_amount
+  type: double
+  required: false
+data_quality: null
+team:
+  owner: data-team@company.com
+  roles: null
+compliance:
+  classification:
+  - INTERNAL
+  regulations: null
+  retention_days: 30
+  security: null
+  user_consent_required: null
+change_management: null
+finops:
+  cost_center: CC-UNSPECIFIED
+  owner: data-team@company.com
+  tags: null
+  budget_usd: null
+  anomaly_contact: null
+lineage:
+- from_asset: postgres::db_orders
+  to_asset: postgres_orders
+  contract_version: 1.0.0
+  stage: ingest
+  transformation: null
+  description: Auto-generated lineage for missing specification
+audit:
+- author: data-team@company.com
+  timestamp: '2025-11-09T07:40:41.122639Z'
+  hash: f8f249edf65e6992a7467869e27691c96fac0799eefcfb395e463f4837f10768
+  description: Auto-generated initial audit entry
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

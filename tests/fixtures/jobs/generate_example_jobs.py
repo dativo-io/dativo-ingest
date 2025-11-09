@@ -29,7 +29,7 @@ def generate_job_config(dataset_name: str, asset_info: dict) -> dict:
     
     # Construct paths relative to project root
     csv_path = f"tests/fixtures/seeds/{dataset_name}/{csv_file}"
-    asset_path = f"tests/fixtures/assets/csv/v1.0/{asset_file}"
+    asset_path = f"tests/fixtures/specs/csv/v1.0/{asset_file}"
     
     return {
         "tenant_id": "test_tenant",

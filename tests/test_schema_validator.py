@@ -12,7 +12,7 @@ def sample_asset_definition():
     """Create a sample asset definition for testing."""
     return AssetDefinition(
         name="test_asset",
-        version="1.0",
+        version="1.0.0",
         source_type="csv",
         object="test_object",
         schema=[
@@ -24,6 +24,22 @@ def sample_asset_definition():
             {"name": "created_at", "type": "timestamp", "required": True},
         ],
         team={"owner": "test@example.com"},
+        compliance={"classification": ["INTERNAL"], "retention_days": 30},
+        finops={"cost_center": "FIN-TEST"},
+        lineage=[
+            {
+                "from_asset": "source.system",
+                "to_asset": "test_asset",
+                "contract_version": "1.0.0",
+            }
+        ],
+        audit=[
+            {
+                "author": "test@example.com",
+                "timestamp": "2025-01-01T00:00:00Z",
+                "hash": "0" * 64,
+            }
+        ],
     )
 
 

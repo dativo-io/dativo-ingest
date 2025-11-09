@@ -60,7 +60,7 @@ docker build -t dativo:1.1.0 .
 ```bash
 docker run --rm \
   -v $(pwd)/connectors:/app/connectors:ro \
-  -v $(pwd)/assets:/app/assets:ro \
+  -v $(pwd)/specs:/app/specs:ro \
   -v $(pwd)/jobs:/app/jobs \
   -v $(pwd)/configs:/app/configs \
   -v $(pwd)/secrets:/app/secrets \
@@ -72,7 +72,7 @@ docker run --rm \
 ```bash
 docker run --rm -p 3000:3000 \
   -v $(pwd)/connectors:/app/connectors:ro \
-  -v $(pwd)/assets:/app/assets:ro \
+  -v $(pwd)/specs:/app/specs:ro \
   -v $(pwd)/jobs:/app/jobs \
   -v $(pwd)/configs:/app/configs \
   -v $(pwd)/secrets:/app/secrets \
@@ -169,7 +169,7 @@ target_connector_path: /app/connectors/targets/iceberg.yaml
 
 # Reference to asset definition
 asset: stripe_customers
-asset_path: /app/assets/stripe/v1.0/customers.yaml
+asset_path: /app/specs/stripe/v1.0/customers.yaml
 
 # Source configuration
 source:
@@ -327,7 +327,7 @@ make schema-validate
       iceberg.yaml
       s3.yaml
       minio.yaml
-  assets/
+  specs/
     stripe/v1.0/customers.yaml
     hubspot/v1.0/contacts.yaml
     postgres/v1.0/db_orders.yaml

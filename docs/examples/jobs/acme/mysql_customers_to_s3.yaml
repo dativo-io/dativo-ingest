@@ -9,7 +9,7 @@ target_connector: s3
 target_connector_path: /app/connectors/s3.yaml
 
 asset: mysql_customers
-asset_path: /app/assets/mysql/v1.0/db_customers.yaml
+asset_path: /app/specs/mysql/v1.0/db_customers.yaml
 
 source:
   tables:

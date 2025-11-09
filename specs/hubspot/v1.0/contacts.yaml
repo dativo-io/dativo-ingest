@@ -1,0 +1,84 @@
+apiVersion: v3.0.2
+kind: DataContract
+id: 555de0fc-fceb-4081-b3f6-8e63f0b7f505
+name: hubspot_contacts
+version: 1.0.0
+status: active
+domain: revenue
+dataProduct: crm_enrichment
+tenant: hubspot_prod
+governance_status: approved
+description:
+  purpose: HubSpot contact profiles for CRM enrichment
+  limitations: Limited to marketing-qualified leads
+  usage: Downstream dbt models for revenue intelligence
+tags:
+- crm
+- contacts
+source_type: hubspot
+object: contacts
+target:
+  file_format: parquet
+  partitioning:
+  - ingest_date
+  mode: strict
+schema:
+- name: id
+  type: string
+  required: true
+- name: email
+  type: string
+  required: false
+  classification: PII
+- name: updatedAt
+  type: timestamp
+  required: true
+data_quality:
+  expectations: []
+  monitoring:
+    enabled: true
+    oncall_rotation: revops-oncall@company.com
+  alerts:
+    channels:
+    - slack
+    thresholds: {}
+team:
+  owner: data-team@company.com
+  roles: null
+compliance:
+  classification:
+  - PII
+  regulations:
+  - GDPR
+  - CCPA
+  retention_days: 30
+  security:
+    access_control: role_based
+    encryption_required: true
+  user_consent_required: true
+change_management:
+  policy: non-breaking
+  approval_required: true
+  notification_channels:
+  - slack
+  version_history: true
+finops:
+  cost_center: FIN-CRM-001
+  owner: revops-finops@company.com
+  tags:
+  - crm
+  budget_usd: 1500.0
+  anomaly_contact: finops-alerts@company.com
+lineage:
+- from_asset: hubspot::contacts
+  to_asset: hubspot_contacts
+  contract_version: 1.0.0
+  stage: ingest
+  transformation: null
+  description: Auto-generated lineage for missing specification
+audit:
+- author: data-team@company.com
+  timestamp: '2025-11-09T07:40:41.036681Z'
+  hash: 44f90bc6dffd4abf10bf57255aca98af7c81ac6e6dcc8f865e5690bdb3701443
+  description: Auto-generated initial audit entry
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

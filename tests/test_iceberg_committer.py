@@ -11,7 +11,7 @@ def sample_asset_definition():
     """Create a sample asset definition for testing."""
     return AssetDefinition(
         name="test_asset",
-        version="1.0",
+        version="1.0.0",
         source_type="csv",
         object="test_object",
         domain="test_domain",
@@ -20,6 +20,22 @@ def sample_asset_definition():
             {"name": "name", "type": "string", "required": True},
         ],
         team={"owner": "test@example.com"},
+        compliance={"classification": ["INTERNAL"], "retention_days": 30},
+        finops={"cost_center": "FIN-TEST"},
+        lineage=[
+            {
+                "from_asset": "source.system",
+                "to_asset": "test_asset",
+                "contract_version": "1.0.0",
+            }
+        ],
+        audit=[
+            {
+                "author": "test@example.com",
+                "timestamp": "2025-01-01T00:00:00Z",
+                "hash": "0" * 64,
+            }
+        ],
     )
 
 
@@ -57,14 +73,30 @@ def test_iceberg_committer_initialization(sample_asset_definition, target_config
 def test_get_nessie_uri(target_config):
     """Test Nessie URI extraction."""
     committer = IcebergCommitter(
-        AssetDefinition(
-            name="test",
-            version="1.0",
-            source_type="csv",
-            object="test",
-            schema=[],
-            team={"owner": "test@example.com"},
-        ),
+            AssetDefinition(
+                name="test",
+                version="1.0.0",
+                source_type="csv",
+                object="test",
+                schema=[],
+                team={"owner": "test@example.com"},
+                compliance={"classification": ["INTERNAL"], "retention_days": 30},
+                finops={"cost_center": "FIN-TEST"},
+                lineage=[
+                    {
+                        "from_asset": "source.system",
+                        "to_asset": "test",
+                        "contract_version": "1.0.0",
+                    }
+                ],
+                audit=[
+                    {
+                        "author": "test@example.com",
+                        "timestamp": "2025-01-01T00:00:00Z",
+                        "hash": "0" * 64,
+                    }
+                ],
+            ),
         target_config,
     )
     
@@ -75,14 +107,30 @@ def test_get_nessie_uri(target_config):
 def test_get_storage_config(target_config):
     """Test storage config extraction."""
     committer = IcebergCommitter(
-        AssetDefinition(
-            name="test",
-            version="1.0",
-            source_type="csv",
-            object="test",
-            schema=[],
-            team={"owner": "test@example.com"},
-        ),
+            AssetDefinition(
+                name="test",
+                version="1.0.0",
+                source_type="csv",
+                object="test",
+                schema=[],
+                team={"owner": "test@example.com"},
+                compliance={"classification": ["INTERNAL"], "retention_days": 30},
+                finops={"cost_center": "FIN-TEST"},
+                lineage=[
+                    {
+                        "from_asset": "source.system",
+                        "to_asset": "test",
+                        "contract_version": "1.0.0",
+                    }
+                ],
+                audit=[
+                    {
+                        "author": "test@example.com",
+                        "timestamp": "2025-01-01T00:00:00Z",
+                        "hash": "0" * 64,
+                    }
+                ],
+            ),
         target_config,
     )
     

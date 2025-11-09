@@ -16,13 +16,13 @@ asset:
       type: timestamp
       required: true
   
-  governance:
-    owner: data-team@company.com
-    tags: [crm, contacts]
-    classification: [PII]
-    retention_days: 30
-  
-  target:
-  file_format: parquet
-  partitioning: [ingest_date]
-    mode: strict
+    governance:
+      owner: data-team@company.com
+      tags: [crm, contacts]
+      classification: [PII]
+      retention_days: 30
+    
+    target:
+      file_format: parquet
+      partitioning: [ingest_date]
+      mode: strict

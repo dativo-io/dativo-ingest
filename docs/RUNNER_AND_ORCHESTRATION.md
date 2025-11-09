@@ -29,7 +29,7 @@ runner:
 ```bash
 docker run --rm -p 3000:3000 \
   -v $(pwd)/connectors:/app/connectors:ro \
-  -v $(pwd)/assets:/app/assets:ro \
+  -v $(pwd)/specs:/app/specs:ro \
   -v $(pwd)/jobs:/app/jobs \
   -v $(pwd)/configs:/app/configs \
   -v $(pwd)/secrets:/app/secrets \
@@ -42,7 +42,7 @@ Run a single job and exit:
 ```bash
 docker run --rm \
   -v $(pwd)/connectors:/app/connectors:ro \
-  -v $(pwd)/assets:/app/assets:ro \
+  -v $(pwd)/specs:/app/specs:ro \
   -v $(pwd)/jobs:/app/jobs \
   -v $(pwd)/configs:/app/configs \
   -v $(pwd)/secrets:/app/secrets \

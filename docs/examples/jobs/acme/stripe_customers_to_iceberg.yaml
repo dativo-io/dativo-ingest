@@ -12,7 +12,7 @@ target_connector_path: /app/connectors/iceberg.yaml
 
 # Reference to asset definition
 asset: stripe_customers
-asset_path: /app/assets/stripe/v1.0/customers.yaml
+asset_path: /app/specs/stripe/v1.0/customers.yaml
 
 # Source configuration
 source:

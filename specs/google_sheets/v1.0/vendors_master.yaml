@@ -1,0 +1,59 @@
+apiVersion: v3.0.2
+kind: DataContract
+id: 3604a57b-816f-4360-8c9a-fae1b9c1d917
+name: gsheets_vendors_master
+version: 1.0.0
+status: active
+domain: default
+dataProduct: null
+tenant: null
+governance_status: approved
+description: null
+tags:
+- vendors
+- master-data
+source_type: google_sheets
+object: vendors_master
+target: null
+schema:
+- name: vendor_id
+  type: string
+  required: true
+- name: name
+  type: string
+  required: false
+- name: email
+  type: string
+  required: false
+  classification: PII
+data_quality: null
+team:
+  owner: data-team@company.com
+  roles: null
+compliance:
+  classification:
+  - PII
+  regulations: null
+  retention_days: 30
+  security: null
+  user_consent_required: null
+change_management: null
+finops:
+  cost_center: CC-UNSPECIFIED
+  owner: data-team@company.com
+  tags: null
+  budget_usd: null
+  anomaly_contact: null
+lineage:
+- from_asset: google_sheets::vendors_master
+  to_asset: gsheets_vendors_master
+  contract_version: 1.0.0
+  stage: ingest
+  transformation: null
+  description: Auto-generated lineage for missing specification
+audit:
+- author: data-team@company.com
+  timestamp: '2025-11-09T07:40:41.105153Z'
+  hash: bd54ebf44a2ba0bc4a28dc22db450ef0e2b8f6caed8a4e0938be3c0d4d6c2199
+  description: Auto-generated initial audit entry
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

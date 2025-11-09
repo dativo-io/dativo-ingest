@@ -1,0 +1,130 @@
+apiVersion: v3.0.2
+kind: DataContract
+id: 0edc6657-9ff8-4dcc-be9e-e0a5227f1714
+name: csv_sales_order_header
+version: 1.0.0
+status: active
+domain: adventureworks
+dataProduct: null
+tenant: null
+governance_status: approved
+description: null
+tags:
+- adventureworks
+- sales
+- orders
+- test-data
+source_type: csv
+object: SalesOrderHeader
+target:
+  file_format: parquet
+  partitioning:
+  - ingest_date
+  mode: strict
+schema:
+- name: SalesOrderID
+  type: integer
+  required: true
+- name: RevisionNumber
+  type: integer
+  required: true
+- name: OrderDate
+  type: timestamp
+  required: true
+- name: DueDate
+  type: timestamp
+  required: true
+- name: ShipDate
+  type: timestamp
+  required: false
+- name: Status
+  type: integer
+  required: true
+- name: SalesOrderNumber
+  type: string
+  required: true
+- name: PurchaseOrderNumber
+  type: string
+  required: false
+- name: AccountNumber
+  type: string
+  required: false
+- name: CustomerID
+  type: integer
+  required: true
+- name: SalesPersonID
+  type: integer
+  required: false
+- name: TerritoryID
+  type: integer
+  required: false
+- name: BillToAddressID
+  type: integer
+  required: true
+- name: ShipToAddressID
+  type: integer
+  required: true
+- name: ShipMethodID
+  type: integer
+  required: true
+- name: CreditCardID
+  type: integer
+  required: false
+- name: CreditCardApprovalCode
+  type: string
+  required: false
+- name: CurrencyRateID
+  type: integer
+  required: false
+- name: SubTotal
+  type: double
+  required: true
+- name: TaxAmt
+  type: double
+  required: true
+- name: Freight
+  type: double
+  required: true
+- name: TotalDue
+  type: double
+  required: true
+- name: Comment
+  type: string
+  required: false
+- name: rowguid
+  type: string
+  required: true
+- name: ModifiedDate
+  type: timestamp
+  required: true
+data_quality: null
+team:
+  owner: data-team@company.com
+  roles: null
+compliance:
+  classification:
+  - INTERNAL
+  regulations: null
+  retention_days: 90
+  security: null
+  user_consent_required: null
+change_management: null
+finops:
+  cost_center: CC-UNSPECIFIED
+  owner: data-team@company.com
+  tags: null
+  budget_usd: null
+  anomaly_contact: null
+lineage:
+- from_asset: csv::SalesOrderHeader
+  to_asset: csv_sales_order_header
+  contract_version: 1.0.0
+  stage: ingest
+  transformation: null
+  description: Auto-generated lineage for missing specification
+audit:
+- author: data-team@company.com
+  timestamp: '2025-11-09T07:40:41.047872Z'
+  hash: fd67ed0ad24ae80584d5e76a8f998ea98cc6585433edeca4a491f58310991fa4
+  description: Auto-generated initial audit entry
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

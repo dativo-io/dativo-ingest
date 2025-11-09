@@ -1,15 +1,26 @@
 """Configuration models and schema validation for Dativo jobs."""
 
+import datetime
+import hashlib
 import json
 import os
+import re
 import sys
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import warnings
 
 import jsonschema
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 
 class ConnectorRecipe(BaseModel):
@@ -179,6 +190,69 @@ class ChangeManagementModel(BaseModel):
     version_history: Optional[bool] = None
 
 
+class FinOpsModel(BaseModel):
+    """FinOps and cost governance configuration."""
+
+    cost_center: str
+    owner: Optional[str] = None
+    tags: Optional[List[str]] = None
+    budget_usd: Optional[float] = None
+    anomaly_contact: Optional[str] = None
+
+
+class LineageEdgeModel(BaseModel):
+    """Lineage connection between upstream and downstream assets."""
+
+    from_asset: str
+    to_asset: str
+    contract_version: str
+    stage: Optional[str] = None
+    transformation: Optional[str] = None
+    description: Optional[str] = None
+
+
+class AuditEventModel(BaseModel):
+    """Audit event entry for contract changes."""
+
+    author: str
+    timestamp: datetime.datetime
+    hash: str
+    description: Optional[str] = None
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def _parse_timestamp(cls, value: Any) -> datetime.datetime:
+        """Parse ISO 8601 timestamps and ensure timezone awareness."""
+        if isinstance(value, datetime.datetime):
+            ts = value
+        elif isinstance(value, str):
+            if value.endswith("Z"):
+                value = value.replace("Z", "+00:00")
+            ts = datetime.datetime.fromisoformat(value)
+        else:
+            raise TypeError("timestamp must be datetime or ISO 8601 string")
+
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=datetime.timezone.utc)
+        return ts.astimezone(datetime.timezone.utc)
+
+    @field_validator("hash")
+    @classmethod
+    def _validate_hash(cls, value: str) -> str:
+        """Ensure hash is a 64-character lowercase hex SHA256."""
+        if not isinstance(value, str):
+            raise TypeError("hash must be a string")
+        lowered = value.lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", lowered):
+            raise ValueError("hash must be a 64-character hexadecimal SHA256 digest")
+        return lowered
+
+    @field_serializer("timestamp")
+    def _serialize_timestamp(self, value: datetime.datetime) -> str:
+        """Serialize timestamp to ISO 8601 with Z suffix."""
+        return value.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 class AssetDefinition(BaseModel):
     """Asset definition - ODCS v3.0.2 aligned with dativo extensions."""
 
@@ -195,6 +269,7 @@ class AssetDefinition(BaseModel):
     domain: Optional[str] = None
     dataProduct: Optional[str] = None
     tenant: Optional[str] = None
+    governance_status: str = "approved"
     description: Optional[DescriptionModel] = None
     tags: Optional[List[str]] = None
 
@@ -209,6 +284,9 @@ class AssetDefinition(BaseModel):
     team: TeamModel
     compliance: Optional[ComplianceModel] = None
     change_management: Optional[ChangeManagementModel] = None
+    finops: FinOpsModel
+    lineage: List[LineageEdgeModel] = Field(default_factory=list)
+    audit: List[AuditEventModel] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_governance(self) -> "AssetDefinition":
@@ -216,6 +294,27 @@ class AssetDefinition(BaseModel):
         # Team owner is required
         if not self.team or not self.team.owner:
             raise ValueError("team.owner is required (strong ownership requirement)")
+
+        # Compliance classification and retention are mandatory
+        if not self.compliance or not self.compliance.classification:
+            raise ValueError(
+                "compliance.classification must include at least one classification tag"
+            )
+        if self.compliance.retention_days is None:
+            raise ValueError("compliance.retention_days is required")
+
+        # FinOps cost center required
+        if not self.finops or not self.finops.cost_center:
+            raise ValueError("finops.cost_center is required")
+
+        # Require lineage edges
+        if not self.lineage:
+            raise ValueError("At least one lineage entry is required")
+        for edge in self.lineage:
+            if not edge.from_asset or not edge.to_asset:
+                raise ValueError("lineage entries require from_asset and to_asset")
+            if not edge.contract_version:
+                raise ValueError("lineage entries require contract_version")
 
         # If monitoring is enabled, oncall_rotation is required
         if (
@@ -228,7 +327,42 @@ class AssetDefinition(BaseModel):
                 "data_quality.monitoring.oncall_rotation is required when monitoring.enabled is true"
             )
 
+        # Schema fields require names and types
+        for field in self.schema:
+            if "name" not in field or not field["name"]:
+                raise ValueError("All schema fields must include a name")
+            if "type" not in field or not field["type"]:
+                raise ValueError(
+                    f"Schema field '{field.get('name', '<unknown>')}' must include a type"
+                )
+
+        # Enforce semantic versioning MAJOR.MINOR.PATCH
+        if not re.fullmatch(r"\d+\.\d+\.\d+", self.version):
+            raise ValueError(
+                f"version '{self.version}' must follow semantic versioning MAJOR.MINOR.PATCH"
+            )
+
+        # Audit trail with matching hash is required
+        if not self.audit:
+            raise ValueError("audit trail must include at least one entry")
+
+        computed_hash = self.compute_contract_hash()
+        latest_hash = self.audit[-1].hash
+        if latest_hash != computed_hash:
+            warnings.warn(
+                "Latest audit hash did not match contract content. "
+                "Hash has been recalculated automatically.",
+                UserWarning,
+            )
+            self.audit[-1].hash = computed_hash
+
         return self
+
+    def compute_contract_hash(self) -> str:
+        """Compute canonical hash for contract content excluding audit trail."""
+        payload = self.model_dump(mode="json", exclude={"audit"})
+        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     @classmethod
     def _migrate_old_format(cls, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -268,8 +402,100 @@ class AssetDefinition(BaseModel):
                 "$schema", "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json"
             )
 
+            cls._apply_contract_defaults(asset_data, compute_hash=False)
+
             return asset_data
         return data
+
+    @classmethod
+    def _apply_contract_defaults(
+        cls, asset_data: Dict[str, Any], compute_hash: bool = True
+    ) -> Dict[str, Any]:
+        """Apply mandatory defaults and normalization to asset data."""
+        asset_data.setdefault("governance_status", "approved")
+
+        # Ensure compliance section with classification and retention
+        compliance_section = asset_data.get("compliance") or {}
+        if not compliance_section.get("classification"):
+            compliance_section["classification"] = ["INTERNAL"]
+        compliance_section["classification"] = [
+            str(tag).upper() for tag in compliance_section.get("classification", [])
+        ]
+        if compliance_section.get("retention_days") is None:
+            compliance_section["retention_days"] = 90
+        asset_data["compliance"] = compliance_section
+
+        # Ensure FinOps section
+        finops_section = asset_data.get("finops") or {}
+        if not finops_section.get("cost_center"):
+            finops_section["cost_center"] = "CC-UNSPECIFIED"
+        if not finops_section.get("owner") and asset_data.get("team", {}).get("owner"):
+            finops_section["owner"] = asset_data["team"]["owner"]
+        asset_data["finops"] = finops_section
+
+        # Normalize semantic versioning
+        version_value = str(asset_data.get("version", "1.0.0"))
+        if re.fullmatch(r"\d+\.\d+$", version_value):
+            version_value = f"{version_value}.0"
+        elif not re.fullmatch(r"\d+\.\d+\.\d+$", version_value):
+            version_value = "1.0.0"
+        asset_data["version"] = version_value
+
+        # Ensure lineage entries
+        if not asset_data.get("lineage"):
+            source_type = asset_data.get("source_type", "source")
+            upstream_object = asset_data.get("object") or asset_data.get("name", "asset")
+            asset_data["lineage"] = [
+                {
+                    "from_asset": f"{source_type}::{upstream_object}",
+                    "to_asset": asset_data.get("name", upstream_object),
+                    "contract_version": version_value,
+                    "stage": "ingest",
+                    "description": "Auto-generated lineage for missing specification",
+                }
+            ]
+        else:
+            for edge in asset_data["lineage"]:
+                edge.setdefault("contract_version", version_value)
+                edge["contract_version"] = version_value
+
+        if compute_hash:
+            cls._ensure_audit_trail(asset_data)
+
+        return asset_data
+
+    @classmethod
+    def _ensure_audit_trail(cls, asset_data: Dict[str, Any]) -> None:
+        """Ensure audit trail exists and latest entry hash matches content."""
+        audit_list = list(asset_data.get("audit") or [])
+        if not audit_list:
+            author = asset_data.get("team", {}).get("owner", "unknown")
+            audit_list.append(
+                {
+                    "author": author,
+                    "timestamp": datetime.datetime.utcnow()
+                    .replace(tzinfo=datetime.timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                    "description": "Auto-generated initial audit entry",
+                    "hash": "",
+                }
+            )
+
+        payload_for_hash = {
+            k: v for k, v in asset_data.items() if k != "audit"
+        }
+        computed_hash = hashlib.sha256(
+            json.dumps(
+                payload_for_hash,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+
+        audit_list[-1]["hash"] = computed_hash
+        asset_data["audit"] = audit_list
 
     @classmethod
     def validate_against_schema(
@@ -347,6 +573,9 @@ class AssetDefinition(BaseModel):
         # Map $schema to schema_ref for Pydantic (since $schema is not a valid Python identifier)
         if "$schema" in data:
             data["schema_ref"] = data.pop("$schema")
+
+        # Apply defaults and ensure audit/hash consistency
+        cls._apply_contract_defaults(data, compute_hash=True)
 
         # Validate against JSON schema if requested
         if validate_schema:

@@ -15,7 +15,7 @@ connectors/
     s3.yaml
     minio.yaml
 
-assets/
+  specs/
   stripe/v1.0/customers.yaml
   hubspot/v1.0/contacts.yaml
   postgres/v1.0/db_orders.yaml

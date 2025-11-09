@@ -9,7 +9,7 @@ target_connector: iceberg
 target_connector_path: /app/connectors/iceberg.yaml
 
 asset: gdrive_deals_daily
-asset_path: /app/assets/gdrive_csv/v1.0/deals_daily.yaml
+asset_path: /app/specs/gdrive_csv/v1.0/deals_daily.yaml
 
 source:
   files:

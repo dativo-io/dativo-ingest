@@ -207,6 +207,9 @@ state/
 .local/
 *.state.json
 
+# Generated metadata exports
+metadata/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

@@ -66,7 +66,7 @@ logging:
 
 source_connector_path: /app/connectors/sources/gdrive_csv.yaml
 target_connector_path: /app/connectors/targets/iceberg.yaml
-asset_path: /app/assets/gdrive_csv/v1.0/deals_daily.yaml
+asset_path: /app/specs/gdrive_csv/v1.0/deals_daily.yaml
 ```
 
 ### 🧑‍✈️ Runner Orchestration Config

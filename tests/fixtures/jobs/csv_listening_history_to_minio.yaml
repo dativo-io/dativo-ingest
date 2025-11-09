@@ -12,7 +12,7 @@ target_connector_path: connectors/minio.yaml
 
 # Asset definition
 asset: csv_listening_history
-asset_path: tests/fixtures/assets/csv/v1.0/listening_history.yaml
+asset_path: tests/fixtures/specs/csv/v1.0/listening_history.yaml
 
 # Source configuration
 source:

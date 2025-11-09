@@ -1,0 +1,62 @@
+apiVersion: v3.0.2
+kind: DataContract
+id: f77f4c97-e9b5-4cb1-aaee-4d1d30f498c1
+name: stripe_customers
+version: 1.0.0
+status: active
+domain: default
+dataProduct: null
+tenant: null
+governance_status: approved
+description: null
+tags:
+- payments
+- customer-data
+source_type: stripe
+object: customers
+target: null
+schema:
+- name: id
+  type: string
+  required: true
+- name: email
+  type: string
+  required: false
+  classification: PII
+- name: created
+  type: timestamp
+  required: true
+- name: balance
+  type: double
+  required: false
+data_quality: null
+team:
+  owner: data-team@company.com
+  roles: null
+compliance:
+  classification:
+  - PII
+  regulations: null
+  retention_days: 30
+  security: null
+  user_consent_required: null
+change_management: null
+finops:
+  cost_center: CC-UNSPECIFIED
+  owner: data-team@company.com
+  tags: null
+  budget_usd: null
+  anomaly_contact: null
+lineage:
+- from_asset: stripe::customers
+  to_asset: stripe_customers
+  contract_version: 1.0.0
+  stage: ingest
+  transformation: null
+  description: Auto-generated lineage for missing specification
+audit:
+- author: data-team@company.com
+  timestamp: '2025-11-09T07:40:41.117045Z'
+  hash: 85437f7eb578911d1bc1070c59fb27c65b21953a372f982b3818e89bd2111463
+  description: Auto-generated initial audit entry
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

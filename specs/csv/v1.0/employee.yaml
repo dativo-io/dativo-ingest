@@ -1,0 +1,102 @@
+apiVersion: v3.0.2
+kind: DataContract
+id: 42f29cdf-8861-4161-bc81-b5f9e7b03830
+name: csv_employee
+version: 1.0.0
+status: active
+domain: default
+dataProduct: null
+tenant: null
+governance_status: approved
+description: null
+tags:
+- employee
+- hr
+- test-data
+source_type: csv
+object: Employee_Complete_Dataset
+target:
+  file_format: parquet
+  partitioning:
+  - ingest_date
+  mode: strict
+schema:
+- name: employee_id
+  type: integer
+  required: true
+- name: first_name
+  type: string
+  required: true
+  classification: PII
+- name: last_name
+  type: string
+  required: true
+  classification: PII
+- name: email
+  type: string
+  required: true
+  classification: PII
+- name: phone_number
+  type: string
+  required: false
+  classification: PII
+- name: hire_date
+  type: date
+  required: true
+- name: job_id
+  type: string
+  required: true
+- name: salary
+  type: double
+  required: true
+  classification: SENSITIVE
+- name: commission_pct
+  type: double
+  required: false
+- name: manager_id
+  type: integer
+  required: false
+- name: department_id
+  type: integer
+  required: true
+- name: status
+  type: string
+  required: true
+- name: created_at
+  type: timestamp
+  required: true
+- name: updated_at
+  type: timestamp
+  required: true
+data_quality: null
+team:
+  owner: data-team@company.com
+  roles: null
+compliance:
+  classification:
+  - PII
+  - SENSITIVE
+  regulations: null
+  retention_days: 90
+  security: null
+  user_consent_required: null
+change_management: null
+finops:
+  cost_center: CC-UNSPECIFIED
+  owner: data-team@company.com
+  tags: null
+  budget_usd: null
+  anomaly_contact: null
+lineage:
+- from_asset: csv::Employee_Complete_Dataset
+  to_asset: csv_employee
+  contract_version: 1.0.0
+  stage: ingest
+  transformation: null
+  description: Auto-generated lineage for missing specification
+audit:
+- author: data-team@company.com
+  timestamp: '2025-11-09T07:40:41.083460Z'
+  hash: dcbef54d363ecc6d509a02bcda26b2a388368ed8a42a9925647ebbcc0213ec48
+  description: Auto-generated initial audit entry
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

@@ -9,7 +9,7 @@ target_connector: minio
 target_connector_path: /app/connectors/minio.yaml
 
 asset: gsheets_vendors_master
-asset_path: /app/assets/google_sheets/v1.0/vendors_master.yaml
+asset_path: /app/specs/google_sheets/v1.0/vendors_master.yaml
 
 source:
   sheets:

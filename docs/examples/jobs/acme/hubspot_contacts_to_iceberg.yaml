@@ -9,7 +9,7 @@ target_connector: iceberg
 target_connector_path: /app/connectors/iceberg.yaml
 
 asset: hubspot_contacts
-asset_path: /app/assets/hubspot/v1.0/contacts.yaml
+asset_path: /app/specs/hubspot/v1.0/contacts.yaml
 
 source:
   objects: [contacts]

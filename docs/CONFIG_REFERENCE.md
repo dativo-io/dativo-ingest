@@ -18,7 +18,7 @@ target_connector_path: /app/connectors/targets/iceberg.yaml
 
 # Reference to asset definition
 asset: hubspot_contacts
-asset_path: /app/assets/hubspot/v1.0/contacts.yaml
+asset_path: /app/specs/hubspot/v1.0/contacts.yaml
 
 # Source configuration
 source:
@@ -164,7 +164,7 @@ target:
   markdown_kv_storage:
     mode: "structured"
     structured_pattern: "row_per_kv"
-# Use asset: assets/markdown_kv/v1.0/kv_lines.yaml
+# Use contract: specs/markdown_kv/v1.0/kv_lines.yaml
 ```
 
 **Document-level (compact):**
@@ -174,7 +174,7 @@ target:
   markdown_kv_storage:
     mode: "structured"
     structured_pattern: "document_level"
-# Use asset: assets/markdown_kv/v1.0/docs.yaml
+# Use contract: specs/markdown_kv/v1.0/docs.yaml
 ```
 
 **Hybrid (both patterns):**
@@ -192,5 +192,5 @@ For detailed documentation, see [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md)
 ## Architecture
 
 - **Connectors** (`/connectors/`): Tenant-agnostic recipes that define HOW to connect
-- **Assets** (`/assets/`): Schema and governance definitions (ODCS v3.0.2) that define WHAT structure to ingest
+- **Specs** (`/specs/`): Schema and governance definitions (ODCS v3.0.2) that define WHAT structure to ingest
 - **Jobs** (`/jobs/<tenant>/`): Tenant-specific strategy implementations that compose connectors with assets

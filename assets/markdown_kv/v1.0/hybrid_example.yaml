@@ -2,8 +2,8 @@
 # This file documents how to set up hybrid Markdown-KV storage (both row-per-KV and document-level patterns)
 
 # The hybrid pattern requires two asset definitions:
-# 1. assets/markdown_kv/v1.0/kv_lines.yaml (row-per-KV pattern)
-# 2. assets/markdown_kv/v1.0/docs.yaml (document-level pattern)
+# 1. specs/markdown_kv/v1.0/kv_lines.yaml (row-per-KV pattern)
+# 2. specs/markdown_kv/v1.0/docs.yaml (document-level pattern)
 
 # Implementation Options:
 #
@@ -29,7 +29,7 @@
 # target_connector_path: connectors/iceberg.yaml
 # 
 # # First asset: row-per-KV pattern
-# asset_path: assets/markdown_kv/v1.0/kv_lines.yaml
+# asset_path: specs/markdown_kv/v1.0/kv_lines.yaml
 # target:
 #   markdown_kv_storage:
 #     mode: "structured"

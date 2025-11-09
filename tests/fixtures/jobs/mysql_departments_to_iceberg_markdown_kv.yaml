@@ -13,7 +13,7 @@ target_connector_path: connectors/iceberg.yaml
 
 # Asset definition - Markdown-KV format (string mode)
 asset: mysql_departments_markdown_kv
-asset_path: tests/fixtures/assets/mysql/v1.0/departments_markdown_kv.yaml
+asset_path: tests/fixtures/specs/mysql/v1.0/departments_markdown_kv.yaml
 
 # Source configuration - MySQL departments table
 source:

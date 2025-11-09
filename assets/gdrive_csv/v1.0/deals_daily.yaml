@@ -20,7 +20,7 @@ asset:
     tags: [deals, sales]
     retention_days: 30
   
-  target:
-  file_format: parquet
-  partitioning: [ingest_date]
-    mode: strict
+    target:
+      file_format: parquet
+      partitioning: [ingest_date]
+      mode: strict
