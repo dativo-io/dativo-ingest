@@ -10,7 +10,7 @@ import yaml
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dativo_ingest.config import JobConfig
+from dativo_ingest.config import JobConfig, LLMConfig, MetadataGenerationConfig
 
 
 @pytest.fixture
@@ -161,4 +161,35 @@ class TestAssetDefinitionValidation:
         config.asset_path = str(valid_asset_file)
         # Should not raise
         config.validate_schema_presence()
+
+
+class TestMetadataGenerationConfig:
+    """Tests for metadata generation configuration models."""
+
+    def test_requires_llm_when_enabled(self):
+        """Ensure enabling metadata generation without LLM config fails."""
+        with pytest.raises(ValueError):
+            MetadataGenerationConfig(
+                enabled=True,
+                source_api_definition_path="/tmp/api.yaml",
+            )
+
+    def test_requires_source_path_when_enabled(self):
+        """Ensure missing API definition path raises error."""
+        with pytest.raises(ValueError):
+            MetadataGenerationConfig(
+                enabled=True,
+                llm=LLMConfig(api_key="dummy-key"),
+            )
+
+    def test_llm_config_env_resolution(self, monkeypatch):
+        """LLMConfig should read API key from environment variable."""
+        monkeypatch.setenv("TEST_LLM_KEY", "abc123")
+        llm_conf = LLMConfig(api_key_env="TEST_LLM_KEY")
+        assert llm_conf.resolve_api_key() == "abc123"
+
+    def test_disabled_metadata_generation_does_not_require_fields(self):
+        """When disabled, optional fields can be omitted."""
+        config = MetadataGenerationConfig(enabled=False)
+        assert config.enabled is False
 

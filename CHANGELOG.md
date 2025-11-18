@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Optional `metadata_generation` job block that can call an LLM (OpenAI-compatible) to build enriched metadata from a source API definition and attach it to Iceberg/S3 object metadata.
+
 ### Planned
 - OSS connector wrappers (Stripe, HubSpot, Google Drive, Google Sheets, MySQL)
 - Per-connector error handling and rate limiting

@@ -35,3 +35,11 @@ logging:
   redaction: true
   level: INFO
 
+metadata_generation:
+  enabled: true
+  source_api_definition_path: /app/apis/stripe_openapi.yaml
+  llm:
+    provider: openai
+    model: gpt-4o-mini
+    api_key_env: OPENAI_API_KEY
+

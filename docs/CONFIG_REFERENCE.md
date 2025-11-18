@@ -40,7 +40,37 @@ target:
 logging:
   redaction: true
   level: INFO
+
+# Optional: generate enriched metadata via LLM (disabled by default)
+metadata_generation:
+  enabled: true
+  source_api_definition_path: /app/apis/stripe_openapi.yaml
+  prompt_template: |
+    Dataset name: {asset_name}
+    Domain: {domain}
+    Tenant: {tenant}
+    Source type: {source_type}
+    Source objects: {source_objects}
+
+    API:
+    {api_definition}
+  llm:
+    provider: openai
+    model: gpt-4o-mini
+    api_key_env: OPENAI_API_KEY
+    temperature: 0.2
+    max_tokens: 400
 ```
+
+### LLM Metadata Generation
+
+- **disabled by default**; set `metadata_generation.enabled: true` to opt-in.
+- Requires a **source API definition file** (YAML/JSON/OpenAPI) referenced via `source_api_definition_path`.
+- Provide LLM credentials under `metadata_generation.llm`. Supply either `api_key` or reference an environment variable with `api_key_env`.
+- Generates a structured summary (`summary`, `recommended_tags`, `field_insights`, etc.) that is:
+  - Logged alongside job metrics.
+  - Attached to Iceberg/S3 object metadata (prefixed with `llm-*`) for downstream discovery.
+- Customize prompts with `prompt_template` placeholders (`{asset_name}`, `{domain}`, `{source_type}`, `{api_definition}`, ...). If omitted, the default template is used.
 
 ## Asset Definition (ODCS v3.0.2)
 

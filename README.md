@@ -191,7 +191,23 @@ target:
 logging:
   redaction: true
   level: INFO
+
+# Optional LLM metadata generation (disabled by default)
+metadata_generation:
+  enabled: true
+  source_api_definition_path: /app/apis/stripe_openapi.yaml
+  llm:
+    provider: openai
+    model: gpt-4o-mini
+    api_key_env: OPENAI_API_KEY
 ```
+
+#### Metadata Generation (Optional)
+
+- Opt-in via `metadata_generation.enabled: true`.
+- Provide a source API definition (YAML/JSON/OpenAPI) so the LLM can describe the dataset.
+- Supported provider: **OpenAI-compatible chat completions** (configure with `api_key` or `api_key_env`).
+- Generated summaries/tags are added to job logs and attached to Iceberg/S3 object metadata (prefixed with `llm-*`).
 
 ### Runner Configuration
 

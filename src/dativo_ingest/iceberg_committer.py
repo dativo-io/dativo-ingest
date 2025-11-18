@@ -1,5 +1,6 @@
 """Nessie/Iceberg integration for committing Parquet files to catalog."""
 
+import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -14,6 +15,7 @@ class IcebergCommitter:
         self,
         asset_definition: AssetDefinition,
         target_config: TargetConfig,
+        metadata_enrichment: Optional[Dict[str, Any]] = None,
     ):
         """Initialize Iceberg committer.
 
@@ -26,6 +28,7 @@ class IcebergCommitter:
         self.branch = target_config.branch or "main"
         self.catalog_name = target_config.catalog or "nessie"
         self.warehouse = target_config.warehouse or "s3://lake/"
+        self.metadata_enrichment = metadata_enrichment
 
         # Get connection details
         connection = target_config.connection or {}
@@ -639,6 +642,11 @@ class IcebergCommitter:
         metadata["file-format"] = "parquet"
         metadata["compression"] = "snappy"
 
+        # LLM enrichment metadata (if available)
+        llm_metadata = self._serialize_llm_metadata()
+        if llm_metadata:
+            metadata.update(llm_metadata)
+
         # Content type
         content_type = "application/x-parquet"
 
@@ -696,4 +704,24 @@ class IcebergCommitter:
             raise RuntimeError(
                 f"Failed to upload file to S3/MinIO: {str(e)}"
             ) from e
+
+    def _serialize_llm_metadata(self) -> Dict[str, str]:
+        """Serialize LLM-generated metadata into S3 metadata-safe key/value pairs."""
+        if not self.metadata_enrichment:
+            return {}
+
+        serialized: Dict[str, str] = {}
+        for key, value in self.metadata_enrichment.items():
+            if value is None:
+                continue
+            normalized_key = f"llm-{key}".lower().replace("_", "-")
+            if isinstance(value, (dict, list)):
+                value_str = json.dumps(value, separators=(",", ":"))
+            else:
+                value_str = str(value)
+
+            # S3 metadata keys should be short; limit to 40 chars and values to 512 chars
+            serialized[normalized_key[:40]] = value_str[:512]
+
+        return serialized
 

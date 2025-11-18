@@ -444,6 +444,72 @@ class RetryConfig(BaseModel):
         return self
 
 
+class LLMConfig(BaseModel):
+    """Configuration for connecting to an LLM provider."""
+
+    provider: str = Field(default="openai", description="LLM provider identifier (e.g., openai)")
+    model: str = Field(default="gpt-4o-mini", description="Model identifier to request")
+    api_key: Optional[str] = Field(default=None, repr=False, description="Direct API key (optional)")
+    api_key_env: Optional[str] = Field(
+        default=None,
+        description="Environment variable name that holds the API key",
+    )
+    api_base: Optional[str] = Field(
+        default=None,
+        description="Override base URL for the LLM API (useful for gateways or proxies)",
+    )
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=400, ge=1, le=4096)
+    timeout_seconds: int = Field(default=30, ge=5, le=120)
+
+    def resolve_api_key(self) -> str:
+        """Resolve API key from config or environment variable."""
+        if self.api_key:
+            return self.api_key
+        if self.api_key_env:
+            env_value = os.getenv(self.api_key_env)
+            if env_value:
+                return env_value
+        raise ValueError(
+            "LLM API key not provided. Set 'api_key' or provide environment variable name in 'api_key_env'."
+        )
+
+
+class MetadataGenerationConfig(BaseModel):
+    """Configuration for optional LLM metadata generation."""
+
+    enabled: bool = False
+    source_api_definition_path: Optional[str] = Field(
+        default=None,
+        description="Path to the source API definition (OpenAPI/Swagger) used to build prompts",
+    )
+    prompt_template: Optional[str] = Field(
+        default=None,
+        description="Optional custom prompt template overriding the default",
+    )
+    llm: Optional[LLMConfig] = None
+    max_api_chars: int = Field(
+        default=5000,
+        ge=1000,
+        le=20000,
+        description="Maximum number of characters from API definition to include in prompt",
+    )
+
+    @model_validator(mode="after")
+    def validate_requirements(self) -> "MetadataGenerationConfig":
+        """Ensure required fields are present when metadata generation is enabled."""
+        if self.enabled:
+            if not self.source_api_definition_path:
+                raise ValueError(
+                    "metadata_generation.source_api_definition_path is required when metadata generation is enabled"
+                )
+            if not self.llm:
+                raise ValueError(
+                    "metadata_generation.llm configuration is required when metadata generation is enabled"
+                )
+        return self
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -465,6 +531,7 @@ class JobConfig(BaseModel):
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'
     retry_config: Optional[RetryConfig] = None
+    metadata_generation: Optional[MetadataGenerationConfig] = None
     
     logging: Optional[LoggingConfig] = None
 
@@ -849,6 +916,12 @@ class JobConfig(BaseModel):
             data["source_connector_path"] = os.path.expandvars(data["source_connector_path"])
         if "target_connector_path" in data and data["target_connector_path"]:
             data["target_connector_path"] = os.path.expandvars(data["target_connector_path"])
+        if "metadata_generation" in data and data["metadata_generation"]:
+            metadata_generation = data["metadata_generation"]
+            if metadata_generation.get("source_api_definition_path"):
+                metadata_generation["source_api_definition_path"] = os.path.expandvars(
+                    metadata_generation["source_api_definition_path"]
+                )
 
         try:
             return cls(**data)

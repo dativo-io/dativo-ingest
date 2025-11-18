@@ -9,6 +9,7 @@ from typing import List, Optional
 from .config import JobConfig, RunnerConfig
 from .infrastructure import validate_infrastructure
 from .logging import setup_logging
+from .metadata_generator import MetadataGenerator
 from .secrets import load_secrets
 from .validator import ConnectorValidator, IncrementalStateManager
 
@@ -307,6 +308,29 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         )
         return 2
 
+    # Optional LLM metadata generation
+    llm_metadata: Optional[dict] = None
+    metadata_config = job_config.metadata_generation
+    if metadata_config and metadata_config.enabled:
+        try:
+            generator = MetadataGenerator(metadata_config, asset_definition, source_config, logger=logger)
+            llm_metadata = generator.generate()
+            logger.info(
+                "LLM metadata generated",
+                extra={
+                    "event_type": "llm_metadata_generated",
+                    "llm_summary": llm_metadata.get("summary") if isinstance(llm_metadata, dict) else None,
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                f"LLM metadata generation skipped: {e}",
+                extra={
+                    "event_type": "llm_metadata_error",
+                },
+            )
+            llm_metadata = None
+
     # Initialize state manager for incremental syncs
     state_manager = None
     if source_config.incremental:
@@ -435,7 +459,11 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         try:
             from .iceberg_committer import IcebergCommitter
 
-            committer = IcebergCommitter(asset_definition, target_config)
+            committer = IcebergCommitter(
+                asset_definition=asset_definition,
+                target_config=target_config,
+                metadata_enrichment=llm_metadata,
+            )
             logger.info(
                 "Iceberg committer initialized",
                 extra={
@@ -619,6 +647,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 upload_committer = IcebergCommitter(
                     asset_definition=asset_definition,
                     target_config=target_config,
+                    metadata_enrichment=llm_metadata,
                 )
                 try:
                     upload_result = upload_committer.commit_files(all_file_metadata)
@@ -660,6 +689,18 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         ) if all_file_metadata else 0
 
         # Emit enhanced metadata
+        metadata_payload = {
+            "records_extracted": total_records,
+            "records_valid": total_valid_records,
+            "records_invalid": total_records - total_valid_records,
+            "files_written": total_files_written,
+            "total_bytes": total_bytes,
+            "validation_mode": validation_mode,
+            "has_errors": has_errors,
+        }
+        if llm_metadata:
+            metadata_payload["llm"] = llm_metadata
+
         logger.info(
             "Job execution completed",
             extra={
@@ -669,16 +710,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 "total_bytes": total_bytes,
                 "exit_code": exit_code,
                 "event_type": "job_finished",
-                # Enhanced metadata for observability
-                "metadata": {
-                    "records_extracted": total_records,
-                    "records_valid": total_valid_records,
-                    "records_invalid": total_records - total_valid_records,
-                    "files_written": total_files_written,
-                    "total_bytes": total_bytes,
-                    "validation_mode": validation_mode,
-                    "has_errors": has_errors,
-                },
+                "metadata": metadata_payload,
             },
         )
 
