@@ -114,3 +114,20 @@ def test_ensure_table_exists_requires_pyiceberg(sample_asset_definition, target_
         # Expected in test environment without actual Nessie instance
         pass
 
+
+def test_llm_metadata_included_in_storage_metadata(sample_asset_definition, target_config):
+    """Ensure LLM metadata enriches storage metadata and tags."""
+    sample_asset_definition.llm_metadata = {
+        "dataset_summary": "Contains AdventureWorks person dimension records.",
+        "pii_risk_assessment": "high",
+        "data_quality_recommendations": ["enforce unique BusinessEntityID"],
+    }
+    committer = IcebergCommitter(sample_asset_definition, target_config)
+
+    metadata, tags = committer._build_storage_metadata({"record_count": 10})
+
+    assert metadata["llm-summary"].startswith("Contains AdventureWorks person")
+    assert metadata["llm-pii-risk"] == "high"
+    assert "llm-quality" in metadata
+    assert "llm:generated" in tags
+

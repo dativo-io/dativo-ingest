@@ -209,6 +209,7 @@ class AssetDefinition(BaseModel):
     team: TeamModel
     compliance: Optional[ComplianceModel] = None
     change_management: Optional[ChangeManagementModel] = None
+    llm_metadata: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="after")
     def validate_governance(self) -> "AssetDefinition":
@@ -424,6 +425,39 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class LLMMetadataConfig(BaseModel):
+    """Configuration for optional LLM-powered metadata generation."""
+
+    enabled: bool = False
+    provider: str = "openai"
+    model: str = "gpt-4o-mini"
+    endpoint: Optional[str] = None
+    api_key: Optional[str] = None
+    organization: Optional[str] = None
+    project: Optional[str] = None
+    temperature: float = Field(default=0.2, ge=0.0, le=1.0)
+    max_output_tokens: int = Field(default=600, ge=100, le=2000)
+    prompt_template_path: Optional[str] = None
+    output_dir: Optional[str] = None
+    persist_artifact: bool = True
+    timeout_seconds: int = Field(default=30, ge=5, le=120)
+
+    @field_validator("api_key", "endpoint", "prompt_template_path", "output_dir", mode="before")
+    @classmethod
+    def _expand_env(cls, value: Optional[str]) -> Optional[str]:
+        """Expand environment variables for configurable string fields."""
+        if value and isinstance(value, str):
+            return os.path.expandvars(value)
+        return value
+
+    @model_validator(mode="after")
+    def _validate_credentials(self) -> "LLMMetadataConfig":
+        """Ensure required credentials are present when feature is enabled."""
+        if self.enabled and not self.api_key:
+            raise ValueError("llm_metadata.api_key is required when enabled")
+        return self
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
@@ -467,6 +501,7 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
     
     logging: Optional[LoggingConfig] = None
+    llm_metadata: Optional[LLMMetadataConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

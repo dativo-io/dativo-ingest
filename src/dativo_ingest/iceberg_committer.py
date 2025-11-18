@@ -1,8 +1,9 @@
 """Nessie/Iceberg integration for committing Parquet files to catalog."""
 
 import os
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .config import AssetDefinition, TargetConfig
 
@@ -531,6 +532,89 @@ class IcebergCommitter:
                 "warning": "Iceberg catalog commit failed, but files were uploaded to storage",
             }
 
+    @staticmethod
+    def _sanitize_metadata_value(value: Any, max_length: int = 512) -> str:
+        """Sanitize strings for S3 metadata by collapsing whitespace and truncating."""
+        text = " ".join(str(value).split())
+        return text[:max_length]
+
+    def _build_storage_metadata(
+        self, file_metadata: Optional[Dict[str, Any]] = None
+    ) -> Tuple[Dict[str, str], List[str]]:
+        """Build object metadata and S3 tags for uploads."""
+        metadata: Dict[str, str] = {}
+        tags: List[str] = []
+
+        # Asset metadata
+        metadata["asset-name"] = self.asset_definition.name
+        metadata["asset-version"] = str(self.asset_definition.version or "1.0")
+        if self.asset_definition.domain:
+            metadata["asset-domain"] = self.asset_definition.domain
+            tags.append(f"domain:{self.asset_definition.domain}")
+
+        # Data product metadata
+        if hasattr(self.asset_definition, "dataProduct") and self.asset_definition.dataProduct:
+            metadata["data-product"] = self.asset_definition.dataProduct
+            tags.append(f"data-product:{self.asset_definition.dataProduct}")
+
+        # Tenant and branch metadata
+        if self.asset_definition.tenant:
+            metadata["tenant-id"] = self.asset_definition.tenant
+            tags.append(f"tenant:{self.asset_definition.tenant}")
+        metadata["branch"] = self.branch
+        tags.append(f"branch:{self.branch}")
+
+        # Team/owner metadata
+        if self.asset_definition.team and self.asset_definition.team.owner:
+            metadata["owner"] = self.asset_definition.team.owner
+            tags.append(f"owner:{self.asset_definition.team.owner}")
+
+        # Tags from asset definition
+        if self.asset_definition.tags:
+            asset_tags = self.asset_definition.tags
+            if isinstance(asset_tags, list):
+                tags.extend([f"asset-tag:{tag}" for tag in asset_tags])
+            elif isinstance(asset_tags, str):
+                tags.append(f"asset-tag:{asset_tags}")
+
+        # Compliance/retention metadata
+        if self.asset_definition.compliance:
+            if self.asset_definition.compliance.retention_days:
+                metadata["retention-days"] = str(self.asset_definition.compliance.retention_days)
+            if self.asset_definition.compliance.classification:
+                metadata["classification"] = ",".join(self.asset_definition.compliance.classification)
+
+        # LLM-enriched metadata
+        llm_metadata = getattr(self.asset_definition, "llm_metadata", None)
+        if llm_metadata:
+            summary = llm_metadata.get("dataset_summary")
+            if summary:
+                metadata["llm-summary"] = self._sanitize_metadata_value(summary, 512)
+            pii = llm_metadata.get("pii_risk_assessment")
+            if pii:
+                metadata["llm-pii-risk"] = self._sanitize_metadata_value(pii, 128)
+            recommendations = llm_metadata.get("data_quality_recommendations")
+            if isinstance(recommendations, list) and recommendations:
+                metadata["llm-quality"] = self._sanitize_metadata_value("; ".join(recommendations), 512)
+            tags.append("llm:generated")
+
+        # File metadata
+        if file_metadata:
+            if file_metadata.get("record_count"):
+                metadata["record-count"] = str(file_metadata["record_count"])
+            if file_metadata.get("size_bytes"):
+                metadata["file-size-bytes"] = str(file_metadata["size_bytes"])
+            if file_metadata.get("partition"):
+                metadata["partition"] = file_metadata["partition"]
+                tags.append(f"partition:{file_metadata['partition']}")
+
+        # Timestamp metadata
+        metadata["ingest-timestamp"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        metadata["file-format"] = "parquet"
+        metadata["compression"] = "snappy"
+
+        return metadata, tags
+
     def _upload_to_storage(
         self, local_path: str, s3_path: str, file_metadata: Optional[Dict[str, Any]] = None
     ) -> None:
@@ -580,64 +664,7 @@ class IcebergCommitter:
             region_name=self.storage_config.get("region", "us-east-1"),
         )
 
-        # Build metadata from asset definition and file metadata
-        metadata = {}
-        tags = []
-
-        # Asset metadata
-        metadata["asset-name"] = self.asset_definition.name
-        metadata["asset-version"] = str(self.asset_definition.version or "1.0")
-        if self.asset_definition.domain:
-            metadata["asset-domain"] = self.asset_definition.domain
-            tags.append(f"domain:{self.asset_definition.domain}")
-        
-        # Data product metadata
-        if hasattr(self.asset_definition, 'dataProduct') and self.asset_definition.dataProduct:
-            metadata["data-product"] = self.asset_definition.dataProduct
-            tags.append(f"data-product:{self.asset_definition.dataProduct}")
-        
-        # Tenant and branch metadata
-        if self.asset_definition.tenant:
-            metadata["tenant-id"] = self.asset_definition.tenant
-            tags.append(f"tenant:{self.asset_definition.tenant}")
-        metadata["branch"] = self.branch
-        tags.append(f"branch:{self.branch}")
-
-        # Team/owner metadata
-        if self.asset_definition.team and self.asset_definition.team.owner:
-            metadata["owner"] = self.asset_definition.team.owner
-            tags.append(f"owner:{self.asset_definition.team.owner}")
-
-        # Tags from asset definition
-        if self.asset_definition.tags:
-            asset_tags = self.asset_definition.tags
-            if isinstance(asset_tags, list):
-                tags.extend([f"asset-tag:{tag}" for tag in asset_tags])
-            elif isinstance(asset_tags, str):
-                tags.append(f"asset-tag:{asset_tags}")
-
-        # Compliance/retention metadata
-        if self.asset_definition.compliance:
-            if self.asset_definition.compliance.retention_days:
-                metadata["retention-days"] = str(self.asset_definition.compliance.retention_days)
-            if self.asset_definition.compliance.classification:
-                metadata["classification"] = ",".join(self.asset_definition.compliance.classification)
-
-        # File metadata
-        if file_metadata:
-            if file_metadata.get("record_count"):
-                metadata["record-count"] = str(file_metadata["record_count"])
-            if file_metadata.get("size_bytes"):
-                metadata["file-size-bytes"] = str(file_metadata["size_bytes"])
-            if file_metadata.get("partition"):
-                metadata["partition"] = file_metadata["partition"]
-                tags.append(f"partition:{file_metadata['partition']}")
-
-        # Timestamp metadata
-        from datetime import datetime
-        metadata["ingest-timestamp"] = datetime.utcnow().isoformat() + "Z"
-        metadata["file-format"] = "parquet"
-        metadata["compression"] = "snappy"
+        metadata, tags = self._build_storage_metadata(file_metadata)
 
         # Content type
         content_type = "application/x-parquet"

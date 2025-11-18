@@ -8,9 +8,10 @@ The ingestion pipeline follows these steps:
 
 1. **Extract**: Read data from source (CSV, API, database, etc.)
 2. **Validate**: Validate records against asset schema
-3. **Write**: Write validated records to Parquet files
-4. **Commit**: Commit Parquet files to Iceberg table via Nessie
-5. **Update State**: Update incremental sync state (if applicable)
+3. **Enrich (optional)**: Generate LLM-driven metadata from the source API definition when `llm_metadata.enabled` is true.
+4. **Write**: Write validated records to Parquet files
+5. **Commit**: Commit Parquet files to Iceberg table via Nessie
+6. **Update State**: Update incremental sync state (if applicable)
 
 ## Schema Validation
 
@@ -57,6 +58,18 @@ Validation errors include:
 - Error type (missing_required, type_mismatch, etc.)
 - Error message
 - Original value (if applicable)
+
+## LLM Metadata Enrichment
+
+When `llm_metadata.enabled` is set on a job, the runner performs an additional enrichment step before writing data:
+
+1. **Context Assembly**: Combines the resolved source connector configuration (with credentials redacted) and the ODCS asset definition/schema into a structured prompt.
+2. **LLM Invocation**: Calls the configured provider (currently OpenAI-compatible chat completions) using the supplied `api_key`, `model`, and optional custom endpoint.
+3. **Output Contract**: Expects JSON containing `dataset_summary`, `pii_risk_assessment`, `data_quality_recommendations`, and `semantic_columns`.
+4. **Persistence**: Writes the response to `${output_dir}/{asset_name}_llm_metadata.json` (defaults to `.local/metadata`) unless `persist_artifact` is disabled.
+5. **Propagation**: Injects the dataset summary/quality hints into the S3 metadata map so downstream catalogs and dashboards can surface the insight without reading the artifact file.
+
+LLM failures are non-blocking—the job logs a warning and continues without enrichment.
 
 ## Parquet File Writing
 

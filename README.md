@@ -21,6 +21,7 @@ All behavior is driven by YAML configs, validated by a connectors registry and a
 - **Data Extractors**: Native Python extractors for CSV and file-based sources (extensible for API/database sources)
 - **Parquet Writer**: Writes validated data to Parquet files with target file sizing and partitioning
 - **Iceberg Committer**: Commits Parquet files to Iceberg tables via catalog (optional - can write to S3 without catalog)
+- **Metadata Generator**: Optional LLM-backed enrichment that turns source API definitions into dataset summaries, semantic tags, and data quality hints.
 
 ## Quick Start
 
@@ -121,9 +122,10 @@ The ingestion pipeline executes the following steps:
 
 1. **Extract**: Read data from source (CSV, API, database, etc.)
 2. **Validate**: Validate records against asset schema (strict or warn mode)
-3. **Write**: Write validated records to Parquet files (target size: 128-200 MB)
-4. **Commit**: Commit Parquet files to Iceberg table via catalog (optional - files always written to S3)
-5. **Update State**: Update incremental sync state (if applicable)
+3. **Enrich (optional)**: Generate additional metadata from the source definition using an LLM when `llm_metadata.enabled` is set.
+4. **Write**: Write validated records to Parquet files (target size: 128-200 MB)
+5. **Commit**: Commit Parquet files to Iceberg table via catalog (optional - files always written to S3)
+6. **Update State**: Update incremental sync state (if applicable)
 
 ### Schema Validation
 
@@ -191,7 +193,16 @@ target:
 logging:
   redaction: true
   level: INFO
+
+llm_metadata:
+  enabled: true
+  provider: openai
+  model: gpt-4o-mini
+  api_key: "${OPENAI_API_KEY}"
+  output_dir: .local/metadata
 ```
+
+The optional `llm_metadata` block turns on source-aware enrichment. When enabled, provide an API key (usually via environment variable expansion), the target model/provider, and where the generated JSON artifact should be written. The generated summary is logged, persisted locally, and propagated to object-storage metadata so downstream catalog tools can pick it up.
 
 ### Runner Configuration
 

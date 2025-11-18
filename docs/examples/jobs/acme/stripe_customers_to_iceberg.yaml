@@ -35,3 +35,10 @@ logging:
   redaction: true
   level: INFO
 
+llm_metadata:
+  enabled: true
+  provider: openai
+  model: gpt-4o-mini
+  api_key: "${OPENAI_API_KEY}"
+  output_dir: .local/metadata
+

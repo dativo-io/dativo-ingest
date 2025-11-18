@@ -1,5 +1,6 @@
 """Unit tests for configuration loading and validation."""
 
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -161,4 +162,51 @@ class TestAssetDefinitionValidation:
         config.asset_path = str(valid_asset_file)
         # Should not raise
         config.validate_schema_presence()
+
+
+class TestLLMMetadataConfig:
+    """Validate LLM metadata configuration handling."""
+
+    def test_llm_metadata_requires_api_key(self, temp_dir):
+        """Ensure enabling LLM metadata without api_key fails validation."""
+        job_path = temp_dir / "job_llm.yaml"
+        asset_path = temp_dir / "asset.yaml"
+        asset_path.write_text("schema: []", encoding="utf-8")
+        job_data = {
+            "tenant_id": "test_tenant",
+            "source_connector_path": "connectors/stripe.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
+            "asset_path": str(asset_path),
+            "llm_metadata": {"enabled": True},
+        }
+        with open(job_path, "w") as f:
+            yaml.dump(job_data, f)
+
+        with pytest.raises(SystemExit):
+            JobConfig.from_yaml(job_path)
+
+    def test_llm_metadata_env_expansion(self, temp_dir, monkeypatch):
+        """Ensure API keys with env vars are expanded."""
+        monkeypatch.setenv("TEST_OPENAI_KEY", "sk-test-123")
+        job_path = temp_dir / "job_llm.yaml"
+        asset_path = temp_dir / "asset.yaml"
+        asset_path.write_text("schema: []", encoding="utf-8")
+        job_data = {
+            "tenant_id": "test_tenant",
+            "source_connector_path": "connectors/stripe.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
+            "asset_path": str(asset_path),
+            "llm_metadata": {
+                "enabled": True,
+                "api_key": "${TEST_OPENAI_KEY}",
+                "output_dir": "${HOME}/metadata",
+            },
+        }
+        with open(job_path, "w") as f:
+            yaml.dump(job_data, f)
+
+        config = JobConfig.from_yaml(job_path)
+        assert config.llm_metadata is not None
+        assert config.llm_metadata.api_key == "sk-test-123"
+        assert config.llm_metadata.output_dir == os.path.expandvars("${HOME}/metadata")
 

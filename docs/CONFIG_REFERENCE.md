@@ -40,7 +40,32 @@ target:
 logging:
   redaction: true
   level: INFO
+
+llm_metadata:
+  enabled: true
+  provider: openai
+  model: gpt-4o-mini
+  api_key: "${OPENAI_API_KEY}"
+  output_dir: ".local/metadata"
+  timeout_seconds: 45
 ```
+
+### LLM Metadata Enrichment (Optional)
+
+Use the `llm_metadata` block to generate additional documentation directly from the source API definition and ODCS contract:
+
+- `enabled`: Set to `true` to activate enrichment for the job (default: `false`)
+- `provider`: Currently `openai` is supported. Custom endpoints can be specified with `endpoint`.
+- `model`: Chat/completions model to call (e.g., `gpt-4o-mini`)
+- `api_key`: Credential used for the provider (typically via `${OPENAI_API_KEY}`)
+- `output_dir`: Directory where generated JSON artifacts are saved (defaults to `.local/metadata`)
+- `persist_artifact`: Disable to skip writing local JSON files (metadata will still be logged/applied)
+- `prompt_template_path`: Optional path to a custom system prompt
+
+When enabled, the runner:
+1. Builds a prompt from the source connector configuration and ODCS schema.
+2. Calls the configured LLM and expects JSON output (summary, PII risk, quality recommendations, semantic columns).
+3. Persists the result to disk and injects the summary into Iceberg/S3 metadata for downstream catalog discovery.
 
 ## Asset Definition (ODCS v3.0.2)
 

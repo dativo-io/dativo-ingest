@@ -307,6 +307,34 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         )
         return 2
 
+    # Optionally generate metadata via LLM
+    llm_config = job_config.llm_metadata
+    if llm_config and llm_config.enabled:
+        try:
+            from .metadata_generator import SourceMetadataGenerator
+
+            generator = SourceMetadataGenerator(llm_config, logger=logger)
+            llm_result = generator.generate(asset_definition, source_config)
+            if llm_result and llm_result.get("metadata"):
+                asset_definition.llm_metadata = llm_result["metadata"]
+                logger.info(
+                    "Generated source metadata via LLM",
+                    extra={
+                        "event_type": "llm_metadata_generated",
+                        "artifact_path": llm_result.get("artifact_path"),
+                        "semantic_column_count": len(
+                            llm_result["metadata"].get("semantic_columns", [])
+                        ),
+                    },
+                )
+        except Exception as e:  # pragma: no cover - logged above
+            logger.warning(
+                f"LLM metadata generation failed: {e}",
+                extra={
+                    "event_type": "llm_metadata_failed",
+                },
+            )
+
     # Initialize state manager for incremental syncs
     state_manager = None
     if source_config.incremental:

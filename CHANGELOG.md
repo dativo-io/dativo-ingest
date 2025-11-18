@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OSS connector wrappers (Stripe, HubSpot, Google Drive, Google Sheets, MySQL)
 - Per-connector error handling and rate limiting
 
+### Added
+- Optional `llm_metadata` job configuration with OpenAI-compatible credentials. When enabled, `dativo-ingest` now generates dataset summaries, PII risk assessments, and recommended quality checks via the new `SourceMetadataGenerator`, persists the artifact locally, and propagates the summary into S3/Iceberg object metadata.
+
 ## [1.3.0] - 2025-11-07
 
 ### Added - Enhanced Orchestration & Connectors
