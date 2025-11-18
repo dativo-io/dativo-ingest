@@ -5,7 +5,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Annotated, Literal
 
 import jsonschema
 import yaml
@@ -182,7 +182,7 @@ class ChangeManagementModel(BaseModel):
 class AssetDefinition(BaseModel):
     """Asset definition - ODCS v3.0.2 aligned with dativo extensions."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
 
     # ODCS top-level fields
     schema_ref: Optional[str] = Field(None, alias="$schema")
@@ -417,6 +417,57 @@ class TargetConfig(BaseModel):
         return self
 
 
+class BaseDataCatalogConfig(BaseModel):
+    """Base configuration for data catalog registrations."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    type: str
+    name: Optional[str] = None
+    enabled: bool = True
+
+
+class OpenMetadataCatalogConfig(BaseDataCatalogConfig):
+    """OpenMetadata catalog registration settings."""
+
+    type: Literal["openmetadata"] = "openmetadata"
+    server_url: str
+    service_name: str
+    database: str
+    schema_name: str = Field(alias="schema")
+    table_name: Optional[str] = None
+    api_version: str = "v1"
+    auth_token: Optional[str] = None
+    auth_header_name: str = "Authorization"
+    auth_scheme: Optional[str] = "Bearer"
+    verify_ssl: bool = True
+    timeout_seconds: int = 10
+    owner: Optional[str] = None
+    tags: Optional[List[str]] = None
+    description: Optional[str] = None
+
+
+class AwsGlueCatalogConfig(BaseDataCatalogConfig):
+    """AWS Glue Data Catalog registration settings."""
+
+    type: Literal["aws_glue"] = "aws_glue"
+    database: str
+    table_name: Optional[str] = None
+    region: Optional[str] = None
+    catalog_id: Optional[str] = None
+    description: Optional[str] = None
+    classification: str = "parquet"
+    storage_location: Optional[str] = None
+    storage_parameters: Optional[Dict[str, str]] = None
+    table_parameters: Optional[Dict[str, str]] = None
+
+
+DataCatalogConfigType = Annotated[
+    Union[OpenMetadataCatalogConfig, AwsGlueCatalogConfig],
+    Field(discriminator="type"),
+]
+
+
 class LoggingConfig(BaseModel):
     """Logging configuration."""
 
@@ -461,6 +512,7 @@ class JobConfig(BaseModel):
     # Source and target configurations (flat structure, merged with recipes)
     source: Optional[Dict[str, Any]] = None  # Source configuration
     target: Optional[Dict[str, Any]] = None  # Target configuration
+    data_catalogs: Optional[List[DataCatalogConfigType]] = None  # Optional data catalog registrations
     
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'
@@ -642,6 +694,10 @@ class JobConfig(BaseModel):
     def get_target(self) -> TargetConfig:
         """Get resolved target config."""
         return self._resolve_target()
+
+    def get_data_catalogs(self) -> List[BaseDataCatalogConfig]:
+        """Get configured data catalogs."""
+        return self.data_catalogs or []
 
     def get_asset_path(self) -> str:
         """Get asset definition path."""

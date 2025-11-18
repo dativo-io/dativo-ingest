@@ -682,6 +682,29 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             },
         )
 
+        # Sync data catalogs on successful runs
+        data_catalogs = job_config.get_data_catalogs()
+        if exit_code == 0 and data_catalogs:
+            try:
+                from .data_catalogs import DataCatalogSyncManager
+
+                catalog_manager = DataCatalogSyncManager(
+                    asset_definition=asset_definition,
+                    target_config=target_config,
+                    output_base_path=output_base,
+                    catalog_configs=data_catalogs,
+                    logger=logger,
+                )
+                catalog_manager.sync()
+            except Exception as e:
+                logger.warning(
+                    "Failed to synchronize data catalogs",
+                    extra={
+                        "event_type": "data_catalog_sync_failed",
+                        "error": str(e),
+                    },
+                )
+
         return exit_code
 
     except Exception as e:

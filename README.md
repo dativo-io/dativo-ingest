@@ -188,10 +188,34 @@ target:
       bucket: "acme-data-lake"
       prefix: "raw/stripe/customers"
 
+  # Optional data catalog registrations
+  data_catalogs:
+    - type: openmetadata
+      server_url: ${OPENMETADATA_URL}
+      service_name: lakehouse
+      database: analytics
+      schema: customers
+      auth_token: ${OPENMETADATA_TOKEN}
+      tags: [crm, gold]
+    - type: aws_glue
+      database: analytics_prod
+      region: us-east-1
+      storage_location: s3://lake/acme/crm/customers
+      table_name: stripe_customers
+
 logging:
   redaction: true
   level: INFO
 ```
+
+#### Data Catalog Sync (OpenMetadata & AWS Glue)
+
+Add an optional `data_catalogs` list to register successful ingestions with metadata catalogs:
+
+- **OpenMetadata**: Provide `server_url`, `service_name`, `database`, `schema`, and an `auth_token` (supports `${ENV_VAR}` expansion). Tags, description, owner, and custom table names are optional.
+- **AWS Glue**: Provide the Glue `database`, `region`, and (optionally) override `storage_location`, `table_name`, or `catalog_id`. The runner builds the column schema and partition keys from the asset definition automatically.
+
+Synchronization runs only after a job finishes successfully, and each catalog entry can be disabled via `enabled: false`.
 
 ### Runner Configuration
 

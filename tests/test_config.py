@@ -82,6 +82,43 @@ class TestJobConfigLoading:
         assert config.source_connector_path == "connectors/stripe.yaml"
         assert config.target_connector_path == "connectors/iceberg.yaml"
 
+    def test_job_config_with_data_catalogs(self, temp_dir, valid_asset_file):
+        """Ensure data catalog definitions are parsed."""
+        config_path = temp_dir / "job_with_catalogs.yaml"
+        config_data = {
+            "tenant_id": "tenant",
+            "source_connector_path": "connectors/stripe.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
+            "asset_path": str(valid_asset_file),
+            "source": {"objects": ["customers"]},
+            "target": {"warehouse": "s3://lake/test/"},
+            "data_catalogs": [
+                {
+                    "type": "openmetadata",
+                    "server_url": "https://metadata.example.com",
+                    "service_name": "demo_service",
+                    "database": "analytics",
+                    "schema": "public",
+                    "auth_token": "${OPENMETADATA_TOKEN}",
+                },
+                {
+                    "type": "aws_glue",
+                    "database": "analytics",
+                    "region": "us-east-1",
+                    "table_name": "customers",
+                },
+            ],
+        }
+
+        with open(config_path, "w") as f:
+            yaml.dump(config_data, f)
+
+        config = JobConfig.from_yaml(config_path)
+        catalogs = config.get_data_catalogs()
+        assert len(catalogs) == 2
+        assert catalogs[0].type == "openmetadata"
+        assert catalogs[1].type == "aws_glue"
+
     def test_load_missing_config_file(self, temp_dir):
         """Test error when config file doesn't exist."""
         config_path = temp_dir / "nonexistent.yaml"

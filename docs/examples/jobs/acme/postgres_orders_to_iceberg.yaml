@@ -33,6 +33,22 @@ target:
       bucket: "acme-data-lake"
       prefix: "raw/postgres/orders"
 
+data_catalogs:
+  - type: openmetadata
+    name: openmetadata
+    server_url: ${OPENMETADATA_URL}
+    service_name: lakehouse
+    database: analytics
+    schema: orders
+    auth_token: ${OPENMETADATA_TOKEN}
+    tags: [orders, gold]
+  - type: aws_glue
+    name: glue
+    database: analytics_prod
+    region: us-east-1
+    storage_location: s3://lake/acme/orders
+    table_name: postgres_orders
+
 logging:
   redaction: true
   level: INFO

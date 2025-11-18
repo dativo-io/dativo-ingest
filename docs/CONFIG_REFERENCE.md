@@ -37,10 +37,44 @@ target:
       bucket: "acme-data-lake"
       prefix: "raw/hubspot/contacts"
 
+  # Optional data catalog registrations
+  data_catalogs:
+    - type: openmetadata
+      name: om-prod
+      server_url: https://openmetadata.acme.internal
+      service_name: lakehouse
+      database: analytics
+      schema: contacts
+      auth_token: ${OPENMETADATA_BOT_TOKEN}
+      tags: [crm, gold]
+    - type: aws_glue
+      name: glue-prod
+      database: analytics
+      region: us-east-1
+      storage_location: s3://lake/acme/crm/contacts
+      table_name: hubspot_contacts
+
 logging:
   redaction: true
   level: INFO
 ```
+
+### Data Catalog Registrations
+
+Jobs can push metadata to downstream catalogs after a successful ingestion run using the optional `data_catalogs` list:
+
+- **OpenMetadata**
+  - `server_url`: Base URL for the OpenMetadata service (no trailing `/api/v1`)
+  - `service_name`, `database`, `schema`: Used to build the fully-qualified name
+  - `auth_token`: Bot token or access token (supports `${ENV_VAR}` expansion)
+  - Optional fields: `table_name`, `tags`, `description`, `owner`, `api_version`
+- **AWS Glue**
+  - `database`: Glue database to register tables under
+  - `region`: AWS region (falls back to `AWS_REGION` env var)
+  - `storage_location`: Override for the S3 location (defaults to the job’s output path)
+  - Optional fields: `table_name`, `catalog_id`, `classification`, `storage_parameters`, `table_parameters`
+
+Each catalog entry can be toggled with `enabled: false` or tagged with a friendly `name`. Metadata synchronization happens only if the job finishes successfully.
 
 ## Asset Definition (ODCS v3.0.2)
 
