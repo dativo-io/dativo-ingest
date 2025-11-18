@@ -1,0 +1,19 @@
+# Optional dependencies for LLM-based metadata generation
+# Install these packages only if you plan to use LLM metadata generation
+# See docs/LLM_METADATA_GENERATION.md for configuration details
+
+# Install with: pip install -r requirements-llm.txt
+
+# OpenAI (for OpenAI and Azure OpenAI providers)
+openai>=1.0.0
+
+# Anthropic (for Claude models)
+anthropic>=0.18.0
+
+# AWS Bedrock (for AWS-hosted models)
+# Note: boto3 is already in main requirements.txt
+# Bedrock uses standard boto3 SDK
+
+# All LLM providers
+openai>=1.0.0
+anthropic>=0.18.0

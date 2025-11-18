@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - LLM-Based Metadata Generation
+
+#### Intelligence Lake Integration
+- **LLM Metadata Generation** for automated data catalog enrichment
+  - Optional LLM-based metadata generation using source API definitions and sample data
+  - Support for multiple LLM providers: OpenAI, Anthropic Claude, AWS Bedrock, Azure OpenAI
+  - Automatic generation of semantic descriptions, business purpose, and data quality expectations
+  - Sensitive field detection for PII compliance
+  - Semantic tags generation for improved discoverability
+  - Sample queries and optimization suggestions
+  - Configurable sample record count and temperature settings
+  - Enriched asset definitions saved to `.local/llm_metadata/{tenant_id}/`
+
+#### Configuration Support
+- **New `llm` section** in job configuration
+  - `enabled`: Enable/disable LLM generation (default: false)
+  - `provider`: LLM provider selection (openai, anthropic, bedrock, azure)
+  - `model`: Model identifier (e.g., gpt-4, claude-3-sonnet)
+  - `api_key`: API key with environment variable support
+  - `endpoint`: Optional custom endpoint for Azure or self-hosted models
+  - `temperature`: Generation temperature (0.0-1.0, default: 0.3)
+  - `max_tokens`: Maximum tokens for generation (default: 2000)
+  - `sample_records_count`: Number of sample records to analyze (default: 3)
+
+#### Generated Metadata Fields
+- `description_enhanced`: Enhanced dataset description
+- `business_purpose`: Business use cases and value proposition
+- `data_quality_expectations`: Suggested quality rules and validations
+- `semantic_tags`: Tags for improved discoverability
+- `sample_queries`: Example analytical questions
+- `sensitive_fields`: Detected PII/sensitive data fields
+- `optimization_suggestions`: Performance tuning recommendations
+- `lineage_hints`: Inferred data lineage information
+- `related_assets_hints`: Suggested related datasets
+
+#### Documentation
+- Comprehensive LLM metadata generation guide (`docs/LLM_METADATA_GENERATION.md`)
+- Example job configurations for all supported LLM providers
+- Security best practices and cost estimation guidance
+- Troubleshooting and integration guidelines
+
 ### Planned
 - OSS connector wrappers (Stripe, HubSpot, Google Drive, Google Sheets, MySQL)
 - Per-connector error handling and rate limiting

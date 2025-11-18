@@ -1,0 +1,49 @@
+# Stripe customers to Iceberg job with LLM metadata generation
+# This example demonstrates how to enable LLM-based metadata enrichment
+tenant_id: acme
+environment: prod
+
+# Reference to source connector recipe
+source_connector: stripe
+source_connector_path: /app/connectors/stripe.yaml
+
+# Reference to target connector recipe
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Reference to asset definition
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+# Source configuration
+source:
+  objects: [customers]
+  incremental:
+    lookback_days: 1
+
+# Target configuration
+target:
+  branch: acme
+  warehouse: s3://lake/acme/
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/stripe/customers"
+
+# LLM metadata generation configuration (OPTIONAL - disabled by default)
+# When enabled, the system will use an LLM to generate enhanced metadata
+# based on the source API definition, schema, and sample records
+llm:
+  enabled: true
+  provider: openai  # Supported: openai, anthropic, bedrock, azure
+  model: gpt-4  # Model identifier (e.g., gpt-4, gpt-3.5-turbo, claude-3-sonnet-20240229)
+  api_key: "${OPENAI_API_KEY}"  # API key - use env var reference for security
+  temperature: 0.3  # Lower = more deterministic (0.0-1.0)
+  max_tokens: 2000  # Maximum tokens for generation
+  sample_records_count: 3  # Number of sample records to include in prompt
+
+logging:
+  redaction: true
+  level: INFO

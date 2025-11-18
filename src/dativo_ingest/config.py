@@ -424,6 +424,39 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class LLMConfig(BaseModel):
+    """LLM configuration for metadata generation.
+    
+    Optional configuration to enable LLM-based metadata generation.
+    When enabled, the system will use an LLM to generate enhanced metadata
+    based on source API definitions, schema information, and sample data.
+    """
+    
+    enabled: bool = False  # Enable/disable LLM metadata generation
+    provider: Optional[str] = None  # LLM provider: openai, anthropic, bedrock, azure
+    model: Optional[str] = None  # Model identifier (e.g., gpt-4, claude-3-sonnet)
+    api_key: Optional[str] = None  # API key or env var reference (e.g., ${OPENAI_API_KEY})
+    endpoint: Optional[str] = None  # Optional custom endpoint (for Azure or self-hosted)
+    temperature: float = 0.3  # Temperature for generation (lower = more deterministic)
+    max_tokens: int = 2000  # Maximum tokens for generation
+    sample_records_count: int = 3  # Number of sample records to include in prompt
+    
+    @model_validator(mode="after")
+    def validate_llm_config(self) -> "LLMConfig":
+        """Validate LLM configuration when enabled."""
+        if self.enabled:
+            if not self.provider:
+                raise ValueError("LLM provider is required when LLM is enabled")
+            if not self.model:
+                raise ValueError("LLM model is required when LLM is enabled")
+            if self.provider not in ["openai", "anthropic", "bedrock", "azure"]:
+                raise ValueError(
+                    f"Unsupported LLM provider: {self.provider}. "
+                    "Supported providers: openai, anthropic, bedrock, azure"
+                )
+        return self
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
@@ -465,6 +498,9 @@ class JobConfig(BaseModel):
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'
     retry_config: Optional[RetryConfig] = None
+    
+    # LLM metadata generation (optional, default disabled)
+    llm: Optional[LLMConfig] = None
     
     logging: Optional[LoggingConfig] = None
 

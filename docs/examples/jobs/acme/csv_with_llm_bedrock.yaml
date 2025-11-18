@@ -1,0 +1,46 @@
+# CSV ingestion with AWS Bedrock for metadata generation
+tenant_id: acme
+environment: prod
+
+# Source connector
+source_connector: csv
+source_connector_path: /app/connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: /app/assets/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: /data/employees.csv
+      object: employees
+
+# Target configuration
+target:
+  branch: acme
+  warehouse: s3://lake/acme/
+  connection:
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/csv/employees"
+      region: "${AWS_REGION}"
+
+# LLM configuration using AWS Bedrock
+# Note: Bedrock uses AWS credentials from environment (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, or AWS_PROFILE)
+llm:
+  enabled: true
+  provider: bedrock
+  model: anthropic.claude-3-sonnet-20240229-v1:0  # Bedrock model ID
+  # No api_key needed - uses AWS credentials
+  temperature: 0.3
+  max_tokens: 2000
+  sample_records_count: 3
+
+logging:
+  redaction: true
+  level: INFO

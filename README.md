@@ -41,6 +41,9 @@ All behavior is driven by YAML configs, validated by a connectors registry and a
 # Source environment variables
 source .env
 
+# (Optional) Install LLM dependencies for metadata generation
+pip install -r requirements-llm.txt
+
 # Run end-to-end test
 dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
@@ -252,6 +255,35 @@ asset:
 - **PostgreSQL**: Database tables (self-hosted only)
 - **MySQL**: Database tables (self-hosted only)
 
+## LLM-Based Metadata Generation
+
+Dativo supports **optional LLM-based metadata generation** to automatically enhance asset metadata using Large Language Models. When enabled, the system generates:
+
+- **Semantic descriptions** and business purpose
+- **Data quality expectations** and validation rules
+- **Sensitive field detection** for PII compliance
+- **Semantic tags** for improved discoverability
+- **Sample queries** and optimization suggestions
+
+**Supported LLM Providers:**
+- OpenAI (GPT-3.5, GPT-4)
+- Anthropic (Claude 3)
+- AWS Bedrock (Claude, Titan)
+- Azure OpenAI
+
+**Example configuration:**
+
+```yaml
+llm:
+  enabled: true
+  provider: openai
+  model: gpt-4
+  api_key: "${OPENAI_API_KEY}"
+  sample_records_count: 3
+```
+
+See [docs/LLM_METADATA_GENERATION.md](docs/LLM_METADATA_GENERATION.md) for detailed documentation.
+
 ### Markdown-KV Storage Options
 
 Dativo supports three storage patterns for Markdown-KV format:
@@ -366,6 +398,7 @@ make schema-validate
 ### Detailed Guides
 - [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) - Configuration reference
 - [INGESTION_EXECUTION.md](docs/INGESTION_EXECUTION.md) - Execution flow documentation
+- [LLM_METADATA_GENERATION.md](docs/LLM_METADATA_GENERATION.md) - LLM metadata generation guide
 - [MARKDOWN_KV_STORAGE.md](docs/MARKDOWN_KV_STORAGE.md) - Markdown-KV storage patterns
 - [CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md) - Catalog compatibility notes
 - [SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Setup and testing guide

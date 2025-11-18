@@ -1,0 +1,51 @@
+# PostgreSQL orders to Iceberg with Anthropic Claude for metadata generation
+tenant_id: acme
+environment: prod
+
+# Source connector
+source_connector: postgres
+source_connector_path: /app/connectors/postgres.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: db_orders
+asset_path: /app/assets/postgres/v1.0/db_orders.yaml
+
+# Source configuration
+source:
+  tables:
+    - schema: sales
+      table: orders
+      object: orders
+  incremental:
+    strategy: timestamp
+    cursor_field: updated_at
+    lookback_hours: 24
+
+# Target configuration
+target:
+  branch: acme
+  warehouse: s3://lake/acme/
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/postgres/orders"
+
+# LLM configuration using Anthropic Claude
+llm:
+  enabled: true
+  provider: anthropic
+  model: claude-3-sonnet-20240229  # or claude-3-opus-20240229 for higher quality
+  api_key: "${ANTHROPIC_API_KEY}"
+  temperature: 0.3
+  max_tokens: 2000
+  sample_records_count: 5
+
+logging:
+  redaction: true
+  level: INFO

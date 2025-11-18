@@ -306,6 +306,42 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             },
         )
         return 2
+    
+    # Generate LLM-enhanced metadata if enabled
+    if job_config.llm and job_config.llm.enabled:
+        try:
+            from .llm_metadata_generator import LLMMetadataGenerator
+            import time
+            
+            logger.info(
+                "LLM metadata generation enabled",
+                extra={
+                    "provider": job_config.llm.provider,
+                    "model": job_config.llm.model,
+                    "event_type": "llm_enabled",
+                },
+            )
+            
+            # Initialize LLM generator
+            llm_generator = LLMMetadataGenerator(job_config.llm.model_dump())
+            
+            # We'll collect sample records during extraction and generate metadata
+            # Store generator for later use
+            llm_metadata_config = {
+                "generator": llm_generator,
+                "sample_records": [],
+                "sample_count": job_config.llm.sample_records_count,
+            }
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize LLM metadata generator: {e}. Continuing without LLM enhancement.",
+                extra={
+                    "event_type": "llm_init_failed",
+                },
+            )
+            llm_metadata_config = None
+    else:
+        llm_metadata_config = None
 
     # Initialize state manager for incremental syncs
     state_manager = None
@@ -485,6 +521,11 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         # Extract, validate, and write in batches
         for batch_records in extractor.extract(state_manager=state_manager):
             total_records += len(batch_records)
+            
+            # Collect sample records for LLM metadata generation (first batch only)
+            if llm_metadata_config and len(llm_metadata_config["sample_records"]) < llm_metadata_config["sample_count"]:
+                records_needed = llm_metadata_config["sample_count"] - len(llm_metadata_config["sample_records"])
+                llm_metadata_config["sample_records"].extend(batch_records[:records_needed])
 
             # Transform to Markdown-KV format if configured
             if target_config.markdown_kv_storage:
@@ -639,12 +680,75 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     )
                     return 2
         else:
-            logger.warning(
+                logger.warning(
                 "No files to commit",
                 extra={
                     "event_type": "no_files",
                 },
             )
+        
+        # Generate and save LLM-enhanced metadata if enabled
+        if llm_metadata_config and llm_metadata_config["sample_records"]:
+            try:
+                import time
+                import yaml
+                from pathlib import Path
+                
+                logger.info(
+                    "Generating LLM-enhanced metadata",
+                    extra={
+                        "sample_count": len(llm_metadata_config["sample_records"]),
+                        "event_type": "llm_generation_started",
+                    },
+                )
+                
+                # Generate metadata
+                llm_generator = llm_metadata_config["generator"]
+                generated_metadata = llm_generator.generate_metadata(
+                    asset_definition=asset_definition,
+                    source_config=source_config,
+                    sample_records=llm_metadata_config["sample_records"],
+                )
+                
+                # Enrich asset definition
+                enriched_asset = llm_generator.enrich_asset_definition(
+                    asset_definition=asset_definition,
+                    generated_metadata=generated_metadata,
+                )
+                
+                # Add timestamp
+                if enriched_asset.target and "llm_metadata" in enriched_asset.target:
+                    enriched_asset.target["llm_metadata"]["generated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                
+                # Save enriched asset definition to output directory
+                # Create output directory for LLM-enhanced metadata
+                output_dir = Path(".local/llm_metadata") / job_config.tenant_id
+                output_dir.mkdir(parents=True, exist_ok=True)
+                
+                output_path = output_dir / f"{asset_definition.name}_enriched.yaml"
+                
+                # Convert to dict for serialization
+                enriched_dict = enriched_asset.model_dump(by_alias=True, exclude_none=True)
+                
+                # Save to file
+                with open(output_path, "w") as f:
+                    yaml.dump(enriched_dict, f, default_flow_style=False, sort_keys=False)
+                
+                logger.info(
+                    "LLM-enhanced metadata saved",
+                    extra={
+                        "output_path": str(output_path),
+                        "event_type": "llm_metadata_saved",
+                    },
+                )
+                
+            except Exception as e:
+                logger.warning(
+                    f"Failed to generate LLM metadata: {e}. Job completed without LLM enhancement.",
+                    extra={
+                        "event_type": "llm_generation_failed",
+                    },
+                )
 
         # Determine exit code
         if has_errors and validation_mode == "warn":
