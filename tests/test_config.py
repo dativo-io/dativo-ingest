@@ -82,6 +82,51 @@ class TestJobConfigLoading:
         assert config.source_connector_path == "connectors/stripe.yaml"
         assert config.target_connector_path == "connectors/iceberg.yaml"
 
+    def test_load_job_with_data_catalogs(self, temp_dir, valid_asset_file):
+        """Ensure data_catalogs parse and expose helper filtering."""
+        job_path = temp_dir / "job_with_catalogs.yaml"
+        job_data = {
+            "tenant_id": "test_tenant",
+            "source_connector_path": "connectors/stripe.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
+            "asset_path": str(valid_asset_file),
+            "data_catalogs": [
+                {
+                    "name": "metadata_primary",
+                    "type": "openmetadata",
+                    "service_name": "lakehouse",
+                    "scope": {"assets": ["test_asset"]},
+                    "connection": {
+                        "server_url": "https://metadata.example.com/api",
+                        "auth_provider": "jwt",
+                        "auth": {"token": "${OPENMETADATA_TOKEN}"},
+                    },
+                },
+                {
+                    "name": "glue_shadow",
+                    "type": "aws_glue",
+                    "enabled": False,
+                    "connection": {
+                        "region": "us-west-2",
+                        "database": "lakehouse",
+                        "table_prefix": "test_asset",
+                    },
+                },
+            ],
+        }
+        with open(job_path, "w") as f:
+            yaml.dump(job_data, f)
+
+        config = JobConfig.from_yaml(job_path)
+        all_catalogs = config.get_data_catalogs(include_disabled=True)
+        assert len(all_catalogs) == 2
+        assert all_catalogs[0].type == "openmetadata"
+        assert all_catalogs[0].connection.server_url == "https://metadata.example.com/api"
+
+        enabled_catalogs = config.get_data_catalogs()
+        assert len(enabled_catalogs) == 1
+        assert enabled_catalogs[0].name == "metadata_primary"
+
     def test_load_missing_config_file(self, temp_dir):
         """Test error when config file doesn't exist."""
         config_path = temp_dir / "nonexistent.yaml"
@@ -161,4 +206,43 @@ class TestAssetDefinitionValidation:
         config.asset_path = str(valid_asset_file)
         # Should not raise
         config.validate_schema_presence()
+
+
+class TestEnvironmentVariableValidation:
+    """Test environment variable validation for extended config."""
+
+    def test_data_catalog_env_vars(self, temp_dir, valid_asset_file, monkeypatch):
+        job_path = temp_dir / "job_catalog_env.yaml"
+        job_data = {
+            "tenant_id": "test_tenant",
+            "source_connector_path": "connectors/stripe.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
+            "asset_path": str(valid_asset_file),
+            "data_catalogs": [
+                {
+                    "name": "metadata_primary",
+                    "type": "openmetadata",
+                    "connection": {
+                        "server_url": "https://metadata.example.com/api",
+                        "auth_provider": "jwt",
+                        "auth": {"token": "${OPENMETADATA_TOKEN}"},
+                    },
+                }
+            ],
+        }
+        with open(job_path, "w") as f:
+            yaml.dump(job_data, f)
+
+        config = JobConfig.from_yaml(job_path)
+        # Seed required S3 env vars so only OpenMetadata token is missing
+        monkeypatch.setenv("S3_ENDPOINT", "https://minio.example.com")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "dummy")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "dummy")
+        monkeypatch.setenv("AWS_REGION", "us-west-2")
+        with pytest.raises(ValueError):
+            config.validate_environment_variables()
+
+        monkeypatch.setenv("OPENMETADATA_TOKEN", "secret")
+        # Should pass once env var is present
+        config.validate_environment_variables()
 

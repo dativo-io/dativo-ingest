@@ -239,6 +239,20 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
     redact = job_config.logging.redaction if job_config.logging else False
     logger = setup_logging(level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id)
 
+    data_catalog_configs = job_config.get_data_catalogs(include_disabled=True)
+    if data_catalog_configs:
+        enabled_catalogs = [catalog.name for catalog in data_catalog_configs if catalog.enabled]
+        disabled_catalogs = [catalog.name for catalog in data_catalog_configs if not catalog.enabled]
+        catalog_types = sorted({catalog.type for catalog in data_catalog_configs})
+        extra = {
+            "event_type": "data_catalog_configured",
+            "catalog_types": catalog_types,
+            "enabled_catalogs": enabled_catalogs,
+        }
+        if disabled_catalogs:
+            extra["disabled_catalogs"] = disabled_catalogs
+        logger.info("Data catalog targets detected", extra=extra)
+
     logger.info(
         "Starting job execution",
         extra={

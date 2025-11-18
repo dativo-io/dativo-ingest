@@ -42,6 +42,47 @@ logging:
   level: INFO
 ```
 
+### Data Catalog Targets
+
+Jobs can optionally sync asset metadata with external catalogs. Each entry requires a `name`, `type`, and connection details. Supported types:
+
+- `openmetadata`: Emits run metadata to an OpenMetadata server.
+- `aws_glue`: Ensures AWS Glue Data Catalog tables stay in sync with the job output.
+
+```yaml
+data_catalogs:
+  - name: metadata_primary
+    type: openmetadata
+    service_name: "acme_lakehouse"
+    scope:
+      assets: [hubspot_contacts]
+    connection:
+      server_url: "${OPENMETADATA_SERVER_URL}"
+      auth_provider: jwt
+      auth:
+        token: "${OPENMETADATA_TOKEN}"
+  - name: glue_replica
+    type: aws_glue
+    enabled: false  # disabled catalogs are ignored
+    connection:
+      region: "us-west-2"
+      database: "acme_lakehouse"
+      table_prefix: "hubspot_contacts"
+```
+
+#### OpenMetadata Fields
+- `connection.server_url` (required): Base URL for the OpenMetadata API.
+- `connection.auth_provider`: `no_auth`, `basic`, `jwt`, `google`, `okta`, `azure`, or `custom`.
+- `connection.auth`: Credential map; required unless `auth_provider` is `no_auth`.
+- Optional metadata: `service_name`, `database_service`, `database_name`, `schema_name`, `pipeline_name`, and `scope.assets`.
+
+#### AWS Glue Fields
+- `connection.region` (required): AWS region for the Glue catalog.
+- `connection.database` (required): Glue database name to create/update.
+- `connection.catalog_id`: Optional AWS account/catalog override.
+- `connection.table_prefix`: Optional prefix that will be prepended to the asset name.
+- Flags: `create_database_if_missing`, `update_table_properties` (default `true`).
+
 ## Asset Definition (ODCS v3.0.2)
 
 Asset definitions follow the **Open Data Contract Standard (ODCS) v3.0.2** structure with dativo-specific extensions:

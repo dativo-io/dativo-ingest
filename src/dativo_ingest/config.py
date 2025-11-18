@@ -5,7 +5,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 import jsonschema
 import yaml
@@ -106,6 +106,100 @@ class TargetConnectorRecipe(BaseModel):
             data = yaml.safe_load(f)
 
         return cls(**data)
+
+
+class DataCatalogScope(BaseModel):
+    """Scope configuration for data catalog synchronization."""
+
+    assets: Optional[List[str]] = None
+    include_job_asset: bool = True
+    tables: Optional[List[str]] = None
+
+    def resolved_assets(self, default_asset: Optional[str]) -> List[str]:
+        """Return the list of assets this scope should cover."""
+        if self.assets:
+            return self.assets
+        if self.include_job_asset and default_asset:
+            return [default_asset]
+        return []
+
+
+class BaseDataCatalogConfig(BaseModel):
+    """Base fields shared by all data catalog configurations."""
+
+    name: str
+    type: str
+    enabled: bool = True
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    scope: Optional[DataCatalogScope] = None
+
+    def resolved_assets(self, default_asset: Optional[str]) -> List[str]:
+        """Return the assets that should sync with this catalog."""
+        if self.scope:
+            return self.scope.resolved_assets(default_asset)
+        return [default_asset] if default_asset else []
+
+
+class OpenMetadataConnection(BaseModel):
+    """Connection details for OpenMetadata server."""
+
+    model_config = ConfigDict(extra="allow")
+
+    server_url: str
+    api_version: str = "v1"
+    auth_provider: Literal["no_auth", "basic", "jwt", "google", "okta", "azure", "custom"] = "no_auth"
+    auth: Optional[Dict[str, Any]] = None
+    timeout_seconds: int = 30
+
+    @model_validator(mode="after")
+    def validate_auth(self) -> "OpenMetadataConnection":
+        """Ensure auth configuration is present when required."""
+        if self.auth_provider != "no_auth" and not self.auth:
+            raise ValueError(
+                "OpenMetadata auth configuration is required when auth_provider is not 'no_auth'"
+            )
+        return self
+
+
+class OpenMetadataCatalogConfig(BaseDataCatalogConfig):
+    """Data catalog configuration for OpenMetadata."""
+
+    type: Literal["openmetadata"] = "openmetadata"
+    service_name: Optional[str] = None
+    database_service: Optional[str] = None
+    database_name: Optional[str] = None
+    schema_name: Optional[str] = None
+    pipeline_name: Optional[str] = None
+    workflow_tags: Optional[List[str]] = None
+    connection: OpenMetadataConnection
+
+
+class AWSGlueConnection(BaseModel):
+    """Connection details for AWS Glue Data Catalog."""
+
+    model_config = ConfigDict(extra="allow")
+
+    region: str
+    database: str
+    catalog_id: Optional[str] = None
+    table_prefix: Optional[str] = None
+    iam_role_arn: Optional[str] = None
+
+
+class AWSGlueCatalogConfig(BaseDataCatalogConfig):
+    """Data catalog configuration for AWS Glue."""
+
+    type: Literal["aws_glue"] = "aws_glue"
+    connection: AWSGlueConnection
+    create_database_if_missing: bool = True
+    update_table_properties: bool = True
+
+
+DataCatalogConfigType = Annotated[
+    Union[OpenMetadataCatalogConfig, AWSGlueCatalogConfig],
+    Field(discriminator="type"),
+]
 
 
 class DescriptionModel(BaseModel):
@@ -461,6 +555,7 @@ class JobConfig(BaseModel):
     # Source and target configurations (flat structure, merged with recipes)
     source: Optional[Dict[str, Any]] = None  # Source configuration
     target: Optional[Dict[str, Any]] = None  # Target configuration
+    data_catalogs: Optional[List[DataCatalogConfigType]] = None  # Optional data catalog targets
     
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'
@@ -643,6 +738,23 @@ class JobConfig(BaseModel):
         """Get resolved target config."""
         return self._resolve_target()
 
+    def get_data_catalogs(
+        self,
+        *,
+        include_disabled: bool = False,
+        catalog_type: Optional[str] = None,
+    ) -> List[BaseDataCatalogConfig]:
+        """Return configured data catalogs, optionally filtered."""
+        catalogs = self.data_catalogs or []
+        result: List[BaseDataCatalogConfig] = []
+        for catalog in catalogs:
+            if not include_disabled and not catalog.enabled:
+                continue
+            if catalog_type and catalog.type != catalog_type:
+                continue
+            result.append(catalog)
+        return result
+
     def get_asset_path(self) -> str:
         """Get asset definition path."""
         return os.path.expandvars(self.asset_path)
@@ -726,6 +838,21 @@ class JobConfig(BaseModel):
                     var_name = match[0] if match[0] else match[1]
                     if not os.getenv(var_name):
                         missing_vars.add(var_name)
+
+            # Check data catalog connections
+            if self.data_catalogs:
+                for catalog in self.data_catalogs:
+                    if not catalog.enabled:
+                        continue
+                    connection = getattr(catalog, "connection", None)
+                    if connection is None:
+                        continue
+                    template_str = json.dumps(connection.model_dump())
+                    matches = env_var_pattern.findall(template_str)
+                    for match in matches:
+                        var_name = match[0] if match[0] else match[1]
+                        if not os.getenv(var_name):
+                            missing_vars.add(var_name)
 
             # Check asset path
             asset_path = self.get_asset_path()

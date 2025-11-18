@@ -26,6 +26,28 @@ target:
       bucket: "acme-data-lake"
       prefix: "raw/hubspot/contacts"
 
+data_catalogs:
+  - name: openmetadata_primary
+    type: openmetadata
+    service_name: "acme_lakehouse"
+    database_service: "iceberg"
+    database_name: "acme"
+    schema_name: "crm"
+    scope:
+      assets: [hubspot_contacts]
+    connection:
+      server_url: "${OPENMETADATA_SERVER_URL}"
+      auth_provider: jwt
+      auth:
+        token: "${OPENMETADATA_TOKEN}"
+  - name: glue_lakehouse
+    type: aws_glue
+    connection:
+      region: "us-west-2"
+      catalog_id: "${AWS_ACCOUNT_ID}"
+      database: "acme_lakehouse"
+      table_prefix: "hubspot_contacts"
+
 logging:
   redaction: true
   level: INFO

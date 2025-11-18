@@ -177,20 +177,40 @@ source:
   incremental:
     lookback_days: 1
 
-# Target configuration
-target:
-  branch: acme
-  warehouse: s3://lake/acme/
-  connection:
-    nessie:
-      uri: "http://nessie.acme.internal:19120/api/v1"
-    s3:
-      bucket: "acme-data-lake"
-      prefix: "raw/stripe/customers"
+  # Target configuration
+  target:
+    branch: acme
+    warehouse: s3://lake/acme/
+    connection:
+      nessie:
+        uri: "http://nessie.acme.internal:19120/api/v1"
+      s3:
+        bucket: "acme-data-lake"
+        prefix: "raw/stripe/customers"
 
-logging:
-  redaction: true
-  level: INFO
+  # Optional data catalog targets
+  data_catalogs:
+    - name: metadata_primary
+      type: openmetadata
+      service_name: "acme_lakehouse"
+      database_service: "iceberg"
+      database_name: "acme"
+      connection:
+        server_url: "${OPENMETADATA_SERVER_URL}"
+        auth_provider: jwt
+        auth:
+          token: "${OPENMETADATA_TOKEN}"
+    - name: glue_shadow
+      type: aws_glue
+      enabled: false   # disabled catalogs are ignored at runtime
+      connection:
+        region: "us-west-2"
+        database: "acme_lakehouse"
+        table_prefix: "stripe_customers"
+
+  logging:
+    redaction: true
+    level: INFO
 ```
 
 ### Runner Configuration

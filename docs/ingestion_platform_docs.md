@@ -61,6 +61,20 @@ target:
   warehouse: s3://lake/acme/
   file_format: parquet
 
+data_catalogs:
+  - name: metadata_primary
+    type: openmetadata
+    connection:
+      server_url: "${OPENMETADATA_SERVER_URL}"
+      auth_provider: jwt
+      auth:
+        token: "${OPENMETADATA_TOKEN}"
+  - name: glue_replica
+    type: aws_glue
+    connection:
+      region: "us-west-2"
+      database: "acme_lakehouse"
+
 logging:
   redaction: true
 

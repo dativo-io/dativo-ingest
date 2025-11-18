@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OSS connector wrappers (Stripe, HubSpot, Google Drive, Google Sheets, MySQL)
 - Per-connector error handling and rate limiting
 
+### Added
+- Job definitions can now declare `data_catalogs` targets with typed validation for **OpenMetadata** and **AWS Glue Data Catalog** connectors, including environment variable checks, CLI visibility, and updated documentation/examples.
+
 ## [1.3.0] - 2025-11-07
 
 ### Added - Enhanced Orchestration & Connectors
