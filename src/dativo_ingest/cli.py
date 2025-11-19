@@ -37,7 +37,10 @@ def startup_sequence(
     tenant_id: Optional[str] = None,
     mode: str = "self_hosted",
 ) -> List[JobConfig]:
-    """Complete startup sequence for E2E smoke tests.
+    """Complete startup sequence for batch job execution.
+
+    Loads and validates job configurations from a directory, sets up
+    infrastructure, and prepares jobs for execution.
 
     Args:
         job_dir: Directory containing job YAML files
@@ -95,7 +98,7 @@ def startup_sequence(
         )
 
     logger.info(
-        f"Starting E2E smoke test startup sequence for tenant '{tenant_id}'",
+        f"Starting startup sequence for tenant '{tenant_id}'",
         extra={"event_type": "startup_begin", "job_count": len(jobs)},
     )
 
@@ -416,7 +419,12 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         # Extract bucket from connection config
         connection = target_config.connection or {}
         s3_config = connection.get("s3") or connection.get("minio", {})
-        bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET", "test-bucket")
+        bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET")
+        if not bucket:
+            raise ValueError(
+                "S3 bucket must be specified in target.connection.s3.bucket "
+                "or S3_BUCKET environment variable"
+            )
         
         # Build path following industry standards:
         # s3://bucket/domain/data_product/table/
@@ -461,12 +469,13 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         else:
             # Use default Parquet writer
             from .parquet_writer import ParquetWriter
-            writer = ParquetWriter(asset_definition, target_config, output_base)
+            writer = ParquetWriter(asset_definition, target_config, output_base, validation_mode=validation_mode)
             
             logger.info(
                 "Parquet writer initialized",
                 extra={
                     "output_base": output_base,
+                    "validation_mode": validation_mode,
                     "event_type": "writer_initialized",
                 },
             )

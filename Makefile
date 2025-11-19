@@ -12,7 +12,11 @@ test-unit:
 # Smoke tests: Run actual CLI commands with test fixtures (true E2E)
 # Users can also run: dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 test-smoke:
-	@python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+	@if [ -f venv/bin/python ]; then \
+		venv/bin/python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted; \
+	else \
+		python3 -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted; \
+	fi
 
 # Run all tests
 test: test-unit test-smoke
