@@ -472,6 +472,7 @@ make schema-validate
 - [ROADMAP.md](ROADMAP.md) - Development roadmap and future plans
 
 ### Detailed Guides
+- [SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md) - **Comprehensive setup and onboarding guide** (jobs, assets, secrets, environment variables, infrastructure)
 - [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) - Configuration reference
 - [INGESTION_EXECUTION.md](docs/INGESTION_EXECUTION.md) - Execution flow documentation
 - [MARKDOWN_KV_STORAGE.md](docs/MARKDOWN_KV_STORAGE.md) - Markdown-KV storage patterns
