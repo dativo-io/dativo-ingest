@@ -1,6 +1,22 @@
 # Configuration Reference
 
-## Job Configuration (New Architecture)
+Complete reference guide for configuring jobs, assets, connectors, and storage options in dativo-ingest.
+
+## Table of Contents
+
+1. [Job Configuration](#job-configuration)
+2. [Asset Definitions](#asset-definitions)
+3. [Markdown-KV Storage](#markdown-kv-storage)
+4. [Architecture Overview](#architecture-overview)
+5. [Additional Resources](#additional-resources)
+
+---
+
+## Job Configuration
+
+Job configurations define the source connector, target connector, asset, and tenant-specific overrides for data ingestion.
+
+### Structure
 
 Job configs define the source connector, target connector, asset, and tenant-specific overrides:
 
@@ -42,9 +58,29 @@ logging:
   level: INFO
 ```
 
-## Asset Definition (ODCS v3.0.2)
+### Required Fields
 
-Asset definitions follow the **Open Data Contract Standard (ODCS) v3.0.2** structure with dativo-specific extensions:
+- `tenant_id`: Tenant identifier
+- `source_connector`: Source connector type
+- `source_connector_path`: Path to source connector recipe
+- `target_connector`: Target connector type
+- `target_connector_path`: Path to target connector recipe
+- `asset`: Asset name
+- `asset_path`: Path to asset definition
+
+### Optional Fields
+
+- `environment`: Environment name (defaults to `prod`)
+- `source`: Source-specific configuration overrides
+- `target`: Target-specific configuration overrides
+- `schema_validation_mode`: Validation mode (`strict` or `warn`, defaults to `strict`)
+- `logging`: Logging configuration (level, redaction)
+
+---
+
+## Asset Definitions
+
+Asset definitions follow the **Open Data Contract Standard (ODCS) v3.0.2** structure with dativo-specific extensions.
 
 ```yaml
 $schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
@@ -123,6 +159,18 @@ change_management:
   3. Data quality monitoring (`data_quality.monitoring` with oncall rotation)
   4. Change management (`change_management` section)
 
+### Required Sections
+
+- `schema`: Field definitions with types and required flags
+- `team.owner`: Data owner email (required)
+- `compliance`: Regulatory compliance information
+- `data_quality.monitoring`: Data quality monitoring configuration
+- `change_management`: Change management policy
+
+For detailed asset definition guide, see [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md#32-asset-definitions).
+
+---
+
 ## Markdown-KV Storage
 
 Dativo supports three storage options for Markdown-KV format (LLM-optimized data):
@@ -189,8 +237,28 @@ target:
 
 For detailed documentation, see [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md).
 
-## Architecture
+---
+
+## Architecture Overview
+
+### Component Hierarchy
 
 - **Connectors** (`/connectors/`): Tenant-agnostic recipes that define HOW to connect
 - **Assets** (`/assets/`): Schema and governance definitions (ODCS v3.0.2) that define WHAT structure to ingest
 - **Jobs** (`/jobs/<tenant>/`): Tenant-specific strategy implementations that compose connectors with assets
+
+### Configuration Flow
+
+1. **Job Configuration** references connector recipes and asset definitions
+2. **Connector Recipes** provide default connection templates and capabilities
+3. **Asset Definitions** provide schema and governance metadata
+4. **Job Overrides** customize connectors and assets for tenant-specific needs
+
+---
+
+## Additional Resources
+
+- [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md) - Comprehensive setup and onboarding guide
+- [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md) - Detailed Markdown-KV storage documentation
+- [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md) - Execution flow documentation
+- [SCHEMA_VALIDATION.md](SCHEMA_VALIDATION.md) - Schema validation guide

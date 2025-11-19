@@ -428,9 +428,15 @@ target:
 ### Issue: YAML front matter not parsed
 **Solution:** Ensure front matter is wrapped in `---` delimiters and is valid YAML.
 
-## References
+## Additional Resources
+
+- [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md) - Comprehensive setup and onboarding guide
+- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) - Configuration reference
+- [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md) - Execution flow documentation
+- [README.md](../README.md) - Project overview
+
+## External References
 
 - [Markdown-KV Format Specification](https://www.improvingagents.com/blog/best-input-data-format-for-llms)
 - [Iceberg Nested Types Documentation](https://iceberg.apache.org/docs/latest/spec/#nested-types)
-- [ODCS Asset Definitions](../assets/markdown_kv/v1.0/)
 
