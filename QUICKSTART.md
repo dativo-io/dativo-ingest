@@ -101,7 +101,8 @@ docker-compose -f docker-compose.dev.yml down -v
 
 ## Next Steps
 
-- Read [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) for detailed instructions
+- Read [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md) for comprehensive setup and onboarding guide
+- Read [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) for detailed testing instructions
 - Read [docs/INGESTION_EXECUTION.md](docs/INGESTION_EXECUTION.md) for execution flow details
 - Check [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for configuration options
 

@@ -1,6 +1,8 @@
-# Setup and End-to-End Testing Guide
+# Setup and Testing Guide
 
-This guide explains how to set up a local development environment and run end-to-end tests after cloning the repository.
+This guide explains how to set up a local testing environment and run end-to-end tests for dativo-ingest.
+
+**Note:** For comprehensive setup and onboarding instructions, see [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md).
 
 ## Prerequisites
 
@@ -34,97 +36,12 @@ dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/sec
 
 ### Option B: Manual Setup
 
-### 1. Clone and Install Dependencies
+For detailed manual setup instructions, see [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md). The key steps are:
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd dativo-ingest
-
-# Create a virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Install package in development mode
-pip install -e .
-```
-
-### 2. Start Local Infrastructure
-
-Start Nessie (catalog) and MinIO (S3-compatible storage) using Docker Compose:
-
-```bash
-docker-compose -f docker-compose.dev.yml up -d
-```
-
-Wait for services to be healthy (about 30 seconds):
-
-```bash
-# Check services are running
-docker-compose -f docker-compose.dev.yml ps
-
-# Check Nessie is ready
-curl http://localhost:19120/api/v1/config
-
-# Check MinIO is ready
-curl http://localhost:9000/minio/health/live
-```
-
-### 3. Set Up MinIO Bucket
-
-Create the test bucket in MinIO:
-
-```bash
-# Using MinIO client (mc) - install if needed: https://min.io/docs/minio/linux/reference/minio-mc.html
-mc alias set local http://localhost:9000 minioadmin minioadmin
-mc mb local/test-bucket
-mc anonymous set download local/test-bucket
-```
-
-Or use the MinIO web console at http://localhost:9001 (login: minioadmin/minioadmin) to create a bucket named `test-bucket`.
-
-### 4. Set Environment Variables
-
-Export the required environment variables:
-
-```bash
-export NESSIE_URI="http://localhost:19120/api/v1"
-export S3_ENDPOINT="http://localhost:9000"
-export AWS_ACCESS_KEY_ID="minioadmin"
-export AWS_SECRET_ACCESS_KEY="minioadmin"
-export AWS_REGION="us-east-1"
-export S3_BUCKET="test-bucket"
-```
-
-Or create a `.env` file in the project root:
-
-```bash
-cat > .env << EOF
-NESSIE_URI=http://localhost:19120/api/v1
-S3_ENDPOINT=http://localhost:9000
-AWS_ACCESS_KEY_ID=minioadmin
-AWS_SECRET_ACCESS_KEY=minioadmin
-AWS_REGION=us-east-1
-S3_BUCKET=test-bucket
-EOF
-
-# Source it (if using bash/zsh)
-source .env
-```
-
-### 5. Create State Directory
-
-```bash
-# State directory is created automatically, but you can pre-create it:
-mkdir -p .local/state/test_tenant
-```
-
-**Note:** State files are stored in `.local/state/` by default (hidden directory, gitignored). For production, set `STATE_DIR` environment variable to point to your state storage (database, S3, etc.).
-
-### 6. Run End-to-End Test
+1. Install dependencies: `pip install -r requirements.txt && pip install -e .`
+2. Start infrastructure: `docker-compose -f docker-compose.dev.yml up -d`
+3. Set environment variables (see `.env` file or export them)
+4. Run tests
 
 ```bash
 # Set PYTHONPATH if not installed in editable mode
@@ -291,9 +208,11 @@ export AWS_REGION="us-east-1"
 make test-smoke
 ```
 
-## Next Steps
+## Additional Resources
 
-- Read [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md) for detailed execution flow
-- Check [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) for configuration options
-- Review [MILESTONE_1_2_HANDOFF.md](MILESTONE_1_2_HANDOFF.md) for implementation details
+- [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md) - Comprehensive setup and onboarding guide
+- [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md) - Detailed execution flow
+- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) - Configuration options
+- [QUICKSTART.md](../QUICKSTART.md) - Quick start guide
+- [README.md](../README.md) - Project overview
 
