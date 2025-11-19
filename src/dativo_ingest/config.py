@@ -807,11 +807,57 @@ class JobConfig(BaseModel):
         return jobs
 
     @classmethod
-    def from_yaml(cls, path: Union[str, Path]) -> "JobConfig":
+    def validate_against_schema(
+        cls, data: Dict[str, Any], schema_path: Optional[Path] = None
+    ) -> None:
+        """Validate job configuration against JSON schema.
+        
+        Args:
+            data: Job configuration dictionary
+            schema_path: Optional path to schema file
+        
+        Raises:
+            ValueError: If validation fails
+        """
+        if schema_path is None:
+            # Default to job config schema in schemas/
+            schema_path = (
+                Path(__file__).parent.parent.parent
+                / "schemas"
+                / "job-config.schema.json"
+            )
+        
+        if not schema_path.exists():
+            raise FileNotFoundError(f"Schema file not found: {schema_path}")
+        
+        with open(schema_path, "r") as f:
+            schema = json.load(f)
+        
+        # Create resolver for $ref resolution
+        resolver = jsonschema.RefResolver(
+            base_uri=f"file://{schema_path.parent}/",
+            referrer=schema,
+        )
+        
+        try:
+            jsonschema.validate(instance=data, schema=schema, resolver=resolver)
+        except jsonschema.ValidationError as e:
+            path_str = ".".join(str(p) for p in e.path) if e.path else "root"
+            raise ValueError(
+                f"Job configuration schema validation failed: {e.message}\n"
+                f"Path: {path_str}\n"
+                f"Schema path: {'.'.join(str(p) for p in e.schema_path)}"
+            ) from e
+
+    @classmethod
+    def from_yaml(
+        cls, path: Union[str, Path], validate_schema: bool = True
+    ) -> "JobConfig":
         """Load job configuration from YAML file.
 
         Args:
             path: Path to YAML file
+            validate_schema: Whether to validate against JSON schema (default: True)
 
         Returns:
             JobConfig instance
@@ -851,6 +897,23 @@ class JobConfig(BaseModel):
             data["source_connector_path"] = os.path.expandvars(data["source_connector_path"])
         if "target_connector_path" in data and data["target_connector_path"]:
             data["target_connector_path"] = os.path.expandvars(data["target_connector_path"])
+
+        # Validate against JSON schema if requested
+        if validate_schema:
+            try:
+                cls.validate_against_schema(data)
+            except ValueError as e:
+                print(
+                    f"ERROR: Job configuration schema validation failed: {path}\n{e}",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            except FileNotFoundError as e:
+                # Schema file not found - log warning but don't fail
+                print(
+                    f"WARNING: Schema validation skipped - schema file not found: {e}",
+                    file=sys.stderr,
+                )
 
         try:
             return cls(**data)

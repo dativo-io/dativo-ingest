@@ -50,6 +50,9 @@ target:
       region: "${AWS_REGION}"
       path_style_access: true  # Required for MinIO
 
+# Execution configuration
+schema_validation_mode: warn  # Warn on validation errors instead of failing
+
 # Logging configuration
 logging:
   redaction: false

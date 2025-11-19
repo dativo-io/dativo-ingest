@@ -94,8 +94,10 @@ impl CsvReader {
         let file_path = PathBuf::from(&file_config.path);
 
         // Open CSV file
+        // Use flexible mode to handle inconsistent field counts
         let reader = ReaderBuilder::new()
             .delimiter(self.config.engine.options.delimiter as u8)
+            .flexible(true)  // Allow records with different field counts
             .from_path(&file_path)
             .map_err(|e| format!("Failed to open CSV file: {}", e))?;
 

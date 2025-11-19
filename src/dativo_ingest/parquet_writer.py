@@ -15,6 +15,7 @@ class ParquetWriter:
         asset_definition: AssetDefinition,
         target_config: TargetConfig,
         output_base_path: str,
+        validation_mode: str = "strict",
     ):
         """Initialize Parquet writer.
 
@@ -22,10 +23,12 @@ class ParquetWriter:
             asset_definition: Asset definition containing schema
             target_config: Target configuration with partitioning and file size settings
             output_base_path: Base path for output files (S3/MinIO compatible)
+            validation_mode: Validation mode - 'strict' or 'warn' (affects nullability of required fields)
         """
         self.asset_definition = asset_definition
         self.target_config = target_config
         self.output_base_path = output_base_path
+        self.validation_mode = validation_mode
 
         # Get target file size (default: 128-200 MB range, use 150 MB as default)
         self.target_size_mb = target_config.parquet_target_size_mb or 150
@@ -68,8 +71,15 @@ class ParquetWriter:
                 pa_type = pa.string()
 
             # Check if nullable
+            # In warn mode, make all fields nullable to allow records with errors to be written
+            # In strict mode, required fields are non-nullable
             is_required = field_def.get("required", False)
-            nullable = not is_required
+            if self.validation_mode == "warn":
+                # In warn mode, allow nulls even in required fields (records with errors may have nulls)
+                nullable = True
+            else:
+                # In strict mode, required fields are non-nullable
+                nullable = not is_required
 
             fields.append(pa.field(field_name, pa_type, nullable=nullable))
 

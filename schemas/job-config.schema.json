@@ -1,0 +1,197 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dativo.io/schemas/job-config.schema.json",
+  "title": "Dativo Job Configuration Schema",
+  "description": "Schema for validating Dativo ETL job configuration files",
+  "type": "object",
+  "required": ["tenant_id", "source_connector_path", "target_connector_path", "asset_path"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to this schema",
+      "default": "schemas/job-config.schema.json"
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "Tenant identifier for multi-tenant deployments",
+      "minLength": 1
+    },
+    "environment": {
+      "type": "string",
+      "description": "Environment name (e.g., dev, staging, prod)"
+    },
+    "source_connector": {
+      "type": "string",
+      "description": "Source connector name (optional, inferred from path)"
+    },
+    "source_connector_path": {
+      "type": "string",
+      "description": "Path to source connector recipe YAML file",
+      "minLength": 1
+    },
+    "target_connector": {
+      "type": "string",
+      "description": "Target connector name (optional, inferred from path)"
+    },
+    "target_connector_path": {
+      "type": "string",
+      "description": "Path to target connector recipe YAML file",
+      "minLength": 1
+    },
+    "asset": {
+      "type": "string",
+      "description": "Asset name (optional, inferred from path)"
+    },
+    "asset_path": {
+      "type": "string",
+      "description": "Path to asset definition YAML file",
+      "minLength": 1
+    },
+    "source": {
+      "type": "object",
+      "description": "Source-specific configuration (merged with connector recipe)",
+      "properties": {
+        "custom_reader": {
+          "type": "string",
+          "description": "Path to custom reader plugin (format: path/to/module.py:ClassName or path/to/lib.so:function_name)"
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "object": {"type": "string"}
+            },
+            "required": ["name"]
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {"type": "string"},
+              "object": {"type": "string"},
+              "id": {"type": "string"}
+            },
+            "required": ["path"]
+          }
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "connection": {
+          "type": "object",
+          "description": "Connection configuration (connector-specific)"
+        },
+        "credentials": {
+          "type": "object",
+          "description": "Credentials configuration (connector-specific)"
+        },
+        "incremental": {
+          "type": "object",
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": ["full_refresh", "incremental", "updated_at", "file_modified_time", "spreadsheet_modified_time"]
+            },
+            "cursor_field": {
+              "type": ["string", "null"],
+              "description": "Field name for cursor-based incremental loading (null for full refresh)"
+            },
+            "lookback_days": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Number of days to look back for incremental loading"
+            },
+            "state_path": {
+              "type": ["string", "null"],
+              "description": "Path to state file for incremental loading"
+            }
+          }
+        },
+        "engine": {
+          "type": "object",
+          "properties": {
+            "options": {"type": "object"}
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "target": {
+      "type": "object",
+      "description": "Target-specific configuration (merged with connector recipe)",
+      "properties": {
+        "custom_writer": {
+          "type": "string",
+          "description": "Path to custom writer plugin (format: path/to/module.py:ClassName or path/to/lib.so:function_name)"
+        },
+        "file_format": {
+          "type": "string",
+          "enum": ["parquet", "iceberg", "delta", "csv", "json"]
+        },
+        "connection": {
+          "type": "object",
+          "description": "Connection configuration (connector-specific)"
+        },
+        "catalog": {
+          "type": "object",
+          "description": "Iceberg catalog configuration"
+        },
+        "markdown_kv_storage": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["string", "structured"]
+            }
+          }
+        },
+        "engine": {
+          "type": "object",
+          "properties": {
+            "options": {"type": "object"}
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "schema_validation_mode": {
+      "type": "string",
+      "enum": ["strict", "warn"],
+      "default": "strict",
+      "description": "Schema validation mode: 'strict' fails on errors, 'warn' logs warnings"
+    },
+    "retry_config": {
+      "type": "object",
+      "properties": {
+        "max_attempts": {"type": "integer", "minimum": 1, "maximum": 10},
+        "initial_delay_seconds": {"type": "number", "minimum": 0},
+        "max_delay_seconds": {"type": "number", "minimum": 0},
+        "backoff_multiplier": {"type": "number", "minimum": 1}
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "default": "INFO"
+        },
+        "redaction": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to redact sensitive information in logs"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
+
