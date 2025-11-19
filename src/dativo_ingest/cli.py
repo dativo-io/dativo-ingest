@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from .config import JobConfig, RunnerConfig
 from .infrastructure import validate_infrastructure
-from .logging import setup_logging
+from .logging import setup_logging, update_logging_settings, get_logger
 from .secrets import load_secrets
 from .validator import ConnectorValidator, IncrementalStateManager
 
@@ -78,11 +78,7 @@ def startup_sequence(
                 "All jobs in a directory must belong to the same tenant, or specify --tenant-id to override."
             )
         tenant_id = jobs[0].tenant_id
-        logger = setup_logging(level="INFO", redact_secrets=True, tenant_id=tenant_id)
-        logger.info(
-            f"Inferred tenant_id '{tenant_id}' from job configurations",
-            extra={"event_type": "tenant_inferred"},
-        )
+        tenant_source = "inferred from job configurations"
     else:
         # Validate that all jobs match the provided tenant_id
         mismatched = [job for job in jobs if job.tenant_id != tenant_id]
@@ -91,11 +87,14 @@ def startup_sequence(
                 f"Tenant ID mismatch: {len(mismatched)} job(s) have tenant_id different from '{tenant_id}'. "
                 f"Conflicting tenant_ids: {set(job.tenant_id for job in mismatched)}"
             )
-        logger = setup_logging(level="INFO", redact_secrets=True, tenant_id=tenant_id)
-        logger.info(
-            f"Using tenant_id '{tenant_id}' from command line",
-            extra={"event_type": "tenant_override"},
-        )
+        tenant_source = "command line"
+    
+    # Set up logging once after tenant_id is determined
+    logger = setup_logging(level="INFO", redact_secrets=True, tenant_id=tenant_id)
+    logger.info(
+        f"Tenant ID '{tenant_id}' {tenant_source}",
+        extra={"event_type": "tenant_inferred" if tenant_source == "inferred from job configurations" else "tenant_override"},
+    )
 
     logger.info(
         f"Starting startup sequence for tenant '{tenant_id}'",
@@ -219,6 +218,11 @@ def run_command(args: argparse.Namespace) -> int:
         except SystemExit as e:
             return e.code if e.code else 2
 
+        # Set up logging for single job execution (no startup_sequence was called)
+        log_level = job_config.logging.level if job_config.logging else "INFO"
+        redact = job_config.logging.redaction if job_config.logging else False
+        setup_logging(level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id)
+
         return _execute_single_job(job_config, args.mode)
 
 
@@ -237,10 +241,17 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
     source_config = job_config.get_source()
     target_config = job_config.get_target()
 
-    # Set up logging
-    log_level = job_config.logging.level if job_config.logging else "INFO"
-    redact = job_config.logging.redaction if job_config.logging else False
-    logger = setup_logging(level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id)
+    # Update logging settings if job has specific requirements
+    # Always update tenant_id to ensure correct tenant context for this job
+    log_level = job_config.logging.level if job_config.logging else None
+    redact = job_config.logging.redaction if job_config.logging else None
+    
+    # Update logging settings (tenant_id always updated, level/redact only if specified)
+    logger = update_logging_settings(
+        level=log_level,
+        redact_secrets=redact,
+        tenant_id=job_config.tenant_id,
+    )
 
     logger.info(
         "Starting job execution",
