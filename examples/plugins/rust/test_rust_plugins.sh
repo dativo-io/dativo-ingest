@@ -112,24 +112,48 @@ if command -v nm &> /dev/null && [[ "$OSTYPE" != "msys" && "$OSTYPE" != "win32" 
     echo ""
     
     echo "CSV Reader exports:"
-    nm -D "$CSV_READER_LIB" 2>/dev/null | grep -E "(create_reader|extract_batch|free_reader|free_string)" | head -5 || echo "  (symbols check not available)"
+    # On macOS, symbols have underscore prefix; on Linux they don't
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        nm -gU "$CSV_READER_LIB" 2>/dev/null | grep -E "(_create_reader|_extract_batch|_free_reader|_free_string)" | head -5 || echo "  (symbols check not available)"
+    else
+        nm -D "$CSV_READER_LIB" 2>/dev/null | grep -E "(create_reader|extract_batch|free_reader|free_string)" | head -5 || echo "  (symbols check not available)"
+    fi
     echo ""
     
     echo "Parquet Writer exports:"
-    nm -D "$PARQUET_WRITER_LIB" 2>/dev/null | grep -E "(create_writer|write_batch|free_writer|free_string)" | head -5 || echo "  (symbols check not available)"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        nm -gU "$PARQUET_WRITER_LIB" 2>/dev/null | grep -E "(_create_writer|_write_batch|_free_writer|_free_string)" | head -5 || echo "  (symbols check not available)"
+    else
+        nm -D "$PARQUET_WRITER_LIB" 2>/dev/null | grep -E "(create_writer|write_batch|free_writer|free_string)" | head -5 || echo "  (symbols check not available)"
+    fi
     echo ""
     
-    run_test "CSV reader exports create_reader" \
-        "nm -D '$CSV_READER_LIB' 2>/dev/null | grep -q 'create_reader'"
-    
-    run_test "CSV reader exports extract_batch" \
-        "nm -D '$CSV_READER_LIB' 2>/dev/null | grep -q 'extract_batch'"
-    
-    run_test "Parquet writer exports create_writer" \
-        "nm -D '$PARQUET_WRITER_LIB' 2>/dev/null | grep -q 'create_writer'"
-    
-    run_test "Parquet writer exports write_batch" \
-        "nm -D '$PARQUET_WRITER_LIB' 2>/dev/null | grep -q 'write_batch'"
+    # Test symbol exports (account for macOS underscore prefix)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        run_test "CSV reader exports create_reader" \
+            "nm -gU '$CSV_READER_LIB' 2>/dev/null | grep -q '_create_reader'"
+        
+        run_test "CSV reader exports extract_batch" \
+            "nm -gU '$CSV_READER_LIB' 2>/dev/null | grep -q '_extract_batch'"
+        
+        run_test "Parquet writer exports create_writer" \
+            "nm -gU '$PARQUET_WRITER_LIB' 2>/dev/null | grep -q '_create_writer'"
+        
+        run_test "Parquet writer exports write_batch" \
+            "nm -gU '$PARQUET_WRITER_LIB' 2>/dev/null | grep -q '_write_batch'"
+    else
+        run_test "CSV reader exports create_reader" \
+            "nm -D '$CSV_READER_LIB' 2>/dev/null | grep -q 'create_reader'"
+        
+        run_test "CSV reader exports extract_batch" \
+            "nm -D '$CSV_READER_LIB' 2>/dev/null | grep -q 'extract_batch'"
+        
+        run_test "Parquet writer exports create_writer" \
+            "nm -D '$PARQUET_WRITER_LIB' 2>/dev/null | grep -q 'create_writer'"
+        
+        run_test "Parquet writer exports write_batch" \
+            "nm -D '$PARQUET_WRITER_LIB' 2>/dev/null | grep -q 'write_batch'"
+    fi
 fi
 
 # ==========================

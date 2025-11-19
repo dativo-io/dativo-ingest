@@ -44,6 +44,9 @@ target:
       compression: "gzip"
       row_group_size: 50000
 
+# Execution configuration
+schema_validation_mode: warn  # Warn on validation errors instead of failing
+
 # Logging configuration
 logging:
   redaction: false

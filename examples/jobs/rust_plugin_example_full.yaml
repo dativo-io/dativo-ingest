@@ -65,50 +65,6 @@ logging:
 
 # Optional: Retry configuration
 retry_config:
-  max_retries: 3
+  max_attempts: 3
   initial_delay_seconds: 5
 
----
-
-# Alternative: Mixed Python and Rust plugins
-# You can use Python reader with Rust writer, or vice versa
-
-tenant_id: acme
-environment: prod
-
-source_connector: postgres
-source_connector_path: /app/connectors/postgres.yaml
-
-target_connector: s3
-target_connector_path: /app/connectors/s3.yaml
-
-asset: mixed_pipeline
-asset_path: /app/assets/postgres/v1.0/db_orders.yaml
-
-# Use built-in Postgres extractor (Python)
-source:
-  tables:
-    - name: "orders"
-      schema: "public"
-  
-  connection:
-    host: "${POSTGRES_HOST}"
-    port: 5432
-    database: "${POSTGRES_DB}"
-    user: "${POSTGRES_USER}"
-    password: "${POSTGRES_PASSWORD}"
-
-# Use Rust Parquet writer for performance
-target:
-  custom_writer: "/app/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
-  
-  connection:
-    s3:
-      bucket: "my-data-lake"
-  
-  engine:
-    options:
-      compression: "zstd"
-      row_group_size: 500000
-
-schema_validation_mode: strict

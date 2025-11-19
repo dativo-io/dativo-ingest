@@ -47,6 +47,9 @@ target:
       compression: "snappy"
       row_group_size: 100000
 
+# Execution configuration
+schema_validation_mode: warn  # Warn on validation errors instead of failing
+
 # Logging configuration
 logging:
   redaction: false
