@@ -2,7 +2,7 @@ name: Plugin System Tests
 
 on:
   push:
-    branches: [ main, develop, 'cursor/**' ]
+    branches: [ main, develop ]
     paths:
       - 'src/dativo_ingest/plugins.py'
       - 'src/dativo_ingest/rust_plugin_bridge.py'
