@@ -28,9 +28,9 @@ class ConnectorRecipe(BaseModel):
     connection_template: Optional[Dict[str, Any]] = None
     catalog: Optional[str] = None  # Optional for source-only connectors
     file_format: Optional[str] = None  # Optional for source-only connectors
-    partitioning_default: Optional[
-        List[str]
-    ] = None  # Optional for source-only connectors
+    partitioning_default: Optional[List[str]] = (
+        None  # Optional for source-only connectors
+    )
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "ConnectorRecipe":
@@ -378,9 +378,9 @@ class SourceConfig(BaseModel):
     engine: Optional[Dict[str, Any]] = None
     dsn: Optional[str] = None
     connection: Optional[Dict[str, Any]] = None  # For database connections
-    custom_reader: Optional[
-        str
-    ] = None  # Path to custom reader class (format: "path/to/module.py:ClassName")
+    custom_reader: Optional[str] = (
+        None  # Path to custom reader class (format: "path/to/module.py:ClassName")
+    )
 
 
 class TargetConfig(BaseModel):
@@ -394,15 +394,15 @@ class TargetConfig(BaseModel):
     partitioning: Optional[List[str]] = None
     engine: Optional[Dict[str, Any]] = None
     connection: Optional[Dict[str, Any]] = None  # For storage connection details
-    markdown_kv_storage: Optional[
-        Dict[str, Any]
-    ] = None  # Markdown-KV storage configuration
-    parquet_target_size_mb: Optional[
-        int
-    ] = None  # Target Parquet file size in MB (default: 128-200 MB range)
-    custom_writer: Optional[
-        str
-    ] = None  # Path to custom writer class (format: "path/to/module.py:ClassName")
+    markdown_kv_storage: Optional[Dict[str, Any]] = (
+        None  # Markdown-KV storage configuration
+    )
+    parquet_target_size_mb: Optional[int] = (
+        None  # Target Parquet file size in MB (default: 128-200 MB range)
+    )
+    custom_writer: Optional[str] = (
+        None  # Path to custom writer class (format: "path/to/module.py:ClassName")
+    )
 
     @model_validator(mode="after")
     def validate_markdown_kv_storage(self) -> "TargetConfig":
@@ -442,21 +442,21 @@ class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
     max_retries: int = 3
-    initial_delay_seconds: Optional[
-        int
-    ] = None  # Initial delay in seconds (defaults to retry_delay_seconds for backward compat)
+    initial_delay_seconds: Optional[int] = (
+        None  # Initial delay in seconds (defaults to retry_delay_seconds for backward compat)
+    )
     max_delay_seconds: int = 300
     backoff_multiplier: float = 2.0
     retryable_exit_codes: List[int] = Field(
         default=[1, 2]
     )  # Exit codes that should trigger retries
-    retryable_error_patterns: Optional[
-        List[str]
-    ] = None  # Regex patterns for error messages
+    retryable_error_patterns: Optional[List[str]] = (
+        None  # Regex patterns for error messages
+    )
     retry_delay_seconds: Optional[int] = 5  # Deprecated: use initial_delay_seconds
-    retryable_errors: Optional[
-        List[str]
-    ] = None  # List of error types to retry (deprecated, use retryable_error_patterns)
+    retryable_errors: Optional[List[str]] = (
+        None  # List of error types to retry (deprecated, use retryable_error_patterns)
+    )
 
     @model_validator(mode="after")
     def set_initial_delay(self) -> "RetryConfig":
@@ -982,12 +982,12 @@ class ScheduleConfig(BaseModel):
 
     name: str
     config: str
-    cron: Optional[
-        str
-    ] = None  # Cron expression (mutually exclusive with interval_seconds)
-    interval_seconds: Optional[
-        int
-    ] = None  # Interval-based scheduling (mutually exclusive with cron)
+    cron: Optional[str] = (
+        None  # Cron expression (mutually exclusive with interval_seconds)
+    )
+    interval_seconds: Optional[int] = (
+        None  # Interval-based scheduling (mutually exclusive with cron)
+    )
     enabled: bool = True  # Enable/disable schedule without deployment
     timezone: str = "UTC"  # Timezone for schedule execution
     max_concurrent_runs: int = 1  # Maximum concurrent runs for this schedule
