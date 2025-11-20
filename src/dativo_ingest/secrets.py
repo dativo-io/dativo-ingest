@@ -23,7 +23,9 @@ def resolve_secret_path(file_template: str, tenant_id: str) -> Path:
     return Path(resolved_path)
 
 
-def load_secrets(tenant_id: str, secrets_dir: Path = Path("/secrets")) -> Dict[str, Any]:
+def load_secrets(
+    tenant_id: str, secrets_dir: Path = Path("/secrets")
+) -> Dict[str, Any]:
     """Load secrets for a tenant from secrets storage.
 
     Args:
@@ -107,7 +109,9 @@ def _expand_env_vars_in_dict(data: Any) -> Any:
         return data
 
 
-def validate_secrets_for_connector(secrets: Dict[str, Any], connector_type: str, credentials_config: Dict[str, Any]) -> bool:
+def validate_secrets_for_connector(
+    secrets: Dict[str, Any], connector_type: str, credentials_config: Dict[str, Any]
+) -> bool:
     """Validate that required secrets are present for a connector.
 
     Args:
@@ -174,4 +178,3 @@ def validate_secrets_for_connector(secrets: Dict[str, Any], connector_type: str,
         )
 
     return True
-

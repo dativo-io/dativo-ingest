@@ -24,7 +24,12 @@ except ImportError:
 class TracingContext:
     """Context manager for tracing spans."""
 
-    def __init__(self, tracer: Optional[Any], span_name: str, attributes: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        tracer: Optional[Any],
+        span_name: str,
+        attributes: Optional[Dict[str, Any]] = None,
+    ):
         """Initialize tracing context.
 
         Args:
@@ -84,7 +89,11 @@ class TracingContext:
         elif not OPENTELEMETRY_AVAILABLE:
             logger.debug(
                 f"Tracing event (OpenTelemetry not available): {name}",
-                extra={"event_type": "tracing_debug", "event_name": name, "attributes": attributes},
+                extra={
+                    "event_type": "tracing_debug",
+                    "event_name": name,
+                    "attributes": attributes,
+                },
             )
 
 
@@ -157,4 +166,3 @@ def trace_phase(phase_name: str, attributes: Optional[Dict[str, Any]] = None):
     tracer = get_tracer()
     with TracingContext(tracer, f"phase.{phase_name}", attributes or {}) as span:
         yield span
-

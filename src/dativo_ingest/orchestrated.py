@@ -124,7 +124,9 @@ def _execute_job_with_retry(
 
         except Exception as e:
             last_error = str(e)
-            if custom_retry_policy and custom_retry_policy.should_retry(2, str(e), attempt):
+            if custom_retry_policy and custom_retry_policy.should_retry(
+                2, str(e), attempt
+            ):
                 custom_retry_policy.log_retry_attempt(attempt, 2, str(e))
                 custom_retry_policy.wait_for_retry(attempt)
                 attempt += 1
@@ -144,7 +146,9 @@ def _execute_job_with_retry(
             "stderr": last_error[:500] if last_error else None,
         },
     )
-    raise Exception(f"Job execution failed after {attempt + 1} attempt(s): {last_error}")
+    raise Exception(
+        f"Job execution failed after {attempt + 1} attempt(s): {last_error}"
+    )
 
 
 def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
@@ -165,7 +169,10 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
         if not schedule_config.enabled:
             logger.info(
                 f"Schedule '{schedule_config.name}' is disabled, skipping",
-                extra={"event_type": "schedule_skipped", "schedule_name": schedule_config.name},
+                extra={
+                    "event_type": "schedule_skipped",
+                    "schedule_name": schedule_config.name,
+                },
             )
             continue
 
@@ -187,7 +194,10 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
         except Exception as e:
             logger.error(
                 f"Failed to load job config for schedule '{schedule_config.name}': {e}",
-                extra={"event_type": "schedule_config_error", "schedule_name": schedule_config.name},
+                extra={
+                    "event_type": "schedule_config_error",
+                    "schedule_name": schedule_config.name,
+                },
             )
             continue
 
@@ -296,7 +306,7 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
                 else:
                     interval_hours = interval_minutes // 60
                     cron_expr = f"0 */{interval_hours} * * *"
-                
+
                 logger.warning(
                     f"IntervalSchedule not available, using cron equivalent: {cron_expr}",
                     extra={
@@ -322,7 +332,10 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
         else:
             logger.warning(
                 f"Schedule '{schedule_config.name}' has no cron or interval, skipping",
-                extra={"event_type": "schedule_invalid", "schedule_name": schedule_config.name},
+                extra={
+                    "event_type": "schedule_invalid",
+                    "schedule_name": schedule_config.name,
+                },
             )
             continue
 
@@ -423,4 +436,3 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
             "dagster-webserver -m dativo_ingest.orchestrated",
             extra={"event_type": "orchestrator_ready"},
         )
-

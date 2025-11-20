@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Custom Plugin System**: Support for Python and Rust plugins
+  - **Python Plugins:**
+    - New `BaseReader` and `BaseWriter` base classes for plugin development
+    - `PluginLoader` utility for dynamic plugin loading from file paths
+    - Example plugins: JSON API reader and JSON file writer
+  - **Rust Plugins:**
+    - Support for high-performance Rust plugins via FFI
+    - Automatic detection based on file extension (.py vs .so/.dylib/.dll)
+    - `RustReaderWrapper` and `RustWriterWrapper` bridge classes
+    - Example plugins: CSV reader (15x faster) and Parquet writer (3.5x faster)
+    - Comprehensive build system with Cargo workspace
+    - Performance benchmarks and optimization guide
+  - `custom_reader` and `custom_writer` configuration options in job configs
+  - Plugins receive connection details and can implement format-aware, high-performance processing
+  - Comprehensive documentation in `docs/CUSTOM_PLUGINS.md`
+  - Integration with existing ETL pipeline (custom plugins work alongside built-in extractors)
+  
+### Changed
+- Updated `SourceConfig` to include optional `custom_reader` field
+- Updated `TargetConfig` to include optional `custom_writer` field
+- Enhanced CLI to dynamically load and instantiate Python and Rust plugins
+- Updated `PluginLoader` to detect plugin type from file extension
+- Enhanced README with Python and Rust plugin examples
+- Added performance comparison data for Rust plugins
+
+### Testing
+- **Comprehensive Test Suite**: 76 total tests covering all plugin functionality
+  - 47 unit tests in `test_plugins.py`
+  - 19 integration tests in `test_plugin_integration.sh`
+  - 10 Rust plugin tests in `test_rust_plugins.sh`
+  - Master test runner: `run_all_plugin_tests.sh`
+- **100% Feature Coverage**: All plugin types (default, Python, Rust) fully tested
+- **Test Documentation**: Complete testing guide in `tests/PLUGIN_TESTING.md`
+- **GitHub Actions CI/CD**: Automated workflows for all tests
+  - `ci.yml` - Complete CI pipeline (lint, core tests, plugin tests, Rust)
+  - `plugin-tests.yml` - Dedicated plugin system tests (Python + Rust)
+  - Matrix testing across Python 3.10, 3.11 and Ubuntu, macOS
+  - Automatic test coverage reporting with Codecov
+
 ### Planned
 - OSS connector wrappers (Stripe, HubSpot, Google Drive, Google Sheets, MySQL)
 - Per-connector error handling and rate limiting

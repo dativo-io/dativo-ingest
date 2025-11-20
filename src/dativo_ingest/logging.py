@@ -56,12 +56,10 @@ class StructuredJSONFormatter(logging.Formatter):
         if self.redact_secrets:
             log_str = json.dumps(log_data)
             for pattern in self.secret_patterns:
-                log_str = re.sub(pattern, r'\1', log_str, flags=re.IGNORECASE)
+                log_str = re.sub(pattern, r"\1", log_str, flags=re.IGNORECASE)
                 # Replace matched secrets with [REDACTED]
                 log_str = re.sub(
-                    r'(["\']?)([A-Za-z0-9+/=]{20,})(["\']?)',
-                    r'\1[REDACTED]\3',
-                    log_str
+                    r'(["\']?)([A-Za-z0-9+/=]{20,})(["\']?)', r"\1[REDACTED]\3", log_str
                 )
             return log_str
 
@@ -109,6 +107,55 @@ def setup_logging(
     return logger
 
 
+def update_logging_settings(
+    level: Optional[str] = None,
+    redact_secrets: Optional[bool] = None,
+    tenant_id: Optional[str] = None,
+) -> logging.Logger:
+    """Update existing logger settings without clearing handlers.
+
+    This is useful when you want to update logging configuration (e.g., log level
+    or redaction settings) without losing existing handlers or reinitializing.
+
+    Args:
+        level: Log level to set (DEBUG, INFO, WARNING, ERROR). If None, keeps current.
+        redact_secrets: Whether to redact secrets. If None, keeps current.
+        tenant_id: Tenant ID to include in logs. If None, keeps current.
+
+    Returns:
+        Updated logger instance
+    """
+    logger = logging.getLogger("dativo_ingest")
+
+    # Update log level if provided
+    if level is not None:
+        logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+
+    # Update formatter on existing handlers if redact_secrets is provided
+    if redact_secrets is not None:
+        for handler in logger.handlers:
+            if isinstance(handler.formatter, StructuredJSONFormatter):
+                handler.formatter.redact_secrets = redact_secrets
+            else:
+                # Replace formatter if it's not the right type
+                handler.setFormatter(
+                    StructuredJSONFormatter(redact_secrets=redact_secrets)
+                )
+
+    # Update tenant_id in log record factory if provided
+    if tenant_id is not None:
+        old_factory = logging.getLogRecordFactory()
+
+        def record_factory(*args, **kwargs):
+            record = old_factory(*args, **kwargs)
+            record.tenant_id = tenant_id
+            return record
+
+        logging.setLogRecordFactory(record_factory)
+
+    return logger
+
+
 def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Get a logger instance.
 
@@ -119,4 +166,3 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         Logger instance
     """
     return logging.getLogger(name or "dativo_ingest")
-
