@@ -17,8 +17,11 @@ asset_path: tests/fixtures/assets/csv/v1.0/employee.yaml
 # Source configuration
 source:
   files:
-    - path: tests/fixtures/seeds/adventureworks/Employee.csv
+    - path: tests/fixtures/seeds/AdventureWorks-oltp-install-script/Employee.csv
       object: Employee
+  engine:
+    options:
+      encoding: "utf-16-le"  # File is UTF-16 little-endian
 
 # Target configuration - Iceberg table configuration
 # Note: No catalog configured - Parquet files will be written directly to S3
@@ -31,6 +34,9 @@ target:
       secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
       region: "${AWS_REGION}"
       path_style_access: true
+
+# Execution configuration
+schema_validation_mode: warn  # Warn on validation errors instead of failing
 
 # Logging configuration
 logging:

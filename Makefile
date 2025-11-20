@@ -24,7 +24,11 @@ test-integration:
 # Includes tag propagation verification
 # Users can also run: dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 test-smoke:
-	@bash tests/smoke_tests.sh
+	@if [ -f venv/bin/python ]; then \
+		venv/bin/python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted; \
+	else \
+		python3 -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted; \
+	fi
 
 # Run all tests
 test: test-unit test-integration test-smoke

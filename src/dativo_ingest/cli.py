@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from .config import JobConfig, RunnerConfig
 from .infrastructure import validate_infrastructure
-from .logging import setup_logging
+from .logging import get_logger, setup_logging, update_logging_settings
 from .secrets import load_secrets
 from .validator import ConnectorValidator, IncrementalStateManager
 
@@ -28,7 +28,9 @@ def initialize_state_directory(job_config: JobConfig) -> None:
             state_path.parent.mkdir(parents=True, exist_ok=True)
             # Validate directory is writable
             if not os.access(state_path.parent, os.W_OK):
-                raise PermissionError(f"State directory is not writable: {state_path.parent}")
+                raise PermissionError(
+                    f"State directory is not writable: {state_path.parent}"
+                )
 
 
 def startup_sequence(
@@ -37,7 +39,10 @@ def startup_sequence(
     tenant_id: Optional[str] = None,
     mode: str = "self_hosted",
 ) -> List[JobConfig]:
-    """Complete startup sequence for E2E smoke tests.
+    """Complete startup sequence for batch job execution.
+
+    Loads and validates job configurations from a directory, sets up
+    infrastructure, and prepares jobs for execution.
 
     Args:
         job_dir: Directory containing job YAML files
@@ -75,11 +80,7 @@ def startup_sequence(
                 "All jobs in a directory must belong to the same tenant, or specify --tenant-id to override."
             )
         tenant_id = jobs[0].tenant_id
-        logger = setup_logging(level="INFO", redact_secrets=True, tenant_id=tenant_id)
-        logger.info(
-            f"Inferred tenant_id '{tenant_id}' from job configurations",
-            extra={"event_type": "tenant_inferred"},
-        )
+        tenant_source = "inferred from job configurations"
     else:
         # Validate that all jobs match the provided tenant_id
         mismatched = [job for job in jobs if job.tenant_id != tenant_id]
@@ -88,14 +89,23 @@ def startup_sequence(
                 f"Tenant ID mismatch: {len(mismatched)} job(s) have tenant_id different from '{tenant_id}'. "
                 f"Conflicting tenant_ids: {set(job.tenant_id for job in mismatched)}"
             )
-        logger = setup_logging(level="INFO", redact_secrets=True, tenant_id=tenant_id)
-        logger.info(
-            f"Using tenant_id '{tenant_id}' from command line",
-            extra={"event_type": "tenant_override"},
-        )
+        tenant_source = "command line"
+
+    # Set up logging once after tenant_id is determined
+    logger = setup_logging(level="INFO", redact_secrets=True, tenant_id=tenant_id)
+    logger.info(
+        f"Tenant ID '{tenant_id}' {tenant_source}",
+        extra={
+            "event_type": (
+                "tenant_inferred"
+                if tenant_source == "inferred from job configurations"
+                else "tenant_override"
+            )
+        },
+    )
 
     logger.info(
-        f"Starting E2E smoke test startup sequence for tenant '{tenant_id}'",
+        f"Starting startup sequence for tenant '{tenant_id}'",
         extra={"event_type": "startup_begin", "job_count": len(jobs)},
     )
 
@@ -107,10 +117,10 @@ def startup_sequence(
             extra={"event_type": "secrets_loaded", "secret_count": len(secrets)},
         )
     except ValueError as e:
-            logger.warning(
-                f"Secrets loading failed (may be optional): {e}",
-                extra={"event_type": "secrets_warning"},
-            )
+        logger.warning(
+            f"Secrets loading failed (may be optional): {e}",
+            extra={"event_type": "secrets_warning"},
+        )
 
     # 4. Validate environment variables for all jobs
     for job in jobs:
@@ -216,6 +226,13 @@ def run_command(args: argparse.Namespace) -> int:
         except SystemExit as e:
             return e.code if e.code else 2
 
+        # Set up logging for single job execution (no startup_sequence was called)
+        log_level = job_config.logging.level if job_config.logging else "INFO"
+        redact = job_config.logging.redaction if job_config.logging else False
+        setup_logging(
+            level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id
+        )
+
         return _execute_single_job(job_config, args.mode)
 
 
@@ -234,10 +251,17 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
     source_config = job_config.get_source()
     target_config = job_config.get_target()
 
-    # Set up logging
-    log_level = job_config.logging.level if job_config.logging else "INFO"
-    redact = job_config.logging.redaction if job_config.logging else False
-    logger = setup_logging(level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id)
+    # Update logging settings if job has specific requirements
+    # Always update tenant_id to ensure correct tenant context for this job
+    log_level = job_config.logging.level if job_config.logging else None
+    redact = job_config.logging.redaction if job_config.logging else None
+
+    # Update logging settings (tenant_id always updated, level/redact only if specified)
+    logger = update_logging_settings(
+        level=log_level,
+        redact_secrets=redact,
+        tenant_id=job_config.tenant_id,
+    )
 
     logger.info(
         "Starting job execution",
@@ -321,42 +345,71 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 },
             )
 
-    # Initialize extractor based on source type
+    # Initialize extractor based on source type or custom reader
     try:
-        if source_config.type == "csv":
+        if source_config.custom_reader:
+            # Use custom reader plugin
+            from .plugins import PluginLoader
+
+            logger.info(
+                f"Loading custom reader from: {source_config.custom_reader}",
+                extra={
+                    "custom_reader": source_config.custom_reader,
+                    "event_type": "custom_reader_loading",
+                },
+            )
+
+            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            extractor = reader_class(source_config)
+
+            logger.info(
+                "Custom reader initialized",
+                extra={
+                    "custom_reader": source_config.custom_reader,
+                    "event_type": "custom_reader_initialized",
+                },
+            )
+        elif source_config.type == "csv":
             from .connectors.csv_extractor import CSVExtractor
+
             extractor = CSVExtractor(source_config)
         elif source_config.type == "postgres":
             from .connectors.postgres_extractor import PostgresExtractor
+
             extractor = PostgresExtractor(source_config)
         elif source_config.type == "mysql":
             from .connectors.mysql_extractor import MySQLExtractor
+
             extractor = MySQLExtractor(source_config)
         elif source_config.type == "stripe":
             from .connectors.stripe_extractor import StripeExtractor
+
             extractor = StripeExtractor(source_config)
         else:
             logger.error(
-                f"Unsupported source type: {source_config.type}",
+                f"Unsupported source type: {source_config.type}. "
+                f"Either use a supported type or specify a custom_reader in the source configuration.",
                 extra={
                     "event_type": "extractor_error",
                 },
             )
             return 2
 
-        logger.info(
-            "Extractor initialized",
-            extra={
-                "source_type": source_config.type,
-                "event_type": "extractor_initialized",
-            },
-        )
+        if not source_config.custom_reader:
+            logger.info(
+                "Extractor initialized",
+                extra={
+                    "source_type": source_config.type,
+                    "event_type": "extractor_initialized",
+                },
+            )
     except Exception as e:
         logger.error(
             f"Failed to initialize extractor: {e}",
             extra={
                 "event_type": "extractor_error",
             },
+            exc_info=True,
         )
         return 2
 
@@ -382,28 +435,31 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         )
         return 2
 
-    # Initialize Parquet writer
+    # Initialize writer based on target config or custom writer
     try:
-        from .parquet_writer import ParquetWriter
-
         # Get output base path from target config following industry standards
         # Standard path structure: s3://bucket/domain/data_product/table/
         # Always build standard path regardless of warehouse config to ensure consistency
-        
+
         # Extract bucket from connection config
         connection = target_config.connection or {}
         s3_config = connection.get("s3") or connection.get("minio", {})
-        bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET", "test-bucket")
-        
+        bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET")
+        if not bucket:
+            raise ValueError(
+                "S3 bucket must be specified in target.connection.s3.bucket "
+                "or S3_BUCKET environment variable"
+            )
+
         # Build path following industry standards:
         # s3://bucket/domain/data_product/table/
         # - Use domain from asset definition (required for organization)
         # - Use dataProduct from asset definition (logical grouping)
         # - Use table name (asset name, normalized)
         domain = asset_definition.domain or "default"
-        data_product = getattr(asset_definition, 'dataProduct', None) or "default"
+        data_product = getattr(asset_definition, "dataProduct", None) or "default"
         table_name = asset_definition.name.lower().replace("-", "_").replace(" ", "_")
-        
+
         # Always build standard path structure (industry best practice)
         # This ensures consistent organization and makes it easy to:
         # - Find data by domain
@@ -412,20 +468,55 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         # - Apply access policies at domain/data_product level
         output_base = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
 
-        writer = ParquetWriter(asset_definition, target_config, output_base)
-        logger.info(
-            "Parquet writer initialized",
-            extra={
-                "output_base": output_base,
-                "event_type": "writer_initialized",
-            },
-        )
+        if target_config.custom_writer:
+            # Use custom writer plugin
+            from .plugins import PluginLoader
+
+            logger.info(
+                f"Loading custom writer from: {target_config.custom_writer}",
+                extra={
+                    "custom_writer": target_config.custom_writer,
+                    "event_type": "custom_writer_loading",
+                },
+            )
+
+            writer_class = PluginLoader.load_writer(target_config.custom_writer)
+            writer = writer_class(asset_definition, target_config, output_base)
+
+            logger.info(
+                "Custom writer initialized",
+                extra={
+                    "custom_writer": target_config.custom_writer,
+                    "output_base": output_base,
+                    "event_type": "custom_writer_initialized",
+                },
+            )
+        else:
+            # Use default Parquet writer
+            from .parquet_writer import ParquetWriter
+
+            writer = ParquetWriter(
+                asset_definition,
+                target_config,
+                output_base,
+                validation_mode=validation_mode,
+            )
+
+            logger.info(
+                "Parquet writer initialized",
+                extra={
+                    "output_base": output_base,
+                    "validation_mode": validation_mode,
+                    "event_type": "writer_initialized",
+                },
+            )
     except Exception as e:
         logger.error(
-            f"Failed to initialize Parquet writer: {e}",
+            f"Failed to initialize writer: {e}",
             extra={
                 "event_type": "writer_error",
             },
+            exc_info=True,
         )
         return 2
 
@@ -494,62 +585,78 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
 
             # Transform to Markdown-KV format if configured
             if target_config.markdown_kv_storage:
-                from .markdown_kv import transform_to_markdown_kv, parse_markdown_kv
-                
+                from .markdown_kv import parse_markdown_kv, transform_to_markdown_kv
+
                 mode = target_config.markdown_kv_storage.get("mode")
                 transformed_records = []
-                
+
                 for record in batch_records:
                     if mode == "string":
                         # Transform to Markdown-KV string format
                         # Get doc_id from record (try common ID fields)
-                        doc_id = str(record.get("businessentityid") or 
-                                    record.get("productid") or 
-                                    record.get("customerid") or 
-                                    record.get("salesorderid") or 
-                                    record.get("addressid") or 
-                                    record.get("productcategoryid") or
-                                    record.get("id") or
-                                    record.get("doc_id") or
-                                    "unknown")
-                        
+                        doc_id = str(
+                            record.get("businessentityid")
+                            or record.get("productid")
+                            or record.get("customerid")
+                            or record.get("salesorderid")
+                            or record.get("addressid")
+                            or record.get("productcategoryid")
+                            or record.get("id")
+                            or record.get("doc_id")
+                            or "unknown"
+                        )
+
                         # Transform record to Markdown-KV format
-                        markdown_kv_content = transform_to_markdown_kv(record, format="compact", doc_id=doc_id)
-                        
-                        transformed_records.append({
-                            "doc_id": doc_id,
-                            "markdown_kv_content": markdown_kv_content
-                        })
-                    
+                        markdown_kv_content = transform_to_markdown_kv(
+                            record, format="compact", doc_id=doc_id
+                        )
+
+                        transformed_records.append(
+                            {
+                                "doc_id": doc_id,
+                                "markdown_kv_content": markdown_kv_content,
+                            }
+                        )
+
                     elif mode == "structured":
                         # Transform to Markdown-KV first, then parse to structured format
-                        doc_id = str(record.get("businessentityid") or 
-                                    record.get("productid") or 
-                                    record.get("customerid") or 
-                                    record.get("salesorderid") or 
-                                    record.get("addressid") or 
-                                    record.get("productcategoryid") or
-                                    record.get("id") or
-                                    record.get("doc_id") or
-                                    "unknown")
-                        
+                        doc_id = str(
+                            record.get("businessentityid")
+                            or record.get("productid")
+                            or record.get("customerid")
+                            or record.get("salesorderid")
+                            or record.get("addressid")
+                            or record.get("productcategoryid")
+                            or record.get("id")
+                            or record.get("doc_id")
+                            or "unknown"
+                        )
+
                         # Transform to Markdown-KV string
-                        markdown_kv_content = transform_to_markdown_kv(record, format="compact", doc_id=doc_id)
-                        
+                        markdown_kv_content = transform_to_markdown_kv(
+                            record, format="compact", doc_id=doc_id
+                        )
+
                         # Parse to structured format
-                        structured_pattern = target_config.markdown_kv_storage.get("structured_pattern", "row_per_kv")
-                        structured_rows = parse_markdown_kv(markdown_kv_content, doc_id=doc_id, pattern=structured_pattern)
-                        
+                        structured_pattern = target_config.markdown_kv_storage.get(
+                            "structured_pattern", "row_per_kv"
+                        )
+                        structured_rows = parse_markdown_kv(
+                            markdown_kv_content,
+                            doc_id=doc_id,
+                            pattern=structured_pattern,
+                        )
+
                         # structured_rows is a list of rows (for row_per_kv) or a single dict (for document_level)
                         if isinstance(structured_rows, list):
                             transformed_records.extend(structured_rows)
                         else:
                             transformed_records.append(structured_rows)
-                    
+
                     else:
                         # raw_file mode - not handled here, would be in writer
                         transformed_records.append(record)
-                
+
                 batch_records = transformed_records
 
             # Validate batch
@@ -569,7 +676,9 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 )
 
                 # In strict mode, fail if there are errors
-                if validation_mode == "strict" and len(valid_records) < len(batch_records):
+                if validation_mode == "strict" and len(valid_records) < len(
+                    batch_records
+                ):
                     logger.error(
                         "Strict validation mode: failing due to validation errors",
                         extra={
@@ -596,7 +705,30 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
 
         # Commit all files to Iceberg (if catalog is configured) or upload to S3 (if no catalog)
         if all_file_metadata:
-            if committer:
+            # Check if writer has custom commit_files method
+            if target_config.custom_writer and hasattr(writer, "commit_files"):
+                # Use custom writer's commit logic
+                try:
+                    commit_result = writer.commit_files(all_file_metadata)
+                    logger.info(
+                        "Files committed using custom writer",
+                        extra={
+                            "files_added": commit_result.get(
+                                "files_added", len(all_file_metadata)
+                            ),
+                            "status": commit_result.get("status"),
+                            "event_type": "custom_writer_commit_success",
+                        },
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to commit files using custom writer: {e}",
+                        extra={
+                            "event_type": "custom_writer_commit_failed",
+                        },
+                    )
+                    return 2
+            elif committer:
                 try:
                     commit_result = committer.commit_files(all_file_metadata)
                     logger.info(
@@ -619,23 +751,25 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                         },
                     )
             else:
-                # No catalog - still need to upload files to S3/MinIO
+                # No catalog and no custom writer - still need to upload files to S3/MinIO
                 # Create a minimal committer just for uploading (without catalog operations)
                 from .iceberg_committer import IcebergCommitter
-            upload_committer = IcebergCommitter(
-                asset_definition=asset_definition,
-                target_config=target_config,
-                classification_overrides=job_config.classification_overrides,
-                finops=job_config.finops,
-                governance_overrides=job_config.governance_overrides,
-                source_tags=None,  # TODO: Get from connector.extract_metadata() if available
-            )
+
+                upload_committer = IcebergCommitter(
+                    asset_definition=asset_definition,
+                    target_config=target_config,
+                    classification_overrides=job_config.classification_overrides,
+                    finops=job_config.finops,
+                    governance_overrides=job_config.governance_overrides,
+                )
                 try:
                     upload_result = upload_committer.commit_files(all_file_metadata)
                     logger.info(
                         f"Files uploaded to S3 (no catalog configured): {upload_result.get('files_added', len(all_file_metadata))} file(s)",
                         extra={
-                            "files_written": upload_result.get("files_added", len(all_file_metadata)),
+                            "files_written": upload_result.get(
+                                "files_added", len(all_file_metadata)
+                            ),
                             "file_paths": upload_result.get("file_paths", []),
                             "event_type": "files_written_no_catalog",
                         },
@@ -665,9 +799,11 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             exit_code = 0  # Success
 
         # Calculate total bytes written (estimate from file count if metadata available)
-        total_bytes = sum(
-            file_meta.get("size_bytes", 0) for file_meta in all_file_metadata
-        ) if all_file_metadata else 0
+        total_bytes = (
+            sum(file_meta.get("size_bytes", 0) for file_meta in all_file_metadata)
+            if all_file_metadata
+            else 0
+        )
 
         # Emit enhanced metadata
         logger.info(
@@ -833,4 +969,3 @@ Examples:
 
 if __name__ == "__main__":
     sys.exit(main())
-

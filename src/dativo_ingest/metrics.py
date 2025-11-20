@@ -66,7 +66,9 @@ class MetricsCollector:
         self.metrics["records_invalid"] = invalid_records
         self.metrics["records_total"] = total_records
 
-        validation_rate = (valid_records / total_records * 100) if total_records > 0 else 0
+        validation_rate = (
+            (valid_records / total_records * 100) if total_records > 0 else 0
+        )
 
         self.logger.info(
             "Validation metrics recorded",
@@ -168,7 +170,9 @@ class MetricsCollector:
         if "retries" not in self.metrics:
             self.metrics["retries"] = {"count": 0, "attempts": []}
         self.metrics["retries"]["count"] += 1
-        self.metrics["retries"]["attempts"].append({"attempt": attempt, "exit_code": exit_code})
+        self.metrics["retries"]["attempts"].append(
+            {"attempt": attempt, "exit_code": exit_code}
+        )
 
         self.logger.info(
             "Retry metrics recorded",
@@ -223,9 +227,12 @@ class MetricsCollector:
                 "tenant_id": self.tenant_id,
                 "status": status,
                 "execution_time_seconds": execution_time,
-                **{k: v for k, v in self.metrics.items() if k not in ["start_time", "end_time"]},
+                **{
+                    k: v
+                    for k, v in self.metrics.items()
+                    if k not in ["start_time", "end_time"]
+                },
             },
         )
 
         return self.metrics
-

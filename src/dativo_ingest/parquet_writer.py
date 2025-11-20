@@ -15,6 +15,7 @@ class ParquetWriter:
         asset_definition: AssetDefinition,
         target_config: TargetConfig,
         output_base_path: str,
+        validation_mode: str = "strict",
     ):
         """Initialize Parquet writer.
 
@@ -22,10 +23,12 @@ class ParquetWriter:
             asset_definition: Asset definition containing schema
             target_config: Target configuration with partitioning and file size settings
             output_base_path: Base path for output files (S3/MinIO compatible)
+            validation_mode: Validation mode - 'strict' or 'warn' (affects nullability of required fields)
         """
         self.asset_definition = asset_definition
         self.target_config = target_config
         self.output_base_path = output_base_path
+        self.validation_mode = validation_mode
 
         # Get target file size (default: 128-200 MB range, use 150 MB as default)
         self.target_size_mb = target_config.parquet_target_size_mb or 150
@@ -68,8 +71,15 @@ class ParquetWriter:
                 pa_type = pa.string()
 
             # Check if nullable
+            # In warn mode, make all fields nullable to allow records with errors to be written
+            # In strict mode, required fields are non-nullable
             is_required = field_def.get("required", False)
-            nullable = not is_required
+            if self.validation_mode == "warn":
+                # In warn mode, allow nulls even in required fields (records with errors may have nulls)
+                nullable = True
+            else:
+                # In strict mode, required fields are non-nullable
+                nullable = not is_required
 
             fields.append(pa.field(field_name, pa_type, nullable=nullable))
 
@@ -124,7 +134,7 @@ class ParquetWriter:
             # Normalize column name: lowercase, replace spaces/hyphens with underscores
             normalized_col = partition_col.lower().replace(" ", "_").replace("-", "_")
             partition_value = self._get_partition_value(record, partition_col)
-            
+
             # Normalize partition value: ensure URL-safe
             # Dates should be in ISO format (YYYY-MM-DD)
             # Other values: lowercase, replace spaces with underscores, remove special chars
@@ -137,10 +147,11 @@ class ParquetWriter:
                     normalized_value = partition_value.lower().replace(" ", "_")
                     # Remove or replace special characters (keep alphanumeric, underscore, hyphen)
                     import re
-                    normalized_value = re.sub(r'[^a-z0-9_-]', '_', normalized_value)
+
+                    normalized_value = re.sub(r"[^a-z0-9_-]", "_", normalized_value)
             else:
                 normalized_value = str(partition_value).lower().replace(" ", "_")
-            
+
             parts.append(f"{normalized_col}={normalized_value}")
 
         # Return Hive-style partition path with trailing slash
@@ -232,13 +243,17 @@ class ParquetWriter:
                             # Try to parse
                             try:
                                 timestamp_values.append(
-                                    datetime.datetime.fromisoformat(v.replace("Z", "+00:00"))
+                                    datetime.datetime.fromisoformat(
+                                        v.replace("Z", "+00:00")
+                                    )
                                 )
                             except ValueError:
                                 timestamp_values.append(None)
                         else:
                             timestamp_values.append(None)
-                    arrays[field_name] = pa.array(timestamp_values, type=pa.timestamp("us"))
+                    arrays[field_name] = pa.array(
+                        timestamp_values, type=pa.timestamp("us")
+                    )
                 else:
                     # Default to string
                     arrays[field_name] = pa.array(
@@ -262,7 +277,10 @@ class ParquetWriter:
 
                 # Write to temporary location to measure size
                 import tempfile
-                with tempfile.NamedTemporaryFile(suffix=".parquet", delete=True) as tmp_file:
+
+                with tempfile.NamedTemporaryFile(
+                    suffix=".parquet", delete=True
+                ) as tmp_file:
                     pq.write_table(sample_table, tmp_file.name)
                     sample_size_bytes = tmp_file.tell()
 
@@ -286,7 +304,7 @@ class ParquetWriter:
                 # File naming: lowercase, underscores, zero-padded counter
                 table_name = self.asset_definition.name.lower().replace("-", "_")
                 file_name = f"{table_name}_{chunk_file_counter:06d}.parquet"
-                
+
                 # Build S3 path following industry standards:
                 # s3://bucket/domain/data_product/table/partition/file.parquet
                 # Partition format: Hive-style (column=value/column2=value2/)
@@ -308,8 +326,9 @@ class ParquetWriter:
 
                 # Write Parquet file to local temporary directory
                 # Files will be uploaded to S3/MinIO later
-                import tempfile
                 import os
+                import tempfile
+
                 temp_dir = Path(tempfile.gettempdir()) / "dativo_ingest" / table_name
                 temp_dir.mkdir(parents=True, exist_ok=True)
                 local_path = temp_dir / file_name
@@ -330,7 +349,9 @@ class ParquetWriter:
                         "local_path": str(local_path),  # Local temporary file path
                         "record_count": chunk_end - chunk_start,
                         "size_bytes": actual_size,
-                        "partition": partition_path.rstrip("/") if partition_path else None,
+                        "partition": (
+                            partition_path.rstrip("/") if partition_path else None
+                        ),
                     }
                 )
 
@@ -338,4 +359,3 @@ class ParquetWriter:
                 chunk_file_counter += 1
 
         return file_metadata
-

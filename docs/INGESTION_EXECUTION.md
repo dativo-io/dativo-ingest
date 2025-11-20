@@ -2,6 +2,21 @@
 
 This document describes how the Dativo ingestion platform executes jobs, from data extraction through schema validation, Parquet writing, and Iceberg commits.
 
+## Table of Contents
+
+1. [Execution Flow](#execution-flow)
+2. [Schema Validation](#schema-validation)
+3. [Parquet File Writing](#parquet-file-writing)
+4. [Iceberg/Nessie Integration](#icebergnessie-integration)
+5. [Incremental Syncs](#incremental-syncs)
+6. [Error Handling](#error-handling)
+7. [Performance Considerations](#performance-considerations)
+8. [Monitoring](#monitoring)
+9. [Example Execution](#example-execution)
+10. [Troubleshooting](#troubleshooting)
+
+---
+
 ## Execution Flow
 
 The ingestion pipeline follows these steps:
@@ -12,51 +27,24 @@ The ingestion pipeline follows these steps:
 4. **Commit**: Commit Parquet files to Iceberg table via Nessie
 5. **Update State**: Update incremental sync state (if applicable)
 
+---
+
 ## Schema Validation
 
-### Validation Modes
+During execution, records are validated against the asset schema before being written to Parquet files.
 
-The platform supports two validation modes:
-
-#### Strict Mode (default)
-- Fails the job if any record has validation errors
-- Only valid records are written to Parquet
-- Exit code: 2 (failure) if errors found
+**Validation Modes:**
+- **Strict Mode** (default): Fails job if any record has validation errors
+- **Warn Mode**: Logs errors but continues processing
 
 **Configuration:**
 ```yaml
-schema_validation_mode: strict
+schema_validation_mode: strict  # or warn
 ```
 
-#### Warn Mode
-- Logs validation errors but continues processing
-- Invalid records are skipped (or included with original values)
-- Exit code: 1 (partial success) if errors found, 0 if all valid
+For detailed validation rules, error reporting, and configuration options, see [SCHEMA_VALIDATION.md](SCHEMA_VALIDATION.md).
 
-**Configuration:**
-```yaml
-schema_validation_mode: warn
-```
-
-### Validation Rules
-
-1. **Required Fields**: Fields marked `required: true` must be present
-2. **Type Coercion**: Values are coerced to match schema types:
-   - String: Any value converted to string
-   - Integer: String/integer values converted to int
-   - Float/Double: Numeric values converted to float
-   - Boolean: String/numeric values converted to bool
-   - Timestamp: ISO format strings converted to datetime
-3. **Type Validation**: If coercion fails, validation error is raised
-
-### Error Reporting
-
-Validation errors include:
-- Record index
-- Field name
-- Error type (missing_required, type_mismatch, etc.)
-- Error message
-- Original value (if applicable)
+---
 
 ## Parquet File Writing
 
@@ -101,6 +89,8 @@ The Parquet writer:
 - Creates files matching asset schema
 - Handles missing optional fields (null values)
 - Supports schema changes between runs (via Iceberg)
+
+---
 
 ## Iceberg/Nessie Integration
 
@@ -151,6 +141,8 @@ target:
       secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
       region: "us-east-1"
 ```
+
+---
 
 ## Incremental Syncs
 
@@ -203,6 +195,8 @@ State format:
 }
 ```
 
+---
+
 ## Error Handling
 
 ### Exit Codes
@@ -236,6 +230,8 @@ All errors are logged with:
 - Stack traces for debugging
 - Event type for filtering
 
+---
+
 ## Performance Considerations
 
 ### Batch Processing
@@ -255,6 +251,8 @@ All errors are logged with:
 - Current implementation processes files sequentially
 - Future: Support for parallel file processing
 - Future: Parallel batch validation
+
+---
 
 ## Monitoring
 
@@ -281,7 +279,11 @@ Planned metrics:
 - Commit latency
 - Storage usage
 
+---
+
 ## Example Execution
+
+### Running a Job
 
 ```bash
 # Run a CSV ingestion job
@@ -333,6 +335,8 @@ INFO: Files committed to Iceberg (files_added=1, commit_id=abc123)
 INFO: Job execution completed (total_records=1000, valid_records=1000, exit_code=0)
 ```
 
+---
+
 ## Troubleshooting
 
 ### Common Issues
@@ -361,4 +365,13 @@ INFO: Job execution completed (total_records=1000, valid_records=1000, exit_code
    - Check branch exists in Nessie
    - Verify schema is valid
    - Check namespace permissions
+
+---
+
+## Additional Resources
+
+- [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md) - Setup and onboarding guide
+- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) - Configuration reference
+- [SCHEMA_VALIDATION.md](SCHEMA_VALIDATION.md) - Schema validation guide
+- [CATALOG_LIMITATIONS.md](CATALOG_LIMITATIONS.md) - Catalog limitations and workarounds
 

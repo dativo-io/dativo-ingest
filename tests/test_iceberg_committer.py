@@ -50,7 +50,7 @@ def test_iceberg_committer_initialization(sample_asset_definition, target_config
         asset_definition=sample_asset_definition,
         target_config=target_config,
     )
-    
+
     assert committer.asset_definition == sample_asset_definition
     assert committer.target_config == target_config
     assert committer.classification_overrides is None
@@ -73,7 +73,7 @@ def test_get_nessie_uri(target_config):
         ),
         target_config,
     )
-    
+
     # PyIceberg expects base URI without /api/v1 (it adds /v1/config automatically)
     assert committer.nessie_uri == "http://localhost:19120"
 
@@ -91,7 +91,7 @@ def test_get_storage_config(target_config):
         ),
         target_config,
     )
-    
+
     assert committer.storage_config["endpoint"] == "http://localhost:9000"
     assert committer.storage_config["bucket"] == "test-bucket"
 
@@ -99,7 +99,7 @@ def test_get_storage_config(target_config):
 def test_create_pyiceberg_schema(sample_asset_definition, target_config):
     """Test PyIceberg schema creation."""
     committer = IcebergCommitter(sample_asset_definition, target_config)
-    
+
     # This will fail if pyiceberg is not installed, but that's expected in tests
     try:
         schema = committer._create_pyiceberg_schema()
@@ -111,7 +111,7 @@ def test_create_pyiceberg_schema(sample_asset_definition, target_config):
 def test_ensure_table_exists_requires_pyiceberg(sample_asset_definition, target_config):
     """Test that ensure_table_exists requires pyiceberg."""
     committer = IcebergCommitter(sample_asset_definition, target_config)
-    
+
     # This will fail if pyiceberg is not installed or if Nessie is not available
     # In a real test environment, you would mock the catalog
     try:
@@ -119,4 +119,3 @@ def test_ensure_table_exists_requires_pyiceberg(sample_asset_definition, target_
     except (ImportError, Exception):
         # Expected in test environment without actual Nessie instance
         pass
-

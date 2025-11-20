@@ -1,8 +1,22 @@
 # Catalog Limitations and Workarounds
 
+This document explains the current limitations with catalog integration (specifically Nessie) and provides workarounds for different use cases.
+
+## Table of Contents
+
+1. [Current Status](#current-status)
+2. [PyIceberg and Nessie Compatibility](#pyiceberg-and-nessie-compatibility)
+3. [Solutions](#solutions)
+4. [Future Roadmap](#future-roadmap)
+5. [Summary](#summary)
+
+---
+
 ## Current Status
 
 The `dativo-ingest` pipeline supports **optional catalog configuration**. If no catalog is configured, Parquet files are written directly to S3/MinIO without Iceberg metadata registration.
+
+---
 
 ## PyIceberg and Nessie Compatibility
 
@@ -21,6 +35,8 @@ When using `catalog: nessie` with PyIceberg:
 2. **Catalog operations fail gracefully** - pipeline continues
 3. **No Iceberg table metadata** is registered in Nessie
 4. **No commits appear in Nessie history**
+
+---
 
 ## Solutions
 
@@ -105,6 +121,8 @@ target:
       warehouse: "s3://bucket/warehouse/"
 ```
 
+---
+
 ## Future Roadmap
 
 1. **Phase 1 (Current)**: Optional catalog - write to S3 only ✅
@@ -133,4 +151,13 @@ nessie content put \
 - ✅ **Pipeline continues** - no blocking errors
 - 📝 **Use Spark/Java** for Nessie table registration if needed
 - 🚀 **No catalog mode** works great for MVP/prototyping
+
+---
+
+## Additional Resources
+
+- [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md) - Comprehensive setup and onboarding guide
+- [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md) - Execution flow documentation
+- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) - Configuration reference
+- [README.md](../README.md) - Project overview
 

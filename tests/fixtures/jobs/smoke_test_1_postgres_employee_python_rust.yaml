@@ -1,0 +1,57 @@
+# Smoke Test 1: CSV Employee with Python Custom Reader and Rust Custom Writer
+# Demonstrates: Python custom reader for CSV + Rust custom writer for Parquet
+tenant_id: test_tenant
+environment: test
+
+# Source connector - CSV files
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector - Iceberg with MinIO storage
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: tests/fixtures/assets/csv/v1.0/employee.yaml
+
+# Source configuration - Using Python custom reader for CSV
+source:
+  # Python custom reader
+  custom_reader: "tests/fixtures/plugins/csv_employee_reader.py:CSVEmployeeReader"
+  
+  files:
+    - path: tests/fixtures/seeds/AdventureWorks-oltp-install-script/Employee.csv
+      object: Employee
+  engine:
+    options:
+      batch_size: 100
+      delimiter: ","
+      encoding: "utf-16-le"  # File is UTF-16 little-endian
+
+# Target configuration - Using Rust custom writer for Parquet
+target:
+  # Rust custom writer (writes Parquet files)
+  custom_writer: "examples/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
+  
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+  engine:
+    options:
+      compression: "snappy"
+      row_group_size: 100000
+
+# Execution configuration
+schema_validation_mode: warn  # Warn on validation errors instead of failing
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+

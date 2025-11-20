@@ -48,7 +48,10 @@ class RetryPolicy:
         if exit_code not in self.config.retryable_exit_codes:
             self.logger.debug(
                 f"Exit code {exit_code} not in retryable list",
-                extra={"exit_code": exit_code, "retryable_codes": self.config.retryable_exit_codes},
+                extra={
+                    "exit_code": exit_code,
+                    "retryable_codes": self.config.retryable_exit_codes,
+                },
             )
             return False
 
@@ -96,7 +99,9 @@ class RetryPolicy:
         Returns:
             Delay in seconds (capped at max_delay_seconds)
         """
-        delay = self.config.initial_delay_seconds * (self.config.backoff_multiplier ** attempt)
+        delay = self.config.initial_delay_seconds * (
+            self.config.backoff_multiplier**attempt
+        )
         return min(delay, self.config.max_delay_seconds)
 
     def get_retry_metadata(self, attempt: int) -> Dict[str, Any]:
@@ -157,4 +162,3 @@ class RetryPolicy:
         delay = self.calculate_delay(attempt)
         if delay > 0:
             time.sleep(delay)
-
