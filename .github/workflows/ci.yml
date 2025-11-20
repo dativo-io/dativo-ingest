@@ -29,15 +29,15 @@ jobs:
       
       - name: Check code formatting with black
         run: |
-          black --check src/ tests/ || echo "Black formatting check failed (non-blocking)"
+          black --check src/ tests/
       
       - name: Check import sorting with isort
         run: |
-          isort --check-only src/ tests/ || echo "isort check failed (non-blocking)"
+          isort --check-only src/ tests/
       
       - name: Lint with flake8
         run: |
-          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics || echo "Flake8 found issues (non-blocking)"
+          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
   
   # Job 2: Core Unit Tests
   core-tests:
@@ -202,12 +202,13 @@ jobs:
           echo "Integration Tests:  ${{ needs.integration-tests.result }}"
           echo ""
           
-          if [ "${{ needs.core-tests.result }}" != "success" ] || \
+          if [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.core-tests.result }}" != "success" ] || \
              [ "${{ needs.plugin-tests.result }}" != "success" ] || \
              [ "${{ needs.rust-plugins.result }}" != "success" ] || \
              [ "${{ needs.integration-tests.result }}" != "success" ]; then
-            echo "❌ Build failed - some tests did not pass"
+            echo "❌ Build failed - some checks did not pass"
             exit 1
           else
-            echo "✅ All tests passed successfully!"
+            echo "✅ All checks passed successfully!"
           fi
