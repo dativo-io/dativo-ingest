@@ -67,4 +67,3 @@ class TestIncrementalStateManager:
         state = IncrementalStateManager.read_state(state_path)
         assert "file_file_123" in state
         assert state["file_file_123"]["last_modified"] == "2024-01-01T00:00:00Z"
-

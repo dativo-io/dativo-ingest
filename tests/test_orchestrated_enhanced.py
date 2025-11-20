@@ -1,12 +1,18 @@
 """Tests for enhanced orchestration features (v1.3.0)."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
-from dativo_ingest.config import RetryConfig, ScheduleConfig, RunnerConfig, OrchestratorConfig
-from dativo_ingest.retry_policy import RetryPolicy
+import pytest
+
+from dativo_ingest.config import (
+    OrchestratorConfig,
+    RetryConfig,
+    RunnerConfig,
+    ScheduleConfig,
+)
 from dativo_ingest.metrics import MetricsCollector
+from dativo_ingest.retry_policy import RetryPolicy
 from dativo_ingest.tracing import get_tracer, trace_job_execution
 
 
@@ -71,7 +77,7 @@ class TestRetryPolicy:
         """Test should_retry with error patterns."""
         config = RetryConfig(
             retryable_exit_codes=[2],
-            retryable_error_patterns=["ConnectionError", "Timeout"]
+            retryable_error_patterns=["ConnectionError", "Timeout"],
         )
         policy = RetryPolicy(config)
 
@@ -83,7 +89,9 @@ class TestRetryPolicy:
 
     def test_calculate_delay(self):
         """Test delay calculation with exponential backoff."""
-        config = RetryConfig(initial_delay_seconds=5, backoff_multiplier=2.0, max_delay_seconds=300)
+        config = RetryConfig(
+            initial_delay_seconds=5, backoff_multiplier=2.0, max_delay_seconds=300
+        )
         policy = RetryPolicy(config)
 
         # Attempt 0: 5 seconds
@@ -97,7 +105,9 @@ class TestRetryPolicy:
 
     def test_get_retry_metadata(self):
         """Test retry metadata generation."""
-        config = RetryConfig(max_retries=3, initial_delay_seconds=5, backoff_multiplier=2.0)
+        config = RetryConfig(
+            max_retries=3, initial_delay_seconds=5, backoff_multiplier=2.0
+        )
         policy = RetryPolicy(config)
 
         metadata = policy.get_retry_metadata(0)
@@ -113,9 +123,7 @@ class TestScheduleConfig:
     def test_schedule_config_cron(self):
         """Test ScheduleConfig with cron expression."""
         schedule = ScheduleConfig(
-            name="test_schedule",
-            config="/app/jobs/test.yaml",
-            cron="0 * * * *"
+            name="test_schedule", config="/app/jobs/test.yaml", cron="0 * * * *"
         )
         assert schedule.name == "test_schedule"
         assert schedule.cron == "0 * * * *"
@@ -125,9 +133,7 @@ class TestScheduleConfig:
     def test_schedule_config_interval(self):
         """Test ScheduleConfig with interval."""
         schedule = ScheduleConfig(
-            name="test_schedule",
-            config="/app/jobs/test.yaml",
-            interval_seconds=3600
+            name="test_schedule", config="/app/jobs/test.yaml", interval_seconds=3600
         )
         assert schedule.interval_seconds == 3600
         assert schedule.cron is None
@@ -138,7 +144,7 @@ class TestScheduleConfig:
             name="test_schedule",
             config="/app/jobs/test.yaml",
             cron="0 * * * *",
-            enabled=False
+            enabled=False,
         )
         assert schedule.enabled is False
 
@@ -148,7 +154,7 @@ class TestScheduleConfig:
             name="test_schedule",
             config="/app/jobs/test.yaml",
             cron="0 * * * *",
-            timezone="America/New_York"
+            timezone="America/New_York",
         )
         assert schedule.timezone == "America/New_York"
 
@@ -158,7 +164,7 @@ class TestScheduleConfig:
             name="test_schedule",
             config="/app/jobs/test.yaml",
             cron="0 * * * *",
-            tags={"environment": "production", "priority": "high"}
+            tags={"environment": "production", "priority": "high"},
         )
         assert schedule.tags == {"environment": "production", "priority": "high"}
 
@@ -169,16 +175,15 @@ class TestScheduleConfig:
                 name="test_schedule",
                 config="/app/jobs/test.yaml",
                 cron="0 * * * *",
-                interval_seconds=3600
+                interval_seconds=3600,
             )
 
     def test_schedule_config_validation_error_neither(self):
         """Test ScheduleConfig validation when neither cron nor interval is provided."""
-        with pytest.raises(ValueError, match="Either 'cron' or 'interval_seconds' must be provided"):
-            ScheduleConfig(
-                name="test_schedule",
-                config="/app/jobs/test.yaml"
-            )
+        with pytest.raises(
+            ValueError, match="Either 'cron' or 'interval_seconds' must be provided"
+        ):
+            ScheduleConfig(name="test_schedule", config="/app/jobs/test.yaml")
 
 
 class TestMetricsCollector:
@@ -267,9 +272,7 @@ class TestOrchestratedIntegration:
 
         # Create runner config
         schedule = ScheduleConfig(
-            name="test_schedule",
-            config="/app/jobs/test.yaml",
-            cron="0 * * * *"
+            name="test_schedule", config="/app/jobs/test.yaml", cron="0 * * * *"
         )
         orchestrator = OrchestratorConfig(schedules=[schedule])
         runner_config = RunnerConfig(orchestrator=orchestrator)
@@ -288,7 +291,7 @@ class TestOrchestratedIntegration:
             name="disabled_schedule",
             config="/app/jobs/test.yaml",
             cron="0 * * * *",
-            enabled=False
+            enabled=False,
         )
         orchestrator = OrchestratorConfig(schedules=[schedule])
         runner_config = RunnerConfig(orchestrator=orchestrator)
@@ -315,7 +318,7 @@ class TestOrchestratedIntegration:
         schedule = ScheduleConfig(
             name="interval_schedule",
             config="/app/jobs/test.yaml",
-            interval_seconds=3600
+            interval_seconds=3600,
         )
         orchestrator = OrchestratorConfig(schedules=[schedule])
         runner_config = RunnerConfig(orchestrator=orchestrator)
@@ -323,4 +326,3 @@ class TestOrchestratedIntegration:
         # Should create schedule with interval
         defs = create_dagster_assets(runner_config)
         assert len(defs.schedules) == 1
-

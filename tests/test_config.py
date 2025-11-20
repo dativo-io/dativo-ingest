@@ -161,4 +161,3 @@ class TestAssetDefinitionValidation:
         config.asset_path = str(valid_asset_file)
         # Should not raise
         config.validate_schema_presence()
-

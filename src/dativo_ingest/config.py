@@ -17,7 +17,9 @@ class ConnectorRecipe(BaseModel):
 
     name: str
     type: str
-    roles: List[str] = Field(default_factory=list)  # [source], [target], or [source, target]
+    roles: List[str] = Field(
+        default_factory=list
+    )  # [source], [target], or [source, target]
     description: Optional[str] = None
     default_engine: Dict[str, Any]
     credentials: Optional[Dict[str, Any]] = None  # Optional for target-only connectors
@@ -26,7 +28,9 @@ class ConnectorRecipe(BaseModel):
     connection_template: Optional[Dict[str, Any]] = None
     catalog: Optional[str] = None  # Optional for source-only connectors
     file_format: Optional[str] = None  # Optional for source-only connectors
-    partitioning_default: Optional[List[str]] = None  # Optional for source-only connectors
+    partitioning_default: Optional[
+        List[str]
+    ] = None  # Optional for source-only connectors
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "ConnectorRecipe":
@@ -54,7 +58,7 @@ class ConnectorRecipe(BaseModel):
 
 class SourceConnectorRecipe(BaseModel):
     """Source connector recipe - tenant-agnostic reusable configuration.
-    
+
     DEPRECATED: Use ConnectorRecipe instead. Kept for backward compatibility.
     """
 
@@ -82,7 +86,7 @@ class SourceConnectorRecipe(BaseModel):
 
 class TargetConnectorRecipe(BaseModel):
     """Target connector recipe - tenant-agnostic reusable configuration.
-    
+
     DEPRECATED: Use ConnectorRecipe instead. Kept for backward compatibility.
     """
 
@@ -374,7 +378,9 @@ class SourceConfig(BaseModel):
     engine: Optional[Dict[str, Any]] = None
     dsn: Optional[str] = None
     connection: Optional[Dict[str, Any]] = None  # For database connections
-    custom_reader: Optional[str] = None  # Path to custom reader class (format: "path/to/module.py:ClassName")
+    custom_reader: Optional[
+        str
+    ] = None  # Path to custom reader class (format: "path/to/module.py:ClassName")
 
 
 class TargetConfig(BaseModel):
@@ -388,9 +394,15 @@ class TargetConfig(BaseModel):
     partitioning: Optional[List[str]] = None
     engine: Optional[Dict[str, Any]] = None
     connection: Optional[Dict[str, Any]] = None  # For storage connection details
-    markdown_kv_storage: Optional[Dict[str, Any]] = None  # Markdown-KV storage configuration
-    parquet_target_size_mb: Optional[int] = None  # Target Parquet file size in MB (default: 128-200 MB range)
-    custom_writer: Optional[str] = None  # Path to custom writer class (format: "path/to/module.py:ClassName")
+    markdown_kv_storage: Optional[
+        Dict[str, Any]
+    ] = None  # Markdown-KV storage configuration
+    parquet_target_size_mb: Optional[
+        int
+    ] = None  # Target Parquet file size in MB (default: 128-200 MB range)
+    custom_writer: Optional[
+        str
+    ] = None  # Path to custom writer class (format: "path/to/module.py:ClassName")
 
     @model_validator(mode="after")
     def validate_markdown_kv_storage(self) -> "TargetConfig":
@@ -401,21 +413,21 @@ class TargetConfig(BaseModel):
                 raise ValueError(
                     f"markdown_kv_storage.mode must be one of: 'string', 'raw_file', 'structured'. Got: {mode}"
                 )
-            
+
             if mode == "structured":
                 pattern = self.markdown_kv_storage.get("structured_pattern")
                 if pattern not in ["row_per_kv", "document_level", "hybrid"]:
                     raise ValueError(
                         f"markdown_kv_storage.structured_pattern must be one of: 'row_per_kv', 'document_level', 'hybrid'. Got: {pattern}"
                     )
-            
+
             if mode == "raw_file":
                 file_extension = self.markdown_kv_storage.get("file_extension", ".mdkv")
                 if file_extension not in [".md", ".mdkv"]:
                     raise ValueError(
                         f"markdown_kv_storage.file_extension must be '.md' or '.mdkv'. Got: {file_extension}"
                     )
-        
+
         return self
 
 
@@ -430,13 +442,21 @@ class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
     max_retries: int = 3
-    initial_delay_seconds: Optional[int] = None  # Initial delay in seconds (defaults to retry_delay_seconds for backward compat)
+    initial_delay_seconds: Optional[
+        int
+    ] = None  # Initial delay in seconds (defaults to retry_delay_seconds for backward compat)
     max_delay_seconds: int = 300
     backoff_multiplier: float = 2.0
-    retryable_exit_codes: List[int] = Field(default=[1, 2])  # Exit codes that should trigger retries
-    retryable_error_patterns: Optional[List[str]] = None  # Regex patterns for error messages
+    retryable_exit_codes: List[int] = Field(
+        default=[1, 2]
+    )  # Exit codes that should trigger retries
+    retryable_error_patterns: Optional[
+        List[str]
+    ] = None  # Regex patterns for error messages
     retry_delay_seconds: Optional[int] = 5  # Deprecated: use initial_delay_seconds
-    retryable_errors: Optional[List[str]] = None  # List of error types to retry (deprecated, use retryable_error_patterns)
+    retryable_errors: Optional[
+        List[str]
+    ] = None  # List of error types to retry (deprecated, use retryable_error_patterns)
 
     @model_validator(mode="after")
     def set_initial_delay(self) -> "RetryConfig":
@@ -451,7 +471,7 @@ class JobConfig(BaseModel):
 
     tenant_id: str
     environment: Optional[str] = None
-    
+
     # Connector recipes (required)
     source_connector: Optional[str] = None  # Connector name
     source_connector_path: str  # Path to source connector recipe
@@ -459,15 +479,15 @@ class JobConfig(BaseModel):
     target_connector_path: str  # Path to target connector recipe
     asset: Optional[str] = None  # Asset name
     asset_path: str  # Path to asset definition
-    
+
     # Source and target configurations (flat structure, merged with recipes)
     source: Optional[Dict[str, Any]] = None  # Source configuration
     target: Optional[Dict[str, Any]] = None  # Target configuration
-    
+
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'
     retry_config: Optional[RetryConfig] = None
-    
+
     logging: Optional[LoggingConfig] = None
 
     @model_validator(mode="after")
@@ -485,15 +505,17 @@ class JobConfig(BaseModel):
         """Resolve source connector recipe (supports unified and legacy formats)."""
         if self.source_connector_path is None:
             raise ValueError("Source connector path not provided")
-        
+
         path = Path(os.path.expandvars(self.source_connector_path))
-        
+
         # Try unified format first
         try:
             recipe = ConnectorRecipe.from_yaml(path)
             if recipe.supports_role("source"):
                 return recipe
-            raise ValueError(f"Connector '{recipe.name}' does not support source role. Supported roles: {recipe.roles}")
+            raise ValueError(
+                f"Connector '{recipe.name}' does not support source role. Supported roles: {recipe.roles}"
+            )
         except (ValueError, KeyError, AttributeError) as e:
             # Fall back to legacy SourceConnectorRecipe format
             try:
@@ -506,15 +528,17 @@ class JobConfig(BaseModel):
         """Resolve target connector recipe (supports unified and legacy formats)."""
         if self.target_connector_path is None:
             raise ValueError("Target connector path not provided")
-        
+
         path = Path(os.path.expandvars(self.target_connector_path))
-        
+
         # Try unified format first
         try:
             recipe = ConnectorRecipe.from_yaml(path)
             if recipe.supports_role("target"):
                 return recipe
-            raise ValueError(f"Connector '{recipe.name}' does not support target role. Supported roles: {recipe.roles}")
+            raise ValueError(
+                f"Connector '{recipe.name}' does not support target role. Supported roles: {recipe.roles}"
+            )
         except (ValueError, KeyError, AttributeError) as e:
             # Fall back to legacy TargetConnectorRecipe format
             try:
@@ -527,11 +551,13 @@ class JobConfig(BaseModel):
         """Resolve asset definition."""
         if self.asset_path is None:
             raise ValueError("Asset path not provided")
-        
+
         path = Path(os.path.expandvars(self.asset_path))
         return AssetDefinition.from_yaml(path)
 
-    def _merge_source_with_recipe(self, recipe: Union[ConnectorRecipe, SourceConnectorRecipe]) -> SourceConfig:
+    def _merge_source_with_recipe(
+        self, recipe: Union[ConnectorRecipe, SourceConnectorRecipe]
+    ) -> SourceConfig:
         """Merge source connector recipe with job source configuration."""
         # Handle both unified and legacy formats
         if isinstance(recipe, ConnectorRecipe):
@@ -542,7 +568,7 @@ class JobConfig(BaseModel):
             credentials = recipe.credentials
             incremental = recipe.incremental
             rate_limits = recipe.rate_limits
-        
+
         # Start with recipe defaults
         source_data = {
             "type": recipe.type,
@@ -552,40 +578,52 @@ class JobConfig(BaseModel):
             "incremental": incremental,
             "rate_limits": rate_limits,
         }
-        
+
         # Apply job-specific source configuration (overrides/extends recipe)
         if self.source:
             # Deep merge for nested dicts
             for key, value in self.source.items():
-                if isinstance(value, dict) and key in source_data and isinstance(source_data[key], dict):
+                if (
+                    isinstance(value, dict)
+                    and key in source_data
+                    and isinstance(source_data[key], dict)
+                ):
                     source_data[key] = {**source_data[key], **value}
                 else:
                     source_data[key] = value
-        
+
         # Add tenant-specific state_path if incremental is present
-        if source_data.get("incremental") and "state_path" not in source_data.get("incremental", {}):
+        if source_data.get("incremental") and "state_path" not in source_data.get(
+            "incremental", {}
+        ):
             if self.tenant_id:
                 # Determine object name from source config
                 object_name = "default"
                 if self.source:
                     if self.source.get("objects"):
-                        object_name = self.source["objects"][0] if isinstance(self.source["objects"], list) else str(self.source["objects"])
+                        object_name = (
+                            self.source["objects"][0]
+                            if isinstance(self.source["objects"], list)
+                            else str(self.source["objects"])
+                        )
                     elif self.source.get("files") and len(self.source["files"]) > 0:
                         object_name = self.source["files"][0].get("object", "default")
                     elif self.source.get("tables") and len(self.source["tables"]) > 0:
                         object_name = self.source["tables"][0].get("object", "default")
-                
+
                 # Use relative state directory (.local/state/tenant_id/...) for development
                 # Can be overridden with STATE_DIR env var for production (e.g., database, S3)
                 # Default to .local/state to keep state out of repo root
                 state_dir = os.getenv("STATE_DIR", ".local/state")
-                source_data["incremental"]["state_path"] = (
-                    f"{state_dir}/{self.tenant_id}/{recipe.type}.{object_name}.state.json"
-                )
-        
+                source_data["incremental"][
+                    "state_path"
+                ] = f"{state_dir}/{self.tenant_id}/{recipe.type}.{object_name}.state.json"
+
         return SourceConfig(**source_data)
 
-    def _merge_target_with_recipe(self, recipe: Union[ConnectorRecipe, TargetConnectorRecipe]) -> TargetConfig:
+    def _merge_target_with_recipe(
+        self, recipe: Union[ConnectorRecipe, TargetConnectorRecipe]
+    ) -> TargetConfig:
         """Merge target connector recipe with job target configuration."""
         # Handle both unified and legacy formats
         if isinstance(recipe, ConnectorRecipe):
@@ -598,7 +636,7 @@ class JobConfig(BaseModel):
             file_format = recipe.file_format
             partitioning_default = recipe.partitioning_default
             connection_template = recipe.connection_template
-        
+
         # Start with recipe defaults
         target_data = {
             "type": recipe.type,
@@ -607,24 +645,30 @@ class JobConfig(BaseModel):
             "partitioning": partitioning_default,
             "engine": recipe.default_engine,
         }
-        
+
         # Apply connection template from recipe
         if connection_template:
             target_data["connection"] = connection_template.copy()
-        
+
         # Apply job-specific target configuration (overrides/extends recipe)
         if self.target:
             # Deep merge for nested dicts
             for key, value in self.target.items():
-                if isinstance(value, dict) and key in target_data and isinstance(target_data[key], dict):
+                if (
+                    isinstance(value, dict)
+                    and key in target_data
+                    and isinstance(target_data[key], dict)
+                ):
                     target_data[key] = {**target_data[key], **value}
                 else:
                     target_data[key] = value
-        
+
         # Set branch default to tenant_id if not provided (only if catalog is configured)
-        if target_data.get("catalog") and ("branch" not in target_data or target_data["branch"] is None):
+        if target_data.get("catalog") and (
+            "branch" not in target_data or target_data["branch"] is None
+        ):
             target_data["branch"] = self.tenant_id
-        
+
         return TargetConfig(**target_data)
 
     def _resolve_source(self) -> SourceConfig:
@@ -665,8 +709,7 @@ class JobConfig(BaseModel):
                 asset_data = yaml.safe_load(f)
         except Exception as e:
             print(
-                f"ERROR: Failed to read asset definition: {asset_path}\n"
-                f"Error: {e}",
+                f"ERROR: Failed to read asset definition: {asset_path}\n" f"Error: {e}",
                 file=sys.stderr,
             )
             sys.exit(2)
@@ -678,7 +721,7 @@ class JobConfig(BaseModel):
                 file=sys.stderr,
             )
             sys.exit(2)
-        
+
         # Check if schema is empty
         schema = asset_data.get("schema", [])
         if not schema or (isinstance(schema, list) and len(schema) == 0):
@@ -700,13 +743,15 @@ class JobConfig(BaseModel):
         try:
             source_recipe = self._resolve_source_recipe()
             target_recipe = self._resolve_target_recipe()
-            
+
             # Check source connector connection template
             if isinstance(source_recipe, ConnectorRecipe):
                 connection_template = source_recipe.connection_template
             else:
-                connection_template = getattr(source_recipe, "connection_template", None)
-            
+                connection_template = getattr(
+                    source_recipe, "connection_template", None
+                )
+
             if connection_template:
                 template_str = str(connection_template)
                 matches = env_var_pattern.findall(template_str)
@@ -719,8 +764,10 @@ class JobConfig(BaseModel):
             if isinstance(target_recipe, ConnectorRecipe):
                 connection_template = target_recipe.connection_template
             else:
-                connection_template = getattr(target_recipe, "connection_template", None)
-            
+                connection_template = getattr(
+                    target_recipe, "connection_template", None
+                )
+
             if connection_template:
                 template_str = str(connection_template)
                 matches = env_var_pattern.findall(template_str)
@@ -798,6 +845,7 @@ class JobConfig(BaseModel):
             )
         elif errors:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Some jobs failed to load from {job_dir}",
@@ -811,11 +859,11 @@ class JobConfig(BaseModel):
         cls, data: Dict[str, Any], schema_path: Optional[Path] = None
     ) -> None:
         """Validate job configuration against JSON schema.
-        
+
         Args:
             data: Job configuration dictionary
             schema_path: Optional path to schema file
-        
+
         Raises:
             ValueError: If validation fails
         """
@@ -826,19 +874,19 @@ class JobConfig(BaseModel):
                 / "schemas"
                 / "job-config.schema.json"
             )
-        
+
         if not schema_path.exists():
             raise FileNotFoundError(f"Schema file not found: {schema_path}")
-        
+
         with open(schema_path, "r") as f:
             schema = json.load(f)
-        
+
         # Create resolver for $ref resolution
         resolver = jsonschema.RefResolver(
             base_uri=f"file://{schema_path.parent}/",
             referrer=schema,
         )
-        
+
         try:
             jsonschema.validate(instance=data, schema=schema, resolver=resolver)
         except jsonschema.ValidationError as e:
@@ -894,9 +942,13 @@ class JobConfig(BaseModel):
         if "asset_path" in data and data["asset_path"]:
             data["asset_path"] = os.path.expandvars(data["asset_path"])
         if "source_connector_path" in data and data["source_connector_path"]:
-            data["source_connector_path"] = os.path.expandvars(data["source_connector_path"])
+            data["source_connector_path"] = os.path.expandvars(
+                data["source_connector_path"]
+            )
         if "target_connector_path" in data and data["target_connector_path"]:
-            data["target_connector_path"] = os.path.expandvars(data["target_connector_path"])
+            data["target_connector_path"] = os.path.expandvars(
+                data["target_connector_path"]
+            )
 
         # Validate against JSON schema if requested
         if validate_schema:
@@ -930,8 +982,12 @@ class ScheduleConfig(BaseModel):
 
     name: str
     config: str
-    cron: Optional[str] = None  # Cron expression (mutually exclusive with interval_seconds)
-    interval_seconds: Optional[int] = None  # Interval-based scheduling (mutually exclusive with cron)
+    cron: Optional[
+        str
+    ] = None  # Cron expression (mutually exclusive with interval_seconds)
+    interval_seconds: Optional[
+        int
+    ] = None  # Interval-based scheduling (mutually exclusive with cron)
     enabled: bool = True  # Enable/disable schedule without deployment
     timezone: str = "UTC"  # Timezone for schedule execution
     max_concurrent_runs: int = 1  # Maximum concurrent runs for this schedule
@@ -941,9 +997,13 @@ class ScheduleConfig(BaseModel):
     def validate_schedule_type(self) -> "ScheduleConfig":
         """Validate that either cron or interval_seconds is provided, but not both."""
         if self.cron is None and self.interval_seconds is None:
-            raise ValueError("Either 'cron' or 'interval_seconds' must be provided for schedule")
+            raise ValueError(
+                "Either 'cron' or 'interval_seconds' must be provided for schedule"
+            )
         if self.cron is not None and self.interval_seconds is not None:
-            raise ValueError("Cannot specify both 'cron' and 'interval_seconds' for schedule")
+            raise ValueError(
+                "Cannot specify both 'cron' and 'interval_seconds' for schedule"
+            )
         return self
 
 
@@ -1007,4 +1067,3 @@ class RunnerConfig(BaseModel):
                 file=sys.stderr,
             )
             sys.exit(2)
-
