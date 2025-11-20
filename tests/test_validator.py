@@ -98,9 +98,7 @@ class TestConnectorTypeValidation:
 class TestModeRestrictionValidation:
     """Test mode restriction validation."""
 
-    def test_validate_mode_restriction_cloud_blocked(
-        self, registry_file, temp_dir
-    ):
+    def test_validate_mode_restriction_cloud_blocked(self, registry_file, temp_dir):
         """Test database connectors blocked in cloud mode."""
         # Create postgres job config
         config_path = temp_dir / "postgres_job.yaml"
@@ -189,7 +187,9 @@ class TestIncrementalStrategyValidation:
         validator = ConnectorValidator(registry_file)
         # Should not raise - validation logic may vary based on implementation
         # This test ensures the method can be called without errors
-        validator.validate_incremental_strategy(config, validator.validate_connector_type("stripe", role="source"))
+        validator.validate_incremental_strategy(
+            config, validator.validate_connector_type("stripe", role="source")
+        )
 
     def test_validate_incremental_strategy_missing_cursor_field(
         self, registry_file, valid_job_config, temp_dir
@@ -226,7 +226,9 @@ class TestIncrementalStrategyValidation:
         # If cursor_field is required, this should raise an error
         # Note: Some connectors may not require cursor_field for certain strategies
         try:
-            validator.validate_incremental_strategy(config, validator.validate_connector_type("stripe", role="source"))
+            validator.validate_incremental_strategy(
+                config, validator.validate_connector_type("stripe", role="source")
+            )
         except SystemExit:
             # Expected if cursor_field is required
             pass
@@ -254,4 +256,3 @@ class TestErrorMessages:
         with pytest.raises((ValueError, SystemExit)):
             # This would fail when trying to validate the connector type
             validator.validate_connector_type("nonexistent")
-

@@ -45,10 +45,12 @@ def output_dir():
         yield tmpdir
 
 
-def test_parquet_writer_initialization(sample_asset_definition, target_config, output_dir):
+def test_parquet_writer_initialization(
+    sample_asset_definition, target_config, output_dir
+):
     """Test Parquet writer initialization."""
     writer = ParquetWriter(sample_asset_definition, target_config, output_dir)
-    
+
     assert writer.asset_definition == sample_asset_definition
     assert writer.target_config == target_config
     assert writer.target_size_mb == 150
@@ -58,7 +60,7 @@ def test_parquet_writer_initialization(sample_asset_definition, target_config, o
 def test_write_batch(sample_asset_definition, target_config, output_dir):
     """Test writing a batch of records to Parquet."""
     writer = ParquetWriter(sample_asset_definition, target_config, output_dir)
-    
+
     records = [
         {
             "id": 1,
@@ -71,14 +73,14 @@ def test_write_batch(sample_asset_definition, target_config, output_dir):
             "created_at": "2024-01-01T00:00:00",
         },
     ]
-    
+
     file_metadata = writer.write_batch(records, file_counter=0)
-    
+
     assert len(file_metadata) > 0
     assert file_metadata[0]["record_count"] == 2
     assert "path" in file_metadata[0]
     assert "local_path" in file_metadata[0]
-    
+
     # Verify file was created
     local_path = Path(file_metadata[0]["local_path"])
     assert local_path.exists()
@@ -87,16 +89,16 @@ def test_write_batch(sample_asset_definition, target_config, output_dir):
 def test_write_empty_batch(sample_asset_definition, target_config, output_dir):
     """Test writing an empty batch."""
     writer = ParquetWriter(sample_asset_definition, target_config, output_dir)
-    
+
     file_metadata = writer.write_batch([], file_counter=0)
-    
+
     assert len(file_metadata) == 0
 
 
 def test_partitioning(sample_asset_definition, target_config, output_dir):
     """Test partitioning functionality."""
     writer = ParquetWriter(sample_asset_definition, target_config, output_dir)
-    
+
     records = [
         {
             "id": 1,
@@ -104,9 +106,9 @@ def test_partitioning(sample_asset_definition, target_config, output_dir):
             "created_at": "2024-01-01T00:00:00",
         },
     ]
-    
+
     file_metadata = writer.write_batch(records, file_counter=0)
-    
+
     # Check that partition path is included
     assert file_metadata[0]["partition"] is not None
     assert "ingest_date=" in file_metadata[0]["partition"]
@@ -115,13 +117,12 @@ def test_partitioning(sample_asset_definition, target_config, output_dir):
 def test_create_pyarrow_schema(sample_asset_definition, target_config, output_dir):
     """Test PyArrow schema creation."""
     writer = ParquetWriter(sample_asset_definition, target_config, output_dir)
-    
+
     schema = writer._create_pyarrow_schema()
-    
+
     assert schema is not None
     # Verify schema has correct fields
     field_names = [field.name for field in schema]
     assert "id" in field_names
     assert "name" in field_names
     assert "created_at" in field_names
-

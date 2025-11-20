@@ -52,9 +52,7 @@ class SchemaValidator:
         """
         self.asset_definition = asset_definition
         self.validation_mode = validation_mode
-        self.schema_fields = {
-            field["name"]: field for field in asset_definition.schema
-        }
+        self.schema_fields = {field["name"]: field for field in asset_definition.schema}
         self.errors: List[ValidationError] = []
 
     def validate_record(
@@ -157,9 +155,7 @@ class SchemaValidator:
 
         return valid_records, self.errors
 
-    def _coerce_type(
-        self, value: Any, target_type: str, field_name: str
-    ) -> Any:
+    def _coerce_type(self, value: Any, target_type: str, field_name: str) -> Any:
         """Coerce value to target type.
 
         Args:
@@ -190,15 +186,11 @@ class SchemaValidator:
                 try:
                     return int(value)
                 except ValueError:
-                    raise ValueError(
-                        f"Cannot convert '{value}' to integer"
-                    ) from None
+                    raise ValueError(f"Cannot convert '{value}' to integer") from None
             if isinstance(value, float):
                 # Convert float to int (truncate)
                 return int(value)
-            raise TypeError(
-                f"Cannot convert {type(value).__name__} to integer"
-            )
+            raise TypeError(f"Cannot convert {type(value).__name__} to integer")
 
         # Handle float/double type
         if target_type in ["float", "double"]:
@@ -208,12 +200,8 @@ class SchemaValidator:
                 try:
                     return float(value)
                 except ValueError:
-                    raise ValueError(
-                        f"Cannot convert '{value}' to float"
-                    ) from None
-            raise TypeError(
-                f"Cannot convert {type(value).__name__} to float"
-            )
+                    raise ValueError(f"Cannot convert '{value}' to float") from None
+            raise TypeError(f"Cannot convert {type(value).__name__} to float")
 
         # Handle boolean type
         if target_type == "boolean":
@@ -225,14 +213,10 @@ class SchemaValidator:
                     return True
                 if lower in ["false", "0", "no", "off"]:
                     return False
-                raise ValueError(
-                    f"Cannot convert '{value}' to boolean"
-                ) from None
+                raise ValueError(f"Cannot convert '{value}' to boolean") from None
             if isinstance(value, (int, float)):
                 return bool(value)
-            raise TypeError(
-                f"Cannot convert {type(value).__name__} to boolean"
-            )
+            raise TypeError(f"Cannot convert {type(value).__name__} to boolean")
 
         # Handle timestamp/date types
         if target_type in ["timestamp", "datetime", "date"]:
@@ -256,12 +240,8 @@ class SchemaValidator:
                         return datetime.datetime.strptime(value, fmt)
                     except ValueError:
                         continue
-                raise ValueError(
-                    f"Cannot parse timestamp '{value}'"
-                ) from None
-            raise TypeError(
-                f"Cannot convert {type(value).__name__} to timestamp"
-            )
+                raise ValueError(f"Cannot parse timestamp '{value}'") from None
+            raise TypeError(f"Cannot convert {type(value).__name__} to timestamp")
 
         # Default: return as-is (for unknown types or if already correct type)
         return value
@@ -304,4 +284,3 @@ class SchemaValidator:
                 for e in self.errors[:100]  # Limit to first 100 errors
             ],
         }
-

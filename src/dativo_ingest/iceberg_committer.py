@@ -45,19 +45,21 @@ class IcebergCommitter:
         if isinstance(nessie_config, str):
             uri = nessie_config
         else:
-            uri = nessie_config.get("uri") or os.getenv("NESSIE_URI", "http://localhost:19120/api/v1")
-        
+            uri = nessie_config.get("uri") or os.getenv(
+                "NESSIE_URI", "http://localhost:19120/api/v1"
+            )
+
         # Expand environment variables
         if uri and "${" in uri:
             uri = os.path.expandvars(uri)
-        
+
         # PyIceberg REST catalog expects base URI without /api/v1
         # It will add /v1/config automatically
         if uri.endswith("/api/v1"):
             uri = uri[:-7]  # Remove /api/v1
         elif uri.endswith("/api/v2"):
             uri = uri[:-7]  # Remove /api/v2
-        
+
         return uri or "http://localhost:19120"
 
     def _get_storage_config(self, connection: Dict[str, Any]) -> Dict[str, Any]:
@@ -76,17 +78,20 @@ class IcebergCommitter:
             return {
                 "endpoint": os.getenv("S3_ENDPOINT") or os.getenv("MINIO_ENDPOINT"),
                 "bucket": os.getenv("S3_BUCKET") or os.getenv("MINIO_BUCKET"),
-                "access_key_id": os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("MINIO_ACCESS_KEY"),
-                "secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY") or os.getenv("MINIO_SECRET_KEY"),
+                "access_key_id": os.getenv("AWS_ACCESS_KEY_ID")
+                or os.getenv("MINIO_ACCESS_KEY"),
+                "secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY")
+                or os.getenv("MINIO_SECRET_KEY"),
                 "region": os.getenv("AWS_REGION", "us-east-1"),
             }
 
         # Expand environment variables in config values
         import re
+
         def expand_env(value):
             if isinstance(value, str):
                 # Handle bash-style ${VAR:-default} syntax
-                bash_default_pattern = r'\$\{([^:}]+):-([^}]+)\}'
+                bash_default_pattern = r"\$\{([^:}]+):-([^}]+)\}"
                 match = re.search(bash_default_pattern, value)
                 if match:
                     env_var = match.group(1)
@@ -97,18 +102,42 @@ class IcebergCommitter:
                     expanded = os.path.expandvars(value)
                     if "${" in expanded:
                         # Variable not set, extract var name and try to get from env
-                        var_match = re.search(r'\$\{([^}]+)\}', expanded)
+                        var_match = re.search(r"\$\{([^}]+)\}", expanded)
                         if var_match:
                             var_name = var_match.group(1)
                             return os.getenv(var_name, None)
                     return expanded
             return value
 
-        endpoint = expand_env(s3_config.get("endpoint")) or os.getenv("S3_ENDPOINT") or os.getenv("MINIO_ENDPOINT") or "http://localhost:9000"
-        bucket = expand_env(s3_config.get("bucket")) or os.getenv("S3_BUCKET") or os.getenv("MINIO_BUCKET") or "test-bucket"
-        access_key_id = expand_env(s3_config.get("access_key_id")) or os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("MINIO_ACCESS_KEY") or "minioadmin"
-        secret_access_key = expand_env(s3_config.get("secret_access_key")) or os.getenv("AWS_SECRET_ACCESS_KEY") or os.getenv("MINIO_SECRET_KEY") or "minioadmin"
-        region = expand_env(s3_config.get("region")) or os.getenv("AWS_REGION") or "us-east-1"
+        endpoint = (
+            expand_env(s3_config.get("endpoint"))
+            or os.getenv("S3_ENDPOINT")
+            or os.getenv("MINIO_ENDPOINT")
+            or "http://localhost:9000"
+        )
+        bucket = (
+            expand_env(s3_config.get("bucket"))
+            or os.getenv("S3_BUCKET")
+            or os.getenv("MINIO_BUCKET")
+            or "test-bucket"
+        )
+        access_key_id = (
+            expand_env(s3_config.get("access_key_id"))
+            or os.getenv("AWS_ACCESS_KEY_ID")
+            or os.getenv("MINIO_ACCESS_KEY")
+            or "minioadmin"
+        )
+        secret_access_key = (
+            expand_env(s3_config.get("secret_access_key"))
+            or os.getenv("AWS_SECRET_ACCESS_KEY")
+            or os.getenv("MINIO_SECRET_KEY")
+            or "minioadmin"
+        )
+        region = (
+            expand_env(s3_config.get("region"))
+            or os.getenv("AWS_REGION")
+            or "us-east-1"
+        )
 
         return {
             "endpoint": endpoint,
@@ -180,12 +209,12 @@ class IcebergCommitter:
         Uses Nessie REST API directly to create branch if needed.
         """
         import requests
-        
+
         # Get base URI for API calls
         base_uri = self.nessie_uri
         if not base_uri.endswith("/api/v1"):
             base_uri = f"{base_uri}/api/v1"
-        
+
         # Check if branch exists
         try:
             resp = requests.get(f"{base_uri}/trees/tree/{self.branch}")
@@ -193,16 +222,17 @@ class IcebergCommitter:
                 return  # Branch exists
         except Exception:
             pass
-        
+
         # Create branch from main
         try:
             resp = requests.post(
                 f"{base_uri}/trees/branch/{self.branch}",
                 json={"sourceRefName": "main"},
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
             if resp.status_code in [200, 201]:
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.info(f"Created Nessie branch: {self.branch}")
             elif resp.status_code == 400:
@@ -210,10 +240,11 @@ class IcebergCommitter:
                 pass
         except Exception as e:
             import warnings
+
             warnings.warn(
                 f"Failed to create Nessie branch '{self.branch}': {e}. "
                 "Will attempt to use existing branch.",
-                UserWarning
+                UserWarning,
             )
 
     def _create_catalog(self) -> Any:
@@ -247,7 +278,9 @@ class IcebergCommitter:
         if self.storage_config.get("access_key_id"):
             properties["s3.access-key-id"] = self.storage_config["access_key_id"]
         if self.storage_config.get("secret_access_key"):
-            properties["s3.secret-access-key"] = self.storage_config["secret_access_key"]
+            properties["s3.secret-access-key"] = self.storage_config[
+                "secret_access_key"
+            ]
         if self.storage_config.get("region"):
             properties["s3.region"] = self.storage_config["region"]
 
@@ -258,9 +291,10 @@ class IcebergCommitter:
         except Exception as e:
             # If catalog load fails, try with different URI format
             import warnings
+
             warnings.warn(
                 f"Failed to load PyIceberg catalog with URI '{self.nessie_uri}': {e}",
-                UserWarning
+                UserWarning,
             )
             raise
 
@@ -276,11 +310,12 @@ class IcebergCommitter:
             # If catalog creation fails, log and continue
             # This allows the pipeline to at least extract and write Parquet files
             import warnings
+
             warnings.warn(
                 f"Failed to create Iceberg catalog (PyIceberg/Nessie compatibility issue): {e}. "
                 "Parquet files will be written but not committed to Iceberg. "
                 "This is a known limitation - PyIceberg REST catalog may need configuration adjustments for Nessie.",
-                UserWarning
+                UserWarning,
             )
             return
 
@@ -299,14 +334,16 @@ class IcebergCommitter:
                 partition_spec = None
                 if self.target_config.partitioning:
                     try:
-                        from pyiceberg.partitioning import PartitionSpec, PartitionField
+                        from pyiceberg.partitioning import PartitionField, PartitionSpec
                         from pyiceberg.transforms import IdentityTransform
 
                         partition_fields = []
                         for partition_col in self.target_config.partitioning:
                             # Find field ID for partition column
                             field_id = None
-                            for idx, field_def in enumerate(self.asset_definition.schema):
+                            for idx, field_def in enumerate(
+                                self.asset_definition.schema
+                            ):
                                 if field_def["name"] == partition_col:
                                     field_id = idx + 1
                                     break
@@ -337,15 +374,14 @@ class IcebergCommitter:
                 # If table creation fails, log warning but continue
                 # This allows Parquet files to be written even if Iceberg table creation fails
                 import warnings
+
                 warnings.warn(
                     f"Failed to create Iceberg table (may need manual creation): {e}. "
                     "Parquet files will still be written.",
-                    UserWarning
+                    UserWarning,
                 )
 
-    def commit_files(
-        self, file_metadata: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def commit_files(self, file_metadata: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Commit Parquet files to Iceberg table.
 
         Args:
@@ -366,21 +402,23 @@ class IcebergCommitter:
         for file_meta in file_metadata:
             local_path = file_meta.get("local_path")
             s3_path = file_meta.get("path")
-            
 
             if local_path and s3_path:
                 try:
                     # Upload to S3/MinIO with metadata
-                    self._upload_to_storage(local_path, s3_path, file_metadata=file_meta)
+                    self._upload_to_storage(
+                        local_path, s3_path, file_metadata=file_meta
+                    )
                     file_paths.append(s3_path)
                 except Exception as e:
                     # Log warning but continue with other files
                     import warnings
+
                     warnings.warn(
                         f"Failed to upload file {local_path} to storage: {e}",
-                        UserWarning
+                        UserWarning,
                     )
-        
+
         # If no catalog is configured, just return success for file uploads
         if not self.target_config.catalog:
             return {
@@ -401,10 +439,10 @@ class IcebergCommitter:
             # This properly registers files in Iceberg metadata and commits to Nessie
             try:
                 from pyiceberg.io.pyarrow import PyArrowFileIO
-                from pyiceberg.typedef import Record
                 from pyiceberg.manifest import DataFile
                 from pyiceberg.partitioning import PartitionSpec
-                
+                from pyiceberg.typedef import Record
+
                 # Create DataFile objects for each uploaded Parquet file
                 data_files = []
                 for file_path in file_paths:
@@ -417,15 +455,17 @@ class IcebergCommitter:
                         parts = file_path.split("/", 1)
                         bucket = parts[0]
                         key = parts[1] if len(parts) > 1 else ""
-                    
+
                     # Get file metadata
-                    file_meta = next((f for f in file_metadata if f.get("path") == file_path), {})
+                    file_meta = next(
+                        (f for f in file_metadata if f.get("path") == file_path), {}
+                    )
                     file_size = file_meta.get("size_bytes", 0)
                     record_count = file_meta.get("record_count", 0)
-                    
+
                     # Full S3 path for the data file
                     data_file_path = f"s3://{bucket}/{key}"
-                    
+
                     # Parse partition from path if available
                     partition_data = None
                     if file_meta.get("partition"):
@@ -434,22 +474,25 @@ class IcebergCommitter:
                         # For now, we'll let PyIceberg infer partition from path
                         # Full implementation would parse and create PartitionData
                         partition_data = None
-                    
+
                     # Create DataFile entry
                     # PyIceberg's add_files expects DataFile objects or file paths
                     # For simplicity, we'll pass the file path and let PyIceberg read metadata
                     data_files.append(data_file_path)
-                
+
                 # Use PyIceberg's add_files method to append files to table
                 # This creates a new snapshot and commits to Nessie
                 import logging
+
                 logger = logging.getLogger(__name__)
-                
+
                 if hasattr(table, "add_files"):
                     # add_files is the correct method in PyIceberg 0.10+
-                    logger.info(f"Appending {len(data_files)} files to table using add_files")
+                    logger.info(
+                        f"Appending {len(data_files)} files to table using add_files"
+                    )
                     result = table.add_files(data_files)
-                    
+
                     # Get snapshot/commit information
                     commit_id = None
                     if hasattr(result, "snapshot_id"):
@@ -458,22 +501,24 @@ class IcebergCommitter:
                         snapshot = table.current_snapshot()
                         if snapshot:
                             commit_id = str(snapshot.snapshot_id)
-                    
+
                     # Also try to get Nessie commit hash from catalog if available
                     nessie_commit_hash = None
                     try:
                         if hasattr(catalog, "get_reference"):
                             ref = catalog.get_reference(self.branch)
                             if ref:
-                                nessie_commit_hash = str(ref.hash) if hasattr(ref, 'hash') else None
+                                nessie_commit_hash = (
+                                    str(ref.hash) if hasattr(ref, "hash") else None
+                                )
                     except Exception:
                         pass
-                    
+
                     logger.info(
                         f"Successfully committed {len(file_paths)} files to Iceberg table. "
                         f"Snapshot ID: {commit_id}, Branch: {self.branch}"
                     )
-                    
+
                     return {
                         "commit_id": nessie_commit_hash or commit_id or "committed",
                         "snapshot_id": commit_id,
@@ -496,32 +541,34 @@ class IcebergCommitter:
                         "file_paths": file_paths,
                         "note": "Files uploaded. Table metadata update requires PyIceberg add_files method.",
                     }
-                    
+
             except Exception as append_error:
-                import warnings
                 import logging
+                import warnings
+
                 logger = logging.getLogger(__name__)
                 logger.error(
                     f"Failed to append files to Iceberg table: {append_error}",
-                    exc_info=True
+                    exc_info=True,
                 )
                 warnings.warn(
                     f"Failed to append files to Iceberg table: {append_error}. "
                     f"Files are uploaded but not committed to table.",
-                    UserWarning
+                    UserWarning,
                 )
                 raise
-                
+
         except Exception as e:
             # If catalog/table operations fail, still return success for file uploads
-            import warnings
             import logging
+            import warnings
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to commit to Iceberg catalog (PyIceberg/Nessie issue): {e}. "
                 f"However, {len(file_paths)} Parquet file(s) were successfully uploaded to storage."
             )
-            
+
             return {
                 "commit_id": None,
                 "files_added": len(file_paths),
@@ -532,7 +579,10 @@ class IcebergCommitter:
             }
 
     def _upload_to_storage(
-        self, local_path: str, s3_path: str, file_metadata: Optional[Dict[str, Any]] = None
+        self,
+        local_path: str,
+        s3_path: str,
+        file_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Upload file from local path to S3/MinIO storage with metadata.
 
@@ -563,13 +613,14 @@ class IcebergCommitter:
             parts = s3_path.split("/", 1)
             bucket = parts[0]
             key = parts[1] if len(parts) > 1 else ""
-        
+
         # Normalize key: ensure no double slashes, no leading slash
         if key:
-            key = "/".join([part for part in key.split("/") if part])  # Remove empty parts
+            key = "/".join(
+                [part for part in key.split("/") if part]
+            )  # Remove empty parts
             # Ensure key doesn't start with /
             key = key.lstrip("/")
-        
 
         # Create S3 client
         s3_client = boto3.client(
@@ -590,12 +641,15 @@ class IcebergCommitter:
         if self.asset_definition.domain:
             metadata["asset-domain"] = self.asset_definition.domain
             tags.append(f"domain:{self.asset_definition.domain}")
-        
+
         # Data product metadata
-        if hasattr(self.asset_definition, 'dataProduct') and self.asset_definition.dataProduct:
+        if (
+            hasattr(self.asset_definition, "dataProduct")
+            and self.asset_definition.dataProduct
+        ):
             metadata["data-product"] = self.asset_definition.dataProduct
             tags.append(f"data-product:{self.asset_definition.dataProduct}")
-        
+
         # Tenant and branch metadata
         if self.asset_definition.tenant:
             metadata["tenant-id"] = self.asset_definition.tenant
@@ -619,9 +673,13 @@ class IcebergCommitter:
         # Compliance/retention metadata
         if self.asset_definition.compliance:
             if self.asset_definition.compliance.retention_days:
-                metadata["retention-days"] = str(self.asset_definition.compliance.retention_days)
+                metadata["retention-days"] = str(
+                    self.asset_definition.compliance.retention_days
+                )
             if self.asset_definition.compliance.classification:
-                metadata["classification"] = ",".join(self.asset_definition.compliance.classification)
+                metadata["classification"] = ",".join(
+                    self.asset_definition.compliance.classification
+                )
 
         # File metadata
         if file_metadata:
@@ -635,6 +693,7 @@ class IcebergCommitter:
 
         # Timestamp metadata
         from datetime import datetime
+
         metadata["ingest-timestamp"] = datetime.utcnow().isoformat() + "Z"
         metadata["file-format"] = "parquet"
         metadata["compression"] = "snappy"
@@ -658,18 +717,23 @@ class IcebergCommitter:
                         if tag_key not in seen_tag_keys:
                             tag_set.append({"Key": tag_key, "Value": tag_value})
                             seen_tag_keys.add(tag_key)
-                
+
                 # Upload with metadata
                 extra_args = {
                     "ContentType": content_type,
                     "Metadata": metadata,
                 }
-                
+
                 # Add tags if we have any
                 if tag_set:
                     import urllib.parse
-                    tag_string = "&".join([f"{urllib.parse.quote(t['Key'])}={urllib.parse.quote(t['Value'])}" 
-                                          for t in tag_set])
+
+                    tag_string = "&".join(
+                        [
+                            f"{urllib.parse.quote(t['Key'])}={urllib.parse.quote(t['Value'])}"
+                            for t in tag_set
+                        ]
+                    )
                     extra_args["Tagging"] = tag_string
 
                 # Ensure key is not empty and doesn't contain just "partition"
@@ -678,22 +742,15 @@ class IcebergCommitter:
                         f"Invalid S3 key '{key}' derived from path '{s3_path}'. "
                         "Key should be the full path after bucket name."
                     )
-                
-                s3_client.upload_fileobj(
-                    f,
-                    bucket,
-                    key,
-                    ExtraArgs=extra_args
-                )
-                
+
+                s3_client.upload_fileobj(f, bucket, key, ExtraArgs=extra_args)
+
                 # Log successful upload
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.debug(
                     f"Uploaded to s3://{bucket}/{key} with {len(metadata)} metadata fields and {len(tag_set)} tags"
                 )
         except ClientError as e:
-            raise RuntimeError(
-                f"Failed to upload file to S3/MinIO: {str(e)}"
-            ) from e
-
+            raise RuntimeError(f"Failed to upload file to S3/MinIO: {str(e)}") from e

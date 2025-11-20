@@ -34,42 +34,42 @@ class CSVExtractor:
             "delimiter": ",",
             "quote_char": '"',
         }
-        
+
         if self.source_config.engine:
             options = self.source_config.engine.get("options", {})
             if not isinstance(options, dict):
                 options = {}
-            
+
             # Check both top-level options and native options
             native_opts = options.get("native", {})
             if not isinstance(native_opts, dict):
                 native_opts = {}
-            
+
             # First, update with native options
             merged.update(native_opts)
-            
+
             # Support batch_size as alias for chunk_size (for consistency with other extractors)
             # Check if chunk_size was explicitly set in native_opts
             chunk_size_explicitly_set = "chunk_size" in native_opts
-            
+
             # If chunk_size wasn't explicitly set, try to use batch_size
             if not chunk_size_explicitly_set:
                 if "batch_size" in options:
                     merged["chunk_size"] = options["batch_size"]
                 elif "batch_size" in native_opts:
                     merged["chunk_size"] = native_opts["batch_size"]
-            
+
             # Update with other top-level options (excluding native)
             # This allows top-level chunk_size to override native chunk_size or batch_size
             for key, value in options.items():
                 if key != "native":
                     merged[key] = value
-            
+
             # Final check: if chunk_size is explicitly set in top-level options, use it
             # This takes highest precedence
             if "chunk_size" in options:
                 merged["chunk_size"] = options["chunk_size"]
-        
+
         return merged
 
     def extract(
@@ -115,9 +115,7 @@ class CSVExtractor:
             if strategy == "file_modified_time" and state_path:
                 file_id = file_config.get("id") or str(file_path)
                 file_stat = file_path.stat()
-                modified_time = datetime.fromtimestamp(
-                    file_stat.st_mtime
-                ).isoformat()
+                modified_time = datetime.fromtimestamp(file_stat.st_mtime).isoformat()
 
                 if IncrementalStateManager.should_skip_file(
                     file_id=file_id,
@@ -211,4 +209,3 @@ class CSVExtractor:
                 return None
 
         return total
-

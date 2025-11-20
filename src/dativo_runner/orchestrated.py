@@ -125,6 +125,16 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
                         },
                     )
                     raise Exception(f"Job execution failed: {result.stderr}")
+            except Exception as e:
+                job_logger.error(
+                    f"Job execution error: {e}",
+                    extra={
+                        "job_name": schedule_config.name,
+                        "event_type": "job_error",
+                        "error": str(e),
+                    },
+                )
+                raise
 
         assets.append(create_asset)
 
@@ -235,4 +245,3 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
             "dagster-webserver -m dativo_runner.orchestrated",
             extra={"event_type": "orchestrator_ready"},
         )
-

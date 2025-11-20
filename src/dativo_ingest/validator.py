@@ -33,10 +33,13 @@ class ConnectorValidator:
 
         if registry_path is None or not registry_path.exists():
             possible_paths_str = [
-                str(p) for p in [
+                str(p)
+                for p in [
                     Path("/app/registry/connectors.yaml"),
                     Path("registry/connectors.yaml"),
-                    Path(__file__).parent.parent.parent / "registry" / "connectors.yaml",
+                    Path(__file__).parent.parent.parent
+                    / "registry"
+                    / "connectors.yaml",
                 ]
             ]
             raise FileNotFoundError(
@@ -82,7 +85,9 @@ class ConnectorValidator:
 
         return data
 
-    def validate_connector_type(self, connector_type: str, role: str = "source") -> Dict[str, Any]:
+    def validate_connector_type(
+        self, connector_type: str, role: str = "source"
+    ) -> Dict[str, Any]:
         """Validate connector type exists in registry and supports the specified role.
 
         Args:
@@ -99,7 +104,7 @@ class ConnectorValidator:
         connectors = self.registry.get("connectors", {})
         sources = self.registry.get("sources", {})
         targets = self.registry.get("targets", {})
-        
+
         # Try unified format first
         if connectors and connector_type in connectors:
             connector_def = connectors[connector_type]
@@ -112,7 +117,7 @@ class ConnectorValidator:
                 )
                 sys.exit(2)
             return connector_def
-        
+
         # Fall back to legacy format
         if role == "source":
             if connector_type in sources:
@@ -130,7 +135,7 @@ class ConnectorValidator:
                 f"Available target connectors: {', '.join(targets.keys())}",
                 file=sys.stderr,
             )
-        
+
         sys.exit(2)
 
     def validate_mode_restriction(
@@ -167,7 +172,7 @@ class ConnectorValidator:
             SystemExit: Exit code 2 if strategy is invalid
         """
         source_config = job_config.get_source()
-        
+
         if not source_config.incremental:
             return  # No incremental config, skip validation
 
@@ -235,9 +240,7 @@ class ConnectorValidator:
                 )
                 sys.exit(2)
 
-    def validate_job(
-        self, job_config: JobConfig, mode: str = "self_hosted"
-    ) -> None:
+    def validate_job(self, job_config: JobConfig, mode: str = "self_hosted") -> None:
         """Validate complete job configuration.
 
         Args:
@@ -249,17 +252,19 @@ class ConnectorValidator:
         """
         source_config = job_config.get_source()
         target_config = job_config.get_target()
-        
+
         # Validate source connector type and role
-        source_connector_def = self.validate_connector_type(source_config.type, role="source")
+        source_connector_def = self.validate_connector_type(
+            source_config.type, role="source"
+        )
 
         # Validate target connector type and role
-        target_connector_def = self.validate_connector_type(target_config.type, role="target")
+        target_connector_def = self.validate_connector_type(
+            target_config.type, role="target"
+        )
 
         # Validate mode restrictions for source
-        self.validate_mode_restriction(
-            source_config.type, mode, source_connector_def
-        )
+        self.validate_mode_restriction(source_config.type, mode, source_connector_def)
 
         # Validate incremental strategy
         self.validate_incremental_strategy(job_config, source_connector_def)
@@ -418,4 +423,3 @@ class IncrementalStateManager:
             "spreadsheet_id": spreadsheet_id,
         }
         IncrementalStateManager.write_state(state_path, state)
-

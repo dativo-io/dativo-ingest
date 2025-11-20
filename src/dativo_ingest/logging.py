@@ -56,12 +56,10 @@ class StructuredJSONFormatter(logging.Formatter):
         if self.redact_secrets:
             log_str = json.dumps(log_data)
             for pattern in self.secret_patterns:
-                log_str = re.sub(pattern, r'\1', log_str, flags=re.IGNORECASE)
+                log_str = re.sub(pattern, r"\1", log_str, flags=re.IGNORECASE)
                 # Replace matched secrets with [REDACTED]
                 log_str = re.sub(
-                    r'(["\']?)([A-Za-z0-9+/=]{20,})(["\']?)',
-                    r'\1[REDACTED]\3',
-                    log_str
+                    r'(["\']?)([A-Za-z0-9+/=]{20,})(["\']?)', r"\1[REDACTED]\3", log_str
                 )
             return log_str
 
@@ -140,7 +138,9 @@ def update_logging_settings(
                 handler.formatter.redact_secrets = redact_secrets
             else:
                 # Replace formatter if it's not the right type
-                handler.setFormatter(StructuredJSONFormatter(redact_secrets=redact_secrets))
+                handler.setFormatter(
+                    StructuredJSONFormatter(redact_secrets=redact_secrets)
+                )
 
     # Update tenant_id in log record factory if provided
     if tenant_id is not None:
@@ -166,4 +166,3 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         Logger instance
     """
     return logging.getLogger(name or "dativo_ingest")
-

@@ -65,13 +65,14 @@ class StripeExtractor:
                 for key in ["api_key", "STRIPE_API_KEY", "secret_key", "secret"]:
                     if key in self.source_config.credentials:
                         return str(self.source_config.credentials[key])
-        
+
         # Check environment variable
         import os
+
         api_key = os.getenv("STRIPE_API_KEY")
         if api_key:
             return api_key
-        
+
         raise ValueError(
             "Stripe API key not found. Provide it in credentials or set STRIPE_API_KEY environment variable."
         )
@@ -84,13 +85,13 @@ class StripeExtractor:
             raise ImportError(
                 "stripe is required for Stripe extraction. Install with: pip install stripe"
             )
-        
+
         stripe.api_key = self.api_key
-        
+
         # Set API version if specified
         if self.engine_options.get("api_version"):
             stripe.api_version = self.engine_options["api_version"]
-        
+
         self.stripe = stripe
 
     def _rate_limit(self) -> None:
@@ -99,12 +100,12 @@ class StripeExtractor:
         Stripe allows 7 requests per second with a burst of 14.
         """
         current_time = time.time()
-        
+
         # Reset window if more than 1 second has passed
         if current_time - self._window_start >= 1.0:
             self._request_count = 0
             self._window_start = current_time
-        
+
         # Check if we've exceeded the rate limit
         if self._request_count >= self.RATE_LIMIT_RPS:
             # Calculate sleep time to stay within limits
@@ -113,7 +114,7 @@ class StripeExtractor:
                 time.sleep(sleep_time)
                 self._request_count = 0
                 self._window_start = time.time()
-        
+
         self._request_count += 1
 
     def _handle_rate_limit_error(self, retry_count: int) -> bool:
@@ -128,12 +129,12 @@ class StripeExtractor:
         max_retries = self.engine_options.get("max_retries", 5)
         if retry_count >= max_retries:
             return False
-        
+
         backoff_multiplier = self.engine_options.get("backoff_multiplier", 2.0)
         max_backoff = self.engine_options.get("max_backoff_seconds", 64)
-        
+
         # Calculate exponential backoff
-        sleep_time = min(backoff_multiplier ** retry_count, max_backoff)
+        sleep_time = min(backoff_multiplier**retry_count, max_backoff)
         time.sleep(sleep_time)
         return True
 
@@ -146,29 +147,29 @@ class StripeExtractor:
         Returns:
             Dictionary representation of the object
         """
-        if hasattr(obj, 'to_dict'):
+        if hasattr(obj, "to_dict"):
             return obj.to_dict()
-        
+
         # Fallback: convert manually
         result = {}
         for key, value in obj.__dict__.items():
             # Skip internal attributes
-            if key.startswith('_'):
+            if key.startswith("_"):
                 continue
-            
+
             # Handle nested Stripe objects
-            if hasattr(value, 'to_dict'):
+            if hasattr(value, "to_dict"):
                 result[key] = value.to_dict()
             elif isinstance(value, list):
                 result[key] = [
-                    item.to_dict() if hasattr(item, 'to_dict') else item
+                    item.to_dict() if hasattr(item, "to_dict") else item
                     for item in value
                 ]
             elif isinstance(value, datetime):
                 result[key] = value.isoformat()
             else:
                 result[key] = value
-        
+
         return result
 
     def _get_objects_to_extract(self) -> List[str]:
@@ -178,17 +179,19 @@ class StripeExtractor:
             List of object names (e.g., ['customers', 'charges', 'invoices'])
         """
         # Check source config for objects
-        if hasattr(self.source_config, 'objects') and self.source_config.objects:
+        if hasattr(self.source_config, "objects") and self.source_config.objects:
             return self.source_config.objects
-        
+
         # Check source config dict if it's a dict
-        if isinstance(self.source_config, dict) and 'objects' in self.source_config:
-            return self.source_config['objects']
-        
+        if isinstance(self.source_config, dict) and "objects" in self.source_config:
+            return self.source_config["objects"]
+
         # Default objects from connector recipe
         return ["customers", "charges", "invoices"]
 
-    def _get_cursor_value(self, object_name: str, state_path: Optional[Path]) -> Optional[int]:
+    def _get_cursor_value(
+        self, object_name: str, state_path: Optional[Path]
+    ) -> Optional[int]:
         """Get cursor value (timestamp) from state for incremental sync.
 
         Args:
@@ -200,17 +203,17 @@ class StripeExtractor:
         """
         if not state_path:
             return None
-        
+
         state_data = IncrementalStateManager.read_state(state_path)
         state_key = f"{object_name}.created"
-        
+
         if state_key in state_data:
             last_value = state_data[state_key].get("last_value")
             if last_value:
                 # Convert ISO format or timestamp to Unix timestamp
                 if isinstance(last_value, str):
                     try:
-                        dt = datetime.fromisoformat(last_value.replace('Z', '+00:00'))
+                        dt = datetime.fromisoformat(last_value.replace("Z", "+00:00"))
                         return int(dt.timestamp())
                     except (ValueError, AttributeError):
                         # Try parsing as Unix timestamp string
@@ -220,7 +223,7 @@ class StripeExtractor:
                             return None
                 elif isinstance(last_value, (int, float)):
                     return int(last_value)
-        
+
         return None
 
     def _extract_object(
@@ -251,65 +254,70 @@ class StripeExtractor:
             "products": self.stripe.Product,
             "prices": self.stripe.Price,
         }
-        
+
         if object_name not in object_map:
             raise ValueError(f"Unsupported Stripe object: {object_name}")
-        
+
         stripe_class = object_map[object_name]
         batch_size = self.engine_options.get("batch_size", 100)
-        
+
         # Build list parameters
         list_params: Dict[str, Any] = {
             "limit": batch_size,
         }
-        
+
         # Add incremental sync filter
         if cursor_value is not None:
             # Use created timestamp (Unix timestamp)
             list_params["created"] = {"gte": cursor_value}
         elif lookback_days > 0:
             # Calculate lookback timestamp
-            lookback_timestamp = int((datetime.now() - timedelta(days=lookback_days)).timestamp())
+            lookback_timestamp = int(
+                (datetime.now() - timedelta(days=lookback_days)).timestamp()
+            )
             list_params["created"] = {"gte": lookback_timestamp}
-        
+
         # Track last cursor value for state update
         last_cursor_value = None
         has_more = True
         starting_after = None
         retry_count = 0
-        
+
         while has_more:
             # Apply rate limiting
             self._rate_limit()
-            
+
             # Build request params (copy base params and add pagination)
             request_params = list_params.copy()
             if starting_after:
                 request_params["starting_after"] = starting_after
-            
+
             try:
                 # Make API call
                 response = stripe_class.list(**request_params)
-                
+
                 # Reset retry count on success
                 retry_count = 0
-                
+
                 # Convert Stripe objects to dictionaries
                 batch = []
                 for obj in response.data:
                     record = self._stripe_object_to_dict(obj)
                     batch.append(record)
-                    
+
                     # Track last cursor value (created timestamp)
                     if "created" in record:
                         created_ts = record["created"]
                         if isinstance(created_ts, int):
-                            if last_cursor_value is None or created_ts > last_cursor_value:
+                            if (
+                                last_cursor_value is None
+                                or created_ts > last_cursor_value
+                            ):
                                 last_cursor_value = created_ts
-                
+
                 if batch:
                     yield batch
-                
+
                 # Check if there are more pages
                 has_more = response.has_more
                 if has_more and response.data:
@@ -317,25 +325,25 @@ class StripeExtractor:
                     starting_after = response.data[-1].id
                 else:
                     has_more = False
-                    
+
             except self.stripe.error.RateLimitError:
                 # Handle rate limit error
                 if not self._handle_rate_limit_error(retry_count):
                     raise
                 retry_count += 1
                 # Continue loop to retry
-                
+
             except self.stripe.error.APIConnectionError:
                 # Handle connection errors
                 if not self._handle_rate_limit_error(retry_count):
                     raise
                 retry_count += 1
                 # Continue loop to retry
-                
+
             except self.stripe.error.StripeError as e:
                 # Other Stripe errors - don't retry
                 raise RuntimeError(f"Stripe API error: {str(e)}") from e
-        
+
         # Update state after successful processing
         if state_path and last_cursor_value is not None:
             state_key = f"{object_name}.created"
@@ -373,7 +381,7 @@ class StripeExtractor:
         for object_name in objects:
             # Get cursor value from state
             cursor_value = self._get_cursor_value(object_name, state_path)
-            
+
             # Extract object data
             for batch in self._extract_object(
                 object_name=object_name,
@@ -382,4 +390,3 @@ class StripeExtractor:
                 state_path=state_path,
             ):
                 yield batch
-
