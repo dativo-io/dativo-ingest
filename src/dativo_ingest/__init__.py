@@ -5,7 +5,8 @@ from pathlib import Path
 
 # Try to get version from installed package first
 try:
-    from importlib.metadata import version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError, version
+
     try:
         __version__ = version("dativo-ingest")
     except PackageNotFoundError:
@@ -24,4 +25,3 @@ except (ImportError, PackageNotFoundError):
                 __version__ = "1.1.0"  # Fallback
     else:
         __version__ = "1.1.0"  # Fallback
-

@@ -33,10 +33,13 @@ class ConnectorValidator:
 
         if registry_path is None or not registry_path.exists():
             possible_paths_str = [
-                str(p) for p in [
+                str(p)
+                for p in [
                     Path("/app/registry/connectors.yaml"),
                     Path("registry/connectors.yaml"),
-                    Path(__file__).parent.parent.parent / "registry" / "connectors.yaml",
+                    Path(__file__).parent.parent.parent
+                    / "registry"
+                    / "connectors.yaml",
                 ]
             ]
             raise FileNotFoundError(
@@ -205,9 +208,7 @@ class ConnectorValidator:
                 )
                 sys.exit(2)
 
-    def validate_job(
-        self, job_config: JobConfig, mode: str = "self_hosted"
-    ) -> None:
+    def validate_job(self, job_config: JobConfig, mode: str = "self_hosted") -> None:
         """Validate complete job configuration.
 
         Args:
@@ -221,9 +222,7 @@ class ConnectorValidator:
         connector_def = self.validate_connector_type(job_config.source.type)
 
         # Validate mode restrictions
-        self.validate_mode_restriction(
-            job_config.source.type, mode, connector_def
-        )
+        self.validate_mode_restriction(job_config.source.type, mode, connector_def)
 
         # Validate incremental strategy
         self.validate_incremental_strategy(job_config, connector_def)
@@ -378,4 +377,3 @@ class IncrementalStateManager:
             "spreadsheet_id": spreadsheet_id,
         }
         IncrementalStateManager.write_state(state_path, state)
-

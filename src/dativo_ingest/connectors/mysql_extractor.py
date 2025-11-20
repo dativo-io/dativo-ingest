@@ -32,8 +32,10 @@ class MySQLExtractor:
             native_opts = self.source_config.engine.get("options", {}).get("native", {})
             if native_opts:
                 return native_opts
-            
-            meltano_opts = self.source_config.engine.get("options", {}).get("meltano", {})
+
+            meltano_opts = self.source_config.engine.get("options", {}).get(
+                "meltano", {}
+            )
             if meltano_opts:
                 return meltano_opts
 
@@ -50,24 +52,41 @@ class MySQLExtractor:
             Dictionary of connection parameters
         """
         connection = {}
-        
+
         # Get connection from source config (already has env vars expanded)
         if self.source_config.connection:
             connection.update(self.source_config.connection)
-        
+
         # Also check credentials if available (for .env file loading)
         if self.source_config.credentials:
             # Credentials might contain connection details
             if isinstance(self.source_config.credentials, dict):
                 # If credentials is a dict, it might have connection params
-                for key in ["host", "port", "database", "user", "password", "MYSQL_HOST", "MYSQL_PORT", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD", "charset", "ssl_ca", "ssl_cert", "ssl_key"]:
+                for key in [
+                    "host",
+                    "port",
+                    "database",
+                    "user",
+                    "password",
+                    "MYSQL_HOST",
+                    "MYSQL_PORT",
+                    "MYSQL_DATABASE",
+                    "MYSQL_USER",
+                    "MYSQL_PASSWORD",
+                    "charset",
+                    "ssl_ca",
+                    "ssl_cert",
+                    "ssl_key",
+                ]:
                     if key in self.source_config.credentials and key not in connection:
                         value = self.source_config.credentials[key]
                         # Map MYSQL_* env vars to connection keys
                         if key == "MYSQL_HOST":
                             connection.setdefault("host", value)
                         elif key == "MYSQL_PORT":
-                            connection.setdefault("port", int(value) if isinstance(value, str) else value)
+                            connection.setdefault(
+                                "port", int(value) if isinstance(value, str) else value
+                            )
                         elif key == "MYSQL_DATABASE":
                             connection.setdefault("database", value)
                         elif key == "MYSQL_USER":
@@ -76,13 +95,14 @@ class MySQLExtractor:
                             connection.setdefault("password", value)
                         else:
                             connection.setdefault(key, value)
-        
+
         # Expand environment variables in connection values
         import re
+
         for key, value in connection.items():
             if isinstance(value, str):
                 # Handle bash-style ${VAR:-default} syntax
-                bash_default_pattern = r'\$\{([^:}]+):-([^}]+)\}'
+                bash_default_pattern = r"\$\{([^:}]+):-([^}]+)\}"
                 match = re.search(bash_default_pattern, value)
                 if match:
                     env_var = match.group(1)
@@ -92,7 +112,7 @@ class MySQLExtractor:
                     # Simple ${VAR} syntax
                     env_var = value[2:-1]
                     connection[key] = os.getenv(env_var, value)
-        
+
         # Override with environment variables if not in config
         connection.setdefault("host", os.getenv("MYSQL_HOST", "localhost"))
         port = connection.get("port")
@@ -110,14 +130,18 @@ class MySQLExtractor:
                 # If it's not numeric, try to get from env
                 port = os.getenv("MYSQL_PORT", "3306")
         connection.setdefault("port", int(port) if isinstance(port, str) else port)
-        connection.setdefault("database", os.getenv("MYSQL_DATABASE", os.getenv("MYSQL_DB", "")))
-        connection.setdefault("user", os.getenv("MYSQL_USER", os.getenv("USER", "root")))
+        connection.setdefault(
+            "database", os.getenv("MYSQL_DATABASE", os.getenv("MYSQL_DB", ""))
+        )
+        connection.setdefault(
+            "user", os.getenv("MYSQL_USER", os.getenv("USER", "root"))
+        )
         connection.setdefault("password", os.getenv("MYSQL_PASSWORD", ""))
-        
+
         # MySQL-specific defaults
         connection.setdefault("charset", "utf8mb4")
         connection.setdefault("autocommit", False)
-        
+
         return connection
 
     def _get_cursor_field(self, table_config: Dict[str, Any]) -> Optional[str]:
@@ -132,19 +156,19 @@ class MySQLExtractor:
         # Check table-specific cursor field
         if "cursor_field" in table_config:
             return table_config["cursor_field"]
-        
+
         # Check incremental config
         if self.source_config.incremental:
             return self.source_config.incremental.get("cursor_field")
-        
+
         return None
 
     def _build_query(
-        self, 
-        table_name: str, 
+        self,
+        table_name: str,
         cursor_field: Optional[str] = None,
         cursor_value: Optional[Any] = None,
-        lookback_days: int = 0
+        lookback_days: int = 0,
     ) -> Tuple[str, List[Any]]:
         """Build SQL query for table extraction.
 
@@ -164,30 +188,32 @@ class MySQLExtractor:
             quoted_table = f"`{schema}`.`{table}`"
         else:
             quoted_table = f"`{table_name}`"
-        
+
         # Base SELECT query
         query = f"SELECT * FROM {quoted_table}"
         params: List[Any] = []
-        
+
         # Add WHERE clause for incremental sync
         if cursor_field:
             # Escape column name with backticks
             quoted_cursor = f"`{cursor_field}`"
-            
+
             if cursor_value is not None:
                 # Use cursor value (parameterized for safety)
                 query += f" WHERE {quoted_cursor} >= %s"
                 params.append(cursor_value)
             elif lookback_days > 0:
                 # Use lookback days (MySQL date arithmetic)
-                query += f" WHERE {quoted_cursor} >= DATE_SUB(CURDATE(), INTERVAL %s DAY)"
+                query += (
+                    f" WHERE {quoted_cursor} >= DATE_SUB(CURDATE(), INTERVAL %s DAY)"
+                )
                 params.append(lookback_days)
-        
+
         # Add ORDER BY for consistent results
         if cursor_field:
             quoted_cursor = f"`{cursor_field}`"
             query += f" ORDER BY {quoted_cursor}"
-        
+
         return query, params
 
     def extract(
@@ -231,14 +257,14 @@ class MySQLExtractor:
             "charset": self.connection.get("charset", "utf8mb4"),
             "autocommit": self.connection.get("autocommit", False),
         }
-        
+
         # Add authentication plugin if specified (for MySQL 8.0 compatibility)
         if "auth_plugin" in self.connection:
             connect_config["auth_plugin"] = self.connection["auth_plugin"]
         elif self.connection.get("use_native_auth", False):
             # Use mysql_native_password for compatibility with older clients
             connect_config["auth_plugin"] = "mysql_native_password"
-        
+
         # Add SSL options if provided
         if "ssl_ca" in self.connection:
             connect_config["ssl_ca"] = self.connection["ssl_ca"]
@@ -251,9 +277,7 @@ class MySQLExtractor:
         try:
             conn = mysql.connector.connect(**connect_config)
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to connect to MySQL database: {str(e)}"
-            ) from e
+            raise RuntimeError(f"Failed to connect to MySQL database: {str(e)}") from e
 
         try:
             # Process each table
@@ -263,10 +287,12 @@ class MySQLExtractor:
                     raise ValueError("Table configuration must include 'name' field")
 
                 object_name = table_config.get("object", table_name.split(".")[-1])
-                
+
                 # Get cursor field for this table
-                cursor_field = self._get_cursor_field(table_config) or cursor_field_default
-                
+                cursor_field = (
+                    self._get_cursor_field(table_config) or cursor_field_default
+                )
+
                 # Get cursor value from state if available
                 cursor_value = None
                 if state_path and cursor_field:
@@ -291,41 +317,44 @@ class MySQLExtractor:
                 cursor = conn.cursor(dictionary=True)
                 try:
                     cursor.execute(query, params)
-                    
+
                     # Fetch in batches
                     while True:
                         records = cursor.fetchmany(batch_size)
                         if not records:
                             break
-                        
+
                         # Records are already dictionaries when using dictionary=True
                         batch = list(records)
-                        
+
                         # Convert any datetime/date objects to ISO format strings
                         for record in batch:
                             for key, value in record.items():
                                 if isinstance(value, (datetime,)):
                                     record[key] = value.isoformat()
-                                elif hasattr(value, 'isoformat'):  # date objects
+                                elif hasattr(value, "isoformat"):  # date objects
                                     record[key] = value.isoformat()
                                 elif isinstance(value, (bytes,)):
                                     # Handle BLOB types - convert to base64 or string
                                     try:
-                                        record[key] = value.decode('utf-8')
+                                        record[key] = value.decode("utf-8")
                                     except UnicodeDecodeError:
                                         # If can't decode, skip or use base64
                                         import base64
-                                        record[key] = base64.b64encode(value).decode('ascii')
-                        
+
+                                        record[key] = base64.b64encode(value).decode(
+                                            "ascii"
+                                        )
+
                         # Track last cursor value
                         if cursor_field and batch:
                             last_record = batch[-1]
                             if cursor_field in last_record:
                                 last_cursor_value = last_record[cursor_field]
-                        
+
                         records_processed += len(batch)
                         yield batch
-                    
+
                     # Update state after successful processing
                     if state_path and cursor_field and last_cursor_value is not None:
                         state_key = f"{object_name}.{cursor_field}"
@@ -370,7 +399,7 @@ class MySQLExtractor:
 
         try:
             conn = mysql.connector.connect(**connect_config)
-            
+
             total = 0
             try:
                 cursor = conn.cursor()
@@ -378,7 +407,7 @@ class MySQLExtractor:
                     table_name = table_config.get("name")
                     if not table_name:
                         continue
-                    
+
                     # Get table name without schema for query
                     if "." in table_name:
                         schema, table = table_name.split(".", 1)
@@ -389,7 +418,7 @@ class MySQLExtractor:
                             FROM information_schema.tables 
                             WHERE table_schema = %s AND table_name = %s
                             """,
-                            (schema, table)
+                            (schema, table),
                         )
                     else:
                         cursor.execute(
@@ -398,7 +427,7 @@ class MySQLExtractor:
                             FROM information_schema.tables 
                             WHERE table_schema = DATABASE() AND table_name = %s
                             """,
-                            (table_name,)
+                            (table_name,),
                         )
                     result = cursor.fetchone()
                     if result and result[0]:
@@ -406,8 +435,7 @@ class MySQLExtractor:
                 cursor.close()
             finally:
                 conn.close()
-            
+
             return int(total) if total > 0 else None
         except Exception:
             return None
-

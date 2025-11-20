@@ -20,9 +20,9 @@ def sample_csv_file():
         writer.writerow(["2", "Bob", "bob@example.com"])
         writer.writerow(["3", "Charlie", "charlie@example.com"])
         temp_path = f.name
-    
+
     yield temp_path
-    
+
     # Cleanup
     Path(temp_path).unlink(missing_ok=True)
 
@@ -58,11 +58,11 @@ def test_csv_extractor_initialization(source_config):
 def test_extract_records(source_config):
     """Test extracting records from CSV file."""
     extractor = CSVExtractor(source_config)
-    
+
     all_records = []
     for batch in extractor.extract():
         all_records.extend(batch)
-    
+
     assert len(all_records) == 3
     assert all_records[0]["id"] == "1"
     assert all_records[0]["name"] == "Alice"
@@ -73,16 +73,16 @@ def test_extract_with_chunking(source_config):
     """Test extraction with chunking."""
     # Modify config to use small chunk size
     source_config.engine["options"]["native"]["chunk_size"] = 2
-    
+
     extractor = CSVExtractor(source_config)
-    
+
     batch_count = 0
     total_records = 0
     for batch in extractor.extract():
         batch_count += 1
         total_records += len(batch)
         assert len(batch) <= 2  # Chunk size
-    
+
     assert batch_count > 1  # Should have multiple batches
     assert total_records == 3
 
@@ -93,9 +93,9 @@ def test_extract_missing_file():
         type="csv",
         files=[{"path": "/nonexistent/file.csv", "object": "test"}],
     )
-    
+
     extractor = CSVExtractor(config)
-    
+
     with pytest.raises(FileNotFoundError):
         list(extractor.extract())
 
@@ -103,9 +103,8 @@ def test_extract_missing_file():
 def test_extract_no_files_config():
     """Test extraction fails when files config is missing."""
     config = SourceConfig(type="csv", files=None)
-    
+
     extractor = CSVExtractor(config)
-    
+
     with pytest.raises(ValueError, match="CSV source requires 'files' configuration"):
         list(extractor.extract())
-

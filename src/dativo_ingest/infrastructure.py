@@ -59,20 +59,22 @@ def check_nessie_connectivity(uri: str, timeout: int = 5) -> bool:
         # Nessie typically has a /config endpoint
         parsed = urlparse(uri)
         base_url = f"{parsed.scheme}://{parsed.netloc}"
-        
+
         # Try config endpoint
         config_url = f"{base_url}/api/v1/config"
         response = requests.get(config_url, timeout=timeout)
         if response.status_code in [200, 404]:  # 404 is OK, means server is responding
             return True
-        
+
         # Try base API endpoint
         api_url = f"{base_url}/api/v1"
         response = requests.get(api_url, timeout=timeout)
         if response.status_code in [200, 404, 405]:  # 405 Method Not Allowed is OK
             return True
-        
-        raise ValueError(f"Nessie connectivity check failed: HTTP {response.status_code}")
+
+        raise ValueError(
+            f"Nessie connectivity check failed: HTTP {response.status_code}"
+        )
     except requests.exceptions.ConnectionError as e:
         raise ValueError(f"Cannot connect to Nessie at {uri}: {e}")
     except requests.exceptions.Timeout:
@@ -106,7 +108,7 @@ def check_s3_connectivity(
         # Try to reach S3 endpoint
         parsed = urlparse(endpoint)
         health_url = f"{parsed.scheme}://{parsed.netloc}/minio/health/live"
-        
+
         # Try MinIO health endpoint first
         try:
             response = requests.get(health_url, timeout=timeout)
@@ -114,7 +116,7 @@ def check_s3_connectivity(
                 return True
         except requests.exceptions.RequestException:
             pass
-        
+
         # Try basic connectivity to endpoint
         response = requests.get(endpoint, timeout=timeout)
         # Any response (even 403 Forbidden) means server is reachable
@@ -161,18 +163,20 @@ def validate_infrastructure(job_config: JobConfig) -> None:
                 check_s3_connectivity(s3_endpoint)
             except ValueError as e:
                 errors.append(f"S3 connectivity failed: {e}")
-        
+
         # Nessie is only required if catalog is configured
         if target_config.catalog:
             nessie_uri = os.getenv("NESSIE_URI")
             if not nessie_uri:
-                errors.append("NESSIE_URI environment variable is not set (required for catalog)")
+                errors.append(
+                    "NESSIE_URI environment variable is not set (required for catalog)"
+                )
             else:
                 try:
                     check_nessie_connectivity(nessie_uri)
                 except ValueError as e:
                     errors.append(f"Nessie connectivity failed: {e}")
-            
+
             # Check required ports (Nessie default: 19120, MinIO default: 9000)
             try:
                 nessie_port = 19120
@@ -184,7 +188,9 @@ def validate_infrastructure(job_config: JobConfig) -> None:
             except ValueError as e:
                 warnings.append(f"Nessie port check: {e}")
         else:
-            warnings.append("No catalog configured - Iceberg metadata operations will be skipped")
+            warnings.append(
+                "No catalog configured - Iceberg metadata operations will be skipped"
+            )
 
         try:
             s3_port = 9000
@@ -221,4 +227,3 @@ def validate_infrastructure(job_config: JobConfig) -> None:
     # Raise errors (fatal)
     if errors:
         raise ValueError("; ".join(errors))
-
