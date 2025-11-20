@@ -349,9 +349,9 @@ class ParquetWriter:
                         "local_path": str(local_path),  # Local temporary file path
                         "record_count": chunk_end - chunk_start,
                         "size_bytes": actual_size,
-                        "partition": partition_path.rstrip("/")
-                        if partition_path
-                        else None,
+                        "partition": (
+                            partition_path.rstrip("/") if partition_path else None
+                        ),
                     }
                 )
 
