@@ -96,9 +96,11 @@ def startup_sequence(
     logger.info(
         f"Tenant ID '{tenant_id}' {tenant_source}",
         extra={
-            "event_type": "tenant_inferred"
-            if tenant_source == "inferred from job configurations"
-            else "tenant_override"
+            "event_type": (
+                "tenant_inferred"
+                if tenant_source == "inferred from job configurations"
+                else "tenant_override"
+            )
         },
     )
 
