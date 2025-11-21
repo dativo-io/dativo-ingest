@@ -7,7 +7,11 @@ schema-connectors:
 
 schema-odcs:
 	@echo "🔍 Validating ODCS compliance..."
-	@PYTHONPATH=src python3 tests/integration/test_odcs_compliance.py
+	@if [ -d venv ]; then \
+		. venv/bin/activate && PYTHONPATH=src python tests/integration/test_odcs_compliance.py; \
+	else \
+		PYTHONPATH=src python3 tests/integration/test_odcs_compliance.py; \
+	fi
 
 # Unit tests: Test internal functions (config loading, validation, etc.)
 test-unit:
