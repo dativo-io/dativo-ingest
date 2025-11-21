@@ -122,10 +122,12 @@ class RustReaderWrapper(BaseReader):
             # Rust returns a CString pointer that must be freed with Rust's allocator
             # ctypes.c_char_p will create a Python bytes object from the C string
             result_cstr = ctypes.c_char_p(result_ptr)
-            
+
             try:
                 # Copy the string data immediately (ctypes will handle the conversion)
-                result_str = result_cstr.value.decode("utf-8") if result_cstr.value else ""
+                result_str = (
+                    result_cstr.value.decode("utf-8") if result_cstr.value else ""
+                )
             except Exception as e:
                 # If decode fails, still try to free the memory
                 if hasattr(self, "_free_string"):
@@ -261,6 +263,7 @@ class RustWriterWrapper(BaseWriter):
         """
         # Convert datetime objects to ISO format strings for JSON serialization
         import datetime
+
         serializable_records = []
         for record in records:
             serializable_record = {}
@@ -274,7 +277,7 @@ class RustWriterWrapper(BaseWriter):
                 else:
                     serializable_record[key] = value
             serializable_records.append(serializable_record)
-        
+
         # Serialize records and counter
         input_dict = {
             "records": serializable_records,
@@ -293,7 +296,7 @@ class RustWriterWrapper(BaseWriter):
         # Rust returns a CString pointer that must be freed with Rust's allocator
         # ctypes.c_char_p will create a Python bytes object from the C string
         result_cstr = ctypes.c_char_p(result_ptr)
-        
+
         try:
             # Copy the string data immediately (ctypes will handle the conversion)
             result_str = result_cstr.value.decode("utf-8") if result_cstr.value else ""
