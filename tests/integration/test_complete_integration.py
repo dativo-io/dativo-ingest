@@ -10,8 +10,8 @@ This test verifies:
 - Documentation
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add src to path

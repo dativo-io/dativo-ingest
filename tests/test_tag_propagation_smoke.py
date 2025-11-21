@@ -5,9 +5,10 @@ This test verifies that tags defined in asset definitions and job configurations
 are properly propagated to Iceberg table properties.
 """
 
-import pytest
 import sys
 from pathlib import Path
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))

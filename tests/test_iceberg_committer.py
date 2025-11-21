@@ -334,7 +334,7 @@ def test_derive_table_properties_minimal_asset(target_config):
 
 def test_update_table_properties_new_table(sample_asset_definition, target_config):
     """Test updating properties on a new table."""
-    from unittest.mock import Mock, MagicMock
+    from unittest.mock import MagicMock, Mock
 
     committer = IcebergCommitter(sample_asset_definition, target_config)
 
@@ -362,7 +362,7 @@ def test_update_table_properties_new_table(sample_asset_definition, target_confi
 
 def test_update_table_properties_existing_table(sample_asset_definition, target_config):
     """Test updating properties on existing table."""
-    from unittest.mock import Mock, MagicMock
+    from unittest.mock import MagicMock, Mock
 
     classification_overrides = {"email": "PII"}
     finops = {"cost_center": "FIN-001"}
@@ -399,7 +399,7 @@ def test_update_table_properties_existing_table(sample_asset_definition, target_
 
 def test_update_table_properties_idempotent(sample_asset_definition, target_config):
     """Test that properties update is idempotent (no update if unchanged)."""
-    from unittest.mock import Mock, MagicMock
+    from unittest.mock import MagicMock, Mock
 
     committer = IcebergCommitter(sample_asset_definition, target_config)
 
@@ -428,7 +428,7 @@ def test_update_table_properties_idempotent(sample_asset_definition, target_conf
 
 def test_update_table_properties_error_handling(sample_asset_definition, target_config):
     """Test error handling when table doesn't exist or update fails."""
-    from unittest.mock import Mock, MagicMock
+    from unittest.mock import MagicMock, Mock
 
     committer = IcebergCommitter(sample_asset_definition, target_config)
 
@@ -448,7 +448,7 @@ def test_update_table_properties_error_handling(sample_asset_definition, target_
 
 def test_update_table_properties_partial_update(sample_asset_definition, target_config):
     """Test that only changed properties are updated."""
-    from unittest.mock import Mock, MagicMock
+    from unittest.mock import MagicMock, Mock
 
     classification_overrides = {"email": "PII"}
 

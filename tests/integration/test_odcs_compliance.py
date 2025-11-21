@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Validate that all asset definitions are ODCS v3.0.2 compliant."""
 
-import sys
-import os
 import json
+import os
+import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 try:
-    import yaml
     import jsonschema
+    import yaml
 except ImportError:
     print("✗ Missing dependencies. Install with: pip install pyyaml jsonschema")
     sys.exit(1)

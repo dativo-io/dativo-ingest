@@ -5,8 +5,8 @@ This script connects to a Nessie catalog and verifies that tags
 have been properly propagated to Iceberg table properties.
 """
 
-import sys
 import os
+import sys
 from typing import Dict, List, Optional
 
 try:

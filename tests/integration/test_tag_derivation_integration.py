@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Simple validation script for tag derivation implementation."""
 
-import sys
 import os
+import sys
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
@@ -76,8 +76,8 @@ def test_explicit_classification_only():
 
 def test_iceberg_committer_signature():
     """Test that IcebergCommitter has the expected signature."""
-    import inspect
     import ast
+    import inspect
 
     # Read the source file directly to avoid import issues
     with open("src/dativo_ingest/iceberg_committer.py", "r") as f:
