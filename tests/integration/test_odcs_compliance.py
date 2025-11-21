@@ -169,7 +169,7 @@ def main():
     print("✓ Schema loaded\n")
 
     # Find all asset definition files
-    assets_dir = Path("assets")
+    assets_dir = Path("assets").resolve()
     if not assets_dir.exists():
         print(f"✗ Assets directory not found: {assets_dir}")
         return 1
@@ -184,8 +184,15 @@ def main():
 
     # Validate each asset
     results = []
+    cwd = Path.cwd().resolve()
     for asset_path in sorted(asset_files):
-        relative_path = asset_path.relative_to(Path.cwd())
+        # Resolve to absolute path first, then compute relative path
+        asset_path_abs = asset_path.resolve()
+        try:
+            relative_path = str(asset_path_abs.relative_to(cwd))
+        except ValueError:
+            # If path is not under cwd, use the path as string
+            relative_path = str(asset_path)
         print(f"\nValidating: {relative_path}")
 
         valid, message = validate_asset(asset_path, schema)
