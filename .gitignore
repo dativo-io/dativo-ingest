@@ -207,6 +207,13 @@ state/
 .local/
 *.state.json
 
+# Test output and artifacts
+# Generated test data and Parquet files from smoke tests
+s3:/
+*.parquet
+/tmp/dativo_ingest*
+/tmp/dativo-state
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

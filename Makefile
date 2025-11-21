@@ -16,19 +16,25 @@ test-unit:
 # Integration tests: Test module integration, tag derivation, and ODCS compliance
 test-integration:
 	@echo "🔍 Running integration tests..."
-	@PYTHONPATH=src python3 tests/integration/test_tag_derivation_integration.py
-	@PYTHONPATH=src python3 tests/integration/test_complete_integration.py
+	@if [ -f venv/bin/python ]; then \
+		PYTHONPATH=src venv/bin/python tests/integration/test_tag_derivation_integration.py; \
+		PYTHONPATH=src venv/bin/python tests/integration/test_complete_integration.py; \
+	else \
+		PYTHONPATH=src python3 tests/integration/test_tag_derivation_integration.py; \
+		PYTHONPATH=src python3 tests/integration/test_complete_integration.py; \
+	fi
 	@echo "✅ All integration tests passed"
 
 # Smoke tests: Run actual CLI commands with test fixtures (true E2E)
 # Includes tag propagation verification
+# Automatically sets up infrastructure services (Postgres, MySQL, MinIO, Nessie) if needed
+# Note: Infrastructure services are dependencies for testing, NOT the dativo-ingest service
+# The dativo-ingest CLI runs locally and connects to these services
+# Uses run_all_smoke_tests.sh which runs both original and custom plugin smoke tests
 # Users can also run: dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 test-smoke:
-	@if [ -f venv/bin/python ]; then \
-		venv/bin/python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted; \
-	else \
-		python3 -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted; \
-	fi
+	@echo "🧪 Running smoke tests..."
+	@bash tests/run_all_smoke_tests.sh
 
 # Run all tests
 test: test-unit test-integration test-smoke

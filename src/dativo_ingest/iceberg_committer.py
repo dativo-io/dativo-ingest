@@ -18,6 +18,7 @@ class IcebergCommitter:
         classification_overrides: Optional[Dict[str, str]] = None,
         finops: Optional[Dict[str, Any]] = None,
         governance_overrides: Optional[Dict[str, Any]] = None,
+        source_tags: Optional[Dict[str, str]] = None,
     ):
         """Initialize Iceberg committer.
 
@@ -27,6 +28,7 @@ class IcebergCommitter:
             classification_overrides: Field-level classification overrides from job config
             finops: FinOps metadata from job config
             governance_overrides: Governance metadata overrides from job config
+            source_tags: Source system tags (LOWEST priority)
         """
         self.asset_definition = asset_definition
         self.target_config = target_config
@@ -228,6 +230,7 @@ class IcebergCommitter:
             classification_overrides=self.classification_overrides,
             finops=self.finops,
             governance_overrides=self.governance_overrides,
+            source_tags=self.source_tags,
         )
 
         # Add asset metadata

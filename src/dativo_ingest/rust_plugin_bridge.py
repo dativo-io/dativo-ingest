@@ -58,10 +58,12 @@ class RustReaderWrapper(BaseReader):
         self._create_reader = create_func
 
         # extract_batch(reader: *mut Reader) -> *const c_char (JSON)
+        # CRITICAL: Use c_void_p for return type to prevent ctypes from auto-converting
+        # We need the raw pointer to properly free it with Rust's allocator
         extract_func = getattr(self._lib, "extract_batch", None)
         if extract_func:
             extract_func.argtypes = [ctypes.c_void_p]
-            extract_func.restype = ctypes.c_char_p
+            extract_func.restype = ctypes.c_void_p
             self._extract_batch = extract_func
 
         # free_reader(reader: *mut Reader)
@@ -72,9 +74,11 @@ class RustReaderWrapper(BaseReader):
             self._free_reader = free_func
 
         # free_string(s: *const c_char)
+        # CRITICAL: Use c_void_p to accept raw pointer, not c_char_p
+        # This prevents ctypes from doing any automatic conversions that conflict with Rust's allocator
         free_str_func = getattr(self._lib, "free_string", None)
         if free_str_func:
-            free_str_func.argtypes = [ctypes.c_char_p]
+            free_str_func.argtypes = [ctypes.c_void_p]
             free_str_func.restype = None
             self._free_string = free_str_func
 
@@ -108,19 +112,32 @@ class RustReaderWrapper(BaseReader):
         """
         while True:
             # Call Rust extract_batch function
-            result_json = self._extract_batch(self._reader_ptr)
+            # Returns a raw pointer (c_void_p) to avoid ctypes auto-conversion
+            result_ptr = self._extract_batch(self._reader_ptr)
 
-            if not result_json:
+            if not result_ptr:
                 break
 
-            # Parse JSON result
-            result_str = result_json.decode("utf-8")
+            # CRITICAL: Convert raw pointer to c_char_p and copy string before freeing
+            # Rust returns a CString pointer that must be freed with Rust's allocator
+            # ctypes.c_char_p will create a Python bytes object from the C string
+            result_cstr = ctypes.c_char_p(result_ptr)
+            
+            try:
+                # Copy the string data immediately (ctypes will handle the conversion)
+                result_str = result_cstr.value.decode("utf-8") if result_cstr.value else ""
+            except Exception as e:
+                # If decode fails, still try to free the memory
+                if hasattr(self, "_free_string"):
+                    self._free_string(result_ptr)
+                break
 
-            # Free the string in Rust
+            # Free the Rust-allocated string immediately after copying
+            # Pass the raw pointer, not the c_char_p wrapper
             if hasattr(self, "_free_string"):
-                self._free_string(result_json)
+                self._free_string(result_ptr)
 
-            # Parse and yield batch
+            # Parse and yield batch (using the copied string)
             batch = json.loads(result_str)
 
             if not batch:
@@ -187,7 +204,9 @@ class RustWriterWrapper(BaseWriter):
         write_func = getattr(self._lib, "write_batch", None)
         if write_func:
             write_func.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-            write_func.restype = ctypes.c_char_p
+            # CRITICAL: Use c_void_p for return type to prevent ctypes from auto-converting
+            # We need the raw pointer to properly free it with Rust's allocator
+            write_func.restype = ctypes.c_void_p
             self._write_batch_rust = write_func
 
         # free_writer(writer: *mut Writer)
@@ -198,9 +217,11 @@ class RustWriterWrapper(BaseWriter):
             self._free_writer = free_func
 
         # free_string(s: *const c_char)
+        # CRITICAL: Use c_void_p to accept raw pointer, not c_char_p
+        # This prevents ctypes from doing any automatic conversions that conflict with Rust's allocator
         free_str_func = getattr(self._lib, "free_string", None)
         if free_str_func:
-            free_str_func.argtypes = [ctypes.c_char_p]
+            free_str_func.argtypes = [ctypes.c_void_p]
             free_str_func.restype = None
             self._free_string = free_str_func
 
@@ -238,27 +259,56 @@ class RustWriterWrapper(BaseWriter):
         Returns:
             File metadata
         """
+        # Convert datetime objects to ISO format strings for JSON serialization
+        import datetime
+        serializable_records = []
+        for record in records:
+            serializable_record = {}
+            for key, value in record.items():
+                if isinstance(value, datetime.datetime):
+                    serializable_record[key] = value.isoformat()
+                elif isinstance(value, datetime.date):
+                    serializable_record[key] = datetime.datetime.combine(
+                        value, datetime.time.min
+                    ).isoformat()
+                else:
+                    serializable_record[key] = value
+            serializable_records.append(serializable_record)
+        
         # Serialize records and counter
         input_dict = {
-            "records": records,
+            "records": serializable_records,
             "file_counter": file_counter,
         }
         input_json = json.dumps(input_dict).encode("utf-8")
 
         # Call Rust write_batch function
-        result_json = self._write_batch_rust(self._writer_ptr, input_json)
+        # Returns a raw pointer (c_void_p) to avoid ctypes auto-conversion
+        result_ptr = self._write_batch_rust(self._writer_ptr, input_json)
 
-        if not result_json:
+        if not result_ptr:
             return []
 
-        # Parse JSON result
-        result_str = result_json.decode("utf-8")
+        # CRITICAL: Convert raw pointer to c_char_p and copy string before freeing
+        # Rust returns a CString pointer that must be freed with Rust's allocator
+        # ctypes.c_char_p will create a Python bytes object from the C string
+        result_cstr = ctypes.c_char_p(result_ptr)
+        
+        try:
+            # Copy the string data immediately (ctypes will handle the conversion)
+            result_str = result_cstr.value.decode("utf-8") if result_cstr.value else ""
+        except Exception as e:
+            # If decode fails, still try to free the memory
+            if hasattr(self, "_free_string"):
+                self._free_string(result_ptr)
+            raise
 
-        # Free the string in Rust
+        # Free the Rust-allocated string immediately after copying
+        # Pass the raw pointer, not the c_char_p wrapper
         if hasattr(self, "_free_string"):
-            self._free_string(result_json)
+            self._free_string(result_ptr)
 
-        # Parse and return metadata
+        # Parse and return metadata (using the copied string)
         metadata = json.loads(result_str)
         return metadata
 

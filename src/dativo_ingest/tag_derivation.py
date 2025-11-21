@@ -35,6 +35,7 @@ class TagDerivation:
         classification_overrides: Optional[Dict[str, str]] = None,
         finops: Optional[Dict[str, Any]] = None,
         governance_overrides: Optional[Dict[str, Any]] = None,
+        source_tags: Optional[Dict[str, str]] = None,
     ):
         """Initialize tag derivation.
 
@@ -46,11 +47,14 @@ class TagDerivation:
                 e.g., {"cost_center": "FIN-001", "business_tags": ["payments", "revenue"]}
             governance_overrides: Governance metadata overrides
                 e.g., {"retention_days": 365, "owner": "finance-team@company.com"}
+            source_tags: Source system tags (LOWEST priority)
+                e.g., {"email": "PII"} from connector metadata
         """
         self.asset_definition = asset_definition
         self.classification_overrides = classification_overrides or {}
         self.finops = finops or {}
         self.governance_overrides = governance_overrides or {}
+        self.source_tags = source_tags or {}  # Source system tags
 
     def _classify_field(self, field_name: str, field_type: str) -> Optional[str]:
         """Classify a field - ONLY uses explicit classifications, no auto-detection.
@@ -134,26 +138,28 @@ class TagDerivation:
 
         # Retention days
         retention_days = None
-        if self.governance_overrides.get("retention_days"):
+        if self.governance_overrides.get("retention_days") is not None:
             retention_days = self.governance_overrides["retention_days"]
         elif (
             self.asset_definition.compliance
-            and self.asset_definition.compliance.retention_days
+            and self.asset_definition.compliance.retention_days is not None
         ):
             retention_days = self.asset_definition.compliance.retention_days
 
-        if retention_days:
+        if retention_days is not None:  # Allow 0 as valid value
             tags["retention_days"] = str(retention_days)
 
         # Owner
         owner = None
-        if self.governance_overrides.get("owner"):
+        if "owner" in self.governance_overrides:
+            # Check if override is explicitly set (even if empty string)
             owner = self.governance_overrides["owner"]
+            if owner:  # Only add if non-empty
+                tags["owner"] = owner
         elif self.asset_definition.team and self.asset_definition.team.owner:
             owner = self.asset_definition.team.owner
-
-        if owner:
-            tags["owner"] = owner
+            if owner:  # Only add if non-empty
+                tags["owner"] = owner
 
         # Domain
         if self.asset_definition.domain:
@@ -181,26 +187,55 @@ class TagDerivation:
             Dictionary of FinOps tags
         """
         tags = {}
+        
+        # Get finops from overrides first, then merge with asset definition
+        finops_data = self.finops.copy() if self.finops else {}
+        
+        # Merge with asset definition finops (asset values as base, overrides take precedence)
+        if hasattr(self.asset_definition, "finops") and self.asset_definition.finops:
+            # Convert FinOpsModel to dict if needed
+            asset_finops = {}
+            if hasattr(self.asset_definition.finops, "model_dump"):
+                asset_finops = self.asset_definition.finops.model_dump()
+            elif hasattr(self.asset_definition.finops, "dict"):
+                # Fallback for older Pydantic versions
+                asset_finops = self.asset_definition.finops.dict()
+            else:
+                # Try to access as dict-like
+                asset_finops = {
+                    "cost_center": getattr(self.asset_definition.finops, "cost_center", None),
+                    "business_tags": getattr(self.asset_definition.finops, "business_tags", None),
+                    "project": getattr(self.asset_definition.finops, "project", None),
+                    "environment": getattr(self.asset_definition.finops, "environment", None),
+                }
+                # Remove None values
+                asset_finops = {k: v for k, v in asset_finops.items() if v is not None}
+            
+            # Merge: asset values as base, overrides take precedence
+            finops_data = {**asset_finops, **finops_data}
+        
+        if not finops_data:
+            return tags
 
         # Cost center
-        if self.finops.get("cost_center"):
-            tags["cost_center"] = str(self.finops["cost_center"])
+        if finops_data.get("cost_center"):
+            tags["cost_center"] = str(finops_data["cost_center"])
 
         # Business tags
-        if self.finops.get("business_tags"):
-            business_tags = self.finops["business_tags"]
+        if finops_data.get("business_tags"):
+            business_tags = finops_data["business_tags"]
             if isinstance(business_tags, list):
                 tags["business_tags"] = ",".join(business_tags)
             else:
                 tags["business_tags"] = str(business_tags)
 
         # Project
-        if self.finops.get("project"):
-            tags["project"] = str(self.finops["project"])
+        if finops_data.get("project"):
+            tags["project"] = str(finops_data["project"])
 
         # Environment
-        if self.finops.get("environment"):
-            tags["environment"] = str(self.finops["environment"])
+        if finops_data.get("environment"):
+            tags["environment"] = str(finops_data["environment"])
 
         return tags
 
@@ -243,6 +278,7 @@ def derive_tags_from_asset(
     classification_overrides: Optional[Dict[str, str]] = None,
     finops: Optional[Dict[str, Any]] = None,
     governance_overrides: Optional[Dict[str, Any]] = None,
+    source_tags: Optional[Dict[str, str]] = None,
 ) -> Dict[str, str]:
     """Convenience function to derive all tags from asset definition.
 
@@ -251,6 +287,7 @@ def derive_tags_from_asset(
         classification_overrides: Field-level classification overrides
         finops: FinOps metadata
         governance_overrides: Governance metadata overrides
+        source_tags: Source system tags (LOWEST priority)
 
     Returns:
         Dictionary of all namespaced tags
@@ -260,5 +297,6 @@ def derive_tags_from_asset(
         classification_overrides=classification_overrides,
         finops=finops,
         governance_overrides=governance_overrides,
+        source_tags=source_tags,
     )
     return derivation.derive_all_tags()

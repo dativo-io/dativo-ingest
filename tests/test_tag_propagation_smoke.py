@@ -171,12 +171,13 @@ def test_job_override_precedence():
 
 
 def test_asset_metadata_tags():
-    """Test that asset metadata is included in tags."""
+    """Test that asset metadata is included in governance tags (domain, data_product)."""
     asset = AssetDefinition(
         name="customers",
         version="2.1",
         source_type="postgres",
         object="public.customers",
+        domain="sales",
         schema=[
             {"name": "id", "type": "integer", "required": True},
         ],
@@ -185,13 +186,16 @@ def test_asset_metadata_tags():
     
     tags = derive_tags_from_asset(asset_definition=asset)
     
-    # Verify asset metadata tags
-    assert "asset.name" in tags
-    assert tags["asset.name"] == "customers"
-    assert "asset.version" in tags
-    assert tags["asset.version"] == "2.1"
-    assert "asset.source_type" in tags
-    assert tags["asset.source_type"] == "postgres"
+    # Verify governance tags include domain
+    assert "governance.domain" in tags
+    assert tags["governance.domain"] == "sales"
+    
+    # Verify governance owner
+    assert "governance.owner" in tags
+    assert tags["governance.owner"] == "data@company.com"
+    
+    # Note: asset.name, asset.version, asset.source_type, asset.object are added
+    # by IcebergCommitter._derive_table_properties(), not by derive_tags_from_asset()
 
 
 if __name__ == "__main__":
