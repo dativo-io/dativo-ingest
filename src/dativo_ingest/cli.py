@@ -680,9 +680,11 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     batch_records
                 ):
                     logger.error(
-                        "Strict validation mode: failing due to validation errors",
+                        f"Strict validation mode: failing due to validation errors for job '{job_config.asset}'",
                         extra={
                             "event_type": "validation_failed",
+                            "job_name": job_config.asset,
+                            "error_summary": error_summary,
                         },
                     )
                     return 2

@@ -129,7 +129,6 @@ All requirements delivered, tested, and ready for production.
 - ✅ **`EXPLICIT_TAGS_ONLY.md`** (NEW)
 - ✅ **`ODCS_COMPLIANCE_REPORT.md`** (NEW)
 - ✅ **`TEST_ORGANIZATION_SUMMARY.md`** (NEW)
-- ✅ **`tests/TAG_VERIFICATION_README.md`** (NEW)
 - ✅ **`tests/integration/README.md`** (NEW)
 
 ### Schema
@@ -340,7 +339,6 @@ for key, value in table.properties.items():
 | `EXPLICIT_TAGS_ONLY.md` | Change summary |
 | `ODCS_COMPLIANCE_REPORT.md` | ODCS v3.0.2 compliance |
 | `TEST_ORGANIZATION_SUMMARY.md` | Test structure |
-| `tests/TAG_VERIFICATION_README.md` | Tag testing guide |
 
 ---
 
