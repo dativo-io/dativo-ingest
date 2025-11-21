@@ -10,25 +10,25 @@ This test suite verifies the complete end-to-end flow:
 These tests use mocks to avoid requiring actual Nessie/Iceberg infrastructure.
 """
 
-import pytest
 import sys
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
-from typing import Dict, Any
+from typing import Any, Dict
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from dativo_ingest.config import (
     AssetDefinition,
-    TargetConfig,
     ComplianceModel,
     FinOpsModel,
+    TargetConfig,
     TeamModel,
 )
-from dativo_ingest.tag_derivation import TagDerivation, derive_tags_from_asset
 from dativo_ingest.iceberg_committer import IcebergCommitter
-
+from dativo_ingest.tag_derivation import TagDerivation, derive_tags_from_asset
 
 # ============================================================================
 # Fixtures

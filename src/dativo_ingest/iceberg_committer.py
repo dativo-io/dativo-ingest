@@ -296,8 +296,8 @@ class IcebergCommitter:
                 f"Updated {len(new_properties)} table properties for {namespace}.{table_name}"
             )
         except Exception as e:
-            import warnings
             import logging
+            import warnings
 
             logger = logging.getLogger(__name__)
             logger.warning(
