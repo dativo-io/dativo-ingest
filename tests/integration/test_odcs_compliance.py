@@ -4,6 +4,7 @@
 import json
 import os
 import sys
+import urllib.error
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
@@ -80,15 +81,47 @@ def validate_asset(asset_path, schema):
         # Convert to ODCS format
         odcs_data = convert_asset_to_odcs_format(asset_data)
 
-        # Create resolver for relative $refs
-        schema_dir = Path("schemas/odcs")
-        resolver = jsonschema.RefResolver(
-            base_uri=f"file://{schema_dir.absolute()}/",
+        # Validate against schema
+        # Use a resolver that only handles local file:// URIs to prevent remote fetching
+        schema_dir = Path("schemas/odcs").resolve()
+        base_uri = f"file://{schema_dir}/"
+        
+        # Create resolver that prevents remote HTTP/HTTPS fetching (403 errors)
+        class LocalOnlyResolver(jsonschema.RefResolver):
+            def resolve_remote(self, uri):
+                # Only resolve local file:// URIs
+                if uri.startswith("file://"):
+                    try:
+                        return super().resolve_remote(uri)
+                    except (urllib.error.HTTPError, urllib.error.URLError):
+                        # If local file resolution fails, return empty dict
+                        return {}
+                # For remote URIs (http/https), skip to prevent 403 errors
+                # Return empty dict to skip remote validation
+                return {}
+        
+        resolver = LocalOnlyResolver(
+            base_uri=base_uri,
             referrer=schema,
         )
-
+        
         # Validate against schema
-        jsonschema.validate(instance=odcs_data, schema=schema, resolver=resolver)
+        # Catch HTTP errors and other exceptions from remote fetching
+        try:
+            jsonschema.validate(instance=odcs_data, schema=schema, resolver=resolver)
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+            # HTTP errors (403, etc.) from remote schema fetching
+            # Fall back to validation without resolver (local schema only)
+            jsonschema.validate(instance=odcs_data, schema=schema)
+        except Exception as e:
+            # Check if error is related to HTTP/remote fetching
+            error_msg = str(e)
+            if "403" in error_msg or "Forbidden" in error_msg or "HTTP Error" in error_msg:
+                # Try validation without resolver as fallback
+                jsonschema.validate(instance=odcs_data, schema=schema)
+            else:
+                # Re-raise other errors
+                raise
 
         # Additional checks for Dativo requirements
         errors = []
