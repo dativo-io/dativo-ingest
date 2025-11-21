@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Set
 
 class TagDerivation:
     """Collects explicitly defined tags from asset definitions and source metadata.
-    
+
     NO AUTOMATIC CLASSIFICATION: This class only uses tags that are explicitly
     defined in the asset definition or provided via overrides. It does NOT
     perform any automatic pattern matching or field name analysis.
@@ -166,7 +166,10 @@ class TagDerivation:
             tags["domain"] = self.asset_definition.domain
 
         # Data product
-        if hasattr(self.asset_definition, "dataProduct") and self.asset_definition.dataProduct:
+        if (
+            hasattr(self.asset_definition, "dataProduct")
+            and self.asset_definition.dataProduct
+        ):
             tags["data_product"] = self.asset_definition.dataProduct
 
         # Regulations (if any)
@@ -174,9 +177,7 @@ class TagDerivation:
             self.asset_definition.compliance
             and self.asset_definition.compliance.regulations
         ):
-            tags["regulations"] = ",".join(
-                self.asset_definition.compliance.regulations
-            )
+            tags["regulations"] = ",".join(self.asset_definition.compliance.regulations)
 
         return tags
 
@@ -187,10 +188,10 @@ class TagDerivation:
             Dictionary of FinOps tags
         """
         tags = {}
-        
+
         # Get finops from overrides first, then merge with asset definition
         finops_data = self.finops.copy() if self.finops else {}
-        
+
         # Merge with asset definition finops (asset values as base, overrides take precedence)
         if hasattr(self.asset_definition, "finops") and self.asset_definition.finops:
             # Convert FinOpsModel to dict if needed
@@ -203,17 +204,23 @@ class TagDerivation:
             else:
                 # Try to access as dict-like
                 asset_finops = {
-                    "cost_center": getattr(self.asset_definition.finops, "cost_center", None),
-                    "business_tags": getattr(self.asset_definition.finops, "business_tags", None),
+                    "cost_center": getattr(
+                        self.asset_definition.finops, "cost_center", None
+                    ),
+                    "business_tags": getattr(
+                        self.asset_definition.finops, "business_tags", None
+                    ),
                     "project": getattr(self.asset_definition.finops, "project", None),
-                    "environment": getattr(self.asset_definition.finops, "environment", None),
+                    "environment": getattr(
+                        self.asset_definition.finops, "environment", None
+                    ),
                 }
                 # Remove None values
                 asset_finops = {k: v for k, v in asset_finops.items() if v is not None}
-            
+
             # Merge: asset values as base, overrides take precedence
             finops_data = {**asset_finops, **finops_data}
-        
+
         if not finops_data:
             return tags
 

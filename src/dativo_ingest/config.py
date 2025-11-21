@@ -222,7 +222,7 @@ class AssetDefinition(BaseModel):
     team: TeamModel
     compliance: Optional[ComplianceModel] = None
     change_management: Optional[ChangeManagementModel] = None
-    
+
     # Dativo FinOps extension
     finops: Optional[FinOpsModel] = None
 
@@ -497,9 +497,15 @@ class JobConfig(BaseModel):
     target: Optional[Dict[str, Any]] = None  # Target configuration
 
     # Metadata overrides for tag propagation
-    classification_overrides: Optional[Dict[str, str]] = None  # Field-level classification overrides
-    finops: Optional[Dict[str, Any]] = None  # FinOps metadata (cost_center, business_tags, etc.)
-    governance_overrides: Optional[Dict[str, Any]] = None  # Governance metadata overrides
+    classification_overrides: Optional[Dict[str, str]] = (
+        None  # Field-level classification overrides
+    )
+    finops: Optional[Dict[str, Any]] = (
+        None  # FinOps metadata (cost_center, business_tags, etc.)
+    )
+    governance_overrides: Optional[Dict[str, Any]] = (
+        None  # Governance metadata overrides
+    )
 
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'

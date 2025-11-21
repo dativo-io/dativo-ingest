@@ -238,7 +238,10 @@ class IcebergCommitter:
         tags["asset.version"] = str(self.asset_definition.version)
         if self.asset_definition.domain:
             tags["asset.domain"] = self.asset_definition.domain
-        if hasattr(self.asset_definition, "dataProduct") and self.asset_definition.dataProduct:
+        if (
+            hasattr(self.asset_definition, "dataProduct")
+            and self.asset_definition.dataProduct
+        ):
             tags["asset.data_product"] = self.asset_definition.dataProduct
 
         # Add source metadata
@@ -261,32 +264,33 @@ class IcebergCommitter:
         """
         try:
             table = catalog.load_table((namespace, table_name))
-            
+
             # Derive new properties
             new_properties = self._derive_table_properties()
-            
+
             # Get current properties
             current_properties = table.properties or {}
-            
+
             # Check if update is needed
             needs_update = False
             for key, value in new_properties.items():
                 if key not in current_properties or current_properties[key] != value:
                     needs_update = True
                     break
-            
+
             if not needs_update:
                 return
-            
+
             # Merge properties (new properties override existing ones)
             merged_properties = {**current_properties, **new_properties}
-            
+
             # Update table properties using transaction
             with table.transaction() as txn:
                 for key, value in new_properties.items():
                     txn.set_properties(**{key: value})
-            
+
             import logging
+
             logger = logging.getLogger(__name__)
             logger.info(
                 f"Updated {len(new_properties)} table properties for {namespace}.{table_name}"
@@ -294,6 +298,7 @@ class IcebergCommitter:
         except Exception as e:
             import warnings
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
                 f"Failed to update table properties for {namespace}.{table_name}: {e}"
@@ -472,8 +477,9 @@ class IcebergCommitter:
                     partition_spec=partition_spec,
                     properties=table_properties,
                 )
-                
+
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.info(
                     f"Created Iceberg table with {len(table_properties)} properties: {namespace}.{table_name}"
