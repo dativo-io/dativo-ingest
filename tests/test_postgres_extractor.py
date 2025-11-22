@@ -77,4 +77,3 @@ def test_postgres_extractor_extracts_source_tags_connection_failure():
 
     assert "tags" in result
     assert isinstance(result["tags"], dict)
-

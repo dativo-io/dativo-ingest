@@ -92,7 +92,9 @@ def test_csv_extractor_extracts_source_tags(sample_csv_file):
     assert metadata["tags"]["phone"] == "column"
 
 
-def test_source_tags_passed_to_iceberg_committer(sample_asset_definition, sample_target_config):
+def test_source_tags_passed_to_iceberg_committer(
+    sample_asset_definition, sample_target_config
+):
     """Test that source tags are passed to IcebergCommitter and used in derivation."""
     source_tags = {
         "email": "column",  # From CSV extractor
@@ -229,7 +231,9 @@ def test_source_tags_empty_when_no_metadata(sample_csv_file):
     assert len(metadata["tags"]) > 0
 
 
-def test_iceberg_committer_with_source_tags_only(sample_asset_definition, sample_target_config):
+def test_iceberg_committer_with_source_tags_only(
+    sample_asset_definition, sample_target_config
+):
     """Test IcebergCommitter with only source tags (no asset/job tags)."""
     source_tags = {
         "email": "column",
@@ -277,4 +281,3 @@ def test_source_tags_combined_with_job_overrides(sample_asset_definition):
 
     # phone has no job/asset override, so no classification
     # (source tag "column" doesn't auto-classify)
-

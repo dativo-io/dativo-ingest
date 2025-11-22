@@ -487,7 +487,9 @@ def test_update_table_properties_partial_update(sample_asset_definition, target_
 # ============================================================================
 
 
-def test_table_properties_update_with_source_tags(sample_asset_definition, target_config):
+def test_table_properties_update_with_source_tags(
+    sample_asset_definition, target_config
+):
     """Test update existing table with new source tags."""
     from unittest.mock import MagicMock, Mock
 
@@ -541,7 +543,9 @@ def test_table_properties_update_with_source_tags(sample_asset_definition, targe
     assert properties["classification.fields.email"] == "pii"
 
 
-def test_table_properties_merge_preserves_unrelated(sample_asset_definition, target_config):
+def test_table_properties_merge_preserves_unrelated(
+    sample_asset_definition, target_config
+):
     """Test that unrelated properties are preserved during update."""
     from unittest.mock import MagicMock, Mock
 
@@ -574,7 +578,9 @@ def test_table_properties_merge_preserves_unrelated(sample_asset_definition, tar
     # (set_properties merges, doesn't replace all properties)
 
 
-def test_table_properties_idempotent_with_source_tags(sample_asset_definition, target_config):
+def test_table_properties_idempotent_with_source_tags(
+    sample_asset_definition, target_config
+):
     """Test idempotent updates with source tags."""
     from unittest.mock import MagicMock, Mock
 
@@ -623,7 +629,9 @@ def test_table_properties_idempotent_with_source_tags(sample_asset_definition, t
     # (may or may not call transaction depending on implementation)
 
 
-def test_table_properties_update_partial_source_tags(sample_asset_definition, target_config):
+def test_table_properties_update_partial_source_tags(
+    sample_asset_definition, target_config
+):
     """Test update when only some fields have source tags."""
     from unittest.mock import MagicMock, Mock
 
@@ -725,9 +733,13 @@ def test_table_properties_remove_source_tags(sample_asset_definition, target_con
     committer_no_tags._create_catalog = Mock(return_value=mock_catalog)
 
     # Call _update_table_properties without source tags
-    committer_no_tags._update_table_properties(mock_catalog, "test_domain", "test_asset")
+    committer_no_tags._update_table_properties(
+        mock_catalog, "test_domain", "test_asset"
+    )
 
     # Properties without source tags should not have email classification
     # (unless there's an asset or job override)
     properties = committer_no_tags._derive_table_properties()
-    assert "classification.fields.email" not in properties  # No source tag, no asset/job override
+    assert (
+        "classification.fields.email" not in properties
+    )  # No source tag, no asset/job override
