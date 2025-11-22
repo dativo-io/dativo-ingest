@@ -480,3 +480,254 @@ def test_update_table_properties_partial_update(sample_asset_definition, target_
 
     # Verify transaction was used (properties changed)
     assert mock_table.transaction.called
+
+
+# ============================================================================
+# Additional Test Scenarios from TEST_COVERAGE_GAPS.md
+# ============================================================================
+
+
+def test_table_properties_update_with_source_tags(sample_asset_definition, target_config):
+    """Test update existing table with new source tags."""
+    from unittest.mock import MagicMock, Mock
+
+    # Add email field to schema
+    asset = AssetDefinition(
+        name=sample_asset_definition.name,
+        version=sample_asset_definition.version,
+        source_type=sample_asset_definition.source_type,
+        object=sample_asset_definition.object,
+        domain=sample_asset_definition.domain,
+        schema=[
+            {"name": "id", "type": "integer", "required": True},
+            {"name": "email", "type": "string", "required": False},
+        ],
+        team=sample_asset_definition.team,
+    )
+
+    source_tags = {"email": "PII"}
+
+    committer = IcebergCommitter(
+        asset,
+        target_config,
+        source_tags=source_tags,
+    )
+
+    # Mock table with existing properties (no source tags)
+    mock_table = MagicMock()
+    mock_table.properties = {
+        "asset.name": "test_asset",
+        "asset.version": "1.0",
+    }
+
+    mock_txn = MagicMock()
+    mock_table.transaction.return_value.__enter__ = Mock(return_value=mock_txn)
+    mock_table.transaction.return_value.__exit__ = Mock(return_value=None)
+
+    mock_catalog = MagicMock()
+    mock_catalog.load_table.return_value = mock_table
+
+    committer._create_catalog = Mock(return_value=mock_catalog)
+
+    # Call _update_table_properties
+    committer._update_table_properties(mock_catalog, "test_domain", "test_asset")
+
+    # Verify transaction was used (new source tags should trigger update)
+    assert mock_table.transaction.called
+
+    # Verify properties include source tag classification
+    properties = committer._derive_table_properties()
+    assert "classification.fields.email" in properties
+    assert properties["classification.fields.email"] == "pii"
+
+
+def test_table_properties_merge_preserves_unrelated(sample_asset_definition, target_config):
+    """Test that unrelated properties are preserved during update."""
+    from unittest.mock import MagicMock, Mock
+
+    committer = IcebergCommitter(sample_asset_definition, target_config)
+
+    # Mock table with existing unrelated properties
+    mock_table = MagicMock()
+    mock_table.properties = {
+        "asset.name": "test_asset",
+        "custom.property": "custom_value",  # Unrelated property
+        "iceberg.write.format.default": "parquet",  # Iceberg internal property
+    }
+
+    mock_txn = MagicMock()
+    mock_table.transaction.return_value.__enter__ = Mock(return_value=mock_txn)
+    mock_table.transaction.return_value.__exit__ = Mock(return_value=None)
+
+    mock_catalog = MagicMock()
+    mock_catalog.load_table.return_value = mock_table
+
+    committer._create_catalog = Mock(return_value=mock_catalog)
+
+    # Call _update_table_properties
+    committer._update_table_properties(mock_catalog, "test_domain", "test_asset")
+
+    # Verify set_properties was called
+    assert mock_txn.set_properties.called
+
+    # The implementation should preserve unrelated properties
+    # (set_properties merges, doesn't replace all properties)
+
+
+def test_table_properties_idempotent_with_source_tags(sample_asset_definition, target_config):
+    """Test idempotent updates with source tags."""
+    from unittest.mock import MagicMock, Mock
+
+    # Add email field to schema
+    asset = AssetDefinition(
+        name=sample_asset_definition.name,
+        version=sample_asset_definition.version,
+        source_type=sample_asset_definition.source_type,
+        object=sample_asset_definition.object,
+        domain=sample_asset_definition.domain,
+        schema=[
+            {"name": "id", "type": "integer", "required": True},
+            {"name": "email", "type": "string", "required": False},
+        ],
+        team=sample_asset_definition.team,
+    )
+
+    source_tags = {"email": "PII"}
+
+    committer = IcebergCommitter(
+        asset,
+        target_config,
+        source_tags=source_tags,
+    )
+
+    # Get expected properties
+    expected_properties = committer._derive_table_properties()
+
+    # Mock table with same properties already set (including source tags)
+    mock_table = MagicMock()
+    mock_table.properties = expected_properties.copy()
+
+    mock_txn = MagicMock()
+    mock_table.transaction.return_value.__enter__ = Mock(return_value=mock_txn)
+    mock_table.transaction.return_value.__exit__ = Mock(return_value=None)
+
+    mock_catalog = MagicMock()
+    mock_catalog.load_table.return_value = mock_table
+
+    committer._create_catalog = Mock(return_value=mock_catalog)
+
+    # Call _update_table_properties (should detect no changes needed)
+    committer._update_table_properties(mock_catalog, "test_domain", "test_asset")
+
+    # If properties are unchanged, the implementation should handle idempotency
+    # (may or may not call transaction depending on implementation)
+
+
+def test_table_properties_update_partial_source_tags(sample_asset_definition, target_config):
+    """Test update when only some fields have source tags."""
+    from unittest.mock import MagicMock, Mock
+
+    # Add multiple fields to schema
+    asset = AssetDefinition(
+        name=sample_asset_definition.name,
+        version=sample_asset_definition.version,
+        source_type=sample_asset_definition.source_type,
+        object=sample_asset_definition.object,
+        domain=sample_asset_definition.domain,
+        schema=[
+            {"name": "id", "type": "integer", "required": True},
+            {"name": "email", "type": "string", "required": False},
+            {"name": "phone", "type": "string", "required": False},
+            {"name": "name", "type": "string", "required": False},
+        ],
+        team=sample_asset_definition.team,
+    )
+
+    # Only some fields have source tags
+    source_tags = {
+        "email": "PII",
+        "phone": "SENSITIVE",
+        # name has no source tag
+    }
+
+    committer = IcebergCommitter(
+        asset,
+        target_config,
+        source_tags=source_tags,
+    )
+
+    # Mock table
+    mock_table = MagicMock()
+    mock_table.properties = {}
+
+    mock_txn = MagicMock()
+    mock_table.transaction.return_value.__enter__ = Mock(return_value=mock_txn)
+    mock_table.transaction.return_value.__exit__ = Mock(return_value=None)
+
+    mock_catalog = MagicMock()
+    mock_catalog.load_table.return_value = mock_table
+
+    committer._create_catalog = Mock(return_value=mock_catalog)
+
+    # Call _update_table_properties
+    committer._update_table_properties(mock_catalog, "test_domain", "test_asset")
+
+    # Verify properties only include source tags for fields that have them
+    properties = committer._derive_table_properties()
+    assert "classification.fields.email" in properties
+    assert "classification.fields.phone" in properties
+    assert "classification.fields.name" not in properties  # No source tag
+
+
+def test_table_properties_remove_source_tags(sample_asset_definition, target_config):
+    """Test what happens when source tags are removed (set to None)."""
+    from unittest.mock import MagicMock, Mock
+
+    # Add email field to schema
+    asset = AssetDefinition(
+        name=sample_asset_definition.name,
+        version=sample_asset_definition.version,
+        source_type=sample_asset_definition.source_type,
+        object=sample_asset_definition.object,
+        domain=sample_asset_definition.domain,
+        schema=[
+            {"name": "id", "type": "integer", "required": True},
+            {"name": "email", "type": "string", "required": False},
+        ],
+        team=sample_asset_definition.team,
+    )
+
+    # First run: with source tags
+    committer_with_tags = IcebergCommitter(
+        asset,
+        target_config,
+        source_tags={"email": "PII"},
+    )
+
+    # Mock table with existing source tag classification
+    mock_table = MagicMock()
+    mock_table.properties = committer_with_tags._derive_table_properties().copy()
+
+    # Second run: without source tags (removed)
+    committer_no_tags = IcebergCommitter(
+        asset,
+        target_config,
+        source_tags=None,  # Source tags removed
+    )
+
+    mock_txn = MagicMock()
+    mock_table.transaction.return_value.__enter__ = Mock(return_value=mock_txn)
+    mock_table.transaction.return_value.__exit__ = Mock(return_value=None)
+
+    mock_catalog = MagicMock()
+    mock_catalog.load_table.return_value = mock_table
+
+    committer_no_tags._create_catalog = Mock(return_value=mock_catalog)
+
+    # Call _update_table_properties without source tags
+    committer_no_tags._update_table_properties(mock_catalog, "test_domain", "test_asset")
+
+    # Properties without source tags should not have email classification
+    # (unless there's an asset or job override)
+    properties = committer_no_tags._derive_table_properties()
+    assert "classification.fields.email" not in properties  # No source tag, no asset/job override

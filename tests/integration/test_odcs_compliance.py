@@ -85,7 +85,7 @@ def validate_asset(asset_path, schema):
         # Use a resolver that only handles local file:// URIs to prevent remote fetching
         schema_dir = Path("schemas/odcs").resolve()
         base_uri = f"file://{schema_dir}/"
-        
+
         # Create resolver that prevents remote HTTP/HTTPS fetching (403 errors)
         class LocalOnlyResolver(jsonschema.RefResolver):
             def resolve_remote(self, uri):
@@ -99,12 +99,12 @@ def validate_asset(asset_path, schema):
                 # For remote URIs (http/https), skip to prevent 403 errors
                 # Return empty dict to skip remote validation
                 return {}
-        
+
         resolver = LocalOnlyResolver(
             base_uri=base_uri,
             referrer=schema,
         )
-        
+
         # Validate against schema
         # Catch HTTP errors and other exceptions from remote fetching
         try:
@@ -116,7 +116,11 @@ def validate_asset(asset_path, schema):
         except Exception as e:
             # Check if error is related to HTTP/remote fetching
             error_msg = str(e)
-            if "403" in error_msg or "Forbidden" in error_msg or "HTTP Error" in error_msg:
+            if (
+                "403" in error_msg
+                or "Forbidden" in error_msg
+                or "HTTP Error" in error_msg
+            ):
                 # Try validation without resolver as fallback
                 jsonschema.validate(instance=odcs_data, schema=schema)
             else:

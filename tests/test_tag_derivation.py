@@ -878,3 +878,207 @@ def test_derive_all_tags_asset_metadata():
         assert "governance.data_product" in tags
 
     # Note: asset.name, asset.version, etc. are added by IcebergCommitter, not TagDerivation
+
+
+# ============================================================================
+# Additional Edge Cases from TEST_COVERAGE_GAPS.md
+# ============================================================================
+
+
+def test_finops_merge_partial_overrides():
+    """Test job finops with only some fields overriding asset finops."""
+    asset = AssetDefinition(
+        name="test_asset",
+        version="1.0",
+        source_type="csv",
+        object="test_object",
+        schema=[{"name": "id", "type": "integer"}],
+        team={"owner": "test@company.com"},
+        finops={
+            "cost_center": "FIN-001",
+            "business_tags": ["finance", "reporting"],
+            "project": "data-platform",
+        },
+    )
+
+    # Job finops only overrides some fields
+    job_finops = {
+        "cost_center": "FIN-002",  # Override
+        "project": "new-project",  # Override
+        # business_tags not in job finops - should use asset value
+    }
+
+    derivation = TagDerivation(asset_definition=asset, finops=job_finops)
+    finops_tags = derivation.derive_finops_tags()
+
+    # Job overrides should win
+    assert finops_tags["cost_center"] == "FIN-002"
+    assert finops_tags["project"] == "new-project"
+    # Asset value should be used for fields not in job finops
+    assert finops_tags["business_tags"] == "finance,reporting"
+
+
+def test_governance_overrides_empty_string():
+    """Test governance override with empty string vs None."""
+    asset = AssetDefinition(
+        name="test_asset",
+        version="1.0",
+        source_type="csv",
+        object="test_object",
+        schema=[{"name": "id", "type": "integer"}],
+        team={"owner": "test@company.com"},
+        compliance={"retention_days": 90},
+    )
+
+    # Override with empty string
+    derivation = TagDerivation(
+        asset_definition=asset,
+        governance_overrides={"owner": ""},  # Empty string clears owner
+    )
+    governance_tags = derivation.derive_governance_tags()
+
+    # Empty string should not create tag (falsy)
+    assert "owner" not in governance_tags
+    # retention_days should still be present from asset (None override means "not set")
+    # Note: To clear retention_days, you would need to not include it in overrides
+    # or use a sentinel value. The current logic treats None as "not set" and falls back to asset.
+    assert "retention_days" in governance_tags
+    assert governance_tags["retention_days"] == "90"
+
+
+def test_source_tags_case_sensitivity():
+    """Test case sensitivity in source tag matching."""
+    asset = AssetDefinition(
+        name="test_asset",
+        version="1.0",
+        source_type="postgres",
+        object="test_table",
+        schema=[
+            {"name": "Email", "type": "string"},  # Capital E
+            {"name": "PHONE", "type": "string"},  # All caps
+        ],
+        team={"owner": "test@company.com"},
+    )
+
+    source_tags = {
+        "email": "PII",  # lowercase
+        "phone": "SENSITIVE",  # lowercase
+    }
+
+    derivation = TagDerivation(
+        asset_definition=asset,
+        source_tags=source_tags,
+    )
+
+    classifications = derivation.derive_field_classifications()
+
+    # Field names are case-sensitive - "Email" != "email"
+    # So source tags won't match and no classification should be set
+    assert "Email" not in classifications
+    assert "PHONE" not in classifications
+
+
+def test_source_tags_field_name_mismatch():
+    """Test source tags for fields not in schema."""
+    asset = AssetDefinition(
+        name="test_asset",
+        version="1.0",
+        source_type="postgres",
+        object="test_table",
+        schema=[
+            {"name": "id", "type": "integer"},
+            {"name": "email", "type": "string"},
+        ],
+        team={"owner": "test@company.com"},
+    )
+
+    source_tags = {
+        "email": "PII",  # Matches schema
+        "phone": "SENSITIVE",  # Not in schema - should be ignored
+        "ssn": "RESTRICTED",  # Not in schema - should be ignored
+    }
+
+    derivation = TagDerivation(
+        asset_definition=asset,
+        source_tags=source_tags,
+    )
+
+    classifications = derivation.derive_field_classifications()
+
+    # Only email should have classification (it's in schema)
+    assert "email" in classifications
+    assert classifications["email"] == "pii"
+    # Fields not in schema should not appear
+    assert "phone" not in classifications
+    assert "ssn" not in classifications
+
+
+def test_classification_override_default_key():
+    """Test override 'default' classification key."""
+    asset = AssetDefinition(
+        name="test_asset",
+        version="1.0",
+        source_type="csv",
+        object="test_object",
+        schema=[{"name": "id", "type": "integer"}],
+        team={"owner": "test@company.com"},
+        compliance={"classification": ["PII"]},
+    )
+
+    classification_overrides = {
+        "default": "RESTRICTED",  # Override default classification
+    }
+
+    derivation = TagDerivation(
+        asset_definition=asset,
+        classification_overrides=classification_overrides,
+    )
+
+    default_classification = derivation.derive_default_classification()
+
+    # Override should win
+    assert default_classification == "restricted"
+
+
+def test_multiple_source_tags_same_field():
+    """Test what happens if source provides multiple tags for same field."""
+    # This tests the behavior when source_tags dict has multiple entries
+    # for the same field (shouldn't happen, but test the behavior)
+    asset = AssetDefinition(
+        name="test_asset",
+        version="1.0",
+        source_type="postgres",
+        object="test_table",
+        schema=[
+            {"name": "email", "type": "string"},
+        ],
+        team={"owner": "test@company.com"},
+    )
+
+    # In Python dicts, last value wins if key is duplicated
+    # But in practice, this shouldn't happen - test that last value is used
+    source_tags = {
+        "email": "PII",  # First value
+    }
+    # If we had duplicate keys, last would win, but dicts don't allow that
+    # So we'll test that the value is used correctly
+
+    derivation = TagDerivation(
+        asset_definition=asset,
+        source_tags=source_tags,
+    )
+
+    classifications = derivation.derive_field_classifications()
+
+    # Should use the source tag
+    assert "email" in classifications
+    assert classifications["email"] == "pii"
+
+    # If we update source_tags, new value should be used
+    source_tags["email"] = "SENSITIVE"
+    derivation2 = TagDerivation(
+        asset_definition=asset,
+        source_tags=source_tags,
+    )
+    classifications2 = derivation2.derive_field_classifications()
+    assert classifications2["email"] == "sensitive"

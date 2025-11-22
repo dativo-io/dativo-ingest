@@ -1,4 +1,4 @@
-.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test clean clean-state clean-temp
+.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test format format-check lint clean clean-state clean-temp
 
 schema-validate: schema-connectors schema-odcs
 
@@ -42,6 +42,49 @@ test-smoke:
 
 # Run all tests
 test: test-unit test-integration test-smoke
+
+# Format code with black and isort
+format:
+	@echo "🎨 Formatting code with black and isort..."
+	@if command -v black >/dev/null 2>&1; then \
+		black src/ tests/; \
+	else \
+		echo "⚠️  black not found. Install with: pip install black"; \
+	fi
+	@if command -v isort >/dev/null 2>&1; then \
+		isort src/ tests/; \
+	else \
+		echo "⚠️  isort not found. Install with: pip install isort"; \
+	fi
+	@echo "✅ Code formatted"
+
+# Check code formatting (for CI)
+format-check:
+	@echo "🔍 Checking code formatting..."
+	@if command -v black >/dev/null 2>&1; then \
+		black --check src/ tests/ || (echo "❌ Code formatting issues found. Run 'make format' to fix." && exit 1); \
+	else \
+		echo "⚠️  black not found. Install with: pip install black"; \
+		exit 1; \
+	fi
+	@if command -v isort >/dev/null 2>&1; then \
+		isort --check-only src/ tests/ || (echo "❌ Import sorting issues found. Run 'make format' to fix." && exit 1); \
+	else \
+		echo "⚠️  isort not found. Install with: pip install isort"; \
+		exit 1; \
+	fi
+	@echo "✅ Code formatting is correct"
+
+# Lint code (format check + flake8)
+lint: format-check
+	@echo "🔍 Linting code with flake8..."
+	@if command -v flake8 >/dev/null 2>&1; then \
+		flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics || exit 1; \
+	else \
+		echo "⚠️  flake8 not found. Install with: pip install flake8"; \
+		exit 1; \
+	fi
+	@echo "✅ Linting passed"
 
 # Clean up state files (development)
 clean-state:

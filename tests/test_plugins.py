@@ -723,3 +723,241 @@ class StreamingReader(BaseReader):
         assert batches[0][0]["batch"] == 0
         assert batches[1][0]["batch"] == 1
         assert batches[2][0]["batch"] == 2
+
+
+# ============================================================================
+# Custom Reader Plugin Source Tag Extraction Tests
+# ============================================================================
+
+
+class TestCustomReaderSourceTagExtraction:
+    """Tests for custom reader plugins implementing source tag extraction."""
+
+    def test_custom_reader_with_extract_metadata(self, tmp_path):
+        """Test custom reader implementing extract_metadata()."""
+        reader_code = """
+from dativo_ingest.plugins import BaseReader
+
+class MetadataReader(BaseReader):
+    def extract(self, state_manager=None):
+        yield [{"id": 1, "email": "test@example.com"}]
+    
+    def extract_metadata(self):
+        return {
+            "tags": {
+                "email": "PII",
+                "id": "PUBLIC"
+            }
+        }
+"""
+
+        reader_file = tmp_path / "metadata_reader.py"
+        reader_file.write_text(reader_code)
+
+        reader_class = PluginLoader.load_reader(f"{reader_file}:MetadataReader")
+        source_config = SourceConfig(type="test")
+        reader = reader_class(source_config)
+
+        # Test extract_metadata method
+        metadata = reader.extract_metadata()
+        assert "tags" in metadata
+        assert metadata["tags"]["email"] == "PII"
+        assert metadata["tags"]["id"] == "PUBLIC"
+
+        # Verify extract still works
+        batches = list(reader.extract())
+        assert len(batches) == 1
+
+    def test_custom_reader_with_get_source_tags(self, tmp_path):
+        """Test custom reader implementing get_source_tags() (alternative method)."""
+        reader_code = """
+from dativo_ingest.plugins import BaseReader
+
+class SourceTagsReader(BaseReader):
+    def extract(self, state_manager=None):
+        yield [{"id": 1, "phone": "555-1234"}]
+    
+    def get_source_tags(self):
+        return {
+            "phone": "SENSITIVE",
+            "id": "PUBLIC"
+        }
+"""
+
+        reader_file = tmp_path / "source_tags_reader.py"
+        reader_file.write_text(reader_code)
+
+        reader_class = PluginLoader.load_reader(f"{reader_file}:SourceTagsReader")
+        source_config = SourceConfig(type="test")
+        reader = reader_class(source_config)
+
+        # Test get_source_tags method
+        source_tags = reader.get_source_tags()
+        assert source_tags["phone"] == "SENSITIVE"
+        assert source_tags["id"] == "PUBLIC"
+
+        # Verify extract still works
+        batches = list(reader.extract())
+        assert len(batches) == 1
+
+    def test_custom_reader_source_tags_propagated(self, tmp_path):
+        """Test that source tags from custom reader flow through to IcebergCommitter."""
+        from dativo_ingest.config import AssetDefinition, TargetConfig
+        from dativo_ingest.iceberg_committer import IcebergCommitter
+
+        reader_code = """
+from dativo_ingest.plugins import BaseReader
+
+class TaggedReader(BaseReader):
+    def extract(self, state_manager=None):
+        yield [{"id": 1, "email": "test@example.com"}]
+    
+    def extract_metadata(self):
+        return {
+            "tags": {
+                "email": "PII"
+            }
+        }
+"""
+
+        reader_file = tmp_path / "tagged_reader.py"
+        reader_file.write_text(reader_code)
+
+        reader_class = PluginLoader.load_reader(f"{reader_file}:TaggedReader")
+        source_config = SourceConfig(type="test")
+        reader = reader_class(source_config)
+
+        # Extract source tags
+        metadata = reader.extract_metadata()
+        source_tags = metadata.get("tags", {})
+
+        # Create asset and committer with source tags
+        asset = AssetDefinition(
+            name="test_asset",
+            version="1.0",
+            source_type="test",
+            object="test_object",
+            schema=[
+                {"name": "id", "type": "integer"},
+                {"name": "email", "type": "string"},
+            ],
+            team={"owner": "test@company.com"},
+        )
+
+        target_config = TargetConfig(
+            type="iceberg",
+            catalog="nessie",
+            branch="main",
+            warehouse="s3://test-bucket/",
+            connection={
+                "nessie": {"uri": "http://localhost:19120/api/v1"},
+                "s3": {
+                    "endpoint": "http://localhost:9000",
+                    "bucket": "test-bucket",
+                    "access_key_id": "test-key",
+                    "secret_access_key": "test-secret",
+                },
+            },
+        )
+
+        committer = IcebergCommitter(
+            asset_definition=asset,
+            target_config=target_config,
+            source_tags=source_tags,
+        )
+
+        # Verify source tags are stored
+        assert committer.source_tags == source_tags
+
+        # Derive properties (should include source tag classification)
+        properties = committer._derive_table_properties()
+        assert "classification.fields.email" in properties
+        assert properties["classification.fields.email"] == "pii"
+
+    def test_custom_reader_source_tags_override_hierarchy(self, tmp_path):
+        """Test three-level hierarchy works with custom readers."""
+        from dativo_ingest.config import AssetDefinition
+        from dativo_ingest.tag_derivation import derive_tags_from_asset
+
+        reader_code = """
+from dativo_ingest.plugins import BaseReader
+
+class HierarchyReader(BaseReader):
+    def extract(self, state_manager=None):
+        yield [{"id": 1, "email": "test@example.com"}]
+    
+    def extract_metadata(self):
+        return {
+            "tags": {
+                "email": "PII"  # Level 3: Source (lowest priority)
+            }
+        }
+"""
+
+        reader_file = tmp_path / "hierarchy_reader.py"
+        reader_file.write_text(reader_code)
+
+        reader_class = PluginLoader.load_reader(f"{reader_file}:HierarchyReader")
+        source_config = SourceConfig(type="test")
+        reader = reader_class(source_config)
+
+        # Extract source tags
+        metadata = reader.extract_metadata()
+        source_tags = metadata.get("tags", {})
+
+        # Create asset with explicit classification (Level 2: Asset)
+        asset = AssetDefinition(
+            name="test_asset",
+            version="1.0",
+            source_type="test",
+            object="test_object",
+            schema=[
+                {
+                    "name": "email",
+                    "type": "string",
+                    "classification": "SENSITIVE_PII",  # Level 2: Asset (overrides source)
+                },
+            ],
+            team={"owner": "test@company.com"},
+        )
+
+        # Job overrides (Level 1: Job - highest priority)
+        classification_overrides = {
+            "email": "HIGH_PII",  # Level 1: Job (overrides all)
+        }
+
+        # Derive tags with all three levels
+        tags = derive_tags_from_asset(
+            asset_definition=asset,
+            classification_overrides=classification_overrides,
+            source_tags=source_tags,
+        )
+
+        # Verify hierarchy: job > asset > source
+        assert "classification.fields.email" in tags
+        assert tags["classification.fields.email"] == "high_pii"  # Job wins
+
+    def test_custom_reader_no_source_tags_method(self, tmp_path):
+        """Test custom reader without source tag methods (should work normally)."""
+        reader_code = """
+from dativo_ingest.plugins import BaseReader
+
+class SimpleReader(BaseReader):
+    def extract(self, state_manager=None):
+        yield [{"id": 1, "name": "test"}]
+"""
+
+        reader_file = tmp_path / "simple_reader.py"
+        reader_file.write_text(reader_code)
+
+        reader_class = PluginLoader.load_reader(f"{reader_file}:SimpleReader")
+        source_config = SourceConfig(type="test")
+        reader = reader_class(source_config)
+
+        # Reader should work normally without source tag methods
+        batches = list(reader.extract())
+        assert len(batches) == 1
+
+        # extract_metadata should not exist
+        assert not hasattr(reader, "extract_metadata")
+        assert not hasattr(reader, "get_source_tags")
