@@ -1,10 +1,16 @@
-"""Secrets management for loading and validating credentials from filesystem storage."""
+"""Secrets management for loading and validating credentials from filesystem storage and other managers."""
 
-import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
+
+from .secret_managers import (
+    CompositeSecretManager,
+    EnvSecretManager,
+    FilesystemSecretManager,
+    get_secret_manager,
+)
 
 
 def resolve_secret_path(file_template: str, tenant_id: str) -> Path:
@@ -36,77 +42,20 @@ def load_secrets(
         Dictionary of loaded secrets, keyed by secret file name (without extension)
 
     Raises:
-        ValueError: If secrets directory doesn't exist
+        ValueError: If secrets directory doesn't exist (only for filesystem manager)
     """
-    tenant_secrets_dir = secrets_dir / tenant_id
-    if not tenant_secrets_dir.exists():
-        raise ValueError(f"Secrets directory not found: {tenant_secrets_dir}")
-
-    secrets = {}
-
-    # Load all secret files
-    for secret_file in tenant_secrets_dir.iterdir():
-        if secret_file.is_file() and not secret_file.name.startswith("."):
-            secret_name = secret_file.stem  # filename without extension
-            try:
-                if secret_file.suffix == ".json":
-                    # Load JSON file
-                    with open(secret_file, "r") as f:
-                        content = json.load(f)
-                        # Expand environment variables in JSON values
-                        secrets[secret_name] = _expand_env_vars_in_dict(content)
-                elif secret_file.suffix == ".env":
-                    # Load .env file (key=value format)
-                    env_vars = {}
-                    with open(secret_file, "r") as f:
-                        for line in f:
-                            line = line.strip()
-                            if line and not line.startswith("#"):
-                                if "=" in line:
-                                    key, value = line.split("=", 1)
-                                    key = key.strip()
-                                    value = value.strip().strip('"').strip("'")
-                                    # Expand environment variables
-                                    value = os.path.expandvars(value)
-                                    env_vars[key] = value
-                    secrets[secret_name] = env_vars
-                else:
-                    # Load plain text file
-                    with open(secret_file, "r") as f:
-                        content = f.read().strip()
-                        # Expand environment variables
-                        content = os.path.expandvars(content)
-                        secrets[secret_name] = content
-            except Exception as e:
-                # Log warning but continue loading other secrets
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.warning(
-                    f"Failed to load secret file {secret_file}: {e}",
-                    extra={"secret_file": str(secret_file), "error": str(e)},
-                )
-
-    return secrets
-
-
-def _expand_env_vars_in_dict(data: Any) -> Any:
-    """Recursively expand environment variables in dictionary values.
-
-    Args:
-        data: Dictionary, list, or string to process
-
-    Returns:
-        Data with environment variables expanded
-    """
-    if isinstance(data, dict):
-        return {k: _expand_env_vars_in_dict(v) for k, v in data.items()}
-    elif isinstance(data, list):
-        return [_expand_env_vars_in_dict(item) for item in data]
-    elif isinstance(data, str):
-        return os.path.expandvars(data)
+    manager_type = os.getenv("DATIVO_SECRET_MANAGER")
+    
+    if manager_type:
+        # User explicitly selected a manager
+        manager = get_secret_manager(tenant_id, secrets_dir)
     else:
-        return data
+        # Default behavior: Env + Filesystem (Env overrides Filesystem)
+        env_manager = EnvSecretManager(tenant_id)
+        fs_manager = FilesystemSecretManager(tenant_id, secrets_dir)
+        manager = CompositeSecretManager([env_manager, fs_manager])
+
+    return manager.list_secrets()
 
 
 def validate_secrets_for_connector(
