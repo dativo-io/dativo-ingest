@@ -6,26 +6,17 @@ Get up and running with Dativo Ingestion Platform in 5 minutes.
 
 - Python 3.10+
 - Docker and Docker Compose
-- Git
 
 ## Setup Steps
 
-### 1. Clone and Setup
+### 1. Setup
 
 ```bash
-git clone <repository-url>
-cd dativo-ingest
-
 # Run automated setup script
 ./scripts/setup-dev.sh
 ```
 
-The setup script will:
-- ✅ Install all Python dependencies
-- ✅ Start Nessie and MinIO containers
-- ✅ Create MinIO bucket
-- ✅ Set up environment variables
-- ✅ Create state directories
+This installs dependencies, starts infrastructure (Nessie, MinIO), creates buckets, and sets up environment variables.
 
 ### 2. Source Environment Variables
 
@@ -36,39 +27,24 @@ source .env
 ### 3. Run End-to-End Test
 
 ```bash
-dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
 ## Expected Output
 
-You should see logs showing:
-- ✅ Startup sequence completed
-- ✅ Job execution started
-- ✅ Records extracted and validated
-- ✅ Parquet files written
-- ✅ Files committed to Iceberg
-- ✅ Job execution completed (exit code: 0)
+JSON logs showing job execution: startup, extraction, validation, writing Parquet files, and completion. Exit code: `0` (success) or `2` (warnings present).
 
 ## Verify Results
 
-### Check Services
-
 ```bash
-# Check Nessie
-curl http://localhost:19120/api/v1/config
+# Check services
+curl http://localhost:19120/api/v1/config  # Nessie
+curl http://localhost:9000/minio/health/live  # MinIO
 
-# Check MinIO
-curl http://localhost:9000/minio/health/live
-```
-
-### Check MinIO Bucket
-
-```bash
-# Using MinIO client
+# Check MinIO bucket (if mc installed)
 mc ls local/test-bucket --recursive
 
-# Or visit MinIO console
-open http://localhost:9001  # Login: minioadmin/minioadmin
+# Or visit MinIO console: http://localhost:9001 (minioadmin/minioadmin)
 ```
 
 ## Troubleshooting
@@ -79,17 +55,15 @@ docker-compose -f docker-compose.dev.yml ps
 docker-compose -f docker-compose.dev.yml logs
 ```
 
-**Missing dependencies?**
+**Command not found?**
 ```bash
-pip install -r requirements.txt
+# Reinstall package
 pip install -e .
 ```
 
-**Environment variables not set?**
+**Environment variables?**
 ```bash
 source .env
-# or
-export $(cat .env | xargs)
 ```
 
 ## Clean Up
@@ -99,10 +73,70 @@ export $(cat .env | xargs)
 docker-compose -f docker-compose.dev.yml down -v
 ```
 
+## Creating Your First Job
+
+1. **Create a job config** (`jobs/mytenant/my_job.yaml`):
+```yaml
+tenant_id: mytenant
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: my_asset
+asset_path: assets/csv/v1.0/my_asset.yaml
+source:
+  files:
+    - path: data/myfile.csv
+      object: my_asset
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+      prefix: "raw/mytenant"
+```
+
+2. **Create an asset definition** (`assets/csv/v1.0/my_asset.yaml`):
+```yaml
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: my_asset
+version: "1.0"
+source_type: csv
+object: my_asset
+schema:
+  - name: id
+    type: integer
+    required: true
+  - name: name
+    type: string
+    required: true
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+team:
+  owner: your-email@company.com
+compliance:
+  classification: []
+```
+
+3. **Set up secrets** (`secrets/mytenant/iceberg.env`):
+```bash
+S3_ENDPOINT=http://localhost:9000
+AWS_ACCESS_KEY_ID=minioadmin
+AWS_SECRET_ACCESS_KEY=minioadmin
+AWS_REGION=us-east-1
+S3_BUCKET=test-bucket
+```
+
+4. **Run the job**:
+```bash
+dativo run --config jobs/mytenant/my_job.yaml --mode self_hosted
+```
+
 ## Next Steps
 
-- Read [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md) for comprehensive setup and onboarding guide
-- Read [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) for detailed testing instructions
-- Read [docs/INGESTION_EXECUTION.md](docs/INGESTION_EXECUTION.md) for execution flow details
-- Check [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for configuration options
+- [Setup Guide](docs/SETUP_AND_ONBOARDING.md) - Comprehensive setup
+- [Config Reference](docs/CONFIG_REFERENCE.md) - Configuration options
+- [Custom Plugins](docs/CUSTOM_PLUGINS.md) - Create custom readers/writers
 

@@ -1,17 +1,17 @@
-# E2E Smoke Test Startup Sequence
+# Developer Guide: Startup Sequence
 
-This document describes the initial startup sequence required for running E2E smoke tests.
+This document describes the initial startup sequence required for running E2E smoke tests and the internal architecture of the Dativo Ingestion Platform.
 
 ## Command Structure
 
 For smoke tests, you would run:
 ```bash
-dativo_ingest run --job-dir tests/fixtures/jobs --mode self_hosted
+dativo run --job-dir tests/fixtures/jobs --mode self_hosted
 ```
 
 Or for orchestrated mode:
 ```bash
-dativo_ingest start orchestrated --runner-config tests/fixtures/runner.yaml
+dativo start orchestrated --runner-config tests/fixtures/runner.yaml
 ```
 
 ## Startup Sequence

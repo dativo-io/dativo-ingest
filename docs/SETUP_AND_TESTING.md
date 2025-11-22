@@ -31,7 +31,7 @@ Then source the environment variables and run:
 
 ```bash
 source .env
-dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
 ### Option B: Manual Setup
@@ -48,11 +48,10 @@ For detailed manual setup instructions, see [SETUP_AND_ONBOARDING.md](SETUP_AND_
 export PYTHONPATH=src:$PYTHONPATH
 
 # Run the test
-dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
-Or using Python module:
-
+**Note:** If the `dativo` command is not available, use:
 ```bash
 python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
@@ -83,7 +82,7 @@ You should see:
    - Files committed to Iceberg
    - Job execution completed
 
-3. **Exit code**: `0` (success)
+3. **Exit code**: `0` (success) or `2` (if validation warnings present)
 
 ## Verify Results
 

@@ -3,7 +3,13 @@
 schema-validate: schema-connectors schema-odcs
 
 schema-connectors:
-	@yq -o=json '. ' registry/connectors.yaml > /tmp/connectors.json && npx ajv-cli validate -s schemas/connectors.schema.json -d /tmp/connectors.json --strict=false && rm -f /tmp/connectors.json
+	@echo "🔍 Validating connector registry schema..."
+	@if [ -d venv ]; then \
+		. venv/bin/activate && PYTHONPATH=src python -c "import yaml, json, sys; data = yaml.safe_load(open('registry/connectors.yaml')); json.dump(data, open('/tmp/connectors.json', 'w'), indent=2)"; \
+	else \
+		PYTHONPATH=src python3 -c "import yaml, json, sys; data = yaml.safe_load(open('registry/connectors.yaml')); json.dump(data, open('/tmp/connectors.json', 'w'), indent=2)"; \
+	fi
+	@npx ajv-cli validate -s schemas/connectors.schema.json -d /tmp/connectors.json --strict=false && rm -f /tmp/connectors.json || (rm -f /tmp/connectors.json && exit 1)
 
 schema-odcs:
 	@echo "🔍 Validating ODCS compliance..."

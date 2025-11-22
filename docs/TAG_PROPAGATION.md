@@ -1,5 +1,76 @@
 # Source Tags → Asset Spec → Iceberg Properties
 
+## Quick Start (5-Minute Setup)
+
+### 1. Update Your Asset Definition
+
+Add `finops` and `compliance` sections:
+
+```yaml
+asset:
+  name: my_asset
+  source_type: postgres
+  object: my_table
+  
+  schema:
+    - name: email
+      type: string
+      classification: PII  # Explicit classification
+    - name: salary
+      type: double
+      classification: SENSITIVE
+  
+  compliance:
+    classification: [PII, SENSITIVE]
+    retention_days: 90
+    regulations: [GDPR]
+  
+  finops:
+    cost_center: FIN-001
+    business_tags: [finance, reporting]
+    project: my-project
+    environment: production
+```
+
+### 2. (Optional) Add Job-Level Overrides
+
+```yaml
+tenant_id: my_tenant
+asset_path: /app/assets/my_asset.yaml
+
+# Override classifications
+classification_overrides:
+  email: high_pii
+  salary: financial
+
+# Override/add FinOps tags
+finops:
+  cost_center: FIN-002
+  business_tags: [sensitive, regulated]
+  environment: production
+
+# Override governance
+governance_overrides:
+  retention_days: 365
+```
+
+### 3. Run Ingestion
+
+```bash
+dativo run --config my_job.yaml --mode self_hosted
+```
+
+### 4. Query Iceberg Properties
+
+```sql
+SELECT key, value
+FROM system.metadata.table_properties
+WHERE table_name = 'my_table'
+  AND (key LIKE 'classification.%' OR key LIKE 'finops.%');
+```
+
+---
+
 ## Overview
 
 This implementation ensures that metadata tags flow from source definitions through asset specs to Iceberg table properties, enabling automatic propagation to dbt and data catalogs.
@@ -28,19 +99,70 @@ All tags are stored in Iceberg table properties using namespaced keys:
 
 ### 1. Explicit Classification Only
 
-**NO AUTOMATIC CLASSIFICATION:** The system only uses tags that are explicitly defined. All classifications must be specified in one of these places:
+**⚠️ IMPORTANT: NO AUTOMATIC CLASSIFICATION**
 
-1. **Asset schema** - Field-level `classification` attribute
-2. **Asset compliance** - Table-level classification
-3. **Job config** - Classification overrides
+The tag derivation system does **NOT** perform automatic classification. All tags must be explicitly defined. This ensures:
+- ✅ **No surprises** - You control exactly what gets tagged
+- ✅ **Source of truth** - Tags from asset definitions or source metadata
+- ✅ **No false positives** - Only tag what you explicitly define
+- ✅ **Clear governance** - Classification decisions are documented
 
-**Example of explicit classification:**
+**What This Means:**
+
+❌ This will **NOT** automatically classify email as PII:
+```yaml
+schema:
+  - name: email
+    type: string
+```
+
+✅ You **MUST** explicitly specify classification:
 ```yaml
 schema:
   - name: email
     type: string
     classification: PII  # Must be explicit
 ```
+
+**Where Tags Come From:**
+
+Tags are **ONLY** collected from these explicit sources:
+
+1. **Asset schema** - Field-level `classification` attribute
+2. **Asset compliance** - Table-level classification
+3. **Job config** - Classification overrides
+4. **Source metadata** - Tags from source systems (via connectors, future)
+
+**Migration from Auto-Detection:**
+
+If you were relying on automatic detection, you need to update your asset definitions:
+
+**Before (relied on auto-detection):**
+```yaml
+schema:
+  - name: email
+    type: string
+  # Would auto-detect as PII ❌
+```
+
+**After (explicit required):**
+```yaml
+schema:
+  - name: email
+    type: string
+    classification: PII  # ✅ Explicit
+```
+
+**Benefits of Explicit Tags:**
+
+| Feature | Auto-Detection | Explicit Tags |
+|---------|----------------|---------------|
+| Requires setup | ❌ No | ✅ Yes |
+| False positives | ⚠️ Possible | ✅ None |
+| Customizable | ⚠️ Limited | ✅ Fully |
+| Source metadata | ❌ No | ✅ Yes |
+| Governance | ⚠️ Implicit | ✅ Explicit |
+| Audit trail | ❌ Hard | ✅ Easy |
 
 ### 2. Asset Definition Structure
 
