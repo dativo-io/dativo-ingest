@@ -207,7 +207,11 @@ def test_documentation():
             content = f.read().lower()
 
         # Should mention "explicit" or "no automatic"
-        if "explicit" not in content and "no automatic" not in content and "no auto" not in content:
+        if (
+            "explicit" not in content
+            and "no automatic" not in content
+            and "no auto" not in content
+        ):
             print(f"   ⚠️  {name} doesn't mention explicit-only approach")
 
     print("   ✓ All documentation exists")
