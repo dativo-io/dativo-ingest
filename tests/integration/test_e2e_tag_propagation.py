@@ -11,6 +11,7 @@ They should be skipped if services are not available.
 """
 
 import os
+
 import pytest
 
 from dativo_ingest.config import AssetDefinition, JobConfig, SourceConfig, TargetConfig
@@ -52,9 +53,7 @@ def test_table_with_comments(postgres_connection):
 
         # Add column comments (source tags)
         cursor.execute("COMMENT ON COLUMN test_tag_propagation.email IS 'PII'")
-        cursor.execute(
-            "COMMENT ON COLUMN test_tag_propagation.phone IS 'SENSITIVE'"
-        )
+        cursor.execute("COMMENT ON COLUMN test_tag_propagation.phone IS 'SENSITIVE'")
 
         conn.commit()
         cursor.close()
@@ -183,8 +182,7 @@ def test_e2e_tag_propagation_postgres_to_iceberg(
         if source_tags:
             # At least one field with source tag should have classification
             has_source_tag_classification = any(
-                key.startswith("classification.fields.")
-                for key in properties.keys()
+                key.startswith("classification.fields.") for key in properties.keys()
             )
             # Note: This depends on whether source tags match schema fields
             # For this test, we just verify the flow works
@@ -198,7 +196,9 @@ def test_e2e_tag_propagation_postgres_to_iceberg(
         pytest.skip(f"Iceberg catalog not available: {e}")
 
 
-def test_e2e_tag_propagation_with_all_levels(postgres_connection, test_table_with_comments):
+def test_e2e_tag_propagation_with_all_levels(
+    postgres_connection, test_table_with_comments
+):
     """Test source + asset + job tags all present in hierarchy."""
     # Step 1: Source tags (from database comments)
     source_config = SourceConfig(
@@ -276,4 +276,3 @@ def test_e2e_tag_propagation_query_iceberg():
     # assert table.properties["classification.fields.email"] == "pii"
     #
     pytest.skip("Requires actual Iceberg catalog - integration test only")
-

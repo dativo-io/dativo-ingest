@@ -511,35 +511,42 @@ class MySQLExtractor:
                     results = cursor.fetchall()
 
                     for row in results:
-                        column_name, column_type, is_nullable, column_key, comment, default_value = row
-                        
+                        (
+                            column_name,
+                            column_type,
+                            is_nullable,
+                            column_key,
+                            comment,
+                            default_value,
+                        ) = row
+
                         # Collect naturally available metadata
                         metadata_parts = []
-                        
+
                         # Column type
                         if column_type:
                             metadata_parts.append(f"type:{column_type}")
-                        
+
                         # Column comment (if set by DBA)
                         if comment:
                             metadata_parts.append(comment.strip())
-                        
+
                         # NOT NULL constraint
                         if is_nullable == "NO":
                             metadata_parts.append("not_null")
-                        
+
                         # Primary key
                         if column_key == "PRI":
                             metadata_parts.append("primary_key")
-                        
+
                         # Foreign key
                         if column_key == "MUL":
                             metadata_parts.append("foreign_key")
-                        
+
                         # Default value
                         if default_value is not None:
                             metadata_parts.append(f"default:{default_value}")
-                        
+
                         # Combine metadata parts
                         if metadata_parts:
                             source_tags[column_name] = ",".join(metadata_parts)

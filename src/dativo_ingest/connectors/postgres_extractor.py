@@ -462,35 +462,44 @@ class PostgresExtractor:
                             ORDER BY a.attnum
                         """
 
-                        cursor.execute(query, (schema, table, schema, table, schema, table))
+                        cursor.execute(
+                            query, (schema, table, schema, table, schema, table)
+                        )
                         results = cursor.fetchall()
 
                         for row in results:
-                            column_name, comment, data_type, is_not_null, is_primary_key, is_foreign_key = row
-                            
+                            (
+                                column_name,
+                                comment,
+                                data_type,
+                                is_not_null,
+                                is_primary_key,
+                                is_foreign_key,
+                            ) = row
+
                             # Collect naturally available metadata
                             metadata_parts = []
-                            
+
                             # Column comment (if set by DBA)
                             if comment:
                                 metadata_parts.append(comment.strip())
-                            
+
                             # Primary key constraint
                             if is_primary_key:
                                 metadata_parts.append("primary_key")
-                            
+
                             # Foreign key constraint
                             if is_foreign_key:
                                 metadata_parts.append("foreign_key")
-                            
+
                             # NOT NULL constraint
                             if is_not_null:
                                 metadata_parts.append("not_null")
-                            
+
                             # Data type as metadata
                             if data_type:
                                 metadata_parts.append(f"type:{data_type}")
-                            
+
                             # Combine metadata parts
                             if metadata_parts:
                                 source_tags[column_name] = ",".join(metadata_parts)

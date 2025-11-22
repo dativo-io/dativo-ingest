@@ -69,7 +69,9 @@ def sample_target_config():
     )
 
 
-def test_cli_extracts_source_tags_from_extractor(sample_csv_file, sample_asset_definition, sample_target_config):
+def test_cli_extracts_source_tags_from_extractor(
+    sample_csv_file, sample_asset_definition, sample_target_config
+):
     """Test that extractor extracts source tags and they can be passed to IcebergCommitter."""
     # Test extractor directly
     source_config = SourceConfig(
@@ -102,7 +104,9 @@ def test_cli_extracts_source_tags_from_extractor(sample_csv_file, sample_asset_d
     assert "governance.owner" in properties
 
 
-def test_cli_handles_extract_metadata_exception(sample_asset_definition, sample_target_config):
+def test_cli_handles_extract_metadata_exception(
+    sample_asset_definition, sample_target_config
+):
     """Test error handling when extract_metadata encounters errors."""
     # Test with non-existent file - should return empty tags, not raise
     source_config = SourceConfig(
@@ -130,7 +134,9 @@ def test_cli_handles_extract_metadata_exception(sample_asset_definition, sample_
     assert "asset.name" in properties
 
 
-def test_cli_handles_get_source_tags_exception(sample_asset_definition, sample_target_config):
+def test_cli_handles_get_source_tags_exception(
+    sample_asset_definition, sample_target_config
+):
     """Test that extractors without extract_metadata work fine."""
     # CSVExtractor implements extract_metadata, but if it didn't, it should still work
     # Test that IcebergCommitter works with None source tags
@@ -147,7 +153,9 @@ def test_cli_handles_get_source_tags_exception(sample_asset_definition, sample_t
     assert "governance.owner" in properties
 
 
-def test_cli_source_tags_none_when_not_implemented(sample_asset_definition, sample_target_config):
+def test_cli_source_tags_none_when_not_implemented(
+    sample_asset_definition, sample_target_config
+):
     """Test that source_tags can be None when extractor doesn't implement method."""
     # Test IcebergCommitter with None source tags (simulating extractor without method)
     committer = IcebergCommitter(
@@ -162,7 +170,9 @@ def test_cli_source_tags_none_when_not_implemented(sample_asset_definition, samp
     assert "asset.name" in properties
 
 
-def test_cli_source_tags_metadata_with_source_tags_key(sample_csv_file, sample_asset_definition, sample_target_config):
+def test_cli_source_tags_metadata_with_source_tags_key(
+    sample_csv_file, sample_asset_definition, sample_target_config
+):
     """Test that extract_metadata can return 'source_tags' key (alternative to 'tags')."""
     # CSVExtractor returns {"tags": {...}}, but CLI also checks for "source_tags"
     # Test that both formats work
@@ -192,7 +202,9 @@ def test_cli_source_tags_metadata_with_source_tags_key(sample_csv_file, sample_a
     assert committer.source_tags == source_tags
 
 
-def test_cli_source_tags_empty_dict_when_no_tags(sample_asset_definition, sample_target_config):
+def test_cli_source_tags_empty_dict_when_no_tags(
+    sample_asset_definition, sample_target_config
+):
     """Test that empty source tags are handled gracefully."""
     # Test with empty source tags dict
     empty_source_tags = {}
@@ -218,4 +230,3 @@ def test_cli_source_tags_empty_dict_when_no_tags(sample_asset_definition, sample
     assert committer_none.source_tags is None
     properties_none = committer_none._derive_table_properties()
     assert "asset.name" in properties_none
-
