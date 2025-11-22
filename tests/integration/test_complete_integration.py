@@ -194,9 +194,7 @@ def test_documentation():
 
     docs_to_check = [
         ("Main guide", "docs/TAG_PROPAGATION.md"),
-        ("No auto-classification", "NO_AUTO_CLASSIFICATION.md"),
-        ("Change summary", "EXPLICIT_TAGS_ONLY.md"),
-        ("ODCS compliance", "ODCS_COMPLIANCE_REPORT.md"),
+        ("Tag precedence", "docs/TAG_PRECEDENCE.md"),
     ]
 
     for name, doc_path in docs_to_check:
@@ -204,12 +202,12 @@ def test_documentation():
             print(f"   ✗ {name} not found: {doc_path}")
             return False
 
-        # Check that docs don't mention auto-detection in wrong context
+        # Check that docs mention explicit-only approach
         with open(doc_path, "r") as f:
             content = f.read().lower()
 
         # Should mention "explicit" or "no automatic"
-        if "explicit" not in content and "no automatic" not in content:
+        if "explicit" not in content and "no automatic" not in content and "no auto" not in content:
             print(f"   ⚠️  {name} doesn't mention explicit-only approach")
 
     print("   ✓ All documentation exists")
