@@ -156,7 +156,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             examples/plugins/rust/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('examples/plugins/rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
       
       - name: Build and test Rust plugins
         run: |
