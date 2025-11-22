@@ -34,6 +34,12 @@ cleanup() {
     rm -rf /tmp/dativo_ingest* 2>/dev/null || true
     rm -rf /tmp/*.parquet 2>/dev/null || true
     
+    # Clean up S3 test directory
+    if [ -d "s3:" ]; then
+        echo "  - Removing S3 test directory..."
+        rm -rf "s3:" 2>/dev/null || true
+    fi
+    
     # Clean up log files
     echo "  - Removing log files..."
     rm -f *.log 2>/dev/null || true
