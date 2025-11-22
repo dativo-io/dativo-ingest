@@ -12,6 +12,8 @@ jobs:
   lint:
     name: Linting
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to push formatting changes
     
     steps:
       - name: Checkout code
@@ -52,7 +54,7 @@ jobs:
           git config --local user.name "GitHub Action"
           git add -A
           git commit -m "Auto-format code [skip ci]" || exit 0
-          git push
+          git push origin HEAD:${{ github.ref }}
       
       - name: Fail if formatting needed (PRs only)
         if: github.event_name == 'pull_request' && steps.format-check.outputs.changes == 'true'
