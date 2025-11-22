@@ -32,8 +32,11 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 # 2. Source environment variables
 source .env
 
-# 3. Run end-to-end test
-dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+# 3. Run end-to-end test (filesystem secret manager)
+dativo run --job-dir tests/fixtures/jobs \
+  --secret-manager filesystem \
+  --secrets-dir tests/fixtures/secrets \
+  --mode self_hosted
 ```
 
 **For detailed instructions, see:**
@@ -71,6 +74,8 @@ docker run --rm -p 3000:3000 \
   dativo:1.1.0 start orchestrated --runner-config /app/configs/runner.yaml
 ```
 
+> Omit the `/app/secrets` volume and `--secrets-dir` flag when using non-filesystem secret managers.
+
 ## CLI Usage
 
 ### Run a Single Job
@@ -82,17 +87,24 @@ dativo run --config <path> --mode <self_hosted|cloud>
 **Options:**
 - `--config`: Path to job configuration YAML file (required)
 - `--mode`: Execution mode - `self_hosted` (default) or `cloud`
-- `--job-dir`: Run all jobs in a directory (requires `--secrets-dir`)
-- `--secrets-dir`: Path to secrets directory (required with `--job-dir`)
+- `--job-dir`: Run all jobs in a directory (requires secrets via a selected manager)
+- `--secret-manager`: Secret backend (`env`, `filesystem`, `vault`, `aws`, `gcp`). Defaults to environment variables or `DATIVO_SECRET_MANAGER`.
+- `--secret-manager-config`: Path to YAML/JSON (or inline JSON string) with manager-specific settings. Defaults to `DATIVO_SECRET_MANAGER_CONFIG`.
+- `--secrets-dir`: Path to secrets directory (used only when `--secret-manager filesystem`)
 
 **Examples:**
 ```bash
 # Single job
 dativo run --config jobs/acme/stripe_customers.yaml --mode self_hosted
 
-# Multiple jobs from directory
-dativo run --job-dir jobs/acme --secrets-dir secrets --mode self_hosted
+# Multiple jobs from directory (filesystem secrets)
+dativo run --job-dir jobs/acme \
+  --secret-manager filesystem \
+  --secrets-dir secrets \
+  --mode self_hosted
 ```
+
+> Detailed configuration examples for every secret backend live in [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md).
 
 ### Start Orchestrated Mode
 
@@ -294,7 +306,7 @@ jobs/                # Job configs (tenant-specific)
   {tenant_id}/
 configs/             # Runner and policy configs
 registry/            # Connector capabilities registry
-secrets/             # Secrets (tenant-organized)
+secrets/             # (Optional) filesystem secrets (tenant-organized)
 state/               # Incremental sync state
 src/dativo_ingest/   # Source code
 ```
@@ -305,6 +317,7 @@ src/dativo_ingest/   # Source code
 **Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
+**Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
 **Testing:** [tests/README.md](tests/README.md)
 
 
