@@ -9,7 +9,8 @@ from typing import List, Optional
 from .config import JobConfig, RunnerConfig
 from .infrastructure import validate_infrastructure
 from .logging import get_logger, setup_logging, update_logging_settings
-from .secrets import load_secrets
+from .secret_managers import create_secret_manager
+from .secrets import load_secrets  # Backward compatibility
 from .validator import ConnectorValidator, IncrementalStateManager
 
 
@@ -111,9 +112,20 @@ def startup_sequence(
 
     # 3. Load secrets using inferred/validated tenant_id
     try:
-        secrets = load_secrets(tenant_id, secrets_dir)
+        # Use new pluggable secret manager system
+        # Auto-detect manager type, but prefer filesystem if secrets_dir is provided
+        manager_type = os.getenv("SECRET_MANAGER_TYPE")
+        if manager_type is None and secrets_dir and secrets_dir.exists():
+            manager_type = "filesystem"
+        
+        secret_manager = create_secret_manager(
+            manager_type=manager_type,
+            config={"secrets_dir": str(secrets_dir)} if secrets_dir else {}
+        )
+        
+        secrets = secret_manager.load_secrets(tenant_id)
         logger.info(
-            f"Secrets loaded for tenant {tenant_id}",
+            f"Secrets loaded for tenant {tenant_id} using {type(secret_manager).__name__}",
             extra={"event_type": "secrets_loaded", "secret_count": len(secrets)},
         )
     except ValueError as e:

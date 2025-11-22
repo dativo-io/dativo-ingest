@@ -71,6 +71,36 @@ docker run --rm -p 3000:3000 \
   dativo:1.1.0 start orchestrated --runner-config /app/configs/runner.yaml
 ```
 
+## Secret Management
+
+The platform supports multiple secret management backends for secure credential storage:
+
+- **Environment Variables** (default) - Simple and portable
+- **Filesystem** - Legacy approach for backward compatibility  
+- **HashiCorp Vault** - Enterprise secret management
+- **AWS Secrets Manager** - Native AWS integration
+- **Google Cloud Secret Manager** - Native GCP integration
+
+**Quick Start:**
+```bash
+# Environment variables (default)
+export ACME_STRIPE_API_KEY="sk_test_123"
+dativo run --config job.yaml --tenant-id acme
+
+# HashiCorp Vault
+export SECRET_MANAGER_TYPE="vault"
+export VAULT_ADDR="https://vault.example.com"
+export VAULT_TOKEN="s.123456"
+dativo run --config job.yaml --tenant-id acme
+
+# AWS Secrets Manager
+export SECRET_MANAGER_TYPE="aws"
+export AWS_DEFAULT_REGION="us-east-1"
+dativo run --config job.yaml --tenant-id acme
+```
+
+**For detailed configuration, see [docs/SECRET_MANAGERS.md](docs/SECRET_MANAGERS.md)**
+
 ## CLI Usage
 
 ### Run a Single Job
@@ -83,15 +113,19 @@ dativo run --config <path> --mode <self_hosted|cloud>
 - `--config`: Path to job configuration YAML file (required)
 - `--mode`: Execution mode - `self_hosted` (default) or `cloud`
 - `--job-dir`: Run all jobs in a directory (requires `--secrets-dir`)
-- `--secrets-dir`: Path to secrets directory (required with `--job-dir`)
+- `--secrets-dir`: Path to secrets directory (optional, defaults to environment-based secrets)
 
 **Examples:**
 ```bash
-# Single job
+# Single job with environment variables
 dativo run --config jobs/acme/stripe_customers.yaml --mode self_hosted
 
-# Multiple jobs from directory
+# Multiple jobs from directory with filesystem secrets (backward compatible)
 dativo run --job-dir jobs/acme --secrets-dir secrets --mode self_hosted
+
+# With cloud secret manager
+export SECRET_MANAGER_TYPE="vault"
+dativo run --config jobs/acme/stripe_customers.yaml --mode self_hosted
 ```
 
 ### Start Orchestrated Mode

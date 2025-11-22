@@ -26,6 +26,20 @@ dev = [
     "pytest>=7.0.0",
     "pytest-mock>=3.0.0",
 ]
+vault = [
+    "hvac>=1.0.0",
+]
+aws = [
+    "boto3>=1.28.0",
+]
+gcp = [
+    "google-cloud-secretmanager>=2.16.0",
+]
+all-secret-managers = [
+    "hvac>=1.0.0",
+    "boto3>=1.28.0",
+    "google-cloud-secretmanager>=2.16.0",
+]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

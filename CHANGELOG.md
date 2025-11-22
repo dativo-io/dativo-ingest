@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Pluggable Secret Manager System**: Multi-backend secret management architecture
+  - **Environment Variables Manager (default)**: Simple, portable secret management via environment variables
+    - Supports tenant-specific secrets: `{TENANT}_{SECRET_NAME}`
+    - Generic fallback support for shared secrets
+    - Automatic JSON parsing for structured credentials
+    - Common pattern recognition for databases (PostgreSQL, MySQL) and APIs
+  - **Filesystem Manager**: Legacy file-based secrets for backward compatibility
+    - Supports JSON, .env, and plain text files
+    - Maintains existing directory structure: `/secrets/{tenant}/`
+  - **HashiCorp Vault Integration**: Enterprise-grade secret management
+    - Multiple authentication methods: token, AppRole, Kubernetes, AWS IAM
+    - KV v1 and v2 support
+    - Namespace support for Vault Enterprise
+  - **AWS Secrets Manager**: Native AWS cloud integration
+    - Standard boto3 credential chain support
+    - Automatic IAM role authentication for AWS services
+  - **Google Cloud Secret Manager**: Native GCP cloud integration
+    - Application Default Credentials (ADC) support
+    - Workload Identity for GKE
+  - Auto-detection of appropriate secret manager based on environment
+  - Configuration via `SECRET_MANAGER_TYPE` environment variable or auto-detection
+  - Comprehensive test suite with 26+ test cases
+  - Full documentation in `docs/SECRET_MANAGERS.md`
+  - Optional dependencies: `pip install dativo-ingest[vault]`, `[aws]`, `[gcp]`, or `[all-secret-managers]`
+  
 - **Custom Plugin System**: Support for Python and Rust plugins
   - **Python Plugins:**
     - New `BaseReader` and `BaseWriter` base classes for plugin development

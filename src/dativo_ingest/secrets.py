@@ -1,10 +1,26 @@
-"""Secrets management for loading and validating credentials from filesystem storage."""
+"""Secrets management for loading and validating credentials from filesystem storage.
+
+DEPRECATED: This module is deprecated in favor of the new pluggable secret manager system.
+Use dativo_ingest.secret_managers instead for new code.
+
+This module is maintained for backward compatibility only.
+"""
 
 import json
 import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import warnings
+
+# Emit deprecation warning
+warnings.warn(
+    "The dativo_ingest.secrets module is deprecated. "
+    "Use dativo_ingest.secret_managers instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 def resolve_secret_path(file_template: str, tenant_id: str) -> Path:
