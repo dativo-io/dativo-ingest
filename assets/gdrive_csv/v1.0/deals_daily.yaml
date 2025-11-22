@@ -21,6 +21,6 @@ asset:
     retention_days: 30
   
   target:
-  file_format: parquet
-  partitioning: [ingest_date]
+    file_format: parquet
+    partitioning: [ingest_date]
     mode: strict

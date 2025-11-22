@@ -346,6 +346,8 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             )
 
     # Initialize extractor based on source type or custom reader
+    # Initialize source_tags early to ensure it's always defined
+    source_tags = None
     try:
         if source_config.custom_reader:
             # Use custom reader plugin
@@ -394,6 +396,42 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 },
             )
             return 2
+
+        # Extract source tags from extractor if available (for three-level tag hierarchy)
+        if hasattr(extractor, "extract_metadata"):
+            try:
+                metadata = extractor.extract_metadata()
+                if metadata and isinstance(metadata, dict):
+                    source_tags = metadata.get("tags") or metadata.get("source_tags")
+                    if source_tags:
+                        logger.info(
+                            "Source tags extracted from connector",
+                            extra={
+                                "source_tags_count": len(source_tags),
+                                "event_type": "source_tags_extracted",
+                            },
+                        )
+            except Exception as e:
+                logger.debug(
+                    f"Failed to extract source tags from connector (non-critical): {e}",
+                    extra={"event_type": "source_tags_extraction_failed"},
+                )
+        elif hasattr(extractor, "get_source_tags"):
+            try:
+                source_tags = extractor.get_source_tags()
+                if source_tags:
+                    logger.info(
+                        "Source tags extracted from connector",
+                        extra={
+                            "source_tags_count": len(source_tags),
+                            "event_type": "source_tags_extracted",
+                        },
+                    )
+            except Exception as e:
+                logger.debug(
+                    f"Failed to extract source tags from connector (non-critical): {e}",
+                    extra={"event_type": "source_tags_extraction_failed"},
+                )
 
         if not source_config.custom_reader:
             logger.info(
@@ -526,7 +564,14 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         try:
             from .iceberg_committer import IcebergCommitter
 
-            committer = IcebergCommitter(asset_definition, target_config)
+            committer = IcebergCommitter(
+                asset_definition=asset_definition,
+                target_config=target_config,
+                classification_overrides=job_config.classification_overrides,
+                finops=job_config.finops,
+                governance_overrides=job_config.governance_overrides,
+                source_tags=source_tags,
+            )
             logger.info(
                 "Iceberg committer initialized",
                 extra={
@@ -674,9 +719,11 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     batch_records
                 ):
                     logger.error(
-                        "Strict validation mode: failing due to validation errors",
+                        f"Strict validation mode: failing due to validation errors for job '{job_config.asset}'",
                         extra={
                             "event_type": "validation_failed",
+                            "job_name": job_config.asset,
+                            "error_summary": error_summary,
                         },
                     )
                     return 2
@@ -752,6 +799,10 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 upload_committer = IcebergCommitter(
                     asset_definition=asset_definition,
                     target_config=target_config,
+                    classification_overrides=job_config.classification_overrides,
+                    finops=job_config.finops,
+                    governance_overrides=job_config.governance_overrides,
+                    source_tags=source_tags,
                 )
                 try:
                     upload_result = upload_committer.commit_files(all_file_metadata)

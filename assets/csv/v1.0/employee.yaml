@@ -56,8 +56,17 @@ asset:
   governance:
     owner: data-team@company.com
     tags: [employee, hr, test-data]
+  
+  compliance:
     classification: [PII, SENSITIVE]
     retention_days: 90
+    regulations: [GDPR, CCPA]
+  
+  finops:
+    cost_center: HR-001
+    business_tags: [hr, payroll]
+    project: employee-data-platform
+    environment: production
   
   target:
     file_format: parquet

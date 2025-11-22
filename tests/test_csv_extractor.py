@@ -108,3 +108,70 @@ def test_extract_no_files_config():
 
     with pytest.raises(ValueError, match="CSV source requires 'files' configuration"):
         list(extractor.extract())
+
+
+def test_csv_extractor_source_tags(sample_csv_file):
+    """Test CSVExtractor extracts column names as naturally available metadata."""
+    config = SourceConfig(
+        type="csv",
+        files=[{"path": sample_csv_file, "object": "test_object"}],
+    )
+
+    extractor = CSVExtractor(config)
+    result = extractor.extract_metadata()
+
+    assert "tags" in result
+    # Column names from CSV header should be extracted
+    assert "id" in result["tags"]
+    assert "name" in result["tags"]
+    assert "email" in result["tags"]
+    # All should be marked as "column" to indicate they're from CSV structure
+    assert result["tags"]["id"] == "column"
+    assert result["tags"]["name"] == "column"
+    assert result["tags"]["email"] == "column"
+
+
+def test_csv_extractor_source_tags_no_metadata(sample_csv_file):
+    """Test CSVExtractor extracts column names even from simple CSV."""
+    config = SourceConfig(
+        type="csv",
+        files=[{"path": sample_csv_file, "object": "test_object"}],
+    )
+
+    extractor = CSVExtractor(config)
+    result = extractor.extract_metadata()
+
+    assert "tags" in result
+    # Should have column names from the CSV header
+    assert len(result["tags"]) > 0
+
+
+def test_csv_extractor_source_tags_multiple_files(sample_csv_file):
+    """Test CSVExtractor extracts column names from multiple CSV files."""
+    # Create second CSV file with different columns
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        writer = csv.writer(f)
+        writer.writerow(["id", "phone", "address"])
+        writer.writerow(["1", "555-1234", "123 Main St"])
+        second_csv = f.name
+
+    try:
+        config = SourceConfig(
+            type="csv",
+            files=[
+                {"path": sample_csv_file, "object": "test1"},
+                {"path": second_csv, "object": "test2"},
+            ],
+        )
+
+        extractor = CSVExtractor(config)
+        result = extractor.extract_metadata()
+
+        assert "tags" in result
+        # Should have columns from both files
+        assert "id" in result["tags"]  # Common column
+        assert "email" in result["tags"]  # From first file
+        assert "phone" in result["tags"]  # From second file
+        assert "address" in result["tags"]  # From second file
+    finally:
+        Path(second_csv).unlink(missing_ok=True)

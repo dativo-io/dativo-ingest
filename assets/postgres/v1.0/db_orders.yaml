@@ -18,9 +18,19 @@ asset:
   governance:
     owner: data-team@company.com
     tags: [orders, transactions]
+  
+  compliance:
+    classification: [SENSITIVE]
     retention_days: 30
+    regulations: [SOX, PCI-DSS]
+  
+  finops:
+    cost_center: FIN-002
+    business_tags: [revenue, orders]
+    project: order-management
+    environment: production
   
   target:
-  file_format: parquet
-  partitioning: [ingest_date]
+    file_format: parquet
+    partitioning: [ingest_date]
     mode: strict

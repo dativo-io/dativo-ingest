@@ -521,17 +521,56 @@ jobs:
           
           echo "✅ Cleanup complete"
 
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pyyaml jsonschema
+
+      - name: Run integration tests
+        run: make test-integration
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: |
+            tests/integration/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
   all-tests:
     name: All Tests
-    needs: [unit-tests, smoke-tests]
+    needs: [unit-tests, integration-tests, smoke-tests]
     runs-on: ubuntu-latest
     if: always()
     
     steps:
       - name: Check test results
         run: |
-          if [ "${{ needs.unit-tests.result }}" != "success" ] || [ "${{ needs.smoke-tests.result }}" != "success" ]; then
+          if [ "${{ needs.unit-tests.result }}" != "success" ] || \
+             [ "${{ needs.integration-tests.result }}" != "success" ] || \
+             [ "${{ needs.smoke-tests.result }}" != "success" ]; then
             echo "❌ Some tests failed"
+            echo "  Unit tests: ${{ needs.unit-tests.result }}"
+            echo "  Integration tests: ${{ needs.integration-tests.result }}"
+            echo "  Smoke tests: ${{ needs.smoke-tests.result }}"
             exit 1
           else
             echo "✅ All tests passed"
