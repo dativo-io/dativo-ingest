@@ -19,6 +19,8 @@ dependencies = [
     "psycopg2-binary>=2.9.0",
     "mysql-connector-python>=8.0.0",
     "stripe>=7.0.0",
+    "hvac>=2.1.0",
+    "google-cloud-secret-manager>=2.20.0",
 ]
 
 [project.optional-dependencies]
