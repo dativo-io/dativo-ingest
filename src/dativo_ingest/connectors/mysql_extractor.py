@@ -439,3 +439,117 @@ class MySQLExtractor:
             return int(total) if total > 0 else None
         except Exception:
             return None
+
+    def extract_metadata(self) -> Dict[str, Any]:
+        """Extract naturally available metadata from MySQL.
+
+        Extracts metadata that is naturally available in MySQL:
+        - Column types and constraints
+        - Column comments (if set by DBA)
+        - NOT NULL constraints
+        - Primary key, foreign key information
+        - Column default values
+
+        Returns:
+            Dictionary with "tags" key containing field_name -> metadata mapping
+            e.g., {"tags": {"email": "varchar,not_null", "id": "int,primary_key"}}
+        """
+        if not self.source_config.tables:
+            return {"tags": {}}
+
+        try:
+            import mysql.connector
+        except ImportError:
+            return {"tags": {}}
+
+        source_tags = {}
+
+        # Build connection config
+        connect_config = {
+            "host": self.connection["host"],
+            "port": self.connection["port"],
+            "database": self.connection["database"],
+            "user": self.connection["user"],
+            "password": self.connection["password"],
+            "charset": self.connection.get("charset", "utf8mb4"),
+        }
+
+        try:
+            conn = mysql.connector.connect(**connect_config)
+
+            try:
+                cursor = conn.cursor()
+                # Process each table
+                for table_config in self.source_config.tables:
+                    table_name = table_config.get("name")
+                    if not table_name:
+                        continue
+
+                    # Parse schema.table format
+                    if "." in table_name:
+                        schema, table = table_name.split(".", 1)
+                    else:
+                        # Use current database as schema
+                        schema = self.connection["database"]
+                        table = table_name
+
+                    # Query comprehensive metadata from information_schema
+                    query = """
+                        SELECT 
+                            column_name,
+                            column_type,
+                            is_nullable,
+                            column_key,
+                            column_comment,
+                            column_default
+                        FROM information_schema.columns
+                        WHERE table_schema = %s AND table_name = %s
+                        ORDER BY ordinal_position
+                    """
+
+                    cursor.execute(query, (schema, table))
+                    results = cursor.fetchall()
+
+                    for row in results:
+                        column_name, column_type, is_nullable, column_key, comment, default_value = row
+                        
+                        # Collect naturally available metadata
+                        metadata_parts = []
+                        
+                        # Column type
+                        if column_type:
+                            metadata_parts.append(f"type:{column_type}")
+                        
+                        # Column comment (if set by DBA)
+                        if comment:
+                            metadata_parts.append(comment.strip())
+                        
+                        # NOT NULL constraint
+                        if is_nullable == "NO":
+                            metadata_parts.append("not_null")
+                        
+                        # Primary key
+                        if column_key == "PRI":
+                            metadata_parts.append("primary_key")
+                        
+                        # Foreign key
+                        if column_key == "MUL":
+                            metadata_parts.append("foreign_key")
+                        
+                        # Default value
+                        if default_value is not None:
+                            metadata_parts.append(f"default:{default_value}")
+                        
+                        # Combine metadata parts
+                        if metadata_parts:
+                            source_tags[column_name] = ",".join(metadata_parts)
+
+                cursor.close()
+            finally:
+                conn.close()
+
+        except Exception:
+            # If extraction fails, return empty tags (non-critical)
+            return {"tags": {}}
+
+        return {"tags": source_tags}

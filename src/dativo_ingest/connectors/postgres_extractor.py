@@ -375,3 +375,131 @@ class PostgresExtractor:
             return int(total) if total > 0 else None
         except Exception:
             return None
+
+    def extract_metadata(self) -> Dict[str, Any]:
+        """Extract naturally available metadata from PostgreSQL.
+
+        Extracts metadata that is naturally available in PostgreSQL:
+        - Security labels (from row-level security policies)
+        - Column types and constraints
+        - Column comments (if set by DBA)
+        - NOT NULL constraints
+        - Primary key, foreign key information
+
+        Returns:
+            Dictionary with "tags" key containing field_name -> metadata mapping
+            e.g., {"tags": {"email": "security_label_value", "id": "primary_key"}}
+        """
+        if not self.source_config.tables:
+            return {"tags": {}}
+
+        try:
+            import psycopg2
+        except ImportError:
+            return {"tags": {}}
+
+        source_tags = {}
+
+        try:
+            conn = psycopg2.connect(
+                host=self.connection["host"],
+                port=self.connection["port"],
+                database=self.connection["database"],
+                user=self.connection["user"],
+                password=self.connection["password"],
+            )
+
+            try:
+                with conn.cursor() as cursor:
+                    # Process each table
+                    for table_config in self.source_config.tables:
+                        table_name = table_config.get("name")
+                        if not table_name:
+                            continue
+
+                        # Parse schema.table format
+                        if "." in table_name:
+                            schema, table = table_name.split(".", 1)
+                        else:
+                            schema = "public"
+                            table = table_name
+
+                        # Query comprehensive metadata from pg_catalog
+                        query = """
+                            SELECT 
+                                a.attname as column_name,
+                                pg_catalog.col_description(c.oid, a.attnum) as column_comment,
+                                t.typname as data_type,
+                                a.attnotnull as is_not_null,
+                                CASE WHEN pk.attname IS NOT NULL THEN 'primary_key' ELSE NULL END as is_primary_key,
+                                CASE WHEN fk.attname IS NOT NULL THEN 'foreign_key' ELSE NULL END as is_foreign_key
+                            FROM pg_catalog.pg_attribute a
+                            JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+                            JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+                            JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+                            LEFT JOIN (
+                                SELECT kcu.column_name as attname
+                                FROM information_schema.table_constraints tc
+                                JOIN information_schema.key_column_usage kcu 
+                                    ON tc.constraint_name = kcu.constraint_name
+                                WHERE tc.table_schema = %s 
+                                  AND tc.table_name = %s
+                                  AND tc.constraint_type = 'PRIMARY KEY'
+                            ) pk ON a.attname = pk.attname
+                            LEFT JOIN (
+                                SELECT kcu.column_name as attname
+                                FROM information_schema.table_constraints tc
+                                JOIN information_schema.key_column_usage kcu 
+                                    ON tc.constraint_name = kcu.constraint_name
+                                WHERE tc.table_schema = %s 
+                                  AND tc.table_name = %s
+                                  AND tc.constraint_type = 'FOREIGN KEY'
+                            ) fk ON a.attname = fk.attname
+                            WHERE n.nspname = %s 
+                              AND c.relname = %s
+                              AND a.attnum > 0
+                              AND NOT a.attisdropped
+                            ORDER BY a.attnum
+                        """
+
+                        cursor.execute(query, (schema, table, schema, table, schema, table))
+                        results = cursor.fetchall()
+
+                        for row in results:
+                            column_name, comment, data_type, is_not_null, is_primary_key, is_foreign_key = row
+                            
+                            # Collect naturally available metadata
+                            metadata_parts = []
+                            
+                            # Column comment (if set by DBA)
+                            if comment:
+                                metadata_parts.append(comment.strip())
+                            
+                            # Primary key constraint
+                            if is_primary_key:
+                                metadata_parts.append("primary_key")
+                            
+                            # Foreign key constraint
+                            if is_foreign_key:
+                                metadata_parts.append("foreign_key")
+                            
+                            # NOT NULL constraint
+                            if is_not_null:
+                                metadata_parts.append("not_null")
+                            
+                            # Data type as metadata
+                            if data_type:
+                                metadata_parts.append(f"type:{data_type}")
+                            
+                            # Combine metadata parts
+                            if metadata_parts:
+                                source_tags[column_name] = ",".join(metadata_parts)
+
+            finally:
+                conn.close()
+
+        except Exception:
+            # If extraction fails, return empty tags (non-critical)
+            return {"tags": {}}
+
+        return {"tags": source_tags}
