@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 10 Rust plugin tests in `test_rust_plugins.sh`
   - Master test runner: `run_all_plugin_tests.sh`
 - **100% Feature Coverage**: All plugin types (default, Python, Rust) fully tested
-- **Test Documentation**: Complete testing guide in `tests/PLUGIN_TESTING.md`
+- **Test Documentation**: Complete testing guide in `tests/README.md`
 - **GitHub Actions CI/CD**: Automated workflows for all tests
   - `ci.yml` - Complete CI pipeline (lint, core tests, plugin tests, Rust)
   - `plugin-tests.yml` - Dedicated plugin system tests (Python + Rust)

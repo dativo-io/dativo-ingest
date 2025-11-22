@@ -197,6 +197,11 @@ echo "✅ Environment variables saved to .env file"
 echo ""
 echo "✨ Setup complete!"
 echo ""
+echo "📋 Quick verification:"
+echo "   - .env file location: $(pwd)/.env"
+echo "   - Virtual environment: $(pwd)/venv"
+echo "   - CLI command: dativo (or python -m dativo_ingest.cli)"
+echo ""
 if [ "$DOCKER_NOT_RUNNING" -eq 1 ]; then
     echo "⚠️  IMPORTANT: Docker is not running!"
     echo "   To complete setup, start Docker and run:"
@@ -223,8 +228,8 @@ fi
 if [ "$EDITABLE_INSTALL_FAILED" -eq 1 ]; then
     echo "      PYTHONPATH=src python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
 else
-    echo "      dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
-    echo "      # or: PYTHONPATH=src python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
+    echo "      dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
+    echo "      # or: python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
 fi
 echo ""
 echo "   5. Or use the Makefile:"

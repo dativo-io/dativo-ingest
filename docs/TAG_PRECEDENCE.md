@@ -436,8 +436,7 @@ SHOW TBLPROPERTIES my_table LIKE 'classification%';
 ## 📚 Related Documentation
 
 - **Tag Propagation:** `/workspace/docs/TAG_PROPAGATION.md`
-- **No Auto-Classification:** `/workspace/NO_AUTO_CLASSIFICATION.md`
-- **ODCS Compliance:** `/workspace/ODCS_COMPLIANCE_REPORT.md`
+- **Tag Propagation Guide:** [TAG_PROPAGATION.md](TAG_PROPAGATION.md) - Complete guide including explicit tags only
 
 ---
 

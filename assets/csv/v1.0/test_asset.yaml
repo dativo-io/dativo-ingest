@@ -1,0 +1,30 @@
+# Minimal asset definition for test_asset
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: test_asset
+version: "1.0"
+source_type: csv
+object: test_asset
+
+# Schema definition - add your fields here
+schema:
+  - name: id
+    type: integer
+    required: true
+  - name: name
+    type: string
+    required: true
+  # Add more fields as needed
+
+# Target configuration
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+
+# Governance (required)
+team:
+  owner: test@example.com
+
+compliance:
+  classification: []  # Add [PII], [SENSITIVE], etc. as needed

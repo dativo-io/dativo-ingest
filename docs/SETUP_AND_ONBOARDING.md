@@ -23,7 +23,7 @@ Dativo-Ingest is a **headless, config-driven ingestion engine** that extracts da
 ### Core Concepts
 
 - **Jobs**: Tenant-specific configurations that define what data to extract, from where, and where to store it
-- **Assets**: Schema definitions that specify the structure, governance, and compliance requirements for data
+- **Assets**: Schema definitions that specify the structure, governance, and compliance requirements for data, based on ODCS v3.0.2 schemas
 - **Connectors**: Tenant-agnostic recipes that define HOW to connect to sources and targets
 - **Secrets**: Credentials and connection information stored securely outside of YAML files
 - **Infrastructure**: Services required for data ingestion (databases, object storage, catalogs)
@@ -256,6 +256,10 @@ Environment variables are referenced in configs using `${VAR_NAME}` syntax and c
 - `NESSIE_URI` - Required for Iceberg catalog (if catalog configured)
 - `POSTGRES_*`, `MYSQL_*` - Database connection variables
 - `STATE_DIR` - State directory path (defaults to `.local/state/`)
+  
+  **Note:** State files are stored in `.local/state/` by default (hidden, gitignored). 
+  Can be overridden with `STATE_DIR` environment variable. For production, set `STATE_DIR` 
+  to your desired location (e.g., `/var/lib/dativo/state`).
 
 **Usage in Configs:**
 ```yaml
@@ -424,7 +428,7 @@ target:
 Run the job to test the new infrastructure:
 
 ```bash
-dativo_ingest run \
+dativo run \
   --config jobs/{tenant_id}/new_connector_object_to_iceberg.yaml \
   --secrets-dir secrets \
   --mode self_hosted
@@ -835,6 +839,8 @@ pip install -r requirements.txt
 pip install -e .
 
 # Verify installation
+dativo --help
+# or if command not available:
 python -m dativo_ingest.cli --help
 ```
 
@@ -983,13 +989,13 @@ cat secrets/{tenant_id}/postgres.env
 
 ```bash
 # Run single job
-dativo_ingest run --config jobs/acme/stripe_customers_to_iceberg.yaml --secrets-dir secrets --mode self_hosted
+dativo run --config jobs/acme/stripe_customers_to_iceberg.yaml --secrets-dir secrets --mode self_hosted
 
 # Run all jobs in directory
-dativo_ingest run --job-dir jobs/acme --secrets-dir secrets --mode self_hosted
+dativo run --job-dir jobs/acme --secrets-dir secrets --mode self_hosted
 
 # Start orchestrated mode
-dativo_ingest start orchestrated --runner-config configs/runner.yaml
+dativo start orchestrated --runner-config configs/runner.yaml
 
 # Run smoke tests
 ./tests/run_all_smoke_tests.sh

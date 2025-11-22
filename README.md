@@ -1,27 +1,19 @@
 # Dativo Ingestion Platform
 
-A headless, config-driven ingestion engine. Extracts data from third party SaaS APIs(like Stripe or Hubspot) and databases(like Postgres or Mysql) into vendor-owned object storage (S3, MinIO, Azure Blob) as Iceberg-backed datasets. Supports Markdown-KV format for LLM-optimized data ingestion.
+A headless, config-driven ingestion engine. Extracts data from SaaS APIs (Stripe, HubSpot) and databases (PostgreSQL, MySQL) into object storage (S3, MinIO) as Iceberg-backed datasets. Supports Markdown-KV format for LLM-optimized data ingestion.
 
 ## Architecture
 
-Dativo is a **config-only ingestion engine** that built in:
+Config-driven ingestion engine. All behavior is controlled by YAML configs validated against a connector registry and asset schemas.
 
-- **Self-hosted mode:** Fully isolated Docker image with Dagster bundled as orchestrator
-
-All behavior is driven by YAML configs, validated by a connectors registry and asset specs-as-code files.
-
-### Components
-
-- **Runner Engine**: Dockerized CLI entrypoint that executes `run` and `start` commands
-- **Orchestrator**: Bundled Dagster instance that reads `runner.yaml`, registers schedules, and enforces tenant-level serialization
-- **Config Loader**: Parses job configs, resolves env vars, validates against registry
-- **Registry Validator**: Confirms supported connector types, auth methods, and allowed modes
-- **Specs-as-Code**: Versioned dataset schema references with presence validation
-- **Schema Validator**: Validates records against asset schemas with configurable strict/warn modes
-- **Data Extractors**: Native Python extractors for CSV and file-based sources (extensible for API/database sources)
-- **Custom Plugins**: Plugin system for custom readers and writers - allows users to implement format-aware, high-performance data processing
-- **Parquet Writer**: Writes validated data to Parquet files with target file sizing and partitioning
-- **Iceberg Committer**: Commits Parquet files to Iceberg tables via catalog (optional - can write to S3 without catalog)
+**Key Components:**
+- **CLI Runner** - Executes `run` (oneshot) and `start` (orchestrated) commands
+- **Dagster Orchestrator** - Optional scheduler for scheduled jobs
+- **Connector Registry** - Validates connector types, engines, and modes
+- **Asset Schemas** - ODCS v3.0.2 compliant schema definitions
+- **Custom Plugins** - Python and Rust plugins for custom readers/writers
+- **Parquet Writer** - Writes validated data with partitioning and file sizing
+- **Iceberg Committer** - Optional catalog integration (files always written to S3)
 
 ## Quick Start
 
@@ -29,21 +21,19 @@ All behavior is driven by YAML configs, validated by a connectors registry and a
 
 - Python 3.10+
 - Docker and Docker Compose (for local infrastructure)
-- Node.js 18+ (for schema validation)
+- Node.js 18+ (optional, for schema validation)
 
-### Local Development Setup
-
-**Quick Start (Recommended):**
+### Setup and Run
 
 ```bash
-# Run automated setup
+# 1. Run automated setup
 ./scripts/setup-dev.sh
 
-# Source environment variables
+# 2. Source environment variables
 source .env
 
-# Run end-to-end test
-dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+# 3. Run end-to-end test
+dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
 **For detailed instructions, see:**
@@ -83,9 +73,7 @@ docker run --rm -p 3000:3000 \
 
 ## CLI Usage
 
-### Run Command
-
-Execute a single job in oneshot mode:
+### Run a Single Job
 
 ```bash
 dativo run --config <path> --mode <self_hosted|cloud>
@@ -93,172 +81,112 @@ dativo run --config <path> --mode <self_hosted|cloud>
 
 **Options:**
 - `--config`: Path to job configuration YAML file (required)
-- `--mode`: Execution mode - `self_hosted` (default) or `cloud`. Database connectors are only allowed in `self_hosted` mode.
+- `--mode`: Execution mode - `self_hosted` (default) or `cloud`
+- `--job-dir`: Run all jobs in a directory (requires `--secrets-dir`)
+- `--secrets-dir`: Path to secrets directory (required with `--job-dir`)
 
-**Example:**
+**Examples:**
 ```bash
-dativo run --config /app/configs/jobs/stripe.yaml --mode self_hosted
+# Single job
+dativo run --config jobs/acme/stripe_customers.yaml --mode self_hosted
+
+# Multiple jobs from directory
+dativo run --job-dir jobs/acme --secrets-dir secrets --mode self_hosted
 ```
 
-### Start Command
-
-Start Dagster orchestrator in long-running mode:
+### Start Orchestrated Mode
 
 ```bash
 dativo start orchestrated --runner-config <path>
 ```
 
-**Options:**
-- `--runner-config`: Path to runner configuration YAML file (default: `/app/configs/runner.yaml`)
-
-**Example:**
-```bash
-dativo start orchestrated --runner-config /app/configs/runner.yaml
-```
+Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/runner.yaml`
 
 ## Execution Flow
 
-The ingestion pipeline executes the following steps:
+1. **Extract** - Read data from source (API, database, files)
+2. **Validate** - Validate records against asset schema (strict or warn mode)
+3. **Write** - Write to Parquet files (target: 128-200 MB, supports partitioning)
+4. **Commit** - Optional: Commit to Iceberg catalog (files always written to S3)
+5. **Update State** - Track incremental sync state
 
-1. **Extract**: Read data from source (CSV, API, database, etc.)
-2. **Validate**: Validate records against asset schema (strict or warn mode)
-3. **Write**: Write validated records to Parquet files (target size: 128-200 MB)
-4. **Commit**: Commit Parquet files to Iceberg table via catalog (optional - files always written to S3)
-5. **Update State**: Update incremental sync state (if applicable)
-
-### Schema Validation
-
-- **Strict Mode** (default): Fails job if any record has validation errors
-- **Warn Mode**: Logs errors but continues processing
-
-### Parquet Writing
-
-- Target file size: 128-200 MB (configurable)
-- Supports partitioning (e.g., by `ingest_date`)
-- Handles schema evolution
-
-### Iceberg/Catalog Integration
-
-**Note**: Catalog configuration is **optional**. If no catalog is configured, Parquet files are written directly to S3/MinIO without Iceberg metadata registration. See [docs/CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md) for details.
-
-#### Iceberg/Nessie Integration (Optional)
-
-- Automatic table creation from asset schema
-- Branch management (defaults to tenant_id)
-- Atomic commits with conflict handling
-
-See [INGESTION_EXECUTION.md](docs/INGESTION_EXECUTION.md) for detailed execution documentation.
+**Catalog Note**: Iceberg catalog is optional. Without catalog, Parquet files are written directly to S3/MinIO. See [docs/CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md).
 
 ## Configuration
 
-### Job Configuration
+**Job Config** - Defines source, target, asset, and tenant overrides:
 
-Job configs define the source connector, target connector, asset, and tenant-specific overrides:
+**Path Conventions:**
+- **Local Development**: Use relative paths (e.g., `connectors/stripe.yaml`)
+- **Docker**: Use absolute paths (e.g., `/app/connectors/stripe.yaml`)
+- **Assets**: Always use versioned paths (e.g., `assets/stripe/v1.0/customers.yaml`)
 
 ```yaml
 tenant_id: acme
-environment: prod
-
-# Reference to source connector recipe
 source_connector: stripe
-source_connector_path: /app/connectors/sources/stripe.yaml
-
-# Reference to target connector recipe
+source_connector_path: connectors/stripe.yaml  # Local: relative, Docker: /app/connectors/stripe.yaml
 target_connector: iceberg
-target_connector_path: /app/connectors/targets/iceberg.yaml
-# Note: catalog is optional - omit to write Parquet files directly to S3
-
-# Reference to asset definition
+target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
-asset_path: /app/assets/stripe/v1.0/customers.yaml
-
-# Source configuration
+asset_path: assets/stripe/v1.0/customers.yaml  # Always versioned
 source:
   objects: [customers]
   incremental:
     lookback_days: 1
-
-# Target configuration
 target:
-  branch: acme
-  warehouse: s3://lake/acme/
   connection:
-    nessie:
-      uri: "http://nessie.acme.internal:19120/api/v1"
     s3:
-      bucket: "acme-data-lake"
+      bucket: "${S3_BUCKET}"
       prefix: "raw/stripe/customers"
-
-logging:
-  redaction: true
-  level: INFO
 ```
 
-### Runner Configuration
-
-Runner configs define schedules for orchestrated mode:
-
+**Asset Definition** - ODCS v3.0.2 schema with governance:
 ```yaml
-runner:
-  mode: orchestrated
-  orchestrator:
-    type: dagster
-    schedules:
-      - name: stripe_customers_hourly
-        config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
-        cron: "0 * * * *"
-    concurrency_per_tenant: 1
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: stripe_customers
+version: "1.0"
+source_type: stripe
+object: customers
+schema:
+  - name: id
+    type: string
+    required: true
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
 ```
 
-### Asset Definitions
+**Quick Templates:**
+```bash
+# Generate job template
+./scripts/generate-job-template.sh mytenant my_job csv iceberg
 
-Asset definitions define the schema, governance metadata, and target configuration:
-
-```yaml
-asset:
-  name: stripe_customers
-  source_type: stripe
-  object: customers
-  version: "1.0"
-  
-  schema:
-    - name: id
-      type: string
-      required: true
-    - name: email
-      type: string
-      required: false
-      classification: PII
-  
-  governance:
-    owner: data-team@company.com
-    tags: [payments, customer-data]
-    classification: [PII]
-    retention_days: 30
-  
-  target:
-    file_format: parquet
-    partitioning: [ingest_date]
-    mode: strict
+# Generate asset template
+./scripts/generate-asset-template.sh csv my_asset your-email@company.com
 ```
 
-## CI/CD Status
+See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for complete reference.  
+See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal asset example.
 
-[![CI](https://github.com/YOUR_ORG/dativo-etl/workflows/CI/badge.svg)](https://github.com/YOUR_ORG/dativo-etl/actions)
-[![Plugin Tests](https://github.com/YOUR_ORG/dativo-etl/workflows/Plugin%20System%20Tests/badge.svg)](https://github.com/YOUR_ORG/dativo-etl/actions)
-
-All plugin tests (Python, Rust, integration) run automatically on every PR via GitHub Actions.
 
 ## Supported Connectors
 
-- **Stripe**: Payments data (customers, charges, invoices)
-- **HubSpot**: CRM data (contacts, deals, companies)
-- **Google Drive CSV**: CSV files from Google Drive
-- **Google Sheets**: Spreadsheet data
-- **CSV**: Local CSV files
-- **Markdown-KV**: Markdown-KV files for LLM-optimized data ingestion
-- **PostgreSQL**: Database tables (self-hosted only)
-- **MySQL**: Database tables (self-hosted only)
+**Sources:**
+- **Stripe** - Payments API (customers, charges, invoices)
+- **HubSpot** - CRM API (contacts, deals, companies)
+- **Google Drive CSV** - CSV files from Google Drive
+- **Google Sheets** - Spreadsheet data
+- **CSV** - Local CSV files
+- **Markdown-KV** - Markdown-KV files for LLM-optimized ingestion
+- **PostgreSQL** - Database (self-hosted only)
+- **MySQL** - Database (self-hosted only)
+
+**Targets:**
+- **Iceberg** - Apache Iceberg tables (Parquet format)
+- **S3** - Amazon S3 object storage
+- **MinIO** - MinIO object storage
 
 ## Custom Plugins
 
@@ -333,158 +261,50 @@ See [docs/MARKDOWN_KV_STORAGE.md](docs/MARKDOWN_KV_STORAGE.md) for detailed docu
 
 ## Exit Codes
 
-- `0`: Success
-- `1`: Partial success
-- `2`: Failure (validation error, missing files, etc.)
+- `0`: Success - All jobs completed successfully
+- `1`: Partial success - Some jobs succeeded, some failed
+- `2`: Failure - Configuration errors, missing files, or startup failures. Note: Jobs may complete with validation warnings but still return exit code 2.
 
 ## Testing
 
-Dativo has comprehensive test coverage including plugin system tests.
-
-### Quick Start
+### Run Tests
 
 ```bash
-# Run all tests (unit + integration + plugin tests)
-./tests/run_all_plugin_tests.sh
-
-# Or run specific test suites
-pytest tests/test_plugins.py -v          # Plugin unit tests
-./tests/test_plugin_integration.sh       # Plugin integration tests
-./examples/plugins/rust/test_rust_plugins.sh  # Rust plugin tests
-```
-
-### Test Coverage
-
-**76 total tests** across all components:
-- ✅ Default readers and writers (CSV, Parquet)
-- ✅ Custom Python plugins  
-- ✅ Custom Rust plugins
-- ✅ Plugin loading and detection
-- ✅ Error handling and edge cases
-- ✅ End-to-end pipelines
-
-See [TESTING_SUMMARY.md](TESTING_SUMMARY.md) for complete details.
-
-### CI/CD Integration
-
-All plugin tests run automatically on every PR via GitHub Actions:
-- ✅ Python plugin tests (Python 3.10, 3.11)
-- ✅ Rust plugin builds (Ubuntu, macOS)
-- ✅ Integration tests
-- ✅ Coverage reporting with Codecov
-
-See [.github/workflows/README.md](.github/workflows/README.md) for workflow details and [GITHUB_ACTIONS_INTEGRATION.md](GITHUB_ACTIONS_INTEGRATION.md) for complete CI/CD documentation.
-
-### Traditional Testing
-
-Dativo uses a two-tier testing approach for core functionality:
-
-### Unit Tests
-
-Test internal functions (config loading, validation, state management):
-
-```bash
-# Run all unit tests
-pytest tests/test_*.py -v
-
-# Or using Makefile
-make test-unit
-```
-
-### Smoke Tests (E2E)
-
-Run actual CLI commands with test fixtures to verify end-to-end execution:
-
-```bash
-# Direct CLI command (recommended)
-dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
-
-# Or using Makefile
-make test-smoke
-```
-
-Smoke tests are simply running the CLI directly with test fixtures - no special test code needed!
-
-### Run All Tests
-
-```bash
+# All tests (unit + integration + smoke)
 make test
+
+# Individual test suites
+make test-unit          # Unit tests
+make test-integration   # Integration tests
+make test-smoke         # End-to-end smoke tests
+
+# Schema validation
+make schema-validate
 ```
 
 See [tests/README.md](tests/README.md) for detailed testing documentation.
 
-Validate schemas:
-
-```bash
-make schema-validate
-```
-
 ## Project Structure
 
 ```
-/app
-  connectors/
-    sources/
-      stripe.yaml
-      hubspot.yaml
-      postgres.yaml
-      mysql.yaml
-      gdrive_csv.yaml
-      google_sheets.yaml
-    targets/
-      iceberg.yaml
-      s3.yaml
-      minio.yaml
-  assets/
-    stripe/v1.0/customers.yaml
-    hubspot/v1.0/contacts.yaml
-    postgres/v1.0/db_orders.yaml
-    mysql/v1.0/db_customers.yaml
-    gdrive_csv/v1.0/deals_daily.yaml
-    google_sheets/v1.0/vendors_master.yaml
-  jobs/
-    acme/
-      stripe_customers_to_iceberg.yaml
-      hubspot_contacts_to_iceberg.yaml
-      postgres_orders_to_iceberg.yaml
-      mysql_customers_to_s3.yaml
-      gdrive_deals_to_iceberg.yaml
-      gsheets_vendors_to_minio.yaml
-  configs/
-    runner.yaml
-    policy.yaml
-  registry/
-    connectors.yaml
-  src/
-    dativo_ingest/
-      cli.py
-      config.py
-      validator.py
-      orchestrated.py
-      logging.py
+connectors/          # Connector recipes (tenant-agnostic)
+assets/              # Asset schemas (ODCS v3.0.2)
+  {source}/v{version}/
+jobs/                # Job configs (tenant-specific)
+  {tenant_id}/
+configs/             # Runner and policy configs
+registry/            # Connector capabilities registry
+secrets/             # Secrets (tenant-organized)
+state/               # Incremental sync state
+src/dativo_ingest/   # Source code
 ```
 
 ## Documentation
 
-### Core Documentation
-- [QUICKSTART.md](QUICKSTART.md) - Quick reference guide
-- [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
-- [ROADMAP.md](ROADMAP.md) - Development roadmap and future plans
+**Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
+**Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
+**Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
+**Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
+**Testing:** [tests/README.md](tests/README.md)
 
-### Detailed Guides
-- [SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md) - **Comprehensive setup and onboarding guide** (jobs, assets, secrets, environment variables, infrastructure)
-- [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) - Configuration reference
-- [INGESTION_EXECUTION.md](docs/INGESTION_EXECUTION.md) - Execution flow documentation
-- [MARKDOWN_KV_STORAGE.md](docs/MARKDOWN_KV_STORAGE.md) - Markdown-KV storage patterns
-- [CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md) - Catalog compatibility notes
-- [SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Setup and testing guide
-- [RUNNER_AND_ORCHESTRATION.md](docs/RUNNER_AND_ORCHESTRATION.md) - Orchestration documentation
-- [SCHEMA_VALIDATION.md](docs/SCHEMA_VALIDATION.md) - Schema validation guide
-
-### Testing
-- [tests/README.md](tests/README.md) - Testing documentation
-
-## License
-
-[Add license information]
 

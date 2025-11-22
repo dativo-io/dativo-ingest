@@ -1,226 +1,168 @@
 # GitHub Actions Workflows
 
-This directory contains CI/CD workflows for the Dativo ETL platform.
+This directory contains CI/CD workflows for the Dativo Ingestion Platform.
+
+## Overview
+
+All plugin system tests are fully integrated into GitHub Actions CI/CD workflows. Every pull request and push to main/develop branches will automatically run comprehensive tests covering:
+
+- ✅ Default readers and writers
+- ✅ Custom Python plugins  
+- ✅ Custom Rust plugins
+- ✅ Integration tests
+- ✅ Cross-platform testing (Ubuntu, macOS)
+- ✅ Multi-version Python testing (3.10, 3.11)
 
 ## Workflows
 
-### 1. `ci.yml` - Complete CI Test Suite
+### Main CI Pipeline (`ci.yml`)
 
-**Triggers:**
-- Push to `main` or `develop` branches
-- Pull requests to `main` or `develop`
-- Manual workflow dispatch
+**6 jobs** covering complete testing pipeline:
+- Linting
+- Core tests
+- Plugin tests
+- Rust builds
+- Integration tests
+- Build status summary
 
-**Jobs:**
-1. **Linting** - Code quality checks (black, isort, flake8)
-2. **Core Tests** - Core unit tests (config, validator, state)
-3. **Plugin Tests** - Plugin system tests (unit + integration)
-4. **Rust Plugins** - Build and test Rust plugins
-5. **Integration Tests** - Master test suite
-6. **Build Status** - Final status check
+**Features:**
+- Matrix testing across Python 3.10 and 3.11
+- Caching for pip packages and Cargo builds
+- ~50% reduction in build time with caching
 
-**Status Badge:**
-```markdown
-[![CI](https://github.com/YOUR_ORG/YOUR_REPO/workflows/CI/badge.svg)](https://github.com/YOUR_ORG/YOUR_REPO/actions)
-```
+### Plugin-Specific Tests (`plugin-tests.yml`)
 
-### 2. `plugin-tests.yml` - Plugin System Tests
+**5 jobs** focused on plugin system:
+- Python plugin tests (unit + integration)
+- Default extractors tests
+- Rust plugin tests (Ubuntu + macOS matrix)
+- Master test suite execution
+- Comprehensive test summary
 
-**Triggers:**
-- Push/PR affecting plugin-related files
-- Manual workflow dispatch
+### Other Workflows
 
-**Jobs:**
-1. **Python Plugin Tests**
-   - Matrix: Python 3.10, 3.11
-   - Unit tests with coverage
-   - Integration tests
-   
-2. **Default Extractors Tests**
-   - CSV extractor tests
-   - Default reader/writer tests
-   
-3. **Rust Plugin Tests**
-   - Matrix: Ubuntu, macOS
-   - Build Rust plugins
-   - Run Rust unit tests
-   - Verify exports
-   - Test Python integration
-   
-4. **Master Test Suite**
-   - Run complete test suite
-   - All tests together
-   
-5. **Test Summary**
-   - Final status report
-
-**Status Badge:**
-```markdown
-[![Plugin Tests](https://github.com/YOUR_ORG/YOUR_REPO/workflows/Plugin%20System%20Tests/badge.svg)](https://github.com/YOUR_ORG/YOUR_REPO/actions)
-```
+- **`tests.yml`** - Unit and smoke tests
+- **`smoke-tests.yml`** - Smoke tests
+- **`schema-validate.yml`** - Schema validation
 
 ## Test Coverage
 
-### Python Tests
+**Total Tests Running in CI:**
+- **47** Python plugin unit tests
+- **19** Python plugin integration tests
+- **10** Rust plugin tests
+- **Core tests** from existing test suite
+- **Smoke tests** from existing workflows
 
-| Component | Coverage |
-|-----------|----------|
-| Core (config, validator, state) | pytest with coverage |
-| Plugin system | pytest with coverage |
-| Integration | Shell-based tests |
+**Total: 76+ tests** specifically for the plugin system
 
-### Rust Tests
+## Matrix Configuration
 
-| Component | Coverage |
-|-----------|----------|
-| CSV reader | cargo test |
-| Parquet writer | cargo test |
-| Build verification | symbol checks |
-| Python integration | detection tests |
+**Python Versions:**
+```yaml
+strategy:
+  matrix:
+    python-version: ['3.10', '3.11']
+```
 
-## Caching
+**Operating Systems (Rust):**
+```yaml
+strategy:
+  matrix:
+    os: [ubuntu-latest, macos-latest]
+```
 
-Workflows use caching for faster builds:
+## Caching Strategy
 
-**Python:**
-- pip packages: `~/.cache/pip`
+**Python Dependencies:**
+```yaml
+- uses: actions/cache@v3
+  with:
+    path: ~/.cache/pip
+    key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+```
 
-**Rust:**
-- Cargo registry: `~/.cargo/registry`
-- Cargo git: `~/.cargo/git`
-- Build artifacts: `target/`
+**Rust Builds:**
+```yaml
+- uses: actions/cache@v3
+  with:
+    path: |
+      ~/.cargo/registry
+      ~/.cargo/git
+      examples/plugins/rust/target
+    key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+```
+
+**Performance Impact:** ~50% reduction in build time
+
+## Trigger Configuration
+
+**Push Triggers:**
+- Branches: `main`, `develop`, `cursor/**`
+- Paths: Plugin-related files trigger plugin tests
+
+**Pull Request Triggers:**
+- All PRs to `main` and `develop` branches
+
+**Manual Triggers:**
+- `workflow_dispatch` allows manual execution
 
 ## Artifacts
 
-Rust plugin binaries are uploaded as artifacts:
-- Retention: 7 days
-- Available for: Ubuntu, macOS
-- Includes: CSV reader, Parquet writer
+**Rust Plugin Binaries:**
+- Uploaded for 7 days retention
+- Available for Ubuntu (`.so`) and macOS (`.dylib`)
+- Useful for debugging platform-specific issues
+
+**Test Results:**
+- Pytest XML results
+- Coverage reports
+- Logs on failure
 
 ## Local Testing
 
-Before pushing, run tests locally:
+To run the same tests locally:
 
 ```bash
-# All tests
-./tests/run_all_plugin_tests.sh
+# All tests (unit + integration + smoke)
+make test
 
-# Specific suites
-pytest tests/test_plugins.py -v
-./tests/test_plugin_integration.sh
-cd examples/plugins/rust && ./test_rust_plugins.sh
-```
+# Unit tests only
+make test-unit
 
-## Matrix Testing
+# Integration tests only
+make test-integration
 
-### Python Versions
-- Python 3.10 (primary)
-- Python 3.11 (compatibility)
+# Smoke tests only
+make test-smoke
 
-### Operating Systems
-- Ubuntu Latest (Linux)
-- macOS Latest (Darwin)
-- Windows (future)
-
-## Workflow Configuration
-
-### Required Secrets
-
-No secrets required for basic tests.
-
-For full integration tests (optional):
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `POSTGRES_PASSWORD`
-- Database connection strings
-
-### Environment Variables
-
-All workflows set:
-```yaml
-env:
-  PYTHONPATH: ${{ github.workspace }}/src
+# Plugin tests
+bash tests/run_all_plugin_tests.sh
 ```
 
 ## Troubleshooting
 
-### Workflow Fails on Plugin Tests
+### Tests Failing in CI
 
-1. Check Python version compatibility
-2. Verify all dependencies in `requirements.txt`
-3. Check test file permissions (executable)
+1. **Check logs**: Review workflow logs for specific error messages
+2. **Run locally**: Reproduce the issue locally with the same Python version
+3. **Check dependencies**: Ensure all dependencies are up to date
+4. **Verify paths**: Check that file paths are correct (CI uses different paths)
 
-### Rust Build Fails
+### Rust Build Failures
 
-1. Check Rust toolchain version
-2. Verify Cargo.toml dependencies
-3. Check for platform-specific issues
+1. **Check Rust version**: Ensure compatible Rust version
+2. **Platform-specific**: Some issues may be platform-specific (Ubuntu vs macOS)
+3. **Cargo cache**: Try clearing Cargo cache if builds are inconsistent
 
-### Cache Issues
+### Python Version Issues
 
-Clear cache by:
-1. Update cache key in workflow
-2. Or manually clear in GitHub Actions UI
+1. **Matrix testing**: Tests run on Python 3.10 and 3.11
+2. **Dependencies**: Some dependencies may have version requirements
+3. **Local testing**: Test with the same Python version as CI
 
-## Adding New Tests
+## See Also
 
-### To Core Tests
-
-Add test files to `tests/test_*.py` and they'll be picked up automatically.
-
-### To Plugin Tests
-
-1. Add to `tests/test_plugins.py` for unit tests
-2. Add to `tests/test_plugin_integration.sh` for integration
-3. Add to `examples/plugins/rust/test_rust_plugins.sh` for Rust
-
-### To Workflows
-
-Update workflow files to include new test paths in triggers:
-
-```yaml
-on:
-  push:
-    paths:
-      - 'path/to/new/file.py'
-```
-
-## Performance
-
-### Average Run Times
-
-| Workflow | Duration | Jobs |
-|----------|----------|------|
-| CI (complete) | ~8-10 min | 6 |
-| Plugin Tests | ~6-8 min | 5 |
-
-### Optimization
-
-- Caching reduces build time by 50%
-- Matrix runs in parallel
-- Rust builds cached between runs
-
-## Status Checks
-
-Required status checks for merge:
-- ✅ Core Tests (Python 3.10)
-- ✅ Plugin Tests
-- ✅ Rust Plugin Build
-
-Optional checks:
-- Linting (non-blocking)
-- Python 3.11 compatibility
-
-## Continuous Deployment
-
-Workflows are designed to support CD:
-- Tagged releases trigger builds
-- Artifacts available for deployment
-- Rust plugins ready for distribution
-
-## Support
-
-For workflow issues:
-1. Check workflow run logs in GitHub Actions
-2. Run tests locally first
-3. Review test documentation in `tests/PLUGIN_TESTING.md`
+- [tests/README.md](../../tests/README.md) - Testing documentation
+- [docs/CUSTOM_PLUGINS.md](../../docs/CUSTOM_PLUGINS.md) - Custom plugins guide
+- [README.md](../../README.md) - Project overview
