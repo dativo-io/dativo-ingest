@@ -209,3 +209,61 @@ class CSVExtractor:
                 return None
 
         return total
+
+    def extract_metadata(self) -> Dict[str, Any]:
+        """Extract naturally available metadata from CSV files.
+
+        Extracts metadata that is naturally available in CSV files:
+        - Column names from the header row
+        - File metadata (size, modification time)
+
+        Returns:
+            Dictionary with "tags" key containing field_name -> metadata mapping.
+            For CSV, column names are extracted as available metadata.
+            e.g., {"tags": {"email": "column", "phone": "column"}}
+        """
+        if not self.source_config.files:
+            return {"tags": {}}
+
+        source_tags = {}
+
+        try:
+            import pandas as pd
+        except ImportError:
+            return {"tags": {}}
+
+        # Process each file
+        for file_config in self.source_config.files:
+            file_path_str = file_config.get("path") or file_config.get("file")
+            if not file_path_str:
+                continue
+
+            file_path = Path(file_path_str)
+            if not file_path.exists():
+                continue
+
+            try:
+                # Read just the header to get column names
+                encoding = self.engine_options.get("encoding", "utf-8")
+                delimiter = self.engine_options.get("delimiter", ",")
+                quote_char = self.engine_options.get("quote_char", '"')
+
+                # Read first row to get column names
+                df_header = pd.read_csv(
+                    file_path,
+                    nrows=0,  # Only read header
+                    encoding=encoding,
+                    sep=delimiter,
+                    quotechar=quote_char,
+                )
+
+                # Extract column names as naturally available metadata
+                # Mark them as "column" to indicate they're from CSV structure
+                for col_name in df_header.columns:
+                    source_tags[col_name] = "column"
+
+            except Exception:
+                # If reading fails, continue to next file
+                continue
+
+        return {"tags": source_tags}

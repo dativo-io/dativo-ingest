@@ -1,25 +1,90 @@
-.PHONY: schema-validate schema-connectors test-unit test-smoke test clean clean-state clean-temp
+.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test format format-check lint clean clean-state clean-temp
 
-schema-validate: schema-connectors
+schema-validate: schema-connectors schema-odcs
 
 schema-connectors:
 	@yq -o=json '. ' registry/connectors.yaml > /tmp/connectors.json && npx ajv-cli validate -s schemas/connectors.schema.json -d /tmp/connectors.json --strict=false && rm -f /tmp/connectors.json
 
-# Unit tests: Test internal functions (config loading, validation, etc.)
-test-unit:
-	@pytest tests/test_*.py -v
-
-# Smoke tests: Run actual CLI commands with test fixtures (true E2E)
-# Users can also run: dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
-test-smoke:
-	@if [ -f venv/bin/python ]; then \
-		venv/bin/python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted; \
+schema-odcs:
+	@echo "🔍 Validating ODCS compliance..."
+	@if [ -d venv ]; then \
+		. venv/bin/activate && PYTHONPATH=src python tests/integration/test_odcs_compliance.py; \
 	else \
-		python3 -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted; \
+		PYTHONPATH=src python3 tests/integration/test_odcs_compliance.py; \
 	fi
 
+# Unit tests: Test internal functions (config loading, validation, etc.)
+test-unit:
+	@pytest tests/test_*.py -v --ignore=tests/integration
+
+# Integration tests: Test module integration, tag derivation, and ODCS compliance
+test-integration:
+	@echo "🔍 Running integration tests..."
+	@if [ -f venv/bin/python ]; then \
+		PYTHONPATH=src venv/bin/python tests/integration/test_tag_derivation_integration.py; \
+		PYTHONPATH=src venv/bin/python tests/integration/test_complete_integration.py; \
+	else \
+		PYTHONPATH=src python3 tests/integration/test_tag_derivation_integration.py; \
+		PYTHONPATH=src python3 tests/integration/test_complete_integration.py; \
+	fi
+	@echo "✅ All integration tests passed"
+
+# Smoke tests: Run actual CLI commands with test fixtures (true E2E)
+# Includes tag propagation verification
+# Automatically sets up infrastructure services (Postgres, MySQL, MinIO, Nessie) if needed
+# Note: Infrastructure services are dependencies for testing, NOT the dativo-ingest service
+# The dativo-ingest CLI runs locally and connects to these services
+# Uses run_all_smoke_tests.sh which runs both original and custom plugin smoke tests
+# Users can also run: dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
+test-smoke:
+	@echo "🧪 Running smoke tests..."
+	@bash tests/run_all_smoke_tests.sh
+
 # Run all tests
-test: test-unit test-smoke
+test: test-unit test-integration test-smoke
+
+# Format code with black and isort
+format:
+	@echo "🎨 Formatting code with black and isort..."
+	@if command -v black >/dev/null 2>&1; then \
+		black src/ tests/; \
+	else \
+		echo "⚠️  black not found. Install with: pip install black"; \
+	fi
+	@if command -v isort >/dev/null 2>&1; then \
+		isort src/ tests/; \
+	else \
+		echo "⚠️  isort not found. Install with: pip install isort"; \
+	fi
+	@echo "✅ Code formatted"
+
+# Check code formatting (for CI)
+format-check:
+	@echo "🔍 Checking code formatting..."
+	@if command -v black >/dev/null 2>&1; then \
+		black --check src/ tests/ || (echo "❌ Code formatting issues found. Run 'make format' to fix." && exit 1); \
+	else \
+		echo "⚠️  black not found. Install with: pip install black"; \
+		exit 1; \
+	fi
+	@if command -v isort >/dev/null 2>&1; then \
+		isort --check-only src/ tests/ || (echo "❌ Import sorting issues found. Run 'make format' to fix." && exit 1); \
+	else \
+		echo "⚠️  isort not found. Install with: pip install isort"; \
+		exit 1; \
+	fi
+	@echo "✅ Code formatting is correct"
+
+# Lint code (format check + flake8)
+lint: format-check
+	@echo "🔍 Linting code with flake8..."
+	@if command -v flake8 >/dev/null 2>&1; then \
+		flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics || exit 1; \
+	else \
+		echo "⚠️  flake8 not found. Install with: pip install flake8"; \
+		exit 1; \
+	fi
+	@echo "✅ Linting passed"
 
 # Clean up state files (development)
 clean-state:

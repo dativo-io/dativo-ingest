@@ -78,10 +78,14 @@ else
     echo "   ⚠️  MinIO: curl not found (cannot check)"
 fi
 
-echo ""
-echo "💡 To use these settings, source this script:"
-echo "   source tests/setup_smoke_test_env.sh"
-echo ""
-echo "   Or run tests with:"
-echo "   source tests/setup_smoke_test_env.sh && ./tests/run_all_smoke_tests.sh"
+# Only show help text if script is run directly (not sourced)
+# When sourced, the caller will handle messaging
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    echo ""
+    echo "💡 To use these settings, source this script:"
+    echo "   source tests/setup_smoke_test_env.sh"
+    echo ""
+    echo "   Or run tests with:"
+    echo "   source tests/setup_smoke_test_env.sh && ./tests/run_all_smoke_tests.sh"
+fi
 
