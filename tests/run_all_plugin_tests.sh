@@ -61,7 +61,7 @@ run_suite() {
 # Suite 1: Unit Tests (pytest)
 # ==========================
 run_suite "Python Unit Tests (pytest)" \
-    "cd '$WORKSPACE_DIR' && python3 -m pytest tests/test_plugins.py -v --tb=short"
+    "cd '$WORKSPACE_DIR' && pytest tests/test_plugins.py -v --tb=short"
 
 # ==========================
 # Suite 2: Integration Tests
@@ -73,7 +73,7 @@ run_suite "Plugin Integration Tests" \
 # Suite 3: Default Extractors
 # ==========================
 run_suite "Default CSV Extractor Tests" \
-    "cd '$WORKSPACE_DIR' && python3 -m pytest tests/test_csv_extractor.py -v --tb=short" \
+    "cd '$WORKSPACE_DIR' && pytest tests/test_csv_extractor.py -v --tb=short" \
     "true"  # Optional if file exists
 
 # ==========================

@@ -1,4 +1,4 @@
-.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test-workflows test format format-check lint clean clean-state clean-temp
+.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test-workflows test-plugin test format format-check lint clean clean-state clean-temp
 
 schema-validate: schema-connectors schema-odcs
 
@@ -21,7 +21,7 @@ schema-odcs:
 
 # Unit tests: Test internal functions (config loading, validation, etc.)
 test-unit:
-	@pytest tests/test_*.py -v --ignore=tests/integration
+	@pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration
 
 # Integration tests: Test module integration, tag derivation, and ODCS compliance
 test-integration:
@@ -45,6 +45,11 @@ test-integration:
 test-smoke:
 	@echo "🧪 Running smoke tests..."
 	@bash tests/run_all_smoke_tests.sh
+
+# Plugin tests: Test plugin system (unit, integration, Rust)
+test-plugin:
+	@echo "🔌 Running plugin tests..."
+	@bash tests/run_all_plugin_tests.sh
 
 # Validate GitHub Actions workflows
 test-workflows:
