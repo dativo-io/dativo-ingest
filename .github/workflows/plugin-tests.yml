@@ -138,6 +138,7 @@ jobs:
       
       - name: Cache cargo registry
         uses: actions/cache@v3
+        continue-on-error: true
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('examples/plugins/rust/Cargo.toml') }}
@@ -146,6 +147,7 @@ jobs:
       
       - name: Cache cargo index
         uses: actions/cache@v3
+        continue-on-error: true
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('examples/plugins/rust/Cargo.toml') }}
@@ -154,6 +156,7 @@ jobs:
       
       - name: Cache cargo build
         uses: actions/cache@v3
+        continue-on-error: true
         with:
           path: examples/plugins/rust/target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('examples/plugins/rust/Cargo.toml') }}
