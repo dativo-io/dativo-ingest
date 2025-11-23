@@ -1,4 +1,4 @@
-.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test format format-check lint clean clean-state clean-temp
+.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test-workflows test format format-check lint clean clean-state clean-temp
 
 schema-validate: schema-connectors schema-odcs
 
@@ -46,8 +46,29 @@ test-smoke:
 	@echo "🧪 Running smoke tests..."
 	@bash tests/run_all_smoke_tests.sh
 
+# Validate GitHub Actions workflows
+test-workflows:
+	@echo "🔍 Validating GitHub Actions workflows..."
+	@if command -v actionlint >/dev/null 2>&1; then \
+		if [ -d .github/workflows ]; then \
+			actionlint .github/workflows/*.yml 2>&1 | grep -v "too old to run" || true; \
+			if actionlint .github/workflows/*.yml 2>&1 | grep -qE "(error|hashFiles.*failed)"; then \
+				echo "❌ Workflow validation failed"; \
+				actionlint .github/workflows/*.yml 2>&1 | grep -E "(error|hashFiles.*failed)" || true; \
+				exit 1; \
+			else \
+				echo "✅ All workflows validated successfully"; \
+			fi; \
+		else \
+			echo "⚠️  No .github/workflows directory found"; \
+		fi; \
+	else \
+		echo "⚠️  actionlint not found. Skipping workflow validation."; \
+		echo "   Install with: brew install actionlint"; \
+	fi
+
 # Run all tests
-test: test-unit test-integration test-smoke
+test: test-unit test-integration test-smoke test-workflows
 
 # Format code with black and isort
 format:
