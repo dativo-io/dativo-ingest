@@ -53,7 +53,10 @@ class EnvironmentSecretManager(SecretManager):
         **config: Any,
     ) -> None:
         super().__init__(
-            prefix=prefix, delimiter=delimiter, allow_global_scope=allow_global_scope, **config
+            prefix=prefix,
+            delimiter=delimiter,
+            allow_global_scope=allow_global_scope,
+            **config,
         )
         self.prefix = prefix.upper()
         self.delimiter = delimiter
@@ -123,7 +126,9 @@ class FilesystemSecretManager(SecretManager):
             try:
                 if secret_file.suffix == ".json":
                     with open(secret_file, "r", encoding="utf-8") as handle:
-                        secrets[secret_name] = _expand_env_vars_in_dict(json.load(handle))
+                        secrets[secret_name] = _expand_env_vars_in_dict(
+                            json.load(handle)
+                        )
                 elif secret_file.suffix == ".env":
                     with open(secret_file, "r", encoding="utf-8") as handle:
                         secrets[secret_name] = _parse_env_blob(handle.read())
@@ -208,13 +213,23 @@ class HashicorpVaultSecretManager(SecretManager):
 
     def _normalize_paths(self, paths: Optional[List[Any]]) -> List[Dict[str, Any]]:
         if not paths:
-            return [{"path": self.path_template, "mount_point": self.mount_point, "kv_version": self.kv_version}]
+            return [
+                {
+                    "path": self.path_template,
+                    "mount_point": self.mount_point,
+                    "kv_version": self.kv_version,
+                }
+            ]
 
         normalized: List[Dict[str, Any]] = []
         for entry in paths:
             if isinstance(entry, str):
                 normalized.append(
-                    {"path": entry, "mount_point": self.mount_point, "kv_version": self.kv_version}
+                    {
+                        "path": entry,
+                        "mount_point": self.mount_point,
+                        "kv_version": self.kv_version,
+                    }
                 )
             elif isinstance(entry, dict) and "path" in entry:
                 normalized.append(
@@ -225,7 +240,9 @@ class HashicorpVaultSecretManager(SecretManager):
                     }
                 )
             else:
-                raise ValueError("Each Vault path entry must be a string or dict with 'path'.")
+                raise ValueError(
+                    "Each Vault path entry must be a string or dict with 'path'."
+                )
         return normalized
 
     def _build_client(self) -> Any:
@@ -260,11 +277,17 @@ class HashicorpVaultSecretManager(SecretManager):
         return client
 
     @staticmethod
-    def _read_path(client: Any, path: str, mount_point: str, kv_version: int) -> Dict[str, Any]:
+    def _read_path(
+        client: Any, path: str, mount_point: str, kv_version: int
+    ) -> Dict[str, Any]:
         if kv_version == 1:
-            response = client.secrets.kv.v1.read_secret(path=path, mount_point=mount_point)
+            response = client.secrets.kv.v1.read_secret(
+                path=path, mount_point=mount_point
+            )
             return response.get("data", {}) if response else {}
-        response = client.secrets.kv.v2.read_secret_version(path=path, mount_point=mount_point)
+        response = client.secrets.kv.v2.read_secret_version(
+            path=path, mount_point=mount_point
+        )
         return response.get("data", {}).get("data", {}) if response else {}
 
 
@@ -283,7 +306,9 @@ class SecretDefinition:
         return base.format(tenant=tenant_id, name=self.name)
 
 
-def _build_secret_definitions(entries: Optional[Iterable[Any]]) -> List[SecretDefinition]:
+def _build_secret_definitions(
+    entries: Optional[Iterable[Any]],
+) -> List[SecretDefinition]:
     if not entries:
         return []
     definitions: List[SecretDefinition] = []
@@ -346,7 +371,9 @@ class AWSSecretsManager(SecretManager):
         if self.secret_definitions:
             result: Dict[str, Any] = {}
             for definition in self.secret_definitions:
-                secret_id = definition.resolve_identifier(tenant_id, self.secret_id_template)
+                secret_id = definition.resolve_identifier(
+                    tenant_id, self.secret_id_template
+                )
                 payload = self._get_secret_value(
                     client,
                     secret_id,
@@ -386,7 +413,10 @@ class AWSSecretsManager(SecretManager):
 
     @staticmethod
     def _get_secret_value(
-        client: Any, secret_id: str, version_id: Optional[str] = None, version_stage: Optional[str] = None
+        client: Any,
+        secret_id: str,
+        version_id: Optional[str] = None,
+        version_stage: Optional[str] = None,
     ) -> str:
         params = {"SecretId": secret_id}
         if version_id:
@@ -446,7 +476,9 @@ class GCPSecretManager(SecretManager):
         if self.secret_definitions:
             secrets: Dict[str, Any] = {}
             for definition in self.secret_definitions:
-                secret_id = definition.resolve_identifier(tenant_id, self.secret_id_template)
+                secret_id = definition.resolve_identifier(
+                    tenant_id, self.secret_id_template
+                )
                 payload = self._access_secret(
                     client,
                     secret_id,
@@ -476,9 +508,13 @@ class GCPSecretManager(SecretManager):
             raise ImportError(
                 "google-cloud-secret-manager is required for GCP secret manager support."
             ) from exc
-        return secretmanager.SecretManagerServiceClient(client_options=self.client_options)
+        return secretmanager.SecretManagerServiceClient(
+            client_options=self.client_options
+        )
 
-    def _access_secret(self, client: Any, secret_id: str, version: Optional[str]) -> str:
+    def _access_secret(
+        self, client: Any, secret_id: str, version: Optional[str]
+    ) -> str:
         resource_name = self._build_resource_name(secret_id, version or self.version)
         response = client.access_secret_version(name=resource_name)
         data = response.payload.data
@@ -661,4 +697,3 @@ def validate_secrets_for_connector(
         )
 
     return True
-
