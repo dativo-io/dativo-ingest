@@ -36,7 +36,9 @@ def initialize_state_directory(job_config: JobConfig) -> None:
                 )
 
 
-def _load_secret_manager_config_arg(config_arg: Optional[str]) -> Optional[Dict[str, Any]]:
+def _load_secret_manager_config_arg(
+    config_arg: Optional[str],
+) -> Optional[Dict[str, Any]]:
     """Load secret manager configuration from path or inline JSON."""
 
     candidate = config_arg or os.getenv("DATIVO_SECRET_MANAGER_CONFIG")

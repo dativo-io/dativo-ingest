@@ -1,7 +1,7 @@
 """Unit tests for pluggable secret managers."""
 
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from dativo_ingest.secrets import (
@@ -36,8 +36,12 @@ def test_environment_secret_manager_supports_formats(monkeypatch):
 def test_filesystem_secret_manager_reads_json_and_env(tmp_path: Path):
     tenant_dir = tmp_path / "tenant_a"
     tenant_dir.mkdir()
-    (tenant_dir / "gsheets.json").write_text('{"client_email": "svc@acme.com"}', encoding="utf-8")
-    (tenant_dir / "postgres.env").write_text("PGHOST=db\nPGUSER=svc\nPGPASSWORD=secret", encoding="utf-8")
+    (tenant_dir / "gsheets.json").write_text(
+        '{"client_email": "svc@acme.com"}', encoding="utf-8"
+    )
+    (tenant_dir / "postgres.env").write_text(
+        "PGHOST=db\nPGUSER=svc\nPGPASSWORD=secret", encoding="utf-8"
+    )
 
     manager = FilesystemSecretManager(secrets_dir=tmp_path)
     secrets = manager.load_secrets("tenant_a")
