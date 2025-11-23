@@ -1,10 +1,13 @@
 """Command-line interface for Dativo ingestion runner."""
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 from .config import JobConfig, RunnerConfig
 from .infrastructure import validate_infrastructure
@@ -33,11 +36,48 @@ def initialize_state_directory(job_config: JobConfig) -> None:
                 )
 
 
+def _load_secret_manager_config_arg(
+    config_arg: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """Load secret manager configuration from path or inline JSON."""
+
+    candidate = config_arg or os.getenv("DATIVO_SECRET_MANAGER_CONFIG")
+    if not candidate:
+        return None
+
+    candidate_path = Path(candidate)
+    if candidate_path.exists():
+        with open(candidate_path, "r", encoding="utf-8") as handle:
+            content = handle.read()
+        suffix = candidate_path.suffix.lower()
+        if suffix in {".yaml", ".yml"}:
+            return yaml.safe_load(content) or {}
+        if suffix == ".json":
+            return json.loads(content or "{}")
+        # Fall back to JSON parsing for arbitrary extensions
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Secret manager config file '{candidate_path}' must be YAML or JSON."
+            ) from exc
+
+    # Treat argument as inline JSON
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "Secret manager config must be a path to a YAML/JSON file or a JSON string."
+        ) from exc
+
+
 def startup_sequence(
     job_dir: Path,
     secrets_dir: Path,
     tenant_id: Optional[str] = None,
     mode: str = "self_hosted",
+    secret_manager: str = "env",
+    secret_manager_config: Optional[Dict[str, Any]] = None,
 ) -> List[JobConfig]:
     """Complete startup sequence for batch job execution.
 
@@ -46,9 +86,11 @@ def startup_sequence(
 
     Args:
         job_dir: Directory containing job YAML files
-        secrets_dir: Directory containing secrets
+        secrets_dir: Directory containing secrets (filesystem manager only)
         tenant_id: Optional tenant identifier (if not provided, inferred from jobs)
         mode: Execution mode (default: self_hosted)
+        secret_manager: Secret backend to use (env, filesystem, vault, aws, gcp)
+        secret_manager_config: Optional manager-specific configuration dictionary
 
     Returns:
         List of validated job configurations
@@ -111,7 +153,12 @@ def startup_sequence(
 
     # 3. Load secrets using inferred/validated tenant_id
     try:
-        secrets = load_secrets(tenant_id, secrets_dir)
+        secrets = load_secrets(
+            tenant_id,
+            secrets_dir,
+            manager_type=secret_manager,
+            manager_config=secret_manager_config,
+        )
         logger.info(
             f"Secrets loaded for tenant {tenant_id}",
             extra={"event_type": "secrets_loaded", "secret_count": len(secrets)},
@@ -197,6 +244,12 @@ def run_command(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
+    try:
+        manager_config = _load_secret_manager_config_arg(args.secret_manager_config)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
     # Check if running from directory or single file
     if args.job_dir:
         # Run startup sequence and execute all jobs
@@ -206,6 +259,8 @@ def run_command(args: argparse.Namespace) -> int:
                 secrets_dir=Path(args.secrets_dir),
                 tenant_id=args.tenant_id,
                 mode=args.mode,
+                secret_manager=args.secret_manager,
+                secret_manager_config=manager_config,
             )
         except ValueError as e:
             print(f"ERROR: Startup sequence failed: {e}", file=sys.stderr)
@@ -960,12 +1015,23 @@ Examples:
     run_parser.add_argument(
         "--secrets-dir",
         default="/secrets",
-        help="Path to secrets directory (default: /secrets, required with --job-dir)",
+        help="Path to secrets directory (default: /secrets, used by filesystem secret manager)",
     )
     run_parser.add_argument(
         "--tenant-id",
         help="Tenant ID override (optional; if not provided, inferred from job configurations). "
         "If provided, validates all jobs belong to this tenant.",
+    )
+    run_parser.add_argument(
+        "--secret-manager",
+        choices=["env", "filesystem", "vault", "aws", "gcp"],
+        default=os.getenv("DATIVO_SECRET_MANAGER", "env"),
+        help="Secret backend to use (default: env or DATIVO_SECRET_MANAGER env var).",
+    )
+    run_parser.add_argument(
+        "--secret-manager-config",
+        help="Path to YAML/JSON file or inline JSON blob with secret manager configuration. "
+        "Falls back to DATIVO_SECRET_MANAGER_CONFIG when omitted.",
     )
     run_parser.add_argument(
         "--mode",

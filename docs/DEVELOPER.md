@@ -62,34 +62,21 @@ logger = setup_logging(level="INFO", redact_secrets=True)
 - Create test secrets directory structure
 - Document required secrets per connector type
 
-**Secrets Structure**:
+**Secret manager options** (see [docs/SECRET_MANAGEMENT.md](SECRET_MANAGEMENT.md) for full reference):
+
+- **Environment (default):** Populate variables matching `DATIVO_SECRET__{TENANT}__{SECRET}__[json|env|text]`. Supports global secrets (`DATIVO_SECRET__GLOBAL__...`) and inline JSON/.env payloads.
+- **Filesystem:** Legacy `/secrets/{tenant}/` layout (JSON, `.env`, or plaintext files). Enable via `--secret-manager filesystem --secrets-dir <path>`.
+- **HashiCorp Vault:** Configure KV paths, auth (token or AppRole), and mount points through `--secret-manager-config`.
+- **AWS Secrets Manager / GCP Secret Manager:** Fetch specific secret definitions or bundle documents using templates (e.g., `"prod/{tenant}/{name}"`).
+
+CLI defaults can be overridden with:
+
 ```
-/secrets/
-  {tenant}/
-    gsheets.json          # Google Sheets service account
-    gdrive.json           # Google Drive service account
-    postgres.env          # PostgreSQL connection string
-    mysql.env             # MySQL connection string
-    stripe_api_key        # Stripe API key
-    hubspot_api_key       # Hubspot API key
+--secret-manager <env|filesystem|vault|aws|gcp>
+--secret-manager-config <path or inline JSON>
 ```
 
-**Implementation**:
-```python
-# In startup sequence
-def load_secrets(tenant_id: str, secrets_dir: Path = Path("/secrets")) -> Dict[str, Any]:
-    """Load secrets for a tenant from secrets storage."""
-    tenant_secrets_dir = secrets_dir / tenant_id
-    if not tenant_secrets_dir.exists():
-        raise ValueError(f"Secrets directory not found: {tenant_secrets_dir}")
-    
-    secrets = {}
-    # Load all secret files
-    for secret_file in tenant_secrets_dir.glob("*"):
-        # Load and parse based on file type
-        # ...
-    return secrets
-```
+or environment variables `DATIVO_SECRET_MANAGER` / `DATIVO_SECRET_MANAGER_CONFIG`.
 
 ### 3. Load Jobs from Directory
 
