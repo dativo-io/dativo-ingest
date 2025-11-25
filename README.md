@@ -311,11 +311,49 @@ state/               # Incremental sync state
 src/dativo_ingest/   # Source code
 ```
 
+## Infrastructure Integration
+
+Dativo supports cloud-agnostic infrastructure deployment via Terraform for AWS and GCP:
+
+- **AWS**: ECS Fargate, Lambda with EventBridge scheduling
+- **GCP**: Cloud Run, Cloud Functions with Cloud Scheduler
+- **Tag Propagation**: Automatic tag extraction from job/asset definitions for cost allocation, compliance, and resource traceability
+
+### Quick Start
+
+1. **Add infrastructure block to job definition:**
+```yaml
+infrastructure:
+  runtime:
+    type: "aws_ecs_fargate"
+    cpu: 1024
+    memory: 2048
+  metadata:
+    cost_center: "ENG-001"
+```
+
+2. **Generate Terraform configuration:**
+```bash
+python3 scripts/generate_terraform.py \
+  jobs/acme/hubspot_contacts.yaml \
+  --cloud aws \
+  --resource-type ecs_fargate
+```
+
+3. **Deploy:**
+```bash
+cd terraform/generated
+terraform init && terraform apply
+```
+
+**See [docs/INFRASTRUCTURE_INTEGRATION.md](docs/INFRASTRUCTURE_INTEGRATION.md) for complete guide.**
+
 ## Documentation
 
 **Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
 **Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
+**Infrastructure Integration:** [docs/INFRASTRUCTURE_INTEGRATION.md](docs/INFRASTRUCTURE_INTEGRATION.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
 **Testing:** [tests/README.md](tests/README.md)
