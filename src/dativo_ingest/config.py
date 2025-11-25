@@ -450,6 +450,118 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class TerraformConfig(BaseModel):
+    """Terraform-specific configuration."""
+
+    module_source: Optional[str] = None
+    module_version: Optional[str] = None
+    workspace: Optional[str] = None
+    backend_config: Optional[Dict[str, Any]] = None
+
+
+class AutoScalingConfig(BaseModel):
+    """Auto-scaling configuration."""
+
+    enabled: bool = False
+    min_instances: Optional[int] = None
+    max_instances: Optional[int] = None
+
+
+class ComputeConfig(BaseModel):
+    """Compute resource specifications."""
+
+    cluster_id: Optional[str] = None
+    instance_type: Optional[str] = None
+    instance_count: Optional[int] = None
+    auto_scaling: Optional[AutoScalingConfig] = None
+
+
+class StorageConfig(BaseModel):
+    """Storage resource specifications."""
+
+    bucket: Optional[str] = None
+    volume_id: Optional[str] = None
+    mount_path: Optional[str] = None
+
+
+class NetworkConfig(BaseModel):
+    """Network configuration."""
+
+    vpc_id: Optional[str] = None
+    subnet_ids: Optional[List[str]] = None
+    security_group_ids: Optional[List[str]] = None
+
+
+class RuntimeConfig(BaseModel):
+    """Runtime environment configuration."""
+
+    platform: Optional[str] = None
+    compute: Optional[ComputeConfig] = None
+    storage: Optional[StorageConfig] = None
+    network: Optional[NetworkConfig] = None
+    namespace: Optional[str] = None
+    service_account: Optional[str] = None
+
+
+class MetadataConfig(BaseModel):
+    """Metadata and variables for infrastructure provisioning."""
+
+    tags: Optional[Dict[str, str]] = None
+    labels: Optional[Dict[str, str]] = None
+    annotations: Optional[Dict[str, str]] = None
+    variables: Optional[Dict[str, Any]] = None
+
+
+class DatabaseResourceConfig(BaseModel):
+    """Database resource configuration."""
+
+    endpoint: Optional[str] = None
+    port: Optional[int] = None
+    database_name: Optional[str] = None
+    instance_id: Optional[str] = None
+
+
+class CacheResourceConfig(BaseModel):
+    """Cache resource configuration."""
+
+    endpoint: Optional[str] = None
+    cluster_id: Optional[str] = None
+
+
+class QueueResourceConfig(BaseModel):
+    """Queue resource configuration."""
+
+    url: Optional[str] = None
+    arn: Optional[str] = None
+
+
+class SecretsResourceConfig(BaseModel):
+    """Secrets management resource configuration."""
+
+    secret_manager_arn: Optional[str] = None
+    kms_key_id: Optional[str] = None
+
+
+class ResourcesConfig(BaseModel):
+    """Pre-provisioned resource identifiers."""
+
+    database: Optional[DatabaseResourceConfig] = None
+    cache: Optional[CacheResourceConfig] = None
+    queue: Optional[QueueResourceConfig] = None
+    secrets: Optional[SecretsResourceConfig] = None
+
+
+class InfrastructureConfig(BaseModel):
+    """Infrastructure configuration for externally provisioned resources."""
+
+    provider: Optional[str] = None
+    terraform: Optional[TerraformConfig] = None
+    runtime: Optional[RuntimeConfig] = None
+    metadata: Optional[MetadataConfig] = None
+    resources: Optional[ResourcesConfig] = None
+    outputs: Optional[Dict[str, str]] = None
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
@@ -506,6 +618,9 @@ class JobConfig(BaseModel):
     governance_overrides: Optional[Dict[str, Any]] = (
         None  # Governance metadata overrides
     )
+
+    # Infrastructure configuration
+    infrastructure: Optional[InfrastructureConfig] = None
 
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'

@@ -1,0 +1,199 @@
+# Complete GCP GKE deployment example with comprehensive label propagation
+# This example demonstrates:
+# - Full infrastructure configuration for GCP GKE
+# - Label propagation from job config and asset definition
+# - FinOps metadata for cost allocation
+# - Classification labels for compliance
+# - Kubernetes labels and annotations
+# - Terraform integration
+
+tenant_id: acme
+environment: prod
+
+# Infrastructure configuration - GCP GKE with Terraform
+infrastructure:
+  provider: terraform
+  
+  # Terraform module configuration
+  terraform:
+    module_source: "git::https://github.com/acme/terraform-modules.git//gcp/gke-dativo"
+    module_version: "v2.5.0"
+    workspace: "prod-data-platform"
+    backend_config:
+      bucket: "acme-terraform-state"
+      prefix: "data-platform/prod/gke-dativo"
+  
+  # Runtime environment - GKE cluster
+  runtime:
+    platform: kubernetes
+    namespace: "dativo-prod"
+    service_account: "dativo-runner@acme-prod.iam.gserviceaccount.com"
+    
+    # Compute configuration
+    compute:
+      cluster_id: "dativo-acme-prod"
+      instance_type: "n2-standard-4"
+      instance_count: 5
+      auto_scaling:
+        enabled: true
+        min_instances: 3
+        max_instances: 15
+    
+    # Storage configuration
+    storage:
+      bucket: "acme-data-lake-prod"
+      mount_path: "/mnt/data"
+    
+    # Network configuration
+    network:
+      vpc_id: "projects/acme-prod/global/networks/data-vpc"
+      subnet_ids:
+        - "projects/acme-prod/regions/us-central1/subnetworks/data-subnet-1"
+        - "projects/acme-prod/regions/us-central1/subnetworks/data-subnet-2"
+  
+  # Metadata for label propagation
+  metadata:
+    # GCP resource labels (converted to lowercase, hyphenated)
+    tags:
+      cost-center: data-engineering
+      project: customer-analytics
+      environment: production
+      managed-by: terraform
+      owner: data-team
+      business-unit: analytics
+      department: engineering
+    
+    # Kubernetes-specific labels
+    labels:
+      app: dativo-ingestion
+      component: data-pipeline
+      tier: data-platform
+      tenant: acme
+      version: v1.2.0
+      release: prod
+    
+    # Kubernetes annotations
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      prometheus.io/path: "/metrics"
+      fluentd.io/include: "true"
+      fluentd.io/parser: "json"
+      kubectl.kubernetes.io/default-container: "dativo-runner"
+      description: "Dativo ETL pipeline for customer analytics"
+    
+    # Custom variables passed to Terraform
+    variables:
+      enable_workload_identity: true
+      enable_private_nodes: true
+      enable_encryption: true
+      enable_network_policy: true
+      enable_pod_security_policy: true
+      resource_requests_cpu: "2000m"
+      resource_requests_memory: "8Gi"
+      resource_limits_cpu: "4000m"
+      resource_limits_memory: "16Gi"
+  
+  # Pre-provisioned resources
+  resources:
+    database:
+      endpoint: "10.0.0.5"
+      port: 5432
+      database_name: "dativo_metadata"
+      instance_id: "prod-metadata-db"
+    
+    cache:
+      endpoint: "10.0.0.10:6379"
+      cluster_id: "prod-redis-cluster"
+    
+    queue:
+      url: "projects/acme-prod/topics/dativo-jobs"
+      arn: "projects/acme-prod/subscriptions/dativo-jobs-sub"
+    
+    secrets:
+      secret_manager_arn: "projects/acme-prod/secrets/dativo-credentials"
+      kms_key_id: "projects/acme-prod/locations/us-central1/keyRings/dativo/cryptoKeys/data-encryption"
+  
+  # Expected Terraform outputs
+  outputs:
+    cluster_name: "output.gke_cluster_name"
+    cluster_endpoint: "output.gke_cluster_endpoint"
+    gcs_bucket: "output.gcs_bucket"
+    service_account_email: "output.service_account_email"
+
+# Source connector configuration
+source_connector: stripe
+source_connector_path: /app/connectors/stripe.yaml
+
+source:
+  objects: [customers]
+  
+  credentials:
+    api_key: "${STRIPE_API_KEY}"
+  
+  incremental:
+    strategy: updated_at
+    lookback_days: 1
+    state_path: "gs://acme-data-lake-prod/state/stripe_customers.json"
+
+# Target connector configuration
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+target:
+  branch: acme
+  warehouse: "gs://acme-data-lake-prod/warehouse/"
+  
+  connection:
+    nessie:
+      uri: "http://nessie.data-platform.svc.cluster.local:19120/api/v1"
+    gcs:
+      bucket: "acme-data-lake-prod"
+      prefix: "raw/stripe/customers"
+  
+  catalog:
+    type: nessie
+    properties:
+      ref: "main"
+
+# Asset definition
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+# Classification overrides for specific fields
+classification_overrides:
+  email: high_pii
+  phone: high_pii
+  address: pii
+  default: customer_data
+
+# FinOps metadata - merged with asset-level finops
+finops:
+  cost_center: data-engineering
+  business_tags:
+    - payments
+    - customer-data
+    - analytics
+  project: payment-analytics
+  environment: production
+
+# Governance overrides
+governance_overrides:
+  retention_days: 1095  # 3 years for financial data
+  owner: payments-team@acme.com
+  approval_required: true
+
+# Retry configuration
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 5
+  max_delay_seconds: 300
+  backoff_multiplier: 2
+
+# Schema validation
+schema_validation_mode: strict
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

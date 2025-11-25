@@ -18,6 +18,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Example jobs for EMR, Kubernetes, and Databricks deployments
   - Comprehensive documentation in `docs/INFRASTRUCTURE.md`
   - Integration patterns for Terraform modules, GitOps, and environment variable injection
+
+- **Cloud Infrastructure Integration**: Complete AWS/GCP integration with comprehensive tag propagation
+  - **Infrastructure Configuration Models**: 10+ Pydantic models in `config.py` for infrastructure, runtime, compute, storage, network, metadata
+  - **Tag Propagation System**: Comprehensive tag derivation from job config, asset definition (ODCS), classification, and FinOps metadata
+  - **AWS Infrastructure Manager** (`aws_infrastructure.py`):
+    - EMR cluster validation and tagging via boto3
+    - S3 bucket tagging
+    - VPC and security group validation
+    - Terraform variable generation (JSON and HCL)
+    - Automated terraform apply execution
+    - 35+ tags propagated (classification, FinOps, governance)
+  - **GCP Infrastructure Manager** (`gcp_infrastructure.py`):
+    - GKE cluster validation and labeling via Google Cloud APIs
+    - GCS bucket labeling
+    - VPC and network validation
+    - Label conversion (GCP label restrictions)
+    - Kubernetes labels and annotations
+    - 35+ labels propagated (classification, FinOps, governance)
+  - **Terraform Modules**:
+    - AWS EMR module with KMS encryption, auto-scaling, CloudWatch logging
+    - GCP GKE module with Workload Identity, private nodes, Cloud Logging
+    - Complete tag/label propagation to all resources
+  - **Tag Categories**:
+    - Identity tags: TenantId, Environment, SourceConnector, TargetConnector, Asset
+    - ODCS metadata: Domain, DataProduct, Owner, Status
+    - Classification: DataClassification, ContainsPII, Regulations, RetentionDays, EncryptionRequired
+    - FinOps: CostCenter, Project, BusinessTags, Environment
+    - Infrastructure: InfraProvider, Platform, TerraformWorkspace, ManagedBy
+  - **Examples**:
+    - `examples/cloud-infrastructure/aws-emr-complete.yaml`: Complete AWS EMR deployment
+    - `examples/cloud-infrastructure/gcp-gke-complete.yaml`: Complete GCP GKE deployment
+  - **Documentation**:
+    - `INFRASTRUCTURE_IMPLEMENTATION.md`: Complete implementation guide
+    - `examples/cloud-infrastructure/README.md`: Usage guide and examples
+    - `terraform/aws/emr-dativo/README.md`: AWS module documentation
+  - **Cost Allocation**: Tags enable AWS Cost Explorer and GCP Billing Export filtering
+  - **Compliance Tracking**: Classification tags track PII, GDPR, retention policies
+  - **Multi-Cloud Support**: Cloud-agnostic job definitions work on AWS and GCP
 - **Custom Plugin System**: Support for Python and Rust plugins
   - **Python Plugins:**
     - New `BaseReader` and `BaseWriter` base classes for plugin development

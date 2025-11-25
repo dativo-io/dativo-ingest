@@ -1,0 +1,193 @@
+# Complete AWS EMR deployment example with comprehensive tag propagation
+# This example demonstrates:
+# - Full infrastructure configuration for AWS EMR
+# - Tag propagation from job config and asset definition
+# - FinOps metadata for cost allocation
+# - Classification tags for compliance
+# - Terraform integration
+
+tenant_id: acme
+environment: prod
+
+# Infrastructure configuration - AWS EMR with Terraform
+infrastructure:
+  provider: terraform
+  
+  # Terraform module configuration
+  terraform:
+    module_source: "git::https://github.com/acme/terraform-modules.git//aws/emr-dativo"
+    module_version: "v3.2.1"
+    workspace: "prod-data-platform"
+    backend_config:
+      bucket: "acme-terraform-state"
+      key: "data-platform/prod/emr-dativo.tfstate"
+      region: "us-east-1"
+      dynamodb_table: "terraform-state-lock"
+  
+  # Runtime environment - EMR cluster
+  runtime:
+    platform: emr
+    
+    # Compute configuration
+    compute:
+      cluster_id: "${EMR_CLUSTER_ID}"  # Injected from Terraform output
+      instance_type: "r5.2xlarge"
+      instance_count: 8
+      auto_scaling:
+        enabled: true
+        min_instances: 4
+        max_instances: 12
+    
+    # Storage configuration
+    storage:
+      bucket: "acme-data-lake-prod"
+      mount_path: "/mnt/data"
+    
+    # Network configuration
+    network:
+      vpc_id: "vpc-0a1b2c3d"
+      subnet_ids:
+        - "subnet-abc123"
+        - "subnet-def456"
+      security_group_ids:
+        - "sg-ingress-xyz789"
+        - "sg-egress-abc789"
+    
+    # IAM role for EMR
+    service_account: "arn:aws:iam::123456789012:role/DativoEMRRole"
+  
+  # Metadata for tag propagation
+  metadata:
+    # AWS resource tags - propagated to all resources
+    tags:
+      CostCenter: "data-engineering"
+      Project: "customer-analytics"
+      Environment: "production"
+      ManagedBy: "terraform"
+      Owner: "data-team@acme.com"
+      BusinessUnit: "analytics"
+      Department: "engineering"
+    
+    # Custom variables passed to Terraform
+    variables:
+      enable_spot_instances: true
+      spot_bid_price_percent: 80
+      log_retention_days: 30
+      enable_encryption: true
+      kms_key_alias: "alias/dativo-prod"
+      enable_monitoring: true
+      alarm_email: "data-ops@acme.com"
+  
+  # Pre-provisioned resources
+  resources:
+    database:
+      endpoint: "prod-metadata.cluster-abc.us-east-1.rds.amazonaws.com"
+      port: 5432
+      database_name: "dativo_metadata"
+      instance_id: "prod-metadata-db"
+    
+    cache:
+      endpoint: "prod-redis.abc123.cache.amazonaws.com"
+      cluster_id: "prod-redis-cluster"
+    
+    queue:
+      url: "https://sqs.us-east-1.amazonaws.com/123456789012/dativo-jobs"
+      arn: "arn:aws:sqs:us-east-1:123456789012:dativo-jobs"
+    
+    secrets:
+      secret_manager_arn: "arn:aws:secretsmanager:us-east-1:123456789012:secret:dativo/prod"
+      kms_key_id: "arn:aws:kms:us-east-1:123456789012:key/abc-123-def-456"
+  
+  # Expected Terraform outputs
+  outputs:
+    cluster_dns: "output.emr_cluster_dns"
+    master_public_dns: "output.emr_master_public_dns"
+    log_bucket: "output.emr_log_bucket"
+    cluster_arn: "output.emr_cluster_arn"
+
+# Source connector configuration
+source_connector: postgres
+source_connector_path: /app/connectors/postgres.yaml
+
+source:
+  connection:
+    host: "${POSTGRES_HOST}"
+    port: 5432
+    database: "orders_db"
+  
+  credentials:
+    username: "${POSTGRES_USER}"
+    password: "${POSTGRES_PASSWORD}"
+  
+  tables:
+    - name: orders
+      object: orders
+  
+  incremental:
+    strategy: updated_at
+    cursor_field: updated_at
+    lookback_days: 1
+    state_path: "s3://acme-data-lake-prod/state/postgres_orders.json"
+
+# Target connector configuration
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+target:
+  branch: acme
+  warehouse: "s3://acme-data-lake-prod/warehouse/"
+  
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake-prod"
+      prefix: "raw/orders"
+  
+  catalog:
+    type: nessie
+    properties:
+      ref: "main"
+      hash: null
+
+# Asset definition
+asset: postgres_orders
+asset_path: /app/assets/postgres/v1.0/db_orders.yaml
+
+# Classification overrides for specific fields
+classification_overrides:
+  customer_email: high_pii
+  customer_phone: high_pii
+  billing_address: pii
+  default: sensitive
+
+# FinOps metadata - merged with asset-level finops
+finops:
+  cost_center: data-engineering
+  business_tags:
+    - sales
+    - analytics
+    - customer-insights
+  project: customer-analytics-platform
+  environment: production
+
+# Governance overrides
+governance_overrides:
+  retention_days: 730  # 2 years
+  owner: data-platform-team@acme.com
+  approval_required: true
+
+# Retry configuration
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 5
+  max_delay_seconds: 300
+  backoff_multiplier: 2
+
+# Schema validation
+schema_validation_mode: strict
+
+# Logging
+logging:
+  redaction: true
+  level: INFO
