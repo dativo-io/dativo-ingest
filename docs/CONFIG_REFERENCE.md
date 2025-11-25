@@ -75,6 +75,77 @@ logging:
 - `target`: Target-specific configuration overrides
 - `schema_validation_mode`: Validation mode (`strict` or `warn`, defaults to `strict`)
 - `logging`: Logging configuration (level, redaction)
+- `infrastructure`: Infrastructure configuration for externally provisioned resources (e.g., Terraform)
+
+### Infrastructure Configuration
+
+Jobs can reference infrastructure provisioned outside of Dativo (e.g., via Terraform, CloudFormation, or Pulumi). The `infrastructure` block describes the runtime environment and metadata that flows into infrastructure-as-code modules.
+
+**Example with Terraform-provisioned EMR cluster:**
+
+```yaml
+infrastructure:
+  provider: terraform
+  
+  terraform:
+    module_source: "git::https://github.com/org/infra.git//modules/emr"
+    module_version: "v2.1.0"
+    workspace: "prod"
+  
+  runtime:
+    platform: emr
+    compute:
+      cluster_id: "${EMR_CLUSTER_ID}"
+      instance_type: "m5.xlarge"
+      instance_count: 5
+      auto_scaling:
+        enabled: true
+        min_instances: 3
+        max_instances: 10
+    
+    network:
+      vpc_id: "vpc-0a1b2c3d"
+      subnet_ids: ["subnet-abc123", "subnet-def456"]
+      security_group_ids: ["sg-xyz789"]
+  
+  metadata:
+    tags:
+      CostCenter: "data-engineering"
+      Project: "customer-analytics"
+      Environment: "production"
+    
+    variables:
+      enable_spot_instances: true
+      log_retention_days: 30
+```
+
+**Example with Kubernetes:**
+
+```yaml
+infrastructure:
+  provider: terraform
+  
+  runtime:
+    platform: kubernetes
+    namespace: "data-pipelines-prod"
+    service_account: "dativo-job-runner"
+    
+    compute:
+      instance_type: "n2-standard-4"
+      instance_count: 3
+  
+  metadata:
+    labels:
+      app: "dativo-ingestion"
+      team: "data-platform"
+      tenant: "acme"
+    
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+```
+
+For comprehensive documentation, see [INFRASTRUCTURE.md](INFRASTRUCTURE.md).
 
 ---
 
@@ -259,6 +330,7 @@ For detailed documentation, see [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md)
 ## Additional Resources
 
 - [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md) - Comprehensive setup and onboarding guide
+- [INFRASTRUCTURE.md](INFRASTRUCTURE.md) - Infrastructure configuration for Terraform-provisioned resources
 - [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md) - Detailed Markdown-KV storage documentation
 - [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md) - Execution flow documentation
 - [SCHEMA_VALIDATION.md](SCHEMA_VALIDATION.md) - Schema validation guide

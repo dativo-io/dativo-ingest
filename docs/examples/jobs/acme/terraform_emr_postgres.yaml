@@ -1,0 +1,150 @@
+# PostgreSQL to Iceberg with Terraform-provisioned EMR cluster
+# Demonstrates infrastructure block for externally managed resources
+tenant_id: acme
+environment: prod
+
+# Reference to source connector recipe
+source_connector: postgres
+source_connector_path: /app/connectors/postgres.yaml
+
+# Reference to target connector recipe
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Reference to asset definition
+asset: postgres_orders
+asset_path: /app/assets/postgres/v1.0/db_orders.yaml
+
+# Infrastructure configuration - Terraform-managed EMR cluster
+infrastructure:
+  provider: terraform
+  
+  # Terraform module configuration
+  terraform:
+    module_source: "git::https://github.com/acme/infra.git//modules/data-ingestion"
+    module_version: "v3.2.1"
+    workspace: "prod-data-platform"
+    backend_config:
+      bucket: "acme-terraform-state"
+      key: "data-ingestion/prod/dativo.tfstate"
+      region: "us-east-1"
+  
+  # Runtime environment
+  runtime:
+    platform: emr
+    
+    compute:
+      cluster_id: "${EMR_CLUSTER_ID}"  # Injected from Terraform output
+      instance_type: "r5.2xlarge"
+      instance_count: 8
+      auto_scaling:
+        enabled: true
+        min_instances: 4
+        max_instances: 12
+    
+    storage:
+      bucket: "acme-data-lake-prod"
+      mount_path: "/mnt/data"
+    
+    network:
+      vpc_id: "vpc-0a1b2c3d"
+      subnet_ids:
+        - "subnet-abc123"
+        - "subnet-def456"
+      security_group_ids:
+        - "sg-ingress-xyz"
+        - "sg-egress-abc"
+    
+    service_account: "arn:aws:iam::123456789:role/DativoEMRRole"
+  
+  # Metadata for Terraform variables and resource tagging
+  metadata:
+    tags:
+      CostCenter: "data-engineering"
+      Project: "customer-analytics"
+      Environment: "production"
+      ManagedBy: "terraform"
+      Owner: "data-team@acme.com"
+    
+    labels:
+      app: "dativo-ingestion"
+      tenant: "acme"
+      pipeline: "postgres-orders"
+    
+    variables:
+      enable_spot_instances: true
+      log_retention_days: 30
+      enable_encryption: true
+      kms_key_alias: "alias/dativo-prod"
+  
+  # Pre-provisioned resources
+  resources:
+    database:
+      endpoint: "prod-metadata.cluster-abc.us-east-1.rds.amazonaws.com"
+      port: 5432
+      database_name: "dativo_metadata"
+      instance_id: "prod-metadata-db"
+    
+    secrets:
+      secret_manager_arn: "arn:aws:secretsmanager:us-east-1:123456789:secret:dativo/prod"
+      kms_key_id: "arn:aws:kms:us-east-1:123456789:key/abc-123-def-456"
+  
+  # Expected outputs from Terraform
+  outputs:
+    cluster_dns: "output.emr_cluster_dns"
+    master_public_dns: "output.emr_master_public_dns"
+    log_bucket: "output.emr_log_bucket"
+
+# Source configuration
+source:
+  connection:
+    host: "${POSTGRES_HOST}"
+    port: 5432
+    database: "orders_db"
+  
+  credentials:
+    username: "${POSTGRES_USER}"
+    password: "${POSTGRES_PASSWORD}"
+  
+  tables:
+    - name: orders
+      object: orders
+  
+  incremental:
+    strategy: updated_at
+    cursor_field: updated_at
+    lookback_days: 1
+    state_path: "s3://acme-data-lake-prod/state/postgres_orders.json"
+
+# Target configuration
+target:
+  branch: acme
+  warehouse: "s3://acme-data-lake-prod/warehouse/"
+  
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake-prod"
+      prefix: "raw/orders"
+  
+  catalog:
+    type: nessie
+    properties:
+      ref: "main"
+      hash: null
+
+# Schema validation mode
+schema_validation_mode: strict
+
+# Retry configuration
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 5
+  max_delay_seconds: 300
+  backoff_multiplier: 2
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

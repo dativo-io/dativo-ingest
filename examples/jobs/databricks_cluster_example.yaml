@@ -1,0 +1,62 @@
+# Example: Databricks cluster with auto-scaling
+# Demonstrates infrastructure block for Databricks-managed clusters
+tenant_id: analytics
+environment: prod
+
+source_connector: csv
+source_connector_path: /app/connectors/csv.yaml
+
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+asset: csv_sales
+asset_path: /app/assets/csv/v1.0/sales_order_header.yaml
+
+# Infrastructure configuration - Databricks cluster
+infrastructure:
+  provider: databricks
+  
+  runtime:
+    platform: databricks
+    
+    compute:
+      cluster_id: "0123-456789-abc123"
+      instance_type: "i3.xlarge"
+      auto_scaling:
+        enabled: true
+        min_instances: 2
+        max_instances: 10
+    
+    service_account: "datio-databricks-runner"
+  
+  metadata:
+    tags:
+      Owner: "data-team@company.com"
+      Workload: "batch-ingestion"
+      CostCenter: "analytics"
+      Environment: "production"
+    
+    variables:
+      spark_version: "13.3.x-scala2.12"
+      enable_autoscaling: true
+      spot_bid_price_percent: 80
+
+# Source configuration
+source:
+  files:
+    - path: "/dbfs/mnt/raw/sales/*.csv"
+      object: sales_orders
+
+# Target configuration
+target:
+  warehouse: "dbfs:/mnt/warehouse/"
+  connection:
+    dbfs:
+      mount_point: "/mnt/warehouse"
+      prefix: "raw/sales/orders"
+
+schema_validation_mode: strict
+
+logging:
+  level: INFO
+  redaction: true

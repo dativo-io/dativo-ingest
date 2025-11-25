@@ -1,0 +1,101 @@
+# Stripe to Iceberg with Kubernetes infrastructure
+# Demonstrates infrastructure block for Kubernetes-native deployments
+tenant_id: acme
+environment: prod
+
+# Reference to source connector recipe
+source_connector: stripe
+source_connector_path: /app/connectors/stripe.yaml
+
+# Reference to target connector recipe
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Reference to asset definition
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+# Infrastructure configuration - Kubernetes-native
+infrastructure:
+  provider: terraform
+  
+  # Terraform module for Kubernetes resources
+  terraform:
+    module_source: "git::https://github.com/acme/k8s-infra.git//data-pipelines"
+    module_version: "v1.5.0"
+    workspace: "prod-k8s"
+  
+  # Runtime environment
+  runtime:
+    platform: kubernetes
+    namespace: "data-ingestion"
+    service_account: "dativo-runner"
+    
+    compute:
+      instance_type: "n2-standard-4"
+      instance_count: 3
+    
+    network:
+      vpc_id: "projects/acme/global/networks/prod-vpc"
+      subnet_ids:
+        - "projects/acme/regions/us-central1/subnetworks/data-subnet"
+  
+  # Metadata for Kubernetes resources
+  metadata:
+    labels:
+      app: "dativo-ingestion"
+      component: "stripe-sync"
+      tier: "data-platform"
+      managed-by: "terraform"
+      tenant: "acme"
+    
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      fluentd.io/include: "true"
+      kubectl.kubernetes.io/default-container: "dativo-runner"
+    
+    tags:
+      CostCenter: "data-engineering"
+      Project: "customer-analytics"
+      Environment: "production"
+    
+    variables:
+      resource_requests_cpu: "2000m"
+      resource_requests_memory: "8Gi"
+      resource_limits_cpu: "4000m"
+      resource_limits_memory: "16Gi"
+      enable_network_policy: true
+      enable_pod_security_policy: true
+
+# Source configuration
+source:
+  objects: [customers]
+  
+  credentials:
+    api_key: "${STRIPE_API_KEY}"
+  
+  incremental:
+    strategy: updated_at
+    lookback_days: 1
+    state_path: "gs://acme-data-lake/state/stripe_customers.json"
+
+# Target configuration
+target:
+  branch: acme
+  warehouse: "gs://acme-data-lake/warehouse/"
+  
+  connection:
+    nessie:
+      uri: "http://nessie.data-platform.svc.cluster.local:19120/api/v1"
+    gcs:
+      bucket: "acme-data-lake"
+      prefix: "raw/stripe/customers"
+
+# Schema validation mode
+schema_validation_mode: strict
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

@@ -190,6 +190,193 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "Infrastructure configuration for externally provisioned resources (e.g., Terraform)",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Infrastructure provisioning tool (e.g., terraform, cloudformation, pulumi)",
+          "enum": ["terraform", "cloudformation", "pulumi", "manual"]
+        },
+        "terraform": {
+          "type": "object",
+          "description": "Terraform-specific configuration",
+          "properties": {
+            "module_source": {
+              "type": "string",
+              "description": "Terraform module source (e.g., git::https://github.com/org/repo.git//modules/compute or ./modules/local)"
+            },
+            "module_version": {
+              "type": "string",
+              "description": "Version or ref of the Terraform module"
+            },
+            "workspace": {
+              "type": "string",
+              "description": "Terraform workspace name"
+            },
+            "backend_config": {
+              "type": "object",
+              "description": "Terraform backend configuration reference",
+              "additionalProperties": true
+            }
+          }
+        },
+        "runtime": {
+          "type": "object",
+          "description": "Runtime environment configuration",
+          "properties": {
+            "platform": {
+              "type": "string",
+              "description": "Execution platform (e.g., kubernetes, ecs, emr, databricks)",
+              "enum": ["kubernetes", "ecs", "fargate", "emr", "databricks", "spark", "ray", "dask"]
+            },
+            "compute": {
+              "type": "object",
+              "description": "Compute resource specifications",
+              "properties": {
+                "cluster_id": {
+                  "type": "string",
+                  "description": "Pre-provisioned cluster identifier"
+                },
+                "instance_type": {
+                  "type": "string",
+                  "description": "Instance/node type"
+                },
+                "instance_count": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Number of instances/nodes"
+                },
+                "auto_scaling": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {"type": "boolean"},
+                    "min_instances": {"type": "integer", "minimum": 1},
+                    "max_instances": {"type": "integer", "minimum": 1}
+                  }
+                }
+              }
+            },
+            "storage": {
+              "type": "object",
+              "description": "Storage resource specifications",
+              "properties": {
+                "bucket": {
+                  "type": "string",
+                  "description": "Pre-provisioned storage bucket name"
+                },
+                "volume_id": {
+                  "type": "string",
+                  "description": "Pre-provisioned volume identifier"
+                },
+                "mount_path": {
+                  "type": "string",
+                  "description": "Mount path for volumes"
+                }
+              }
+            },
+            "network": {
+              "type": "object",
+              "description": "Network configuration",
+              "properties": {
+                "vpc_id": {
+                  "type": "string",
+                  "description": "VPC identifier"
+                },
+                "subnet_ids": {
+                  "type": "array",
+                  "items": {"type": "string"},
+                  "description": "Subnet identifiers"
+                },
+                "security_group_ids": {
+                  "type": "array",
+                  "items": {"type": "string"},
+                  "description": "Security group identifiers"
+                }
+              }
+            },
+            "namespace": {
+              "type": "string",
+              "description": "Kubernetes namespace or logical grouping"
+            },
+            "service_account": {
+              "type": "string",
+              "description": "Service account or IAM role for execution"
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Metadata and variables to flow into infrastructure provisioning",
+          "properties": {
+            "tags": {
+              "type": "object",
+              "description": "Resource tags for infrastructure",
+              "additionalProperties": {"type": "string"}
+            },
+            "labels": {
+              "type": "object",
+              "description": "Kubernetes-style labels",
+              "additionalProperties": {"type": "string"}
+            },
+            "annotations": {
+              "type": "object",
+              "description": "Additional annotations",
+              "additionalProperties": {"type": "string"}
+            },
+            "variables": {
+              "type": "object",
+              "description": "Custom variables passed to infrastructure as code",
+              "additionalProperties": true
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "description": "Pre-provisioned resource identifiers",
+          "properties": {
+            "database": {
+              "type": "object",
+              "properties": {
+                "endpoint": {"type": "string"},
+                "port": {"type": "integer"},
+                "database_name": {"type": "string"},
+                "instance_id": {"type": "string"}
+              }
+            },
+            "cache": {
+              "type": "object",
+              "properties": {
+                "endpoint": {"type": "string"},
+                "cluster_id": {"type": "string"}
+              }
+            },
+            "queue": {
+              "type": "object",
+              "properties": {
+                "url": {"type": "string"},
+                "arn": {"type": "string"}
+              }
+            },
+            "secrets": {
+              "type": "object",
+              "properties": {
+                "secret_manager_arn": {"type": "string"},
+                "kms_key_id": {"type": "string"}
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "outputs": {
+          "type": "object",
+          "description": "Expected outputs from infrastructure provisioning",
+          "additionalProperties": {"type": "string"}
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": false

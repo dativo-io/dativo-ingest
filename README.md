@@ -152,6 +152,25 @@ target:
       prefix: "raw/stripe/customers"
 ```
 
+**Infrastructure Block** - Reference Terraform-provisioned resources:
+
+```yaml
+infrastructure:
+  provider: terraform
+  terraform:
+    module_source: "git::https://github.com/org/infra.git//modules/emr"
+    module_version: "v2.1.0"
+  runtime:
+    platform: emr
+    compute:
+      cluster_id: "${EMR_CLUSTER_ID}"
+      instance_type: "m5.xlarge"
+  metadata:
+    tags:
+      CostCenter: "data-engineering"
+      Environment: "production"
+```
+
 **Asset Definition** - ODCS v3.0.2 schema with governance:
 ```yaml
 $schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
@@ -316,6 +335,7 @@ src/dativo_ingest/   # Source code
 **Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
 **Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
+**Infrastructure:** [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
 **Testing:** [tests/README.md](tests/README.md)

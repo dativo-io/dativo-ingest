@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Infrastructure Configuration Block**: Job definitions can now reference infrastructure provisioned outside of Dativo
+  - New `infrastructure` block in job schema for Terraform/CloudFormation/Pulumi integration
+  - Support for runtime environment specifications (Kubernetes, EMR, Databricks, ECS, etc.)
+  - Terraform module configuration: source, version, workspace, backend
+  - Runtime configuration: platform, compute, storage, network, service accounts
+  - Metadata flow: tags, labels, annotations, custom variables to infrastructure-as-code
+  - Pre-provisioned resource identifiers: database, cache, queue, secrets
+  - Example jobs for EMR, Kubernetes, and Databricks deployments
+  - Comprehensive documentation in `docs/INFRASTRUCTURE.md`
+  - Integration patterns for Terraform modules, GitOps, and environment variable injection
 - **Custom Plugin System**: Support for Python and Rust plugins
   - **Python Plugins:**
     - New `BaseReader` and `BaseWriter` base classes for plugin development
