@@ -4,7 +4,13 @@
   "title": "Dativo Job Configuration Schema",
   "description": "Schema for validating Dativo ETL job configuration files",
   "type": "object",
-  "required": ["tenant_id", "source_connector_path", "target_connector_path", "asset_path"],
+  "required": [
+    "tenant_id",
+    "source_connector_path",
+    "target_connector_path",
+    "asset_path",
+    "infrastructure"
+  ],
   "properties": {
     "$schema": {
       "type": "string",
@@ -157,6 +163,71 @@
           "properties": {
             "options": {"type": "object"}
           }
+        }
+      },
+      "additionalProperties": true
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "Externally managed infrastructure metadata (Terraform inputs/outputs)",
+      "required": ["provider", "region", "runtime", "resource_identifiers", "tags"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["aws", "azure", "gcp"],
+          "description": "Cloud provider managing the runtime environment"
+        },
+        "region": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Cloud region where the runtime executes"
+        },
+        "runtime": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["aws_fargate", "azure_container_apps", "gcp_cloud_run"],
+              "description": "Normalized runtime identifier"
+            },
+            "options": {
+              "type": "object",
+              "description": "Provider-specific runtime options"
+            }
+          },
+          "additionalProperties": true
+        },
+        "resource_identifiers": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "description": "Value must reference a Terraform output via {{terraform_outputs.<name>}}"
+          }
+        },
+        "tags": {
+          "type": "object",
+          "description": "Metadata map forwarded to Terraform modules",
+          "required": ["job_name", "team", "pipeline_type", "environment", "cost_center"],
+          "properties": {
+            "job_name": {"type": "string"},
+            "team": {"type": "string"},
+            "pipeline_type": {"type": "string"},
+            "environment": {"type": "string"},
+            "cost_center": {"type": "string"}
+          },
+          "additionalProperties": {
+            "type": ["string", "number", "boolean"]
+          }
+        },
+        "module_source": {
+          "type": "string",
+          "description": "Optional Terraform module source reference"
+        },
+        "deployment_notes": {
+          "type": "string",
+          "description": "Freeform operational notes for the runtime"
         }
       },
       "additionalProperties": true

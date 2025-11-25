@@ -2,10 +2,11 @@
 
 import json
 import os
+import re
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import jsonschema
 import yaml
@@ -443,6 +444,55 @@ class TargetConfig(BaseModel):
         return self
 
 
+INFRASTRUCTURE_RUNTIME_MATRIX: Dict[str, Dict[str, Dict[str, Any]]] = {
+    "aws": {
+        "aws_fargate": {
+            "description": "Serverless containers on AWS Fargate via ECS.",
+            "required_identifiers": ["cluster_name", "service_name"],
+            "supports_region": True,
+        }
+    },
+    "azure": {
+        "azure_container_apps": {
+            "description": "Azure Container Apps environment.",
+            "required_identifiers": ["environment_name", "container_app_name"],
+            "supports_region": True,
+        }
+    },
+    "gcp": {
+        "gcp_cloud_run": {
+            "description": "Google Cloud Run service.",
+            "required_identifiers": ["service_name", "project_id"],
+            "supports_region": True,
+        }
+    },
+}
+
+REQUIRED_INFRASTRUCTURE_TAG_KEYS = {
+    "job_name",
+    "team",
+    "pipeline_type",
+    "environment",
+    "cost_center",
+}
+
+TERRAFORM_OUTPUT_REFERENCE_PATTERN = re.compile(
+    r"\{\{\s*terraform_outputs\.([A-Za-z0-9_\-]+)\s*\}\}"
+)
+
+
+def get_runtime_spec(provider: str, runtime_type: str) -> Dict[str, Any]:
+    """Retrieve infrastructure runtime specification."""
+    if provider not in INFRASTRUCTURE_RUNTIME_MATRIX:
+        raise ValueError(f"Unsupported infrastructure provider: {provider}")
+    provider_spec = INFRASTRUCTURE_RUNTIME_MATRIX[provider]
+    if runtime_type not in provider_spec:
+        raise ValueError(
+            f"Runtime '{runtime_type}' is not supported for provider '{provider}'"
+        )
+    return provider_spec[runtime_type]
+
+
 class LoggingConfig(BaseModel):
     """Logging configuration."""
 
@@ -478,11 +528,126 @@ class RetryConfig(BaseModel):
         return self
 
 
+class InfrastructureRuntimeConfig(BaseModel):
+    """Runtime configuration for externally managed infrastructure."""
+
+    type: str
+    options: Optional[Dict[str, Any]] = None
+
+    @field_validator("type")
+    def validate_type(cls, value: str) -> str:
+        supported_types = {
+            runtime_type
+            for provider_spec in INFRASTRUCTURE_RUNTIME_MATRIX.values()
+            for runtime_type in provider_spec.keys()
+        }
+        if value not in supported_types:
+            raise ValueError(
+                "infrastructure.runtime.type must be one of: "
+                + ", ".join(sorted(supported_types))
+            )
+        return value
+
+
+class InfrastructureConfig(BaseModel):
+    """Infrastructure metadata for externally provisioned runtimes."""
+
+    provider: Literal["aws", "azure", "gcp"]
+    runtime: InfrastructureRuntimeConfig
+    region: str
+    resource_identifiers: Dict[str, str]
+    tags: Dict[str, Any]
+    module_source: Optional[str] = None
+    deployment_notes: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
+
+    @field_validator("region")
+    def validate_region(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("infrastructure.region must be a non-empty string")
+        return value.strip()
+
+    @field_validator("resource_identifiers")
+    def validate_resource_identifiers(
+        cls, value: Dict[str, str]
+    ) -> Dict[str, str]:
+        if not value:
+            raise ValueError("infrastructure.resource_identifiers must not be empty")
+        cleaned: Dict[str, str] = {}
+        for key, raw in value.items():
+            if not isinstance(raw, str):
+                raise ValueError(
+                    f"infrastructure.resource_identifiers['{key}'] must be a string"
+                )
+            cleaned_value = raw.strip()
+            if not cleaned_value:
+                raise ValueError(
+                    f"infrastructure.resource_identifiers['{key}'] must not be empty"
+                )
+            if TERRAFORM_OUTPUT_REFERENCE_PATTERN.fullmatch(cleaned_value) is None:
+                raise ValueError(
+                    "infrastructure.resource_identifiers['{key}'] must reference a "
+                    "{{terraform_outputs.<name>}} placeholder".format(key=key)
+                )
+            cleaned[key] = cleaned_value
+        return cleaned
+
+    @field_validator("tags")
+    def validate_tags(cls, value: Dict[str, Any]) -> Dict[str, str]:
+        if not value:
+            raise ValueError("infrastructure.tags must not be empty")
+        cleaned: Dict[str, str] = {}
+        for key, raw in value.items():
+            cleaned[key] = str(raw).strip()
+        missing = REQUIRED_INFRASTRUCTURE_TAG_KEYS - set(cleaned.keys())
+        if missing:
+            raise ValueError(
+                "infrastructure.tags is missing required keys: "
+                + ", ".join(sorted(missing))
+            )
+        for required in REQUIRED_INFRASTRUCTURE_TAG_KEYS:
+            if not cleaned[required]:
+                raise ValueError(
+                    f"infrastructure.tags['{required}'] must not be empty"
+                )
+        return cleaned
+
+    @model_validator(mode="after")
+    def validate_runtime_alignment(self) -> "InfrastructureConfig":
+        spec = get_runtime_spec(self.provider, self.runtime.type)
+        required_identifiers = spec.get("required_identifiers", [])
+        missing_identifiers = [
+            identifier
+            for identifier in required_identifiers
+            if identifier not in self.resource_identifiers
+        ]
+        if missing_identifiers:
+            raise ValueError(
+                "infrastructure.resource_identifiers is missing required keys for "
+                f"{self.provider}/{self.runtime.type}: "
+                + ", ".join(sorted(missing_identifiers))
+            )
+
+        if spec.get("supports_region", True) and not self.region:
+            raise ValueError(
+                f"infrastructure.region is required for runtime {self.runtime.type}"
+            )
+
+        return self
+
+    def required_resource_identifiers(self) -> List[str]:
+        """Return required resource identifiers for this runtime."""
+        spec = get_runtime_spec(self.provider, self.runtime.type)
+        return spec.get("required_identifiers", [])
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
     tenant_id: str
     environment: Optional[str] = None
+    infrastructure: InfrastructureConfig
 
     # Connector recipes (required)
     source_connector: Optional[str] = None  # Connector name
@@ -522,6 +687,17 @@ class JobConfig(BaseModel):
             raise ValueError("target_connector_path is required")
         if not self.asset_path:
             raise ValueError("asset_path is required")
+        if not self.infrastructure:
+            raise ValueError("infrastructure section is required")
+
+        # Ensure infrastructure metadata aligns with environment defaults
+        job_environment = self.environment or "prod"
+        infra_environment = self.infrastructure.tags.get("environment")
+        if infra_environment and infra_environment != job_environment:
+            raise ValueError(
+                "infrastructure.tags.environment must match the job environment "
+                f"({job_environment})"
+            )
         return self
 
     def _resolve_source_recipe(self) -> Union[ConnectorRecipe, SourceConnectorRecipe]:
@@ -711,6 +887,12 @@ class JobConfig(BaseModel):
     def get_target(self) -> TargetConfig:
         """Get resolved target config."""
         return self._resolve_target()
+
+    def get_infrastructure(self) -> InfrastructureConfig:
+        """Get infrastructure configuration."""
+        if not self.infrastructure:
+            raise ValueError("Infrastructure configuration is not defined")
+        return self.infrastructure
 
     def get_asset_path(self) -> str:
         """Get asset definition path."""

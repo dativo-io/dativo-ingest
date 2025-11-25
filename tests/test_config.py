@@ -26,6 +26,7 @@ def valid_job_config(temp_dir):
     config_path = temp_dir / "job.yaml"
     config_data = {
         "tenant_id": "test_tenant",
+        "environment": "dev",
         "source_connector_path": "connectors/stripe.yaml",
         "target_connector_path": "connectors/iceberg.yaml",
         "asset_path": str(temp_dir / "asset.yaml"),
@@ -35,6 +36,22 @@ def valid_job_config(temp_dir):
         "target": {
             "branch": "test_tenant",
             "warehouse": "s3://lake/test/",
+        },
+        "infrastructure": {
+            "provider": "aws",
+            "region": "us-east-1",
+            "runtime": {"type": "aws_fargate"},
+            "resource_identifiers": {
+                "cluster_name": "{{terraform_outputs.cluster_name}}",
+                "service_name": "{{terraform_outputs.service_name}}",
+            },
+            "tags": {
+                "job_name": "customers_to_iceberg",
+                "team": "platform",
+                "pipeline_type": "ingestion",
+                "environment": "dev",
+                "cost_center": "C12345",
+            },
         },
     }
     with open(config_path, "w") as f:
@@ -81,6 +98,107 @@ class TestJobConfigLoading:
         assert config.tenant_id == "test_tenant"
         assert config.source_connector_path == "connectors/stripe.yaml"
         assert config.target_connector_path == "connectors/iceberg.yaml"
+
+    def test_load_job_with_invalid_infrastructure_tags(
+        self, temp_dir, valid_asset_file
+    ):
+        """Infrastructure tags must include required keys."""
+        config_path = temp_dir / "job_invalid_tags.yaml"
+        config_data = {
+            "tenant_id": "test_tenant",
+            "environment": "dev",
+            "source_connector_path": "connectors/stripe.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
+            "asset_path": str(valid_asset_file),
+            "infrastructure": {
+                "provider": "aws",
+                "region": "us-east-1",
+                "runtime": {"type": "aws_fargate"},
+                "resource_identifiers": {
+                    "cluster_name": "{{terraform_outputs.cluster_name}}",
+                    "service_name": "{{terraform_outputs.service_name}}",
+                },
+                "tags": {
+                    "job_name": "customers_to_iceberg",
+                    "pipeline_type": "ingestion",
+                    "environment": "dev",
+                    "cost_center": "C12345",
+                },
+            },
+        }
+        with open(config_path, "w") as f:
+            yaml.dump(config_data, f)
+
+        with pytest.raises(SystemExit):
+            JobConfig.from_yaml(config_path)
+
+    def test_load_job_with_invalid_provider_runtime_combo(
+        self, temp_dir, valid_asset_file
+    ):
+        """Provider/runtime combinations must be valid."""
+        config_path = temp_dir / "job_invalid_runtime.yaml"
+        config_data = {
+            "tenant_id": "test_tenant",
+            "environment": "dev",
+            "source_connector_path": "connectors/stripe.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
+            "asset_path": str(valid_asset_file),
+            "infrastructure": {
+                "provider": "aws",
+                "region": "us-east-1",
+                "runtime": {"type": "azure_container_apps"},
+                "resource_identifiers": {
+                    "cluster_name": "{{terraform_outputs.cluster_name}}",
+                    "service_name": "{{terraform_outputs.service_name}}",
+                },
+                "tags": {
+                    "job_name": "customers_to_iceberg",
+                    "team": "platform",
+                    "pipeline_type": "ingestion",
+                    "environment": "dev",
+                    "cost_center": "C12345",
+                },
+            },
+        }
+        with open(config_path, "w") as f:
+            yaml.dump(config_data, f)
+
+        with pytest.raises(SystemExit):
+            JobConfig.from_yaml(config_path)
+
+    def test_load_job_with_environment_mismatch(
+        self, temp_dir, valid_asset_file
+    ):
+        """Environment tag must align with job environment."""
+        config_path = temp_dir / "job_env_mismatch.yaml"
+        config_data = {
+            "tenant_id": "test_tenant",
+            "environment": "dev",
+            "source_connector_path": "connectors/stripe.yaml",
+            "target_connector_path": "connectors/iceberg.yaml",
+            "asset_path": str(valid_asset_file),
+            "infrastructure": {
+                "provider": "aws",
+                "region": "us-east-1",
+                "runtime": {"type": "aws_fargate"},
+                "resource_identifiers": {
+                    "cluster_name": "{{terraform_outputs.cluster_name}}",
+                    "service_name": "{{terraform_outputs.service_name}}",
+                },
+                "tags": {
+                    "job_name": "customers_to_iceberg",
+                    "team": "platform",
+                    "pipeline_type": "ingestion",
+                    "environment": "prod",  # mismatch
+                    "cost_center": "C12345",
+                },
+            },
+        }
+        with open(config_path, "w") as f:
+            yaml.dump(config_data, f)
+
+        with pytest.raises(SystemExit):
+            JobConfig.from_yaml(config_path)
 
     def test_load_missing_config_file(self, temp_dir):
         """Test error when config file doesn't exist."""

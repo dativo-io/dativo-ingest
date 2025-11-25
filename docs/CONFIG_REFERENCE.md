@@ -53,6 +53,22 @@ target:
       bucket: "acme-data-lake"
       prefix: "raw/hubspot/contacts"
 
+infrastructure:
+  provider: aws
+  region: us-east-1
+  runtime:
+    type: aws_fargate
+  resource_identifiers:
+    cluster_name: "{{terraform_outputs.cluster_name}}"
+    service_name: "{{terraform_outputs.service_name}}"
+    service_endpoint: "{{terraform_outputs.service_endpoint}}"
+  tags:
+    job_name: hubspot_contacts_to_iceberg
+    team: marketing_ops
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: FINOPS-ACME
+
 logging:
   redaction: true
   level: INFO
@@ -75,6 +91,15 @@ logging:
 - `target`: Target-specific configuration overrides
 - `schema_validation_mode`: Validation mode (`strict` or `warn`, defaults to `strict`)
 - `logging`: Logging configuration (level, redaction)
+
+### Infrastructure Runtime Metadata
+
+- `provider`: Cloud provider managing execution (one of `aws`, `azure`, `gcp`).
+- `runtime.type`: Normalised runtime identifier (`aws_fargate`, `azure_container_apps`, `gcp_cloud_run`).
+- `resource_identifiers`: References to Terraform outputs using the `{{terraform_outputs.<name>}}` syntax. These are resolved when the pipeline injects module outputs into the job definition (e.g., cluster name, service endpoint).
+- `tags`: Metadata propagated into Terraform so every resource is tagged/labelled with ownership, environment, pipeline classification, and cost centre data. The keys `job_name`, `team`, `pipeline_type`, `environment`, and `cost_center` are required. The environment tag must match the job’s `environment` field.
+
+Validation ensures only supported provider/runtime combinations are used and that all required metadata is present. For the full workflow, see `docs/INFRASTRUCTURE_WORKFLOW.md`.
 
 ---
 

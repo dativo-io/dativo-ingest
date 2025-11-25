@@ -52,3 +52,19 @@ logging:
   redaction: false
   level: INFO
 
+# Infrastructure runtime (externally managed)
+infrastructure:
+  provider: aws
+  region: us-east-1
+  runtime:
+    type: aws_fargate
+  resource_identifiers:
+    cluster_name: "{{terraform_outputs.cluster_name}}"
+    service_name: "{{terraform_outputs.service_name}}"
+  tags:
+    job_name: smoke_test_3_mysql_employees_rust_writer
+    team: data_platform
+    pipeline_type: ingestion
+    environment: test
+    cost_center: FINOPS-TEST
+

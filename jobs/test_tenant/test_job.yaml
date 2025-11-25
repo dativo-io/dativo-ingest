@@ -27,6 +27,22 @@ target:
       bucket: "${S3_BUCKET}"
       prefix: "raw/test_tenant/test_job"
 
+# Infrastructure runtime metadata (Terraform-managed)
+infrastructure:
+  provider: aws
+  region: us-east-1
+  runtime:
+    type: aws_fargate
+  resource_identifiers:
+    cluster_name: "{{terraform_outputs.cluster_name}}"
+    service_name: "{{terraform_outputs.service_name}}"
+  tags:
+    job_name: test_job
+    team: data_platform
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: FINOPS-DEFAULT
+
 # Schema validation mode
 schema_validation_mode: strict  # or 'warn'
 

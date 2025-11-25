@@ -316,6 +316,7 @@ src/dativo_ingest/   # Source code
 **Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
 **Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
+**Infrastructure Workflow:** [docs/INFRASTRUCTURE_WORKFLOW.md](docs/INFRASTRUCTURE_WORKFLOW.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
 **Testing:** [tests/README.md](tests/README.md)

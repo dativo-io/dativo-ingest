@@ -30,6 +30,10 @@ An example job configuration (`adventureworks_person_to_iceberg.yaml`) is includ
 
 These job configurations demonstrate how to configure CSV to Iceberg ingestion jobs for different datasets.
 
+## Infrastructure Metadata
+
+All fixtures now include an `infrastructure` block so they remain valid with the Terraform-aligned runtime metadata schema. If you add new jobs, make sure to include provider/runtime details, Terraform output placeholders, and the required tags (`job_name`, `team`, `pipeline_type`, `environment`, `cost_center`). See `docs/INFRASTRUCTURE_WORKFLOW.md` for the full workflow.
+
 ## Generating Job Configurations
 
 You can generate job configurations in two ways:

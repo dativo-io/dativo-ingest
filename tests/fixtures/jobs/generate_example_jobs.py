@@ -27,6 +27,7 @@ def generate_job_config(dataset_name: str, asset_info: dict) -> dict:
     csv_file = asset_info["csv_file"]
     asset_file = asset_info.get("asset_file", f"{asset_name}.yaml")
     object_name = asset_info.get("object", asset_name)
+    job_name = f"{dataset_name}_{asset_name}_to_iceberg"
 
     # Construct paths relative to project root
     csv_path = f"tests/fixtures/seeds/{dataset_name}/{csv_file}"
@@ -55,6 +56,22 @@ def generate_job_config(dataset_name: str, asset_info: dict) -> dict:
                     "region": "${AWS_REGION}",
                     "path_style_access": True,
                 },
+            },
+        },
+        "infrastructure": {
+            "provider": "aws",
+            "region": "us-east-1",
+            "runtime": {"type": "aws_fargate"},
+            "resource_identifiers": {
+                "cluster_name": "{{terraform_outputs.cluster_name}}",
+                "service_name": "{{terraform_outputs.service_name}}",
+            },
+            "tags": {
+                "job_name": job_name,
+                "team": "data_platform",
+                "pipeline_type": "ingestion",
+                "environment": "test",
+                "cost_center": "FINOPS-TEST",
             },
         },
         "logging": {"redaction": False, "level": "INFO"},

@@ -68,3 +68,20 @@ retry_config:
   max_attempts: 3
   initial_delay_seconds: 5
 
+# Infrastructure runtime metadata (Terraform-managed)
+infrastructure:
+  provider: aws
+  region: us-east-1
+  runtime:
+    type: aws_fargate
+  resource_identifiers:
+    cluster_name: "{{terraform_outputs.cluster_name}}"
+    service_name: "{{terraform_outputs.service_name}}"
+    service_endpoint: "{{terraform_outputs.service_endpoint}}"
+  tags:
+    job_name: rust_plugin_example_full
+    team: data_platform
+    pipeline_type: ingestion
+    environment: prod
+    cost_center: FINOPS-ACME
+
