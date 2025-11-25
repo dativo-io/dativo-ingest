@@ -176,6 +176,23 @@
         "backoff_multiplier": {"type": "number", "minimum": 1}
       }
     },
+    "infrastructure": {
+      "type": "object",
+      "description": "Runtime environment and metadata for Terraform",
+      "properties": {
+        "runtime": {
+          "type": "object",
+          "description": "Runtime environment configuration",
+          "additionalProperties": true
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Metadata for Terraform",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
     "logging": {
       "type": "object",
       "properties": {

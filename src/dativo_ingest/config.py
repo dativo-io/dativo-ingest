@@ -478,6 +478,13 @@ class RetryConfig(BaseModel):
         return self
 
 
+class InfrastructureConfig(BaseModel):
+    """Infrastructure configuration for Terraform."""
+
+    runtime: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -510,6 +517,7 @@ class JobConfig(BaseModel):
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'
     retry_config: Optional[RetryConfig] = None
+    infrastructure: Optional[InfrastructureConfig] = None
 
     logging: Optional[LoggingConfig] = None
 
