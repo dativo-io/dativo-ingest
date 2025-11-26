@@ -1,0 +1,144 @@
+# Stripe customers to Iceberg with AWS ECS infrastructure
+# This example demonstrates full infrastructure integration with AWS
+
+tenant_id: acme
+environment: prod
+
+# Connector paths
+source_connector: stripe
+source_connector_path: /app/connectors/stripe.yaml
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+# Source configuration
+source:
+  objects: [customers]
+  incremental:
+    strategy: updated_at
+    cursor_field: updated
+    lookback_days: 1
+
+# Target configuration
+target:
+  branch: acme
+  warehouse: s3://acme-data-lake/
+  connection:
+    nessie:
+      uri: "${NESSIE_URI}"
+    s3:
+      bucket: acme-data-lake
+      prefix: raw/stripe/customers
+
+# External infrastructure configuration for AWS
+infrastructure:
+  provider: aws
+  
+  # Runtime configuration - ECS with Dagster
+  runtime:
+    type: ecs
+    cluster_name: dativo-prod-cluster
+    namespace: etl-jobs
+    service_account: arn:aws:iam::123456789012:role/dativo-etl-role
+  
+  # Compute resources
+  compute:
+    cpu: "2048"              # 2 vCPU in ECS units
+    memory: "4096"           # 4GB in MB
+    instance_type: t3.medium
+    max_runtime_seconds: 3600
+  
+  # Networking
+  networking:
+    vpc_id: vpc-0123456789abcdef0
+    subnet_ids:
+      - subnet-0123456789abcdef0  # us-east-1a private
+      - subnet-0123456789abcdef1  # us-east-1b private
+    security_group_ids:
+      - sg-0123456789abcdef0
+    private_networking: true
+  
+  # Storage
+  storage:
+    bucket: acme-data-lake
+    prefix: raw/stripe/customers
+    kms_key_id: arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012
+  
+  # Infrastructure tags - propagated to all AWS resources
+  tags:
+    CostCenter: HR-001
+    Project: data-platform
+    Environment: production
+    ManagedBy: terraform
+    Team: data-engineering
+    Owner: data-team@acme.com
+    DataClassification: PII
+    Compliance: GDPR
+    Application: customer-analytics
+  
+  # Terraform module reference
+  terraform:
+    module_source: git::https://github.com/acme/terraform-dativo-aws.git//modules/ecs-dagster
+    module_version: "1.2.0"
+    workspace: prod
+    backend_config:
+      bucket: acme-terraform-state
+      key: dativo/etl-jobs/stripe-customers.tfstate
+      region: us-east-1
+      dynamodb_table: terraform-state-lock
+    variables:
+      enable_monitoring: true
+      enable_spot_instances: false
+      retention_days: 90
+      enable_cloudwatch_alarms: true
+      alarm_email: data-team@acme.com
+  
+  # Dagster-specific configuration
+  dagster:
+    code_location: dativo-etl-prod
+    repository: etl_jobs
+    op_config:
+      max_retries: 3
+      retry_delay_seconds: 60
+    resource_requirements:
+      request_cpu: "2048"
+      request_memory: "4096"
+      limit_cpu: "4096"
+      limit_memory: "8192"
+
+# FinOps metadata - merged with infrastructure tags
+finops:
+  cost_center: HR-001
+  business_tags:
+    - payments
+    - revenue
+    - stripe
+    - customer-data
+  project: data-platform
+  environment: production
+
+# Classification overrides
+classification_overrides:
+  email: high_pii
+  phone: high_pii
+  default: pii
+
+# Governance overrides
+governance_overrides:
+  retention_days: 365
+  owner: data-team@acme.com
+
+# Retry configuration
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 10
+  max_delay_seconds: 300
+  backoff_multiplier: 2.0
+
+# Logging configuration
+logging:
+  level: INFO
+  redaction: true

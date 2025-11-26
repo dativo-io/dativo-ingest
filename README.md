@@ -2,6 +2,8 @@
 
 A headless, config-driven ingestion engine. Extracts data from SaaS APIs (Stripe, HubSpot) and databases (PostgreSQL, MySQL) into object storage (S3, MinIO) as Iceberg-backed datasets. Supports Markdown-KV format for LLM-optimized data ingestion.
 
+**✨ NEW: External Infrastructure Integration** - Cloud-agnostic deployment via Terraform with comprehensive tag propagation for cost allocation, compliance, and resource traceability. Deploy to AWS ECS, GCP Cloud Run, or Kubernetes with native Dagster orchestration. [Learn more →](docs/INFRASTRUCTURE_INTEGRATION.md)
+
 ## Architecture
 
 Config-driven ingestion engine. All behavior is controlled by YAML configs validated against a connector registry and asset schemas.
@@ -9,11 +11,13 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 **Key Components:**
 - **CLI Runner** - Executes `run` (oneshot) and `start` (orchestrated) commands
 - **Dagster Orchestrator** - Optional scheduler for scheduled jobs
+- **Infrastructure Integration** - Cloud-agnostic deployment via Terraform (AWS, GCP, Azure)
 - **Connector Registry** - Validates connector types, engines, and modes
 - **Asset Schemas** - ODCS v3.0.2 compliant schema definitions
 - **Custom Plugins** - Python and Rust plugins for custom readers/writers
 - **Parquet Writer** - Writes validated data with partitioning and file sizing
 - **Iceberg Committer** - Optional catalog integration (files always written to S3)
+- **Tag Propagation** - Automatic propagation of compliance and FinOps tags to infrastructure
 
 ## Quick Start
 
@@ -316,8 +320,11 @@ src/dativo_ingest/   # Source code
 **Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
 **Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
+**Infrastructure Integration:** [docs/INFRASTRUCTURE_INTEGRATION.md](docs/INFRASTRUCTURE_INTEGRATION.md) ✨ NEW  
+**Terraform Modules:** [examples/terraform/](examples/terraform/) ✨ NEW  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
+**Tag Propagation:** [docs/TAG_PROPAGATION.md](docs/TAG_PROPAGATION.md)  
 **Testing:** [tests/README.md](tests/README.md)
 
 

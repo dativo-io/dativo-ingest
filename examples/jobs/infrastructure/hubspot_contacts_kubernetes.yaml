@@ -1,0 +1,136 @@
+# HubSpot contacts to Iceberg with Kubernetes infrastructure
+# This example demonstrates infrastructure integration with Kubernetes (cloud-agnostic)
+
+tenant_id: acme
+environment: prod
+
+# Connector paths
+source_connector: hubspot
+source_connector_path: /app/connectors/hubspot.yaml
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: hubspot_contacts
+asset_path: /app/assets/hubspot/v1.0/contacts.yaml
+
+# Source configuration
+source:
+  objects: [contacts]
+  incremental:
+    strategy: updated_at
+    cursor_field: updatedAt
+    lookback_days: 7
+
+# Target configuration
+target:
+  branch: acme
+  warehouse: s3://acme-data-lake/
+  connection:
+    nessie:
+      uri: "${NESSIE_URI}"
+    s3:
+      bucket: acme-data-lake
+      prefix: raw/hubspot/contacts
+
+# External infrastructure configuration for Kubernetes
+infrastructure:
+  provider: aws  # Can be aws, gcp, or azure for the underlying cluster
+  
+  # Runtime configuration - Kubernetes with Dagster
+  runtime:
+    type: kubernetes
+    cluster_name: dativo-prod-eks
+    namespace: data-engineering
+    service_account: dativo-etl-sa
+  
+  # Compute resources (Kubernetes format)
+  compute:
+    cpu: "2"              # 2 CPU cores
+    memory: "4Gi"         # 4 GiB memory
+    max_runtime_seconds: 3600
+  
+  # Networking (minimal for Kubernetes - uses cluster defaults)
+  networking:
+    private_networking: true
+  
+  # Storage
+  storage:
+    bucket: acme-data-lake
+    prefix: raw/hubspot/contacts
+    kms_key_id: arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012
+  
+  # Infrastructure tags
+  tags:
+    CostCenter: SALES-001
+    Project: data-platform
+    Environment: production
+    ManagedBy: terraform
+    Team: data-engineering
+    Owner: data-team@acme.com
+    DataClassification: PII
+    Application: sales-analytics
+  
+  # Terraform module reference
+  terraform:
+    module_source: git::https://github.com/acme/terraform-dativo-k8s.git//modules/etl-job
+    module_version: "1.2.0"
+    workspace: prod
+    backend_config:
+      bucket: acme-terraform-state
+      key: dativo/etl-jobs/hubspot-contacts.tfstate
+      region: us-east-1
+    variables:
+      enable_monitoring: true
+      enable_pod_disruption_budget: true
+      min_replicas: 1
+      max_replicas: 3
+  
+  # Dagster-specific configuration
+  dagster:
+    code_location: dativo-etl-prod
+    repository: etl_jobs
+    op_config:
+      max_retries: 3
+      retry_delay_seconds: 60
+    resource_requirements:
+      request_cpu: "2"
+      request_memory: "4Gi"
+      limit_cpu: "4"
+      limit_memory: "8Gi"
+
+# FinOps metadata
+finops:
+  cost_center: SALES-001
+  business_tags:
+    - sales
+    - crm
+    - hubspot
+    - contacts
+  project: data-platform
+  environment: production
+
+# Classification overrides
+classification_overrides:
+  email: high_pii
+  firstname: pii
+  lastname: pii
+  phone: high_pii
+  default: pii
+
+# Governance overrides
+governance_overrides:
+  retention_days: 365
+  owner: data-team@acme.com
+
+# Retry configuration
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 10
+  max_delay_seconds: 300
+  backoff_multiplier: 2.0
+
+# Logging configuration
+logging:
+  level: INFO
+  redaction: true

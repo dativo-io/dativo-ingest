@@ -450,6 +450,99 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class RuntimeConfig(BaseModel):
+    """Runtime environment configuration."""
+
+    type: Optional[str] = Field(
+        None, description="Runtime type (dagster, airflow, kubernetes, ecs, cloud_run)"
+    )
+    cluster_name: Optional[str] = None
+    namespace: Optional[str] = None
+    service_account: Optional[str] = None
+
+
+class ComputeConfig(BaseModel):
+    """Compute resource requirements."""
+
+    cpu: Optional[str] = Field(None, description="CPU request (e.g., '2', '500m')")
+    memory: Optional[str] = Field(
+        None, description="Memory request (e.g., '4Gi', '2048Mi')"
+    )
+    instance_type: Optional[str] = Field(
+        None, description="Cloud instance type (e.g., 't3.medium', 'n1-standard-2')"
+    )
+    max_runtime_seconds: Optional[int] = None
+
+
+class NetworkingConfig(BaseModel):
+    """Network configuration."""
+
+    vpc_id: Optional[str] = None
+    subnet_ids: Optional[List[str]] = None
+    security_group_ids: Optional[List[str]] = None
+    private_networking: bool = True
+
+
+class StorageConfig(BaseModel):
+    """Storage configuration."""
+
+    bucket: Optional[str] = None
+    prefix: Optional[str] = None
+    kms_key_id: Optional[str] = None
+
+
+class TerraformConfig(BaseModel):
+    """Terraform module reference."""
+
+    module_source: Optional[str] = Field(
+        None,
+        description="Terraform module source (e.g., git::https://... or registry path)",
+    )
+    module_version: Optional[str] = None
+    workspace: Optional[str] = None
+    backend_config: Optional[Dict[str, Any]] = None
+    variables: Optional[Dict[str, Any]] = None
+
+
+class DagsterConfig(BaseModel):
+    """Dagster-specific configuration."""
+
+    code_location: Optional[str] = None
+    repository: Optional[str] = None
+    op_config: Optional[Dict[str, Any]] = None
+    resource_requirements: Optional[Dict[str, Any]] = None
+
+
+class InfrastructureConfig(BaseModel):
+    """External infrastructure configuration for cloud-agnostic deployment."""
+
+    provider: Optional[str] = Field(
+        None, description="Cloud provider (aws, gcp, azure)"
+    )
+    runtime: Optional[RuntimeConfig] = None
+    compute: Optional[ComputeConfig] = None
+    networking: Optional[NetworkingConfig] = None
+    storage: Optional[StorageConfig] = None
+    tags: Optional[Dict[str, str]] = Field(
+        None, description="Infrastructure tags for cost allocation and compliance"
+    )
+    terraform: Optional[TerraformConfig] = Field(
+        None, description="Terraform module reference"
+    )
+    dagster: Optional[DagsterConfig] = Field(
+        None, description="Dagster-specific configuration"
+    )
+
+    @model_validator(mode="after")
+    def validate_provider(self) -> "InfrastructureConfig":
+        """Validate provider-specific configuration."""
+        if self.provider and self.provider not in ["aws", "gcp", "azure"]:
+            raise ValueError(
+                f"Invalid provider: {self.provider}. Must be one of: aws, gcp, azure"
+            )
+        return self
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
@@ -512,6 +605,12 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+    
+    # Infrastructure configuration
+    infrastructure: Optional[InfrastructureConfig] = Field(
+        None,
+        description="External infrastructure configuration for cloud-agnostic deployment"
+    )
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

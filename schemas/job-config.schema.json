@@ -190,6 +190,206 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "External infrastructure configuration for cloud-agnostic deployment",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["aws", "gcp", "azure"],
+          "description": "Cloud provider (aws, gcp, azure)"
+        },
+        "runtime": {
+          "type": "object",
+          "description": "Runtime environment configuration",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["dagster", "airflow", "kubernetes", "ecs", "cloud_run"],
+              "description": "Runtime orchestration type"
+            },
+            "cluster_name": {
+              "type": "string",
+              "description": "Cluster or environment name"
+            },
+            "namespace": {
+              "type": "string",
+              "description": "Kubernetes namespace or logical grouping"
+            },
+            "service_account": {
+              "type": "string",
+              "description": "Service account or IAM role for execution"
+            }
+          }
+        },
+        "compute": {
+          "type": "object",
+          "description": "Compute resource requirements",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU request (e.g., '2', '500m')"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory request (e.g., '4Gi', '2048Mi')"
+            },
+            "instance_type": {
+              "type": "string",
+              "description": "Cloud instance type (e.g., 't3.medium', 'n1-standard-2')"
+            },
+            "max_runtime_seconds": {
+              "type": "integer",
+              "description": "Maximum runtime in seconds before timeout"
+            }
+          }
+        },
+        "networking": {
+          "type": "object",
+          "description": "Network configuration",
+          "properties": {
+            "vpc_id": {
+              "type": "string",
+              "description": "VPC or network ID"
+            },
+            "subnet_ids": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Subnet IDs for deployment"
+            },
+            "security_group_ids": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Security group IDs"
+            },
+            "private_networking": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether to use private networking"
+            }
+          }
+        },
+        "storage": {
+          "type": "object",
+          "description": "Storage configuration",
+          "properties": {
+            "bucket": {
+              "type": "string",
+              "description": "S3/GCS bucket name for data output"
+            },
+            "prefix": {
+              "type": "string",
+              "description": "Storage prefix/path"
+            },
+            "kms_key_id": {
+              "type": "string",
+              "description": "KMS key ID for encryption"
+            }
+          }
+        },
+        "tags": {
+          "type": "object",
+          "description": "Infrastructure tags for cost allocation and compliance",
+          "additionalProperties": {"type": "string"}
+        },
+        "terraform": {
+          "type": "object",
+          "description": "Terraform module reference for external infrastructure",
+          "properties": {
+            "module_source": {
+              "type": "string",
+              "description": "Terraform module source (e.g., git::https://... or registry path)"
+            },
+            "module_version": {
+              "type": "string",
+              "description": "Terraform module version"
+            },
+            "workspace": {
+              "type": "string",
+              "description": "Terraform workspace name"
+            },
+            "backend_config": {
+              "type": "object",
+              "description": "Terraform backend configuration",
+              "additionalProperties": true
+            },
+            "variables": {
+              "type": "object",
+              "description": "Additional Terraform variables",
+              "additionalProperties": true
+            }
+          }
+        },
+        "dagster": {
+          "type": "object",
+          "description": "Dagster-specific configuration",
+          "properties": {
+            "code_location": {
+              "type": "string",
+              "description": "Dagster code location name"
+            },
+            "repository": {
+              "type": "string",
+              "description": "Dagster repository name"
+            },
+            "op_config": {
+              "type": "object",
+              "description": "Dagster op configuration overrides",
+              "additionalProperties": true
+            },
+            "resource_requirements": {
+              "type": "object",
+              "description": "Dagster resource requirements",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    },
+    "finops": {
+      "type": "object",
+      "description": "FinOps metadata for cost attribution",
+      "properties": {
+        "cost_center": {
+          "type": "string",
+          "description": "Cost center code"
+        },
+        "business_tags": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Business tags for categorization"
+        },
+        "project": {
+          "type": "string",
+          "description": "Project name"
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["dev", "staging", "prod"],
+          "description": "Environment name"
+        }
+      }
+    },
+    "classification_overrides": {
+      "type": "object",
+      "description": "Field-level classification overrides",
+      "additionalProperties": {"type": "string"}
+    },
+    "governance_overrides": {
+      "type": "object",
+      "description": "Governance metadata overrides",
+      "properties": {
+        "retention_days": {
+          "type": "integer",
+          "description": "Data retention period in days"
+        },
+        "owner": {
+          "type": "string",
+          "description": "Data owner email"
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": false

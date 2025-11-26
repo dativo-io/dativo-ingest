@@ -1,0 +1,138 @@
+# Stripe customers to Iceberg with GCP Cloud Run infrastructure
+# This example demonstrates full infrastructure integration with GCP
+
+tenant_id: acme
+environment: prod
+
+# Connector paths
+source_connector: stripe
+source_connector_path: /app/connectors/stripe.yaml
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+# Source configuration
+source:
+  objects: [customers]
+  incremental:
+    strategy: updated_at
+    cursor_field: updated
+    lookback_days: 1
+
+# Target configuration
+target:
+  branch: acme
+  warehouse: gs://acme-data-lake/
+  connection:
+    nessie:
+      uri: "${NESSIE_URI}"
+    s3:
+      bucket: acme-data-lake
+      prefix: raw/stripe/customers
+      endpoint: https://storage.googleapis.com
+
+# External infrastructure configuration for GCP
+infrastructure:
+  provider: gcp
+  
+  # Runtime configuration - Cloud Run with Dagster
+  runtime:
+    type: cloud_run
+    cluster_name: dativo-prod
+    namespace: etl-jobs
+    service_account: dativo-etl@acme-project.iam.gserviceaccount.com
+  
+  # Compute resources
+  compute:
+    cpu: "2"
+    memory: "4Gi"
+    max_runtime_seconds: 3600
+  
+  # Networking
+  networking:
+    vpc_id: projects/acme-project/global/networks/dativo-vpc
+    subnet_ids:
+      - projects/acme-project/regions/us-central1/subnetworks/dativo-subnet
+    private_networking: true
+  
+  # Storage
+  storage:
+    bucket: acme-data-lake
+    prefix: raw/stripe/customers
+    kms_key_id: projects/acme-project/locations/us-central1/keyRings/dativo/cryptoKeys/etl-data
+  
+  # Infrastructure labels (GCP uses lowercase with hyphens)
+  tags:
+    cost-center: hr-001
+    project: data-platform
+    environment: production
+    managed-by: terraform
+    team: data-engineering
+    owner: data-team
+    data-classification: pii
+    compliance: gdpr
+    application: customer-analytics
+  
+  # Terraform module reference
+  terraform:
+    module_source: git::https://github.com/acme/terraform-dativo-gcp.git//modules/cloud-run-dagster
+    module_version: "1.2.0"
+    workspace: prod
+    backend_config:
+      bucket: acme-terraform-state
+      prefix: dativo/etl-jobs/stripe-customers
+    variables:
+      enable_monitoring: true
+      retention_days: 90
+      enable_cloud_scheduler: false
+      alert_email: data-team@acme.com
+  
+  # Dagster-specific configuration
+  dagster:
+    code_location: dativo-etl-prod
+    repository: etl_jobs
+    op_config:
+      max_retries: 3
+      retry_delay_seconds: 60
+    resource_requirements:
+      request_cpu: "2"
+      request_memory: "4Gi"
+      limit_cpu: "4"
+      limit_memory: "8Gi"
+
+# FinOps metadata - merged with infrastructure labels
+finops:
+  cost_center: HR-001
+  business_tags:
+    - payments
+    - revenue
+    - stripe
+    - customer-data
+  project: data-platform
+  environment: production
+
+# Classification overrides
+classification_overrides:
+  email: high_pii
+  phone: high_pii
+  default: pii
+
+# Governance overrides
+governance_overrides:
+  retention_days: 365
+  owner: data-team@acme.com
+
+# Retry configuration
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 10
+  max_delay_seconds: 300
+  backoff_multiplier: 2.0
+
+# Logging configuration
+logging:
+  level: INFO
+  redaction: true
