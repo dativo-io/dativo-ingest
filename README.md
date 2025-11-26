@@ -126,12 +126,18 @@ Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/r
 
 ## Configuration
 
-**Job Config** - Defines source, target, asset, and tenant overrides:
+**Job Config** - Defines source, target, asset, tenant overrides, and optional infrastructure:
 
 **Path Conventions:**
 - **Local Development**: Use relative paths (e.g., `connectors/stripe.yaml`)
 - **Docker**: Use absolute paths (e.g., `/app/connectors/stripe.yaml`)
 - **Assets**: Always use versioned paths (e.g., `assets/stripe/v1.0/customers.yaml`)
+
+**Infrastructure Integration** - Optional cloud deployment configuration:
+- Supports AWS (ECS, EKS) and GCP (GKE, Cloud Run)
+- Comprehensive tag propagation for cost allocation and compliance
+- Terraform module generation for infrastructure-as-code
+- See [docs/INFRASTRUCTURE_INTEGRATION.md](docs/INFRASTRUCTURE_INTEGRATION.md) for details
 
 ```yaml
 tenant_id: acme
@@ -150,6 +156,17 @@ target:
     s3:
       bucket: "${S3_BUCKET}"
       prefix: "raw/stripe/customers"
+
+# Optional: Infrastructure configuration for cloud deployment
+infrastructure:
+  provider: aws
+  region: us-east-1
+  compute:
+    type: ecs
+    cluster_name: dativo-prod-cluster
+  tags:
+    cost_center: "CC-001"
+    environment: "prod"
 ```
 
 **Asset Definition** - ODCS v3.0.2 schema with governance:
@@ -316,6 +333,7 @@ src/dativo_ingest/   # Source code
 **Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
 **Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
+**Infrastructure Integration:** [docs/INFRASTRUCTURE_INTEGRATION.md](docs/INFRASTRUCTURE_INTEGRATION.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
 **Testing:** [tests/README.md](tests/README.md)

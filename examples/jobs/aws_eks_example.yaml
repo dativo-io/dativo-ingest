@@ -1,0 +1,108 @@
+# Example: Dativo ETL Job with AWS EKS Infrastructure
+# This job demonstrates Kubernetes-based deployment on AWS EKS
+
+tenant_id: techco
+environment: staging
+
+# Source connector
+source_connector: postgresql
+source_connector_path: connectors/postgres.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: postgres_orders
+asset_path: assets/postgres/v1.0/orders.yaml
+
+# Source configuration
+source:
+  tables:
+    - name: orders
+      object: orders
+  incremental:
+    strategy: incremental
+    cursor_field: updated_at
+    lookback_days: 1
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+      prefix: "raw/techco/postgres_orders"
+  file_format: parquet
+  partitioning: [ingest_date, region]
+
+# FinOps metadata
+finops:
+  cost_center: "CC-ENGINEERING-003"
+  project: "data-warehouse"
+  environment: "staging"
+  business_tags:
+    - analytics
+    - warehouse
+    - orders
+
+# Infrastructure configuration for AWS EKS deployment
+infrastructure:
+  provider: aws
+  region: us-west-2
+  
+  # Compute infrastructure (EKS)
+  compute:
+    type: eks
+    cluster_name: techco-staging-eks
+    task_cpu: "2048"      # 2 vCPU
+    task_memory: "4096"   # 4 GB
+    execution_role_arn: "arn:aws:iam::987654321098:role/techco-eks-execution-role"
+    task_role_arn: "arn:aws:iam::987654321098:role/techco-eks-pod-role"
+  
+  # Network configuration
+  network:
+    vpc_id: "vpc-0xyz789abc123"
+    subnets:
+      - "subnet-0xyz789abc123"
+      - "subnet-0abc123xyz789"
+    security_groups:
+      - "sg-0xyz789abc123"
+  
+  # Storage configuration
+  storage:
+    bucket: "techco-data-lake-staging"
+    kms_key_id: "arn:aws:kms:us-west-2:987654321098:key/87654321-8765-4321-8765-876543218765"
+  
+  # Infrastructure tags
+  tags:
+    cost_center: "CC-ENGINEERING-003"
+    project: "data-warehouse"
+    environment: "staging"
+    owner: "data-engineering@techco.com"
+    compliance:
+      - SOC2
+    department: "engineering"
+    app_name: "dativo-etl"
+    kubernetes_cluster: "techco-staging-eks"
+    terraform_managed: "true"
+  
+  # Monitoring
+  monitoring:
+    log_group: "/eks/dativo/techco-staging"
+    metrics_namespace: "Dativo/ETL/Staging"
+    alert_topic_arn: "arn:aws:sns:us-west-2:987654321098:techco-staging-alerts"
+
+# Schema validation mode
+schema_validation_mode: strict
+
+# Retry configuration
+retry_config:
+  max_attempts: 5
+  initial_delay_seconds: 30
+  max_delay_seconds: 600
+  backoff_multiplier: 2.0
+
+# Logging
+logging:
+  level: DEBUG
+  redaction: true

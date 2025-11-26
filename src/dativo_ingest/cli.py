@@ -1085,6 +1085,139 @@ def start_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def show_infrastructure_command(args: argparse.Namespace) -> int:
+    """Show infrastructure configuration for a job.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=success, 2=failure)
+    """
+    try:
+        job_config = JobConfig.from_yaml(args.config)
+    except SystemExit as e:
+        return e.code if e.code else 2
+
+    if not job_config.infrastructure:
+        print(f"No infrastructure configuration found for job: {args.config}")
+        return 2
+
+    # Convert to dict and print as YAML
+    infra_dict = job_config.infrastructure.model_dump(exclude_none=True)
+    print(yaml.dump(infra_dict, default_flow_style=False, sort_keys=False))
+
+    return 0
+
+
+def generate_terraform_command(args: argparse.Namespace) -> int:
+    """Generate Terraform configuration for jobs.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=success, 2=failure)
+    """
+    from .terraform_generator import generate_terraform_for_job, generate_terraform_for_jobs
+
+    output_dir = Path(args.output)
+
+    try:
+        if args.config:
+            # Single job
+            job_config = JobConfig.from_yaml(args.config)
+
+            if not job_config.infrastructure:
+                print(
+                    f"ERROR: Job configuration does not include infrastructure block: {args.config}",
+                    file=sys.stderr,
+                )
+                return 2
+
+            generate_terraform_for_job(job_config, output_dir)
+            print(f"Generated Terraform module: {output_dir}")
+
+        elif args.job_dir:
+            # Multiple jobs
+            job_dir = Path(args.job_dir)
+            job_configs = JobConfig.load_jobs_from_directory(job_dir)
+
+            # Filter jobs with infrastructure blocks
+            jobs_with_infra = [jc for jc in job_configs if jc.infrastructure]
+
+            if not jobs_with_infra:
+                print(
+                    f"WARNING: No jobs with infrastructure blocks found in: {job_dir}",
+                    file=sys.stderr,
+                )
+                return 0
+
+            generate_terraform_for_jobs(jobs_with_infra, output_dir)
+            print(
+                f"Generated Terraform modules for {len(jobs_with_infra)} jobs in: {output_dir}"
+            )
+
+        else:
+            print("ERROR: Either --config or --job-dir must be specified", file=sys.stderr)
+            return 2
+
+        return 0
+
+    except Exception as e:
+        print(f"ERROR: Failed to generate Terraform: {e}", file=sys.stderr)
+        return 2
+
+
+def validate_infrastructure_command(args: argparse.Namespace) -> int:
+    """Validate infrastructure configuration.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=success, 2=failure)
+    """
+    try:
+        job_config = JobConfig.from_yaml(args.config)
+    except SystemExit as e:
+        return e.code if e.code else 2
+
+    if not job_config.infrastructure:
+        print(f"No infrastructure configuration found for job: {args.config}")
+        return 0
+
+    # Validate infrastructure config
+    try:
+        infra = job_config.infrastructure
+        print(f"Infrastructure configuration is valid:")
+        print(f"  Provider: {infra.provider}")
+        print(f"  Region: {infra.region}")
+
+        if infra.compute:
+            print(f"  Compute: {infra.compute.type}")
+            if infra.compute.cluster_name:
+                print(f"    Cluster: {infra.compute.cluster_name}")
+
+        if infra.network:
+            print(f"  Network: VPC {infra.network.vpc_id}")
+            if infra.network.subnets:
+                print(f"    Subnets: {len(infra.network.subnets)}")
+
+        if infra.storage:
+            print(f"  Storage: {infra.storage.bucket}")
+
+        if infra.tags:
+            tags_dict = infra.tags.model_dump(exclude_none=True)
+            print(f"  Tags: {len(tags_dict)} defined")
+
+        return 0
+
+    except Exception as e:
+        print(f"ERROR: Infrastructure validation failed: {e}", file=sys.stderr)
+        return 2
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -1097,6 +1230,15 @@ Examples:
 
   # Start orchestrated mode
   dativo start orchestrated --runner-config /app/configs/runner.yaml
+
+  # Show infrastructure configuration
+  dativo show-infrastructure --config jobs/acme_corp/stripe.yaml
+
+  # Generate Terraform for single job
+  dativo generate-terraform --config jobs/acme_corp/stripe.yaml --output terraform/acme_corp
+
+  # Generate Terraform for all jobs
+  dativo generate-terraform --job-dir jobs/acme_corp --output terraform
         """,
     )
 
@@ -1166,6 +1308,52 @@ Examples:
         help="Path to runner configuration YAML file (default: /app/configs/runner.yaml)",
     )
 
+    # Show infrastructure command
+    show_infra_parser = subparsers.add_parser(
+        "show-infrastructure",
+        help="Show infrastructure configuration for a job",
+        description="Display the infrastructure configuration block from a job configuration file.",
+    )
+    show_infra_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+
+    # Generate Terraform command
+    generate_tf_parser = subparsers.add_parser(
+        "generate-terraform",
+        help="Generate Terraform configuration for jobs",
+        description="Generate Terraform modules for deploying Dativo ETL jobs on cloud infrastructure. "
+        "Can generate for a single job or all jobs in a directory.",
+    )
+    tf_config_group = generate_tf_parser.add_mutually_exclusive_group(required=True)
+    tf_config_group.add_argument(
+        "--config",
+        help="Path to job configuration YAML file",
+    )
+    tf_config_group.add_argument(
+        "--job-dir",
+        help="Path to directory containing job YAML files",
+    )
+    generate_tf_parser.add_argument(
+        "--output",
+        required=True,
+        help="Output directory for Terraform modules",
+    )
+
+    # Validate infrastructure command
+    validate_infra_parser = subparsers.add_parser(
+        "validate-infrastructure",
+        help="Validate infrastructure configuration",
+        description="Validate the infrastructure configuration block in a job configuration file.",
+    )
+    validate_infra_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -1176,6 +1364,12 @@ Examples:
         return run_command(args)
     elif args.command == "start":
         return start_command(args)
+    elif args.command == "show-infrastructure":
+        return show_infrastructure_command(args)
+    elif args.command == "generate-terraform":
+        return generate_terraform_command(args)
+    elif args.command == "validate-infrastructure":
+        return validate_infrastructure_command(args)
     else:
         parser.print_help()
         return 2

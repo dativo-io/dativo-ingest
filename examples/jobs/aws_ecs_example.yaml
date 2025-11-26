@@ -1,0 +1,105 @@
+# Example: Dativo ETL Job with AWS ECS Infrastructure
+# This job demonstrates external infrastructure integration for cloud-agnostic deployment
+
+tenant_id: acme_corp
+environment: prod
+
+# Source connector
+source_connector: stripe
+source_connector_path: connectors/stripe.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: stripe_customers
+asset_path: assets/stripe/v1.0/customers.yaml
+
+# Source configuration
+source:
+  objects: [customers]
+  incremental:
+    strategy: incremental
+    cursor_field: created
+    lookback_days: 7
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+      prefix: "raw/acme_corp/stripe_customers"
+  file_format: parquet
+  partitioning: [ingest_date]
+
+# FinOps metadata (overrides asset definition)
+finops:
+  cost_center: "CC-PAYMENTS-001"
+  project: "data-platform"
+  business_tags:
+    - payments
+    - revenue
+    - customer-data
+
+# Infrastructure configuration for AWS ECS deployment
+infrastructure:
+  provider: aws
+  region: us-east-1
+  
+  # Compute infrastructure (ECS Fargate)
+  compute:
+    type: ecs
+    cluster_name: dativo-prod-cluster
+    task_cpu: "1024"      # 1 vCPU
+    task_memory: "2048"   # 2 GB
+    execution_role_arn: "arn:aws:iam::123456789012:role/dativo-ecs-execution-role"
+    task_role_arn: "arn:aws:iam::123456789012:role/dativo-ecs-task-role"
+  
+  # Network configuration (existing VPC)
+  network:
+    vpc_id: "vpc-0abc123def456"
+    subnets:
+      - "subnet-0abc123def456"
+      - "subnet-0def456abc123"
+    security_groups:
+      - "sg-0abc123def456"
+  
+  # Storage configuration
+  storage:
+    bucket: "acme-corp-data-lake-prod"
+    kms_key_id: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+  
+  # Infrastructure tags for cost allocation and compliance
+  tags:
+    cost_center: "CC-PAYMENTS-001"
+    project: "data-platform"
+    environment: "prod"
+    owner: "data-platform-team@acme.com"
+    compliance:
+      - PCI-DSS
+      - SOC2
+    department: "finance"
+    app_name: "dativo-etl"
+    terraform_managed: "true"
+  
+  # Monitoring and observability
+  monitoring:
+    log_group: "/ecs/dativo/acme-corp-prod"
+    metrics_namespace: "Dativo/ETL"
+    alert_topic_arn: "arn:aws:sns:us-east-1:123456789012:dativo-alerts"
+
+# Schema validation mode
+schema_validation_mode: strict
+
+# Retry configuration
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 60
+  max_delay_seconds: 300
+  backoff_multiplier: 2.0
+
+# Logging
+logging:
+  level: INFO
+  redaction: true

@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Infrastructure Integration**: External infrastructure integration for cloud-agnostic deployment
+  - Optional `infrastructure` block in job configurations for AWS/GCP deployment
+  - Support for AWS compute platforms: ECS (Fargate), EKS (Kubernetes)
+  - Support for GCP compute platforms: Cloud Run, GKE (Kubernetes)
+  - Network configuration: VPC, subnets, security groups
+  - Storage configuration: S3/GCS buckets, KMS encryption keys
+  - Monitoring configuration: CloudWatch/Cloud Logging, metrics, alerts
+  - Comprehensive tag propagation hierarchy:
+    1. Infrastructure tags (highest priority)
+    2. Job config tags (finops, governance_overrides)
+    3. Asset definition tags
+    4. Source system tags (lowest priority)
+  - Tag namespaces: `infrastructure.*`, `finops.*`, `governance.*`, `classification.*`
+  - Infrastructure tags override finops/governance tags for cost allocation
+  - Automatic Terraform module generation from job configurations
+  - CLI commands: `show-infrastructure`, `generate-terraform`, `validate-infrastructure`
+  - Provider-specific validation (compute type must match provider)
+  - Cost allocation tracking via tags (cost_center, project, environment)
+  - Compliance tracking (GDPR, HIPAA, SOC2, PCI-DSS)
+  - Integration with Dagster for orchestrated deployments
+  - Comprehensive documentation: `docs/INFRASTRUCTURE_INTEGRATION.md`
+  - Example job configurations:
+    - `examples/jobs/aws_ecs_example.yaml` - AWS ECS Fargate deployment
+    - `examples/jobs/aws_eks_example.yaml` - AWS EKS Kubernetes deployment
+    - `examples/jobs/gcp_cloud_run_example.yaml` - GCP Cloud Run deployment
+  
 - **Custom Plugin System**: Support for Python and Rust plugins
   - **Python Plugins:**
     - New `BaseReader` and `BaseWriter` base classes for plugin development
@@ -26,6 +52,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integration with existing ETL pipeline (custom plugins work alongside built-in extractors)
   
 ### Changed
+- **Configuration Schema**: Extended `job-config.schema.json` with optional `infrastructure` block
+- **Config Models**: Added infrastructure models to `config.py`:
+  - `InfrastructureConfig` - Main infrastructure configuration
+  - `ComputeConfig` - Compute platform configuration
+  - `NetworkConfig` - Network infrastructure configuration
+  - `StorageConfig` - Storage configuration
+  - `InfrastructureTags` - Tag configuration for cost allocation
+  - `MonitoringConfig` - Observability configuration
+- **JobConfig**: Added optional `infrastructure` field with provider validation
+- **Tag Derivation**: Enhanced `TagDerivation` class to support infrastructure tags
+  - New `infrastructure_tags` parameter in `__init__`
+  - New `derive_infrastructure_tags()` method
+  - Updated `derive_all_tags()` to include infrastructure namespace
+  - Infrastructure tags can override finops/governance tags
+- **Terraform Generator**: New `terraform_generator.py` module
+  - `TerraformGenerator` class for generating Terraform configurations
+  - `generate_terraform_for_job()` - Generate module for single job
+  - `generate_terraform_for_jobs()` - Generate modules for multiple jobs
+  - Support for AWS (main.tf, variables.tf, outputs.tf)
+  - Support for GCP (main.tf, variables.tf, outputs.tf)
+  - Automatic tag propagation to infrastructure resources
+- **CLI**: Added three new commands
+  - `show-infrastructure` - Display infrastructure configuration
+  - `generate-terraform` - Generate Terraform modules
+  - `validate-infrastructure` - Validate infrastructure config
+- **README**: Updated with infrastructure integration overview and examples
 - Updated `SourceConfig` to include optional `custom_reader` field
 - Updated `TargetConfig` to include optional `custom_writer` field
 - Enhanced CLI to dynamically load and instantiate Python and Rust plugins

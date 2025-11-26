@@ -36,6 +36,7 @@ class TagDerivation:
         finops: Optional[Dict[str, Any]] = None,
         governance_overrides: Optional[Dict[str, Any]] = None,
         source_tags: Optional[Dict[str, str]] = None,
+        infrastructure_tags: Optional[Dict[str, str]] = None,
     ):
         """Initialize tag derivation.
 
@@ -49,12 +50,15 @@ class TagDerivation:
                 e.g., {"retention_days": 365, "owner": "finance-team@company.com"}
             source_tags: Source system tags (LOWEST priority)
                 e.g., {"email": "PII"} from connector metadata
+            infrastructure_tags: Infrastructure tags (HIGH priority)
+                e.g., {"cost_center": "CC-123", "environment": "prod"}
         """
         self.asset_definition = asset_definition
         self.classification_overrides = classification_overrides or {}
         self.finops = finops or {}
         self.governance_overrides = governance_overrides or {}
         self.source_tags = source_tags or {}  # Source system tags
+        self.infrastructure_tags = infrastructure_tags or {}  # Infrastructure tags
 
     def _classify_field(self, field_name: str, field_type: str) -> Optional[str]:
         """Classify a field - ONLY uses explicit classifications, no auto-detection.
@@ -246,8 +250,36 @@ class TagDerivation:
 
         return tags
 
+    def derive_infrastructure_tags(self) -> Dict[str, str]:
+        """Derive infrastructure tags.
+
+        Infrastructure tags have HIGH priority and override finops/governance tags.
+
+        Returns:
+            Dictionary of infrastructure tags
+        """
+        tags = {}
+
+        if not self.infrastructure_tags:
+            return tags
+
+        # Infrastructure tags are passed through directly with "infrastructure." namespace
+        for key, value in self.infrastructure_tags.items():
+            if isinstance(value, list):
+                tags[key] = ",".join(value)
+            else:
+                tags[key] = str(value)
+
+        return tags
+
     def derive_all_tags(self) -> Dict[str, str]:
         """Derive all tags for Iceberg table properties.
+
+        Tag hierarchy (highest to lowest priority):
+        1. Infrastructure tags - HIGHEST (overrides everything)
+        2. Job config tags (classification_overrides, finops, governance_overrides)
+        3. Asset definition tags
+        4. Source system tags - LOWEST
 
         Returns:
             Dictionary of all tags in namespaced format:
@@ -255,6 +287,7 @@ class TagDerivation:
             - classification.fields.<field_name>
             - governance.*
             - finops.*
+            - infrastructure.*
         """
         tags = {}
 
@@ -277,6 +310,19 @@ class TagDerivation:
         for key, value in finops_tags.items():
             tags[f"finops.{key}"] = value
 
+        # Infrastructure tags (HIGHEST priority - can override finops/governance)
+        infrastructure_tags = self.derive_infrastructure_tags()
+        for key, value in infrastructure_tags.items():
+            # Infrastructure tags override finops/governance tags with same key
+            infra_key = f"infrastructure.{key}"
+            tags[infra_key] = value
+            
+            # Also override finops/governance if key matches
+            if key in ["cost_center", "project", "environment"]:
+                finops_key = f"finops.{key}"
+                if finops_key in tags:
+                    tags[finops_key] = value
+
         return tags
 
 
@@ -286,6 +332,7 @@ def derive_tags_from_asset(
     finops: Optional[Dict[str, Any]] = None,
     governance_overrides: Optional[Dict[str, Any]] = None,
     source_tags: Optional[Dict[str, str]] = None,
+    infrastructure_tags: Optional[Dict[str, str]] = None,
 ) -> Dict[str, str]:
     """Convenience function to derive all tags from asset definition.
 
@@ -295,6 +342,7 @@ def derive_tags_from_asset(
         finops: FinOps metadata
         governance_overrides: Governance metadata overrides
         source_tags: Source system tags (LOWEST priority)
+        infrastructure_tags: Infrastructure tags (HIGHEST priority)
 
     Returns:
         Dictionary of all namespaced tags
@@ -305,5 +353,6 @@ def derive_tags_from_asset(
         finops=finops,
         governance_overrides=governance_overrides,
         source_tags=source_tags,
+        infrastructure_tags=infrastructure_tags,
     )
     return derivation.derive_all_tags()

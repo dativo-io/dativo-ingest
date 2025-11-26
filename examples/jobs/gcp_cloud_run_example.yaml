@@ -1,0 +1,101 @@
+# Example: Dativo ETL Job with GCP Cloud Run Infrastructure
+# This job demonstrates external infrastructure integration for cloud-agnostic deployment
+
+tenant_id: acme_corp
+environment: prod
+
+# Source connector
+source_connector: hubspot
+source_connector_path: connectors/hubspot.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: hubspot_contacts
+asset_path: assets/hubspot/v1.0/contacts.yaml
+
+# Source configuration
+source:
+  objects: [contacts]
+  incremental:
+    strategy: incremental
+    cursor_field: updated_at
+    lookback_days: 1
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "${GCS_BUCKET}"
+      prefix: "raw/acme_corp/hubspot_contacts"
+  file_format: parquet
+  partitioning: [ingest_date]
+
+# FinOps metadata
+finops:
+  cost_center: "CC-MARKETING-002"
+  project: "crm-analytics"
+  business_tags:
+    - marketing
+    - crm
+    - customer-data
+
+# Infrastructure configuration for GCP Cloud Run deployment
+infrastructure:
+  provider: gcp
+  region: us-central1
+  
+  # Compute infrastructure (Cloud Run)
+  compute:
+    type: cloud_run
+    task_cpu: "1000m"     # 1 vCPU
+    task_memory: "2048"   # 2 GB
+    service_account: "dativo-etl@acme-prod.iam.gserviceaccount.com"
+  
+  # Network configuration (existing VPC)
+  network:
+    vpc_id: "projects/acme-prod/global/networks/dativo-vpc"
+    subnets:
+      - "projects/acme-prod/regions/us-central1/subnetworks/dativo-subnet-1"
+      - "projects/acme-prod/regions/us-central1/subnetworks/dativo-subnet-2"
+  
+  # Storage configuration
+  storage:
+    bucket: "acme-corp-data-lake-prod"
+    kms_key_id: "projects/acme-prod/locations/us-central1/keyRings/dativo/cryptoKeys/etl-data"
+  
+  # Infrastructure tags for cost allocation and compliance
+  tags:
+    cost_center: "CC-MARKETING-002"
+    project: "crm-analytics"
+    environment: "prod"
+    owner: "marketing-analytics@acme.com"
+    compliance:
+      - GDPR
+      - CCPA
+    department: "marketing"
+    app_name: "dativo-etl"
+    terraform_managed: "true"
+  
+  # Monitoring and observability
+  monitoring:
+    log_group: "projects/acme-prod/logs/dativo-etl"
+    metrics_namespace: "custom.googleapis.com/dativo/etl"
+    alert_topic: "projects/acme-prod/topics/dativo-alerts"
+
+# Schema validation mode
+schema_validation_mode: strict
+
+# Retry configuration
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 60
+  max_delay_seconds: 300
+  backoff_multiplier: 2.0
+
+# Logging
+logging:
+  level: INFO
+  redaction: true

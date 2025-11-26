@@ -190,6 +190,144 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "External infrastructure configuration for cloud-agnostic deployment via Terraform",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["aws", "gcp"],
+          "description": "Cloud provider (aws or gcp)"
+        },
+        "region": {
+          "type": "string",
+          "description": "Cloud region (e.g., us-east-1, us-central1)"
+        },
+        "compute": {
+          "type": "object",
+          "description": "Compute infrastructure configuration",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["ecs", "eks", "gke", "cloud_run"],
+              "description": "Compute platform type"
+            },
+            "cluster_name": {
+              "type": "string",
+              "description": "Cluster name (for ECS/EKS/GKE)"
+            },
+            "task_cpu": {
+              "type": "string",
+              "description": "CPU units (e.g., '256', '512', '1024')"
+            },
+            "task_memory": {
+              "type": "string",
+              "description": "Memory in MB (e.g., '512', '1024', '2048')"
+            },
+            "execution_role_arn": {
+              "type": "string",
+              "description": "IAM execution role ARN (AWS only)"
+            },
+            "task_role_arn": {
+              "type": "string",
+              "description": "IAM task role ARN (AWS only)"
+            },
+            "service_account": {
+              "type": "string",
+              "description": "Service account email (GCP only)"
+            }
+          }
+        },
+        "network": {
+          "type": "object",
+          "description": "Network infrastructure configuration",
+          "properties": {
+            "vpc_id": {
+              "type": "string",
+              "description": "VPC ID (AWS) or VPC name (GCP)"
+            },
+            "subnets": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Subnet IDs or names"
+            },
+            "security_groups": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Security group IDs (AWS only)"
+            }
+          }
+        },
+        "storage": {
+          "type": "object",
+          "description": "Storage infrastructure configuration",
+          "properties": {
+            "bucket": {
+              "type": "string",
+              "description": "S3 bucket name (AWS) or GCS bucket name (GCP)"
+            },
+            "kms_key_id": {
+              "type": "string",
+              "description": "KMS key ID/ARN for encryption"
+            }
+          }
+        },
+        "tags": {
+          "type": "object",
+          "description": "Infrastructure tags for cost allocation, compliance, and traceability",
+          "properties": {
+            "cost_center": {
+              "type": "string",
+              "description": "Cost center for billing allocation"
+            },
+            "project": {
+              "type": "string",
+              "description": "Project name"
+            },
+            "environment": {
+              "type": "string",
+              "description": "Environment (dev, staging, prod)"
+            },
+            "owner": {
+              "type": "string",
+              "description": "Owner email or team"
+            },
+            "compliance": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Compliance frameworks (e.g., GDPR, HIPAA, SOC2)"
+            }
+          },
+          "additionalProperties": {
+            "type": "string",
+            "description": "Additional custom tags"
+          }
+        },
+        "monitoring": {
+          "type": "object",
+          "description": "Monitoring and observability configuration",
+          "properties": {
+            "log_group": {
+              "type": "string",
+              "description": "CloudWatch log group (AWS) or Cloud Logging (GCP)"
+            },
+            "metrics_namespace": {
+              "type": "string",
+              "description": "Metrics namespace"
+            },
+            "alert_topic_arn": {
+              "type": "string",
+              "description": "SNS topic ARN for alerts (AWS only)"
+            },
+            "alert_topic": {
+              "type": "string",
+              "description": "Pub/Sub topic for alerts (GCP only)"
+            }
+          }
+        }
+      },
+      "required": ["provider", "region"]
     }
   },
   "additionalProperties": false

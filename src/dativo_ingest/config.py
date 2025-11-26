@@ -450,6 +450,123 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class ComputeConfig(BaseModel):
+    """Compute infrastructure configuration."""
+
+    type: Optional[str] = None  # ecs, eks, gke, cloud_run
+    cluster_name: Optional[str] = None
+    task_cpu: Optional[str] = None
+    task_memory: Optional[str] = None
+    execution_role_arn: Optional[str] = None  # AWS only
+    task_role_arn: Optional[str] = None  # AWS only
+    service_account: Optional[str] = None  # GCP only
+
+
+class NetworkConfig(BaseModel):
+    """Network infrastructure configuration."""
+
+    vpc_id: Optional[str] = None
+    subnets: Optional[List[str]] = None
+    security_groups: Optional[List[str]] = None  # AWS only
+
+
+class StorageConfig(BaseModel):
+    """Storage infrastructure configuration."""
+
+    bucket: Optional[str] = None
+    kms_key_id: Optional[str] = None
+
+
+class InfrastructureTags(BaseModel):
+    """Infrastructure tags for cost allocation, compliance, and traceability."""
+
+    cost_center: Optional[str] = None
+    project: Optional[str] = None
+    environment: Optional[str] = None
+    owner: Optional[str] = None
+    compliance: Optional[List[str]] = None
+    # Allow additional custom tags via model_config
+    model_config = ConfigDict(extra="allow")
+
+
+class MonitoringConfig(BaseModel):
+    """Monitoring and observability configuration."""
+
+    log_group: Optional[str] = None
+    metrics_namespace: Optional[str] = None
+    alert_topic_arn: Optional[str] = None  # AWS only
+    alert_topic: Optional[str] = None  # GCP only
+
+
+class InfrastructureConfig(BaseModel):
+    """External infrastructure configuration for cloud-agnostic deployment."""
+
+    provider: str  # aws or gcp
+    region: str
+    compute: Optional[ComputeConfig] = None
+    network: Optional[NetworkConfig] = None
+    storage: Optional[StorageConfig] = None
+    tags: Optional[InfrastructureTags] = None
+    monitoring: Optional[MonitoringConfig] = None
+
+    @model_validator(mode="after")
+    def validate_provider_specific(self) -> "InfrastructureConfig":
+        """Validate provider-specific fields."""
+        if self.provider not in ["aws", "gcp"]:
+            raise ValueError(f"Invalid provider: {self.provider}. Must be 'aws' or 'gcp'")
+
+        # Validate compute type matches provider
+        if self.compute and self.compute.type:
+            aws_compute_types = ["ecs", "eks"]
+            gcp_compute_types = ["gke", "cloud_run"]
+
+            if self.provider == "aws" and self.compute.type not in aws_compute_types:
+                raise ValueError(
+                    f"Invalid compute type '{self.compute.type}' for AWS. "
+                    f"Must be one of: {aws_compute_types}"
+                )
+            elif self.provider == "gcp" and self.compute.type not in gcp_compute_types:
+                raise ValueError(
+                    f"Invalid compute type '{self.compute.type}' for GCP. "
+                    f"Must be one of: {gcp_compute_types}"
+                )
+
+        return self
+
+    def to_terraform_vars(self) -> Dict[str, Any]:
+        """Convert infrastructure config to Terraform variables format.
+
+        Returns:
+            Dictionary of Terraform variables
+        """
+        vars_dict = {
+            "provider": self.provider,
+            "region": self.region,
+        }
+
+        if self.compute:
+            compute_dict = self.compute.model_dump(exclude_none=True)
+            vars_dict["compute"] = compute_dict
+
+        if self.network:
+            network_dict = self.network.model_dump(exclude_none=True)
+            vars_dict["network"] = network_dict
+
+        if self.storage:
+            storage_dict = self.storage.model_dump(exclude_none=True)
+            vars_dict["storage"] = storage_dict
+
+        if self.tags:
+            tags_dict = self.tags.model_dump(exclude_none=True)
+            vars_dict["tags"] = tags_dict
+
+        if self.monitoring:
+            monitoring_dict = self.monitoring.model_dump(exclude_none=True)
+            vars_dict["monitoring"] = monitoring_dict
+
+        return vars_dict
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
@@ -512,6 +629,11 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+
+    # Infrastructure configuration
+    infrastructure: Optional[InfrastructureConfig] = (
+        None  # External infrastructure for cloud deployment
+    )
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":
