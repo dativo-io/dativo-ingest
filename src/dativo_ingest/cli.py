@@ -458,8 +458,49 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 elif default_engine:
                     engine_type = str(default_engine)
 
-            # Route to engine framework or native extractors
-            if engine_type == "airbyte":
+            # Route to connector-specific extractors first (to preserve custom metadata),
+            # then fall back to engine framework or native extractors
+            if source_config.type == "stripe":
+                # Stripe uses Airbyte but has custom extractor for metadata
+                if connector_recipe:
+                    from .connectors.stripe_extractor import StripeExtractor
+
+                    extractor = StripeExtractor(
+                        source_config, connector_recipe, tenant_id
+                    )
+                else:
+                    logger.error(
+                        "Stripe connector requires connector_recipe for Airbyte engine",
+                        extra={"event_type": "extractor_error"},
+                    )
+                    return 2
+            elif source_config.type == "hubspot":
+                # HubSpot uses Airbyte but has custom extractor for metadata
+                if connector_recipe:
+                    from .connectors.hubspot_extractor import HubSpotExtractor
+
+                    extractor = HubSpotExtractor(
+                        source_config, connector_recipe, tenant_id
+                    )
+                else:
+                    logger.error(
+                        "HubSpot connector requires connector_recipe for Airbyte engine",
+                        extra={"event_type": "extractor_error"},
+                    )
+                    return 2
+            elif source_config.type == "csv":
+                from .connectors.csv_extractor import CSVExtractor
+
+                extractor = CSVExtractor(source_config)
+            elif source_config.type == "postgres":
+                from .connectors.postgres_extractor import PostgresExtractor
+
+                extractor = PostgresExtractor(source_config)
+            elif source_config.type == "mysql":
+                from .connectors.mysql_extractor import MySQLExtractor
+
+                extractor = MySQLExtractor(source_config)
+            elif engine_type == "airbyte":
                 from .connectors.engine_framework import AirbyteExtractor
 
                 extractor = AirbyteExtractor(source_config, connector_recipe, tenant_id)
@@ -495,46 +536,6 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                         "event_type": "extractor_initialized",
                     },
                 )
-            elif source_config.type == "csv":
-                from .connectors.csv_extractor import CSVExtractor
-
-                extractor = CSVExtractor(source_config)
-            elif source_config.type == "postgres":
-                from .connectors.postgres_extractor import PostgresExtractor
-
-                extractor = PostgresExtractor(source_config)
-            elif source_config.type == "mysql":
-                from .connectors.mysql_extractor import MySQLExtractor
-
-                extractor = MySQLExtractor(source_config)
-            elif source_config.type == "stripe":
-                # Stripe now uses Airbyte by default
-                if connector_recipe:
-                    from .connectors.stripe_extractor import StripeExtractor
-
-                    extractor = StripeExtractor(
-                        source_config, connector_recipe, tenant_id
-                    )
-                else:
-                    logger.error(
-                        "Stripe connector requires connector_recipe for Airbyte engine",
-                        extra={"event_type": "extractor_error"},
-                    )
-                    return 2
-            elif source_config.type == "hubspot":
-                # HubSpot uses Airbyte
-                if connector_recipe:
-                    from .connectors.hubspot_extractor import HubSpotExtractor
-
-                    extractor = HubSpotExtractor(
-                        source_config, connector_recipe, tenant_id
-                    )
-                else:
-                    logger.error(
-                        "HubSpot connector requires connector_recipe for Airbyte engine",
-                        extra={"event_type": "extractor_error"},
-                    )
-                    return 2
             elif source_config.type == "gdrive_csv":
                 from .connectors.gdrive_csv_extractor import GDriveCSVExtractor
 
