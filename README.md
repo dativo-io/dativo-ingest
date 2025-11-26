@@ -43,6 +43,23 @@ dativo run --job-dir tests/fixtures/jobs \
 - [QUICKSTART.md](QUICKSTART.md) - Quick reference guide
 - [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Comprehensive setup guide
 
+### Generate Jobs and Assets Interactively
+
+The CLI includes an interactive generator that creates job configurations and asset definitions with intelligent suggestions:
+
+```bash
+# Launch interactive generator
+dativo_ingest generate
+```
+
+The generator provides:
+- **Connector Knowledge**: Queries the registry to understand capabilities and requirements
+- **Intelligent Suggestions**: Recommends configuration based on connector type
+- **Schema Builder**: Interactive field definition with PII/SENSITIVE detection
+- **Complete Workflow**: Generates both asset and job in one session
+
+**See [docs/GENERATOR_CLI.md](docs/GENERATOR_CLI.md) for detailed documentation.**
+
 ### Docker Deployment
 
 1. Build the image:

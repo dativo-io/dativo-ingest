@@ -1085,6 +1085,31 @@ def start_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def generate_command(args: argparse.Namespace) -> int:
+    """Generate job and asset definitions interactively.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=success, 1=cancelled, 2=failure)
+    """
+    # Import here to avoid dependency if not using generator
+    from .generator import InteractiveGenerator
+
+    try:
+        generator = InteractiveGenerator()
+        return generator.run()
+    except KeyboardInterrupt:
+        print("\n\nGenerator cancelled by user.")
+        return 1
+    except Exception as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return 2
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -1092,6 +1117,9 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Generate job and asset definitions interactively
+  dativo generate
+
   # Run a single job
   dativo run --config /app/configs/jobs/stripe.yaml --mode self_hosted
 
@@ -1166,6 +1194,15 @@ Examples:
         help="Path to runner configuration YAML file (default: /app/configs/runner.yaml)",
     )
 
+    # Generate command
+    generate_parser = subparsers.add_parser(
+        "generate",
+        help="Interactively generate job and asset definitions",
+        description="Interactive wizard to create job configurations and asset definitions. "
+        "Uses the connector registry to provide intelligent suggestions based on "
+        "connector capabilities, schema requirements, and best practices.",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -1176,6 +1213,8 @@ Examples:
         return run_command(args)
     elif args.command == "start":
         return start_command(args)
+    elif args.command == "generate":
+        return generate_command(args)
     else:
         parser.print_help()
         return 2
