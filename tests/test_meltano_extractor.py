@@ -52,7 +52,9 @@ def test_meltano_extractor_initialization_with_tenant_id(
 ):
     """Test MeltanoExtractor initialization with tenant_id parameter."""
     tenant_id = "test_tenant"
-    extractor = MeltanoExtractor(source_config, mock_connector_recipe, tenant_id=tenant_id)
+    extractor = MeltanoExtractor(
+        source_config, mock_connector_recipe, tenant_id=tenant_id
+    )
 
     assert extractor.source_config == source_config
     assert extractor.connector_recipe == mock_connector_recipe
@@ -64,7 +66,9 @@ def test_meltano_extractor_tenant_id_passed_to_parent(
 ):
     """Test that tenant_id is properly passed to BaseEngineExtractor."""
     tenant_id = "test_tenant"
-    extractor = MeltanoExtractor(source_config, mock_connector_recipe, tenant_id=tenant_id)
+    extractor = MeltanoExtractor(
+        source_config, mock_connector_recipe, tenant_id=tenant_id
+    )
 
     # Verify tenant_id is stored in the extractor
     assert extractor.tenant_id == tenant_id
@@ -78,7 +82,9 @@ def test_meltano_extractor_extract_not_implemented(
     """Test that MeltanoExtractor.extract() raises NotImplementedError."""
     extractor = MeltanoExtractor(source_config, mock_connector_recipe)
 
-    with pytest.raises(NotImplementedError, match="Meltano extractor not yet implemented"):
+    with pytest.raises(
+        NotImplementedError, match="Meltano extractor not yet implemented"
+    ):
         list(extractor.extract())
 
 
@@ -90,4 +96,3 @@ def test_meltano_extractor_extract_metadata(source_config, mock_connector_recipe
     assert "tags" in metadata
     assert metadata["tags"]["connector_type"] == "postgres"
     assert metadata["tags"]["engine_type"] == "meltano"
-
