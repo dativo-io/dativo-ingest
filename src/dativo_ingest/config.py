@@ -443,6 +443,21 @@ class TargetConfig(BaseModel):
         return self
 
 
+class CatalogConfig(BaseModel):
+    """Data catalog configuration for lineage and metadata tracking."""
+
+    type: str = Field(..., description="Catalog type: aws_glue, databricks_unity, nessie, or openmetadata")
+    connection: Dict[str, Any] = Field(
+        ..., description="Connection configuration for the catalog"
+    )
+    database: Optional[str] = Field(
+        None, description="Database/schema name (catalog-specific)"
+    )
+    table_name: Optional[str] = Field(
+        None, description="Override table name in catalog (defaults to asset name)"
+    )
+
+
 class LoggingConfig(BaseModel):
     """Logging configuration."""
 
@@ -512,6 +527,9 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+
+    # Data catalog integration (optional)
+    catalog: Optional[CatalogConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

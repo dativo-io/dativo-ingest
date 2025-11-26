@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  openmetadata:
+    image: openmetadata/server:latest
+    container_name: openmetadata-server
+    ports:
+      - "8585:8585"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=openmetadata_user
+      - DB_PASSWORD=openmetadata_password
+      - DB_NAME=openmetadata_db
+      - ELASTICSEARCH_HOST=http://elasticsearch:9200
+      - ELASTICSEARCH_PORT=9200
+      - AIRFLOW_HOST=http://airflow:8080
+      - AIRFLOW_USERNAME=admin
+      - AIRFLOW_PASSWORD=admin
+      - JWT_TOKEN_EXPIRY_TIME=3600
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=admin
+    depends_on:
+      - postgres
+      - elasticsearch
+    networks:
+      - openmetadata-network
+
+  postgres:
+    image: postgres:13
+    container_name: openmetadata-postgres
+    environment:
+      - POSTGRES_USER=openmetadata_user
+      - POSTGRES_PASSWORD=openmetadata_password
+      - POSTGRES_DB=openmetadata_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - openmetadata-network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    container_name: openmetadata-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - openmetadata-network
+
+volumes:
+  postgres_data:
+  elasticsearch_data:
+
+networks:
+  openmetadata-network:
+    driver: bridge

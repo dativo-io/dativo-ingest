@@ -1008,6 +1008,64 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             else 0
         )
 
+        # Push to catalog if configured (only on success)
+        if exit_code == 0 and job_config.catalog:
+            try:
+                from .catalog.integration import push_to_catalog
+
+                # Build source entities from source config
+                source_entities = []
+                if source_config.type == "postgres" and source_config.tables:
+                    for table_config in source_config.tables:
+                        source_entities.append(
+                            {
+                                "database": source_config.connection.get("database", "default"),
+                                "table": table_config.get("object", ""),
+                            }
+                        )
+                elif source_config.type == "mysql" and source_config.tables:
+                    for table_config in source_config.tables:
+                        source_entities.append(
+                            {
+                                "database": source_config.connection.get("database", "default"),
+                                "table": table_config.get("object", ""),
+                            }
+                        )
+                elif source_config.type == "stripe":
+                    source_entities.append(
+                        {
+                            "database": "stripe",
+                            "table": source_config.objects[0] if source_config.objects else "default",
+                        }
+                    )
+
+                push_to_catalog(
+                    job_config=job_config,
+                    asset_definition=asset_definition,
+                    source_config=source_config,
+                    target_config=target_config,
+                    output_location=output_base,
+                    source_entities=source_entities if source_entities else None,
+                )
+
+                logger.info(
+                    "Catalog metadata and lineage pushed successfully",
+                    extra={
+                        "catalog_type": job_config.catalog.type,
+                        "event_type": "catalog_push_success",
+                    },
+                )
+            except Exception as e:
+                # Log error but don't fail the job
+                logger.warning(
+                    f"Failed to push to catalog: {e}",
+                    extra={
+                        "catalog_type": job_config.catalog.type if job_config.catalog else None,
+                        "event_type": "catalog_push_warning",
+                    },
+                    exc_info=True,
+                )
+
         # Emit enhanced metadata
         logger.info(
             "Job execution completed",

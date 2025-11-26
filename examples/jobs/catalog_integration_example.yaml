@@ -1,0 +1,78 @@
+# Example job configuration with data catalog integration
+# This example shows how to configure OpenMetadata catalog integration
+# Similar configuration can be used for AWS Glue, Databricks Unity Catalog, or Nessie
+
+tenant_id: example_tenant
+environment: development
+
+# Source connector configuration
+source_connector_path: connectors/postgres.yaml
+target_connector_path: connectors/iceberg.yaml
+asset_path: assets/example_asset.yaml
+
+# Source configuration
+source:
+  type: postgres
+  connection:
+    host: localhost
+    port: 5432
+    database: example_db
+    user: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+  tables:
+    - object: customers
+      schema: public
+
+# Target configuration
+target:
+  type: iceberg
+  catalog: nessie
+  branch: example_tenant
+  file_format: parquet
+  connection:
+    s3:
+      bucket: ${S3_BUCKET}
+      endpoint: http://localhost:9000
+      access_key: ${MINIO_ACCESS_KEY}
+      secret_key: ${MINIO_SECRET_KEY}
+
+# Data catalog integration (optional)
+catalog:
+  type: openmetadata  # Options: aws_glue, databricks_unity, nessie, openmetadata
+  connection:
+    api_endpoint: http://localhost:8585/api
+    auth_provider: basic  # Options: basic, jwt
+    username: admin
+    password: admin
+    database_service: default
+  database: example_schema  # Optional: database/schema name
+  table_name: customers  # Optional: override table name (defaults to asset name)
+
+# Alternative catalog configurations:
+
+# AWS Glue example:
+# catalog:
+#   type: aws_glue
+#   connection:
+#     region: us-east-1
+#     access_key_id: ${AWS_ACCESS_KEY_ID}  # Optional: can use IAM role
+#     secret_access_key: ${AWS_SECRET_ACCESS_KEY}  # Optional: can use IAM role
+#   database: example_database
+
+# Databricks Unity Catalog example:
+# catalog:
+#   type: databricks_unity
+#   connection:
+#     workspace_url: https://workspace.cloud.databricks.com
+#     access_token: ${DATABRICKS_TOKEN}
+#     catalog: main
+#   database: example_schema
+
+# Nessie example:
+# catalog:
+#   type: nessie
+#   connection:
+#     uri: http://localhost:19120/api/v1
+#     branch: main
+#     auth_token: ${NESSIE_TOKEN}  # Optional
+#   database: example_namespace
