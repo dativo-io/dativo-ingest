@@ -19,6 +19,7 @@ class IcebergCommitter:
         finops: Optional[Dict[str, Any]] = None,
         governance_overrides: Optional[Dict[str, Any]] = None,
         source_tags: Optional[Dict[str, str]] = None,
+        infrastructure: Optional[Any] = None,
     ):
         """Initialize Iceberg committer.
 
@@ -29,6 +30,7 @@ class IcebergCommitter:
             finops: FinOps metadata from job config
             governance_overrides: Governance metadata overrides from job config
             source_tags: Source system tags (LOWEST priority)
+            infrastructure: InfrastructureConfig instance (optional)
         """
         self.asset_definition = asset_definition
         self.target_config = target_config
@@ -41,6 +43,7 @@ class IcebergCommitter:
         self.finops = finops
         self.governance_overrides = governance_overrides
         self.source_tags = source_tags
+        self.infrastructure = infrastructure
 
         # Get connection details
         connection = target_config.connection or {}
@@ -231,6 +234,7 @@ class IcebergCommitter:
             finops=self.finops,
             governance_overrides=self.governance_overrides,
             source_tags=self.source_tags,
+            infrastructure=self.infrastructure,
         )
 
         # Add asset metadata

@@ -55,12 +55,31 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
             try:
                 job_config = JobConfig.from_yaml(schedule_config.config)
                 tenant_id = job_config.tenant_id
-                connector_type = job_config.source.type
+                source_config = job_config.get_source()
+                connector_type = source_config.type
 
-                # Update asset tags with tenant_id
-                context.add_output_metadata(
-                    {"tenant_id": tenant_id, "connector_type": connector_type}
-                )
+                # Build output metadata with infrastructure information for Terraform
+                output_metadata = {
+                    "tenant_id": tenant_id,
+                    "connector_type": connector_type,
+                }
+                
+                # Add infrastructure metadata for Terraform integration
+                if job_config.infrastructure:
+                    output_metadata["infrastructure_provider"] = job_config.infrastructure.provider
+                    if job_config.infrastructure.compute_type:
+                        output_metadata["infrastructure_compute_type"] = job_config.infrastructure.compute_type
+                    if job_config.infrastructure.memory_mb:
+                        output_metadata["infrastructure_memory_mb"] = str(job_config.infrastructure.memory_mb)
+                    if job_config.infrastructure.vcpu:
+                        output_metadata["infrastructure_vcpu"] = str(job_config.infrastructure.vcpu)
+                    if job_config.infrastructure.terraform_module:
+                        output_metadata["terraform_module"] = job_config.infrastructure.terraform_module
+                    if job_config.infrastructure.resource_refs:
+                        output_metadata["resource_refs"] = job_config.infrastructure.resource_refs
+
+                # Update asset tags with tenant_id and infrastructure metadata
+                context.add_output_metadata(output_metadata)
 
                 job_logger.info(
                     "Job validated",

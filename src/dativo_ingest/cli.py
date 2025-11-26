@@ -732,6 +732,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 finops=job_config.finops,
                 governance_overrides=job_config.governance_overrides,
                 source_tags=source_tags,
+                infrastructure=job_config.infrastructure,
             )
             logger.info(
                 "Iceberg committer initialized",
@@ -964,6 +965,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     finops=job_config.finops,
                     governance_overrides=job_config.governance_overrides,
                     source_tags=source_tags,
+                    infrastructure=job_config.infrastructure,
                 )
                 try:
                     upload_result = upload_committer.commit_files(all_file_metadata)

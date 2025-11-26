@@ -213,6 +213,25 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
         if schedule_config.tags:
             asset_tags.update(schedule_config.tags)
 
+        # Add infrastructure metadata for Terraform integration
+        infrastructure_metadata = {}
+        if job_config.infrastructure:
+            infrastructure_metadata["infrastructure_provider"] = job_config.infrastructure.provider
+            if job_config.infrastructure.compute_type:
+                infrastructure_metadata["infrastructure_compute_type"] = job_config.infrastructure.compute_type
+            if job_config.infrastructure.memory_mb:
+                infrastructure_metadata["infrastructure_memory_mb"] = str(job_config.infrastructure.memory_mb)
+            if job_config.infrastructure.vcpu:
+                infrastructure_metadata["infrastructure_vcpu"] = str(job_config.infrastructure.vcpu)
+            if job_config.infrastructure.terraform_module:
+                infrastructure_metadata["terraform_module"] = job_config.infrastructure.terraform_module
+            if job_config.infrastructure.resource_refs:
+                infrastructure_metadata["resource_refs"] = job_config.infrastructure.resource_refs
+            # Add infrastructure tags to asset tags for Terraform propagation
+            if job_config.infrastructure.tags:
+                for key, value in job_config.infrastructure.tags.items():
+                    asset_tags[f"infrastructure_{key}"] = str(value)
+
         @asset(
             name=asset_name,
             description=f"Asset for {schedule_config.name}",
@@ -250,15 +269,17 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
                 # Calculate execution time
                 execution_time = time.time() - start_time
 
-                # Add enhanced metadata
-                context.add_output_metadata(
-                    {
-                        "tenant_id": tenant_id,
-                        "connector_type": connector_type,
-                        "execution_time_seconds": execution_time,
-                        "status": result.get("status", "unknown"),
-                    }
-                )
+                # Add enhanced metadata (including infrastructure metadata for Terraform)
+                output_metadata = {
+                    "tenant_id": tenant_id,
+                    "connector_type": connector_type,
+                    "execution_time_seconds": execution_time,
+                    "status": result.get("status", "unknown"),
+                }
+                # Add infrastructure metadata for Terraform integration
+                if infrastructure_metadata:
+                    output_metadata.update(infrastructure_metadata)
+                context.add_output_metadata(output_metadata)
 
                 return result
 

@@ -478,6 +478,66 @@ class RetryConfig(BaseModel):
         return self
 
 
+class InfrastructureConfig(BaseModel):
+    """Infrastructure configuration for external Terraform-provisioned resources.
+
+    This block describes the runtime environment and metadata that must flow
+    into Terraform modules for cloud-agnostic deployment (AWS/GCP) via Dagster.
+    Enables comprehensive tag propagation for cost allocation, compliance, and
+    resource traceability.
+    """
+
+    # Cloud provider
+    provider: str = Field(
+        ..., description="Cloud provider: 'aws' or 'gcp'"
+    )  # Required: aws or gcp
+
+    # Runtime environment metadata
+    runtime: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Runtime environment metadata (e.g., compute type, memory, vCPU)",
+    )
+    compute_type: Optional[str] = Field(
+        default=None, description="Compute instance type (e.g., 'fargate', 'ec2', 'cloud-run')"
+    )
+    memory_mb: Optional[int] = Field(
+        default=None, description="Memory allocation in MB"
+    )
+    vcpu: Optional[float] = Field(
+        default=None, description="Virtual CPU allocation"
+    )
+
+    # Resource references (for Terraform module inputs)
+    resource_refs: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="References to Terraform-provisioned resources (e.g., ECS task definition ARN, Cloud Run service name)",
+    )
+
+    # Tags for Terraform propagation (merged with job/asset tags)
+    tags: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Additional tags to propagate to Terraform-provisioned resources",
+    )
+
+    # Terraform module configuration
+    terraform_module: Optional[str] = Field(
+        default=None,
+        description="Terraform module path or reference (e.g., 'modules/dativo-job')",
+    )
+    terraform_vars: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Additional Terraform variables to pass to the module",
+    )
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        """Validate cloud provider."""
+        if v.lower() not in ["aws", "gcp"]:
+            raise ValueError(f"provider must be 'aws' or 'gcp', got '{v}'")
+        return v.lower()
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -512,6 +572,12 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+
+    # Infrastructure configuration (optional - for external Terraform-provisioned resources)
+    infrastructure: Optional[InfrastructureConfig] = Field(
+        default=None,
+        description="Infrastructure configuration for cloud-agnostic deployment via Terraform",
+    )
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

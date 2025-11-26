@@ -1,0 +1,84 @@
+# Example job configuration with infrastructure block for Terraform integration
+# This demonstrates cloud-agnostic deployment (AWS/GCP) via Dagster with comprehensive tag propagation
+
+tenant_id: acme
+environment: production
+
+source_connector: stripe
+source_connector_path: connectors/stripe.yaml
+
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+asset: stripe_customers
+asset_path: assets/stripe/v1.0/customers.yaml
+
+# Source configuration
+source:
+  objects: [customers]
+  incremental:
+    lookback_days: 1
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+      prefix: "raw/stripe/customers"
+  catalog: nessie
+  branch: acme
+
+# Infrastructure configuration for external Terraform-provisioned resources
+# This block describes the runtime environment and metadata that flows into Terraform modules
+infrastructure:
+  # Cloud provider (required)
+  provider: aws  # or 'gcp'
+  
+  # Runtime environment metadata
+  compute_type: fargate  # e.g., 'fargate', 'ec2', 'cloud-run'
+  memory_mb: 2048
+  vcpu: 1.0
+  
+  # Resource references (for Terraform module inputs)
+  # These reference resources provisioned outside of Dativo via Terraform
+  resource_refs:
+    task_definition_arn: "arn:aws:ecs:us-east-1:123456789012:task-definition/dativo-job:1"
+    cluster_name: "dativo-cluster"
+    execution_role_arn: "arn:aws:iam::123456789012:role/dativo-execution-role"
+  
+  # Tags for Terraform propagation (merged with job/asset tags)
+  # These tags flow into Terraform modules for cost allocation, compliance, and resource traceability
+  tags:
+    ManagedBy: "dativo"
+    Environment: "production"
+    Team: "data-platform"
+    CostCenter: "FIN-001"
+    Compliance: "GDPR"
+    DataClassification: "PII"
+  
+  # Terraform module configuration
+  terraform_module: "modules/dativo-job"  # Path to Terraform module
+  terraform_vars:
+    # Additional Terraform variables to pass to the module
+    enable_logging: true
+    log_retention_days: 30
+    enable_monitoring: true
+
+# FinOps metadata (merged with infrastructure tags)
+finops:
+  cost_center: FIN-001
+  business_tags: [payments, revenue, stripe]
+  project: stripe-ingestion
+  environment: production
+
+# Governance overrides
+governance_overrides:
+  retention_days: 365
+  owner: data-platform@acme.com
+
+# Standard ETL configuration
+schema_validation_mode: strict
+
+logging:
+  redaction: true
+  level: INFO
