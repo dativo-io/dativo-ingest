@@ -1,0 +1,10 @@
+# OpenMetadata Catalog Configuration Example
+# Reference this in job configs with:
+# catalog:
+#   type: openmetadata
+#   api_url: http://localhost:8585/api
+#   auth_token: ${OPENMETADATA_AUTH_TOKEN}
+
+type: openmetadata
+api_url: http://localhost:8585/api  # OpenMetadata API URL
+auth_token: ${OPENMETADATA_AUTH_TOKEN}  # Optional: Bearer token for authentication

@@ -1,0 +1,8 @@
+# AWS Glue Catalog Configuration Example
+# Reference this in job configs with:
+# catalog:
+#   type: aws_glue
+#   region: us-east-1
+
+type: aws_glue
+region: us-east-1  # AWS region where Glue catalog is located

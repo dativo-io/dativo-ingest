@@ -1,0 +1,42 @@
+# test_job_with_catalog - Example job with catalog integration
+tenant_id: test_tenant
+environment: prod
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: test_job
+asset_path: assets/csv/v1.0/test_job.yaml
+
+# Source configuration
+source:
+  files:
+    - path: data/your_file.csv
+      object: test_job
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+      prefix: "raw/test_tenant/test_job"
+
+# Catalog integration (optional)
+catalog:
+  type: openmetadata
+  api_url: http://localhost:8585/api
+  auth_token: ${OPENMETADATA_AUTH_TOKEN}  # Optional
+
+# Schema validation mode
+schema_validation_mode: strict  # or 'warn'
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

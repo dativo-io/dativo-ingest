@@ -1,0 +1,9 @@
+# Nessie Catalog Configuration Example
+# Note: Nessie lineage/metadata is handled via Iceberg table properties
+# This is mainly for consistency with other catalog integrations
+# Reference this in job configs with:
+# catalog:
+#   type: nessie
+
+type: nessie
+# Nessie configuration is handled via target.connection.nessie in job config

@@ -993,6 +993,94 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 },
             )
 
+        # Push lineage and metadata to catalog if configured
+        if job_config.catalog and all_file_metadata:
+            try:
+                from .catalog_integration import create_catalog_integration
+
+                catalog_integration = create_catalog_integration(
+                    catalog_config=job_config.catalog,
+                    asset_definition=asset_definition,
+                    job_config=job_config,
+                    source_tags=source_tags,
+                )
+
+                if catalog_integration:
+                    # Build source entities from source config
+                    source_entities = []
+                    if source_config.type:
+                        # Create source entity representation
+                        source_entity = {
+                            "type": "table",
+                            "fqn": f"{source_config.type}.{asset_definition.object}",
+                            "table": asset_definition.object,
+                            "source_type": source_config.type,
+                        }
+                        source_entities.append(source_entity)
+
+                    # Build target entity
+                    connection = target_config.connection or {}
+                    s3_config = connection.get("s3") or connection.get("minio", {})
+                    bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET", "default")
+                    domain = asset_definition.domain or "default"
+                    data_product = getattr(asset_definition, "dataProduct", None) or "default"
+                    table_name = asset_definition.name.lower().replace("-", "_").replace(" ", "_")
+
+                    target_entity = {
+                        "type": "table",
+                        "fqn": f"{domain}.{data_product}.{table_name}",
+                        "database": domain,
+                        "schema": data_product,
+                        "table": table_name,
+                        "catalog": target_config.catalog if hasattr(target_config, "catalog") else None,
+                    }
+
+                    # Push lineage
+                    lineage_result = catalog_integration.push_lineage(
+                        source_entities=source_entities,
+                        target_entity=target_entity,
+                        file_metadata=all_file_metadata,
+                    )
+                    logger.info(
+                        "Lineage pushed to catalog",
+                        extra={
+                            "catalog_type": job_config.catalog.get("type"),
+                            "lineage_result": lineage_result,
+                            "event_type": "lineage_pushed",
+                        },
+                    )
+
+                    # Push metadata
+                    metadata_result = catalog_integration.push_metadata(
+                        entity=target_entity,
+                    )
+                    logger.info(
+                        "Metadata pushed to catalog",
+                        extra={
+                            "catalog_type": job_config.catalog.get("type"),
+                            "metadata_result": metadata_result,
+                            "event_type": "metadata_pushed",
+                        },
+                    )
+                else:
+                    logger.warning(
+                        f"Unsupported catalog type: {job_config.catalog.get('type')}",
+                        extra={
+                            "catalog_config": job_config.catalog,
+                            "event_type": "catalog_unsupported",
+                        },
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to push lineage/metadata to catalog: {e}",
+                    extra={
+                        "catalog_type": job_config.catalog.get("type") if job_config.catalog else None,
+                        "event_type": "catalog_push_failed",
+                    },
+                    exc_info=True,
+                )
+                # Don't fail the job if catalog push fails
+
         # Determine exit code
         if has_errors and validation_mode == "warn":
             exit_code = 1  # Partial success

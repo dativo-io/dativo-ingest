@@ -1,0 +1,10 @@
+# Databricks Unity Catalog Configuration Example
+# Reference this in job configs with:
+# catalog:
+#   type: databricks
+#   workspace_url: https://your-workspace.cloud.databricks.com
+#   token: ${DATABRICKS_TOKEN}
+
+type: databricks
+workspace_url: https://your-workspace.cloud.databricks.com
+token: ${DATABRICKS_TOKEN}  # Databricks personal access token

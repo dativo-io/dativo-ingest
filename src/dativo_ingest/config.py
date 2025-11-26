@@ -507,6 +507,11 @@ class JobConfig(BaseModel):
         None  # Governance metadata overrides
     )
 
+    # Catalog integration (optional)
+    catalog: Optional[Dict[str, Any]] = (
+        None  # Catalog configuration for lineage and metadata push
+    )
+
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'
     retry_config: Optional[RetryConfig] = None
