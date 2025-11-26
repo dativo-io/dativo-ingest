@@ -1,0 +1,82 @@
+# Example job configuration with AWS infrastructure integration
+# This demonstrates how to configure external infrastructure for Terraform deployment
+
+tenant_id: acme
+environment: prod
+
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+target_connector: s3
+target_connector_path: connectors/s3.yaml
+
+asset: employee_data
+asset_path: assets/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: "/data/employees.csv"
+      object: "employees"
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "dativo-data-lake"
+      region: "us-east-1"
+
+# Infrastructure configuration for AWS deployment via Terraform
+infrastructure:
+  provider: aws
+  runtime:
+    compute_type: ecs_task  # Options: ecs_task, lambda, batch, fargate
+    region: us-east-1
+    vpc_id: vpc-0123456789abcdef0
+    subnet_ids:
+      - subnet-0123456789abcdef0
+      - subnet-0123456789abcdef1
+    security_group_ids:
+      - sg-0123456789abcdef0
+
+  # Terraform resource references
+  # These reference resources provisioned outside of Dativo via Terraform
+  resources:
+    compute_resource: aws_ecs_task_definition.dativo_job.arn
+    execution_role: aws_iam_role.dativo_execution.arn
+    task_role: aws_iam_role.dativo_task.arn
+    storage_bucket: aws_s3_bucket.dativo_storage.arn
+    secrets_manager: aws_secretsmanager_secret.dativo_secrets.arn
+
+  # Tags for cost allocation, compliance, and resource traceability
+  # These tags will be propagated to all Terraform-provisioned resources
+  tags:
+    CostCenter: "FIN-001"
+    Project: "data-pipeline"
+    Environment: "prod"
+    Team: "data-engineering@acme.com"
+    Compliance: "SOC2"
+    DataClassification: "PII"
+    ManagedBy: "terraform"
+    Application: "dativo-etl"
+
+  # Additional metadata to flow into Terraform module
+  metadata:
+    dagster_deployment: "prod-cluster"
+    monitoring_enabled: true
+    alerting_channels:
+      - "slack://data-engineering-alerts"
+    backup_retention_days: 30
+
+# Standard ETL configuration
+schema_validation_mode: strict
+
+logging:
+  redaction: true
+  level: INFO
+
+retry_config:
+  max_retries: 3
+  initial_delay_seconds: 5
+  max_delay_seconds: 300
+  backoff_multiplier: 2.0

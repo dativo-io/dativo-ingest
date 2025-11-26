@@ -1,0 +1,78 @@
+# Example job configuration with GCP infrastructure integration
+# This demonstrates how to configure external infrastructure for Terraform deployment
+
+tenant_id: acme
+environment: prod
+
+source_connector: google_sheets
+source_connector_path: connectors/google_sheets.yaml
+
+target_connector: s3
+target_connector_path: connectors/s3.yaml
+
+asset: vendor_data
+asset_path: assets/google_sheets/v1.0/vendors_master.yaml
+
+# Source configuration
+source:
+  sheets:
+    - spreadsheet_id: "1a2b3c4d5e6f7g8h9i0j"
+      object: "vendors"
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "dativo-data-lake"
+      region: "us-central1"
+
+# Infrastructure configuration for GCP deployment via Terraform
+infrastructure:
+  provider: gcp
+  runtime:
+    compute_type: cloud_run_job  # Options: cloud_run_job, dataproc, cloud_functions
+    region: us-central1
+    # GCP uses network tags instead of security groups
+    # VPC and subnet configuration handled via network tags
+
+  # Terraform resource references
+  # These reference resources provisioned outside of Dativo via Terraform
+  resources:
+    compute_resource: google_cloud_run_v2_job.dativo_job.id
+    service_account: google_service_account.dativo_job.email
+    storage_bucket: google_storage_bucket.dativo_storage.name
+    secrets_manager: google_secret_manager_secret.dativo_secrets.id
+
+  # Tags for cost allocation, compliance, and resource traceability
+  # GCP uses labels instead of tags (but we use "tags" for consistency)
+  tags:
+    CostCenter: "FIN-001"
+    Project: "data-pipeline"
+    Environment: "prod"
+    Team: "data-engineering@acme.com"
+    Compliance: "SOC2"
+    DataClassification: "PII"
+    ManagedBy: "terraform"
+    Application: "dativo-etl"
+
+  # Additional metadata to flow into Terraform module
+  metadata:
+    dagster_deployment: "prod-cluster"
+    monitoring_enabled: true
+    alerting_channels:
+      - "pubsub://data-engineering-alerts"
+    backup_retention_days: 30
+    gcp_project_id: "acme-data-platform"
+
+# Standard ETL configuration
+schema_validation_mode: strict
+
+logging:
+  redaction: true
+  level: INFO
+
+retry_config:
+  max_retries: 3
+  initial_delay_seconds: 5
+  max_delay_seconds: 300
+  backoff_multiplier: 2.0

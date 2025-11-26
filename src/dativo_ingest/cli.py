@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from .config import JobConfig, RunnerConfig
-from .infrastructure import validate_infrastructure
+from .infrastructure import validate_infrastructure, validate_infrastructure_config
 from .logging import get_logger, setup_logging, update_logging_settings
 from .secrets import load_secrets
 from .validator import ConnectorValidator, IncrementalStateManager
@@ -187,7 +187,11 @@ def startup_sequence(
     # 5. Validate infrastructure for all jobs
     for job in jobs:
         try:
+            # Validate infrastructure dependencies (health checks)
             validate_infrastructure(job)
+            # Validate infrastructure configuration (Terraform integration)
+            if job.infrastructure:
+                validate_infrastructure_config(job)
         except ValueError as e:
             logger.warning(
                 f"Infrastructure validation warning for job: {e}",

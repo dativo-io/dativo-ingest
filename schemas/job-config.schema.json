@@ -190,6 +190,113 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "External infrastructure configuration for cloud-agnostic deployment via Terraform",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["aws", "gcp"],
+          "description": "Cloud provider (aws or gcp)"
+        },
+        "runtime": {
+          "type": "object",
+          "description": "Runtime environment configuration",
+          "properties": {
+            "compute_type": {
+              "type": "string",
+              "description": "Compute resource type (e.g., ecs_task, cloud_run_job, lambda, dataproc)"
+            },
+            "region": {
+              "type": "string",
+              "description": "Cloud region for resource deployment"
+            },
+            "vpc_id": {
+              "type": "string",
+              "description": "VPC identifier for network isolation"
+            },
+            "subnet_ids": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Subnet identifiers for network placement"
+            },
+            "security_group_ids": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Security group identifiers (AWS) or firewall rules (GCP)"
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "description": "Terraform resource references for external infrastructure",
+          "properties": {
+            "compute_resource": {
+              "type": "string",
+              "description": "Terraform resource reference (e.g., aws_ecs_task_definition.main.arn)"
+            },
+            "execution_role": {
+              "type": "string",
+              "description": "Terraform resource reference for execution IAM role"
+            },
+            "task_role": {
+              "type": "string",
+              "description": "Terraform resource reference for task IAM role (AWS ECS)"
+            },
+            "service_account": {
+              "type": "string",
+              "description": "Terraform resource reference for service account (GCP)"
+            },
+            "storage_bucket": {
+              "type": "string",
+              "description": "Terraform resource reference for storage bucket"
+            },
+            "secrets_manager": {
+              "type": "string",
+              "description": "Terraform resource reference for secrets manager"
+            }
+          }
+        },
+        "tags": {
+          "type": "object",
+          "description": "Tags for cost allocation, compliance, and resource traceability",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {
+            "CostCenter": {
+              "type": "string",
+              "description": "Cost center for financial allocation (AWS tag)"
+            },
+            "Project": {
+              "type": "string",
+              "description": "Project identifier (GCP label / AWS tag)"
+            },
+            "Environment": {
+              "type": "string",
+              "description": "Environment name (dev, staging, prod)"
+            },
+            "Team": {
+              "type": "string",
+              "description": "Team or owner identifier"
+            },
+            "Compliance": {
+              "type": "string",
+              "description": "Compliance classification"
+            },
+            "DataClassification": {
+              "type": "string",
+              "description": "Data classification level"
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional metadata to flow into Terraform module",
+          "additionalProperties": true
+        }
+      }
     }
   },
   "additionalProperties": false

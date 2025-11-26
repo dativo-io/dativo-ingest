@@ -1,13 +1,21 @@
-"""Infrastructure health checks for validating dependencies."""
+"""Infrastructure health checks and external infrastructure integration for Terraform.
 
+This module provides:
+1. Health checks for validating infrastructure dependencies
+2. External infrastructure integration for cloud-agnostic deployment via Terraform
+3. Tag propagation for cost allocation, compliance, and resource traceability
+"""
+
+import json
 import os
 import socket
-from typing import List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
 
-from .config import JobConfig
+from .config import InfrastructureConfig, JobConfig
 
 
 def validate_required_ports(ports: List[int], host: str = "localhost") -> bool:
@@ -225,5 +233,227 @@ def validate_infrastructure(job_config: JobConfig) -> None:
             )
 
     # Raise errors (fatal)
+    if errors:
+        raise ValueError("; ".join(errors))
+
+
+def generate_terraform_vars(
+    job_config: JobConfig,
+    output_path: Optional[Path] = None,
+    format: str = "json",
+) -> Dict[str, Any]:
+    """Generate Terraform variables from job configuration.
+
+    This function extracts infrastructure configuration from a job config and
+    generates Terraform-compatible variables that can be consumed by Terraform
+    modules for provisioning external infrastructure.
+
+    Args:
+        job_config: Job configuration with optional infrastructure block
+        output_path: Optional path to write Terraform variables file
+        format: Output format ('json' or 'tfvars')
+
+    Returns:
+        Dictionary of Terraform variables
+
+    Raises:
+        ValueError: If infrastructure config is missing or invalid
+    """
+    if not job_config.infrastructure:
+        raise ValueError(
+            "Job configuration does not include infrastructure block. "
+            "Add 'infrastructure' section to job config for Terraform integration."
+        )
+
+    infra_config = job_config.infrastructure
+
+    # Get base Terraform variables from infrastructure config
+    terraform_vars = infra_config.get_terraform_vars()
+
+    # Add job-level metadata
+    terraform_vars["job_metadata"] = {
+        "tenant_id": job_config.tenant_id,
+        "environment": job_config.environment,
+    }
+
+    # Merge tags from asset definition and job config
+    asset_definition = job_config._resolve_asset()
+    tag_derivation = None
+
+    try:
+        from .tag_derivation import TagDerivation
+
+        tag_derivation = TagDerivation(
+            asset_definition=asset_definition,
+            classification_overrides=job_config.classification_overrides,
+            finops=job_config.finops,
+            governance_overrides=job_config.governance_overrides,
+        )
+
+        # Derive tags from asset
+        asset_tags = tag_derivation.derive_all_tags()
+
+        # Convert namespaced tags to flat tags for Terraform
+        flat_tags = {}
+        for key, value in asset_tags.items():
+            # Convert namespaced keys to Terraform-friendly format
+            # e.g., "finops.cost_center" -> "CostCenter"
+            if key.startswith("finops."):
+                tag_key = key.replace("finops.", "").replace("_", "")
+                # Capitalize first letter of each word
+                tag_key = "".join(word.capitalize() for word in tag_key.split("_"))
+                flat_tags[tag_key] = value
+            elif key.startswith("governance."):
+                tag_key = key.replace("governance.", "").replace("_", "")
+                tag_key = "".join(word.capitalize() for word in tag_key.split("_"))
+                flat_tags[tag_key] = value
+            elif key.startswith("classification."):
+                # Classification tags can be kept as-is or mapped
+                flat_tags[key] = value
+
+        # Merge with infrastructure tags (infrastructure tags take precedence)
+        merged_tags = infra_config.merge_tags(asset_tags=flat_tags)
+
+        # Update Terraform vars with merged tags
+        terraform_vars["tags"] = merged_tags
+
+    except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"Failed to derive tags from asset definition: {e}",
+            extra={"event_type": "tag_derivation_warning"},
+        )
+        # Continue with infrastructure tags only
+        if infra_config.tags:
+            terraform_vars["tags"] = infra_config.tags
+
+    # Write to file if output path is provided
+    if output_path:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if format == "json":
+            with open(output_path, "w") as f:
+                json.dump(terraform_vars, f, indent=2)
+        elif format == "tfvars":
+            # Write as Terraform variable file format
+            with open(output_path, "w") as f:
+                _write_tfvars(terraform_vars, f)
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+
+    return terraform_vars
+
+
+def _write_tfvars(vars_dict: Dict[str, Any], file_handle) -> None:
+    """Write Terraform variables in .tfvars format.
+
+    Args:
+        vars_dict: Dictionary of Terraform variables
+        file_handle: File handle to write to
+    """
+    for key, value in vars_dict.items():
+        if isinstance(value, dict):
+            # Nested dict - write as HCL object
+            file_handle.write(f'{key} = {{\n')
+            for nested_key, nested_value in value.items():
+                if isinstance(nested_value, str):
+                    file_handle.write(f'  {nested_key} = "{nested_value}"\n')
+                elif isinstance(nested_value, list):
+                    file_handle.write(f'  {nested_key} = {json.dumps(nested_value)}\n')
+                else:
+                    file_handle.write(f'  {nested_key} = {nested_value}\n')
+            file_handle.write('}\n')
+        elif isinstance(value, list):
+            file_handle.write(f'{key} = {json.dumps(value)}\n')
+        elif isinstance(value, str):
+            file_handle.write(f'{key} = "{value}"\n')
+        else:
+            file_handle.write(f'{key} = {value}\n')
+
+
+def validate_infrastructure_config(job_config: JobConfig) -> None:
+    """Validate infrastructure configuration for Terraform integration.
+
+    Args:
+        job_config: Job configuration to validate
+
+    Raises:
+        ValueError: If infrastructure configuration is invalid
+    """
+    if not job_config.infrastructure:
+        # Infrastructure is optional, so no error if missing
+        return
+
+    infra_config = job_config.infrastructure
+    errors = []
+
+    # Validate provider
+    if infra_config.provider not in ["aws", "gcp"]:
+        errors.append(
+            f"Invalid provider: {infra_config.provider}. Must be 'aws' or 'gcp'"
+        )
+
+    # Validate runtime configuration
+    if infra_config.runtime:
+        runtime = infra_config.runtime
+        if runtime.compute_type:
+            valid_compute_types = {
+                "aws": ["ecs_task", "lambda", "batch", "fargate"],
+                "gcp": ["cloud_run_job", "dataproc", "cloud_functions"],
+            }
+            if runtime.compute_type not in valid_compute_types.get(
+                infra_config.provider, []
+            ):
+                errors.append(
+                    f"Invalid compute_type '{runtime.compute_type}' for provider '{infra_config.provider}'. "
+                    f"Valid types: {valid_compute_types.get(infra_config.provider, [])}"
+                )
+
+    # Validate resource references (should be Terraform resource references)
+    if infra_config.resources:
+        resources = infra_config.resources
+        # Check that resource references look like Terraform references
+        terraform_ref_patterns = [
+            resources.compute_resource,
+            resources.execution_role,
+            resources.task_role,
+            resources.service_account,
+            resources.storage_bucket,
+            resources.secrets_manager,
+        ]
+
+        for ref in terraform_ref_patterns:
+            if ref and not (
+                ref.startswith("${") or "." in ref or ref.startswith("aws_") or ref.startswith("google_")
+            ):
+                # Not a strict validation - just a warning
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Resource reference '{ref}' may not be a valid Terraform reference",
+                    extra={"event_type": "infrastructure_warning", "reference": ref},
+                )
+
+    # Validate tags
+    if infra_config.tags:
+        # Check for required tags for cost allocation
+        recommended_tags = ["CostCenter", "Project", "Environment", "Team"]
+        missing_tags = [tag for tag in recommended_tags if tag not in infra_config.tags]
+        if missing_tags:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Recommended tags missing for cost allocation: {missing_tags}",
+                extra={
+                    "event_type": "infrastructure_warning",
+                    "missing_tags": missing_tags,
+                },
+            )
+
     if errors:
         raise ValueError("; ".join(errors))

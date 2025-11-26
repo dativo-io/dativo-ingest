@@ -478,6 +478,132 @@ class RetryConfig(BaseModel):
         return self
 
 
+class RuntimeConfig(BaseModel):
+    """Runtime environment configuration for infrastructure."""
+
+    compute_type: Optional[str] = None  # e.g., ecs_task, cloud_run_job, lambda, dataproc
+    region: Optional[str] = None
+    vpc_id: Optional[str] = None
+    subnet_ids: Optional[List[str]] = None
+    security_group_ids: Optional[List[str]] = None
+
+
+class InfrastructureResources(BaseModel):
+    """Terraform resource references for external infrastructure."""
+
+    compute_resource: Optional[str] = None  # e.g., aws_ecs_task_definition.main.arn
+    execution_role: Optional[str] = None
+    task_role: Optional[str] = None  # AWS ECS task role
+    service_account: Optional[str] = None  # GCP service account
+    storage_bucket: Optional[str] = None
+    secrets_manager: Optional[str] = None
+
+
+class InfrastructureConfig(BaseModel):
+    """External infrastructure configuration for cloud-agnostic deployment via Terraform.
+
+    This configuration describes the runtime environment and metadata that must flow
+    into Terraform modules for provisioning infrastructure outside of Dativo.
+    """
+
+    provider: str = Field(..., pattern="^(aws|gcp)$")  # Cloud provider
+    runtime: Optional[RuntimeConfig] = None
+    resources: Optional[InfrastructureResources] = None
+    tags: Optional[Dict[str, str]] = Field(
+        None,
+        description="Tags for cost allocation, compliance, and resource traceability",
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Additional metadata to flow into Terraform module"
+    )
+
+    def get_terraform_vars(self) -> Dict[str, Any]:
+        """Generate Terraform variables from infrastructure configuration.
+
+        Returns:
+            Dictionary of Terraform variables ready for module input
+        """
+        vars_dict: Dict[str, Any] = {
+            "provider": self.provider,
+        }
+
+        # Add runtime configuration
+        if self.runtime:
+            if self.runtime.compute_type:
+                vars_dict["compute_type"] = self.runtime.compute_type
+            if self.runtime.region:
+                vars_dict["region"] = self.runtime.region
+            if self.runtime.vpc_id:
+                vars_dict["vpc_id"] = self.runtime.vpc_id
+            if self.runtime.subnet_ids:
+                vars_dict["subnet_ids"] = self.runtime.subnet_ids
+            if self.runtime.security_group_ids:
+                vars_dict["security_group_ids"] = self.runtime.security_group_ids
+
+        # Add resource references
+        if self.resources:
+            resource_dict = {}
+            if self.resources.compute_resource:
+                resource_dict["compute_resource"] = self.resources.compute_resource
+            if self.resources.execution_role:
+                resource_dict["execution_role"] = self.resources.execution_role
+            if self.resources.task_role:
+                resource_dict["task_role"] = self.resources.task_role
+            if self.resources.service_account:
+                resource_dict["service_account"] = self.resources.service_account
+            if self.resources.storage_bucket:
+                resource_dict["storage_bucket"] = self.resources.storage_bucket
+            if self.resources.secrets_manager:
+                resource_dict["secrets_manager"] = self.resources.secrets_manager
+            if resource_dict:
+                vars_dict["resources"] = resource_dict
+
+        # Add tags (critical for cost allocation and compliance)
+        if self.tags:
+            vars_dict["tags"] = self.tags.copy()
+
+        # Add metadata
+        if self.metadata:
+            vars_dict["metadata"] = self.metadata.copy()
+
+        return vars_dict
+
+    def merge_tags(
+        self,
+        asset_tags: Optional[Dict[str, str]] = None,
+        job_tags: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, str]:
+        """Merge infrastructure tags with asset and job tags.
+
+        Tag hierarchy (later overrides earlier):
+        1. Asset tags (from asset definition) - LOWEST PRIORITY
+        2. Infrastructure tags (from infrastructure config) - MEDIUM PRIORITY
+        3. Job tags (from job config) - HIGHEST PRIORITY
+
+        Args:
+            asset_tags: Tags from asset definition
+            job_tags: Tags from job configuration
+
+        Returns:
+            Merged tags dictionary
+        """
+        merged = {}
+
+        # Start with asset tags
+        if asset_tags:
+            merged.update(asset_tags)
+
+        # Override with infrastructure tags
+        if self.tags:
+            merged.update(self.tags)
+
+        # Override with job tags (highest priority)
+        if job_tags:
+            merged.update(job_tags)
+
+        return merged
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -512,6 +638,9 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+
+    # Infrastructure configuration (optional)
+    infrastructure: Optional[InfrastructureConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

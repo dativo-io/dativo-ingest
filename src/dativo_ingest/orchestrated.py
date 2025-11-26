@@ -213,6 +213,22 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
         if schedule_config.tags:
             asset_tags.update(schedule_config.tags)
 
+        # Add infrastructure tags if configured
+        if job_config.infrastructure:
+            infra_config = job_config.infrastructure
+            # Add infrastructure metadata to asset tags
+            asset_tags["infrastructure_provider"] = infra_config.provider
+            if infra_config.runtime and infra_config.runtime.region:
+                asset_tags["infrastructure_region"] = infra_config.runtime.region
+            if infra_config.runtime and infra_config.runtime.compute_type:
+                asset_tags["infrastructure_compute_type"] = infra_config.runtime.compute_type
+
+            # Merge infrastructure tags (for cost allocation and compliance)
+            if infra_config.tags:
+                # Prefix infrastructure tags to avoid conflicts
+                for key, value in infra_config.tags.items():
+                    asset_tags[f"infra_{key}"] = value
+
         @asset(
             name=asset_name,
             description=f"Asset for {schedule_config.name}",
@@ -242,6 +258,12 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
                 validator = ConnectorValidator()
                 validator.validate_job(job_config, mode="self_hosted")
 
+                # Validate infrastructure configuration if present
+                if job_config.infrastructure:
+                    from .infrastructure import validate_infrastructure_config
+
+                    validate_infrastructure_config(job_config)
+
                 # Execute job with retry logic
                 result = _execute_job_with_retry(
                     schedule_config, job_config, custom_retry_policy
@@ -251,14 +273,51 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
                 execution_time = time.time() - start_time
 
                 # Add enhanced metadata
-                context.add_output_metadata(
-                    {
-                        "tenant_id": tenant_id,
-                        "connector_type": connector_type,
-                        "execution_time_seconds": execution_time,
-                        "status": result.get("status", "unknown"),
-                    }
-                )
+                metadata = {
+                    "tenant_id": tenant_id,
+                    "connector_type": connector_type,
+                    "execution_time_seconds": execution_time,
+                    "status": result.get("status", "unknown"),
+                }
+
+                # Add infrastructure metadata if configured
+                if job_config.infrastructure:
+                    infra_config = job_config.infrastructure
+                    metadata["infrastructure_provider"] = infra_config.provider
+                    if infra_config.runtime:
+                        if infra_config.runtime.region:
+                            metadata["infrastructure_region"] = infra_config.runtime.region
+                        if infra_config.runtime.compute_type:
+                            metadata["infrastructure_compute_type"] = (
+                                infra_config.runtime.compute_type
+                            )
+                    if infra_config.resources:
+                        # Add resource references for Terraform integration
+                        if infra_config.resources.compute_resource:
+                            metadata["terraform_compute_resource"] = (
+                                infra_config.resources.compute_resource
+                            )
+                        if infra_config.resources.execution_role:
+                            metadata["terraform_execution_role"] = (
+                                infra_config.resources.execution_role
+                            )
+
+                    # Generate Terraform variables for external infrastructure
+                    try:
+                        from .infrastructure import generate_terraform_vars
+
+                        terraform_vars = generate_terraform_vars(job_config)
+                        metadata["terraform_vars"] = terraform_vars
+                    except Exception as e:
+                        job_logger.warning(
+                            f"Failed to generate Terraform variables: {e}",
+                            extra={
+                                "event_type": "terraform_vars_warning",
+                                "job_name": schedule_config.name,
+                            },
+                        )
+
+                context.add_output_metadata(metadata)
 
                 return result
 
