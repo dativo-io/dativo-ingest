@@ -110,9 +110,6 @@ class GDriveCSVExtractor:
                     # Expand tenant placeholder if present
                     tenant_id = self.tenant_id or "default"
                     path = file_template.replace("{tenant}", tenant_id)
-                    # Also try without replacement if tenant_id is not set
-                    if not self.tenant_id:
-                        path = file_template
                     if Path(path).exists():
                         return path
 
