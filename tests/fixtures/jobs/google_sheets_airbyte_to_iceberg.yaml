@@ -1,0 +1,44 @@
+# Google Sheets to Iceberg job for smoke tests (Airbyte engine)
+tenant_id: test_tenant
+environment: test
+
+# Source connector - Google Sheets (Airbyte engine)
+source_connector: google_sheets
+source_connector_path: connectors/google_sheets_airbyte.yaml
+
+# Target connector - Iceberg with MinIO storage
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: google_sheets_sheet
+asset_path: assets/google_sheets/v1.0/sheet.yaml
+
+# Source configuration
+source:
+  sheets:
+    - id: "test_spreadsheet_id"
+      object: sheet
+      range: "A1:Z1000"
+  incremental:
+    strategy: spreadsheet_modified_time
+    lookback_days: 0
+
+# Target configuration - Iceberg with MinIO
+target:
+  file_format: parquet
+  connection:
+    s3:
+      endpoint: "${MINIO_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${MINIO_ACCESS_KEY}"
+      secret_access_key: "${MINIO_SECRET_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+      prefix: "raw/google_sheets_airbyte/sheets"
+
+# Logging configuration
+logging:
+  redaction: true
+  level: INFO
+

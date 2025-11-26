@@ -306,6 +306,9 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
     source_config = job_config.get_source()
     target_config = job_config.get_target()
 
+    # Store tenant_id for credential path resolution (will be passed to extractors)
+    tenant_id = job_config.tenant_id
+
     # Update logging settings if job has specific requirements
     # Always update tenant_id to ensure correct tenant context for this job
     log_level = job_config.logging.level if job_config.logging else None
@@ -426,31 +429,134 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     "event_type": "custom_reader_initialized",
                 },
             )
-        elif source_config.type == "csv":
-            from .connectors.csv_extractor import CSVExtractor
-
-            extractor = CSVExtractor(source_config)
-        elif source_config.type == "postgres":
-            from .connectors.postgres_extractor import PostgresExtractor
-
-            extractor = PostgresExtractor(source_config)
-        elif source_config.type == "mysql":
-            from .connectors.mysql_extractor import MySQLExtractor
-
-            extractor = MySQLExtractor(source_config)
-        elif source_config.type == "stripe":
-            from .connectors.stripe_extractor import StripeExtractor
-
-            extractor = StripeExtractor(source_config)
         else:
-            logger.error(
-                f"Unsupported source type: {source_config.type}. "
-                f"Either use a supported type or specify a custom_reader in the source configuration.",
-                extra={
-                    "event_type": "extractor_error",
-                },
-            )
-            return 2
+            # Load connector recipe to determine engine type
+            connector_recipe = None
+            # Get connector path from job_config (not source_config)
+            if (
+                hasattr(job_config, "source_connector_path")
+                and job_config.source_connector_path
+            ):
+                from .config import ConnectorRecipe
+
+                try:
+                    connector_recipe = ConnectorRecipe.from_yaml(
+                        job_config.source_connector_path
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load connector recipe: {e}. Using default engine selection.",
+                        extra={"event_type": "connector_recipe_warning"},
+                    )
+
+            # Check engine type if connector recipe is available
+            engine_type = None
+            if connector_recipe:
+                default_engine = connector_recipe.default_engine
+                if isinstance(default_engine, dict):
+                    engine_type = default_engine.get("type")
+                elif default_engine:
+                    engine_type = str(default_engine)
+
+            # Route to connector-specific extractors first (to preserve custom metadata),
+            # then fall back to engine framework or native extractors
+            if source_config.type == "stripe":
+                # Stripe uses Airbyte but has custom extractor for metadata
+                if connector_recipe:
+                    from .connectors.stripe_extractor import StripeExtractor
+
+                    extractor = StripeExtractor(
+                        source_config, connector_recipe, tenant_id
+                    )
+                else:
+                    logger.error(
+                        "Stripe connector requires connector_recipe for Airbyte engine",
+                        extra={"event_type": "extractor_error"},
+                    )
+                    return 2
+            elif source_config.type == "hubspot":
+                # HubSpot uses Airbyte but has custom extractor for metadata
+                if connector_recipe:
+                    from .connectors.hubspot_extractor import HubSpotExtractor
+
+                    extractor = HubSpotExtractor(
+                        source_config, connector_recipe, tenant_id
+                    )
+                else:
+                    logger.error(
+                        "HubSpot connector requires connector_recipe for Airbyte engine",
+                        extra={"event_type": "extractor_error"},
+                    )
+                    return 2
+            elif source_config.type == "csv":
+                from .connectors.csv_extractor import CSVExtractor
+
+                extractor = CSVExtractor(source_config)
+            elif source_config.type == "postgres":
+                from .connectors.postgres_extractor import PostgresExtractor
+
+                extractor = PostgresExtractor(source_config)
+            elif source_config.type == "mysql":
+                from .connectors.mysql_extractor import MySQLExtractor
+
+                extractor = MySQLExtractor(source_config)
+            elif engine_type == "airbyte":
+                from .connectors.engine_framework import AirbyteExtractor
+
+                extractor = AirbyteExtractor(source_config, connector_recipe, tenant_id)
+                logger.info(
+                    f"Using Airbyte engine for {source_config.type}",
+                    extra={
+                        "connector_type": source_config.type,
+                        "engine_type": "airbyte",
+                        "event_type": "extractor_initialized",
+                    },
+                )
+            elif engine_type == "meltano":
+                from .connectors.engine_framework import MeltanoExtractor
+
+                extractor = MeltanoExtractor(source_config, connector_recipe, tenant_id)
+                logger.info(
+                    f"Using Meltano engine for {source_config.type}",
+                    extra={
+                        "connector_type": source_config.type,
+                        "engine_type": "meltano",
+                        "event_type": "extractor_initialized",
+                    },
+                )
+            elif engine_type == "singer":
+                from .connectors.engine_framework import SingerExtractor
+
+                extractor = SingerExtractor(source_config, connector_recipe, tenant_id)
+                logger.info(
+                    f"Using Singer engine for {source_config.type}",
+                    extra={
+                        "connector_type": source_config.type,
+                        "engine_type": "singer",
+                        "event_type": "extractor_initialized",
+                    },
+                )
+            elif source_config.type == "gdrive_csv":
+                from .connectors.gdrive_csv_extractor import GDriveCSVExtractor
+
+                extractor = GDriveCSVExtractor(
+                    source_config, connector_recipe, tenant_id
+                )
+            elif source_config.type == "google_sheets":
+                from .connectors.google_sheets_extractor import GoogleSheetsExtractor
+
+                extractor = GoogleSheetsExtractor(
+                    source_config, connector_recipe, tenant_id
+                )
+            else:
+                logger.error(
+                    f"Unsupported source type: {source_config.type}. "
+                    f"Either use a supported type or specify a custom_reader in the source configuration.",
+                    extra={
+                        "event_type": "extractor_error",
+                    },
+                )
+                return 2
 
         # Extract source tags from extractor if available (for three-level tag hierarchy)
         if hasattr(extractor, "extract_metadata"):

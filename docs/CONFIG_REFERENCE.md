@@ -258,6 +258,100 @@ For detailed documentation, see [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md)
 
 ## Additional Resources
 
+## Engine Framework
+
+Dativo-ingest supports multiple engine types for connectors, allowing you to choose the best approach for each data source.
+
+### Supported Engines
+
+- **`native`**: Python-based native implementation (default for file connectors)
+- **`airbyte`**: Airbyte Docker containers (default for SaaS API connectors)
+- **`meltano`**: Meltano taps/targets (planned)
+- **`singer`**: Singer taps (planned)
+
+### Engine Selection
+
+The engine type is determined from the connector recipe's `default_engine.type` field:
+
+```yaml
+# connectors/hubspot.yaml
+default_engine:
+  type: airbyte
+  options:
+    airbyte:
+      docker_image: "airbyte/source-hubspot:0.2.0"
+      streams_default: ["contacts", "deals", "companies"]
+      start_date_default: "2024-01-01"
+```
+
+### Airbyte Engine
+
+The Airbyte engine executes Airbyte source connectors as Docker containers:
+
+**Configuration:**
+- `docker_image`: Docker image name (e.g., `airbyte/source-hubspot:0.2.0`)
+- `streams_default`: Default streams to extract
+- `start_date_default`: Default start date for incremental sync
+
+**Credentials:**
+- API keys are automatically mapped from environment variables
+- Service account files are loaded from configured paths
+
+**Incremental Sync:**
+- Supports cursor-based incremental sync
+- State is managed via Airbyte state messages
+- Integrates with Dativo's incremental state manager
+
+**Example Connector Recipe:**
+```yaml
+name: hubspot
+type: hubspot
+default_engine:
+  type: airbyte
+  options:
+    airbyte:
+      docker_image: "airbyte/source-hubspot:0.2.0"
+      streams_default: ["contacts", "deals", "companies"]
+      start_date_default: "2024-01-01"
+credentials:
+  type: api_key
+  from_env: HUBSPOT_API_KEY
+incremental:
+  strategy: updated_after
+  cursor_field_default: updatedAt
+```
+
+### Multi-Engine Connectors
+
+Some connectors support multiple engines. The engine is selected based on the connector recipe configuration:
+
+```yaml
+# Google Drive CSV - supports native, airbyte, meltano
+default_engine:
+  type: native  # Default
+  options:
+    native:
+      api_version: "v3"
+    airbyte:
+      docker_image: "airbyte/source-google-drive:latest"
+    meltano:
+      tap_name: "tap-google-drive"
+```
+
+The connector will automatically use the specified engine type when executing.
+
+### Dagster Compatibility
+
+All engine-based connectors are fully compatible with Dagster orchestration:
+
+- **Exit Codes**: Return proper exit codes (0=success, 1=partial, 2=failure)
+- **Structured Logging**: All events logged with `event_type` and metadata
+- **State Management**: Incremental state persists across Dagster runs
+- **Error Handling**: Errors are retryable via Dagster retry policies
+- **Docker Execution**: Containers run in subprocess context for Dagster compatibility
+
+## Additional Resources
+
 - [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md) - Comprehensive setup and onboarding guide
 - [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md) - Detailed Markdown-KV storage documentation
 - [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md) - Execution flow documentation

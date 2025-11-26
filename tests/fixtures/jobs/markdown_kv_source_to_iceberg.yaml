@@ -1,0 +1,44 @@
+# Markdown-KV source to Iceberg job for smoke tests
+# Tests markdown_kv connector as SOURCE (reading from markdown_kv files)
+tenant_id: test_tenant
+environment: test
+
+# Source connector - Markdown-KV (as source)
+source_connector: markdown_kv
+source_connector_path: connectors/markdown_kv.yaml
+
+# Target connector - Iceberg with MinIO storage
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: markdown_kv_docs
+asset_path: assets/markdown_kv/v1.0/docs.yaml
+
+# Source configuration
+source:
+  files:
+    - path: tests/fixtures/seeds/markdown_kv/sample_doc.md
+      object: md_docs
+  incremental:
+    strategy: file_modified_time
+    lookback_days: 0
+
+# Target configuration - Iceberg with MinIO
+target:
+  file_format: parquet
+  connection:
+    s3:
+      endpoint: "${MINIO_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${MINIO_ACCESS_KEY}"
+      secret_access_key: "${MINIO_SECRET_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+      prefix: "raw/markdown_kv/docs"
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+

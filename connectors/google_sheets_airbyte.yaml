@@ -1,10 +1,10 @@
-# Google Sheets connector - supports both source and target roles
+# Google Sheets connector - Airbyte engine variant for testing
 name: google_sheets
 type: google_sheets
 roles: [source, target]  # Can read and write Google Sheets
-description: "Google Sheets connector (bidirectional)"
+description: "Google Sheets connector (Airbyte engine)"
 default_engine:
-  type: native
+  type: airbyte
   options:
     native:
       api_version: "v4"

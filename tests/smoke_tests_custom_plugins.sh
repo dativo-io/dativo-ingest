@@ -21,13 +21,19 @@ if [ -z "$PGHOST" ] || [ -z "$PGDATABASE" ] || \
     fi
 fi
 
-# Detect Python interpreter (prefer venv if available)
+# Detect Python interpreter
+# Prefer: 1) venv python, 2) python (GitHub Actions uses this), 3) python3.12, 4) python3
 if [ -f "$PROJECT_ROOT/venv/bin/python" ]; then
     PYTHON_CMD="$PROJECT_ROOT/venv/bin/python"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_CMD="python"
+elif command -v python3.12 >/dev/null 2>&1; then
+    PYTHON_CMD="python3.12"
 elif command -v python3 >/dev/null 2>&1; then
     PYTHON_CMD="python3"
 else
-    PYTHON_CMD="python"
+    echo "❌ ERROR: No Python interpreter found"
+    exit 1
 fi
 
 # Colors for output
@@ -140,7 +146,7 @@ run_test() {
     
     # Run the test
     set +e
-    OUTPUT=$($PYTHON_CMD -m dativo_ingest.cli run \
+    OUTPUT=$(PYTHONPATH=src $PYTHON_CMD -m dativo_ingest.cli run \
         --job-dir "$TEMP_JOB_DIR" \
         --secrets-dir "$SECRETS_DIR" \
         --mode self_hosted 2>&1)
