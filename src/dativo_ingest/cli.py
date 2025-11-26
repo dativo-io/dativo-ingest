@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from .config import JobConfig, RunnerConfig
+from .data_catalogs import publish_catalog_lineage
 from .infrastructure import validate_infrastructure
 from .logging import get_logger, setup_logging, update_logging_settings
 from .secrets import load_secrets
@@ -406,6 +407,8 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
     # Initialize extractor based on source type or custom reader
     # Initialize source_tags early to ensure it's always defined
     source_tags = None
+    catalog_publish_results: List[Dict[str, Any]] = []
+    commit_result: Optional[Dict[str, Any]] = None
     try:
         if source_config.custom_reader:
             # Use custom reader plugin
@@ -967,6 +970,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 )
                 try:
                     upload_result = upload_committer.commit_files(all_file_metadata)
+                    commit_result = upload_result
                     logger.info(
                         f"Files uploaded to S3 (no catalog configured): {upload_result.get('files_added', len(all_file_metadata))} file(s)",
                         extra={
@@ -992,6 +996,44 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     "event_type": "no_files",
                 },
             )
+            commit_result = commit_result or {
+                "files_added": 0,
+                "table_name": f"{asset_definition.domain or 'default'}.{asset_definition.name}",
+            }
+
+        # Publish lineage to configured data catalogs (best effort)
+        pipeline_stats = {
+            "total_records": total_records,
+            "valid_records": total_valid_records,
+            "files_written": total_files_written,
+            "has_errors": has_errors,
+            "validation_mode": validation_mode,
+        }
+        if job_config.catalog and job_config.catalog.enabled_targets():
+            try:
+                catalog_publish_results = publish_catalog_lineage(
+                    job_config=job_config,
+                    asset_definition=asset_definition,
+                    source_config=source_config,
+                    target_config=target_config,
+                    file_metadata=all_file_metadata,
+                    commit_result=commit_result,
+                    totals=pipeline_stats,
+                    source_tags=source_tags,
+                )
+                if catalog_publish_results:
+                    logger.info(
+                        "Lineage pushed to configured data catalog(s)",
+                        extra={
+                            "event_type": "catalog_lineage_published",
+                            "catalog_results": catalog_publish_results,
+                        },
+                    )
+            except Exception as catalog_exc:
+                logger.warning(
+                    f"Failed to publish lineage to data catalog(s): {catalog_exc}",
+                    extra={"event_type": "catalog_lineage_failed"},
+                )
 
         # Determine exit code
         if has_errors and validation_mode == "warn":
@@ -1017,6 +1059,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 "files_written": total_files_written,
                 "total_bytes": total_bytes,
                 "exit_code": exit_code,
+                "catalog_results": catalog_publish_results,
                 "event_type": "job_finished",
                 # Enhanced metadata for observability
                 "metadata": {

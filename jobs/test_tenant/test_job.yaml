@@ -34,3 +34,15 @@ schema_validation_mode: strict  # or 'warn'
 logging:
   redaction: true
   level: INFO
+
+# Data catalog lineage configuration (optional)
+catalog:
+  type: openmetadata
+  service: dativo_demo
+  database: analytics
+  schema: hr
+  table: test_job
+  uri: "${OPENMETADATA_API:-http://localhost:8585/api}"
+  options:
+    from_type: Table
+    to_type: Table

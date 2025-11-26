@@ -190,6 +190,127 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "catalog": {
+      "description": "Optional data catalog lineage configuration. When provided, lineage and governance metadata will be pushed to the referenced data catalog(s).",
+      "oneOf": [
+        {"$ref": "#/$defs/dataCatalogTarget"},
+        {"$ref": "#/$defs/dataCatalogConfig"}
+      ]
+    }
+  },
+  "$defs": {
+    "dataCatalogConfig": {
+      "type": "object",
+      "required": ["targets"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["sync", "async"],
+          "default": "sync",
+          "description": "Publishing mode. Async mode will schedule lineage pushes in background threads (future use)."
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/dataCatalogTarget"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "dataCatalogTarget": {
+      "type": "object",
+      "title": "Data catalog target",
+      "description": "Definition of a single data catalog that should receive lineage metadata.",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["aws_glue", "databricks_unity", "nessie", "openmetadata"],
+          "description": "Catalog provider identifier."
+        },
+        "name": {
+          "type": "string",
+          "description": "Friendly name for the catalog target."
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable this catalog target without removing configuration."
+        },
+        "service": {
+          "type": "string",
+          "description": "Logical service identifier (used by OpenMetadata/Unity)."
+        },
+        "catalog": {
+          "type": "string",
+          "description": "Catalog/catalogue name (Unity/Nessie)."
+        },
+        "database": {
+          "type": "string",
+          "description": "Database name (Glue/OpenMetadata)."
+        },
+        "schema": {
+          "type": "string",
+          "description": "Schema name (Glue/OpenMetadata/Unity)."
+        },
+        "table": {
+          "type": "string",
+          "description": "Override table/entity name; defaults to asset definition name."
+        },
+        "warehouse": {
+          "type": "string",
+          "description": "Warehouse/storage location (Nessie fallback)."
+        },
+        "branch": {
+          "type": "string",
+          "description": "Branch/ref name for Nessie catalogs."
+        },
+        "workspace_url": {
+          "type": "string",
+          "description": "Databricks workspace base URL."
+        },
+        "token": {
+          "type": "string",
+          "description": "Authentication token for Databricks/OpenMetadata (if required)."
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region for Glue."
+        },
+        "uri": {
+          "type": "string",
+          "description": "REST endpoint URI (Nessie/OpenMetadata)."
+        },
+        "reference": {
+          "type": "string",
+          "description": "Optional catalog-specific reference (e.g., Nessie reference name)."
+        },
+        "upstream": {
+          "type": "string",
+          "description": "Fully-qualified upstream entity (overrides auto-derived source)."
+        },
+        "downstream": {
+          "type": "string",
+          "description": "Fully-qualified downstream entity (overrides auto-derived sink)."
+        },
+        "connection": {
+          "type": "object",
+          "description": "Provider-specific connection/options object."
+        },
+        "options": {
+          "type": "object",
+          "description": "Additional provider-specific options."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120,
+          "default": 15,
+          "description": "Network timeout when calling catalog APIs."
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": false

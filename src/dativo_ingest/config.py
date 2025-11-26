@@ -5,7 +5,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import jsonschema
 import yaml
@@ -443,6 +443,86 @@ class TargetConfig(BaseModel):
         return self
 
 
+class CatalogTargetConfig(BaseModel):
+    """Configuration for an individual data catalog target."""
+
+    type: Literal["aws_glue", "databricks_unity", "nessie", "openmetadata"]
+    name: Optional[str] = None
+    enabled: bool = True
+    service: Optional[str] = None
+    catalog: Optional[str] = None
+    database: Optional[str] = None
+    schema: Optional[str] = None
+    table: Optional[str] = None
+    warehouse: Optional[str] = None
+    branch: Optional[str] = None
+    workspace_url: Optional[str] = None
+    token: Optional[str] = None
+    region: Optional[str] = None
+    uri: Optional[str] = None
+    reference: Optional[str] = None
+    upstream: Optional[str] = None
+    downstream: Optional[str] = None
+    connection: Dict[str, Any] = Field(default_factory=dict)
+    options: Dict[str, Any] = Field(default_factory=dict)
+    timeout_seconds: int = Field(default=15, ge=1, le=120)
+
+    @model_validator(mode="after")
+    def validate_provider_requirements(self) -> "CatalogTargetConfig":
+        """Ensure provider-specific minimum configuration."""
+        if self.type == "aws_glue" and not (
+            self.database or self.connection.get("database")
+        ):
+            raise ValueError(
+                "AWS Glue catalog target requires 'database' or connection.database"
+            )
+        if self.type == "databricks_unity" and not (
+            self.workspace_url or self.connection.get("workspace_url")
+        ):
+            raise ValueError(
+                "Databricks Unity catalog target requires 'workspace_url' "
+                "either at top-level or inside connection"
+            )
+        if self.type == "openmetadata" and not (
+            self.uri or self.connection.get("server")
+        ):
+            raise ValueError(
+                "OpenMetadata catalog target requires 'uri' or connection.server"
+            )
+        return self
+
+
+class CatalogConfig(BaseModel):
+    """Wrapper for catalog publishing configuration."""
+
+    mode: Literal["sync", "async"] = "sync"
+    targets: List[CatalogTargetConfig] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_catalog(cls, value: Any) -> Any:
+        """Allow shorthand formats (single dict or plain list)."""
+        if value is None:
+            return value
+        if isinstance(value, list):
+            return {"targets": value}
+        if isinstance(value, dict):
+            if "targets" in value:
+                targets = value["targets"]
+                if isinstance(targets, dict):
+                    value = {**value, "targets": [targets]}
+                return value
+            if "type" in value:
+                return {"targets": [value]}
+        raise ValueError(
+            "Catalog configuration must be a list of targets or an object with 'targets'."
+        )
+
+    def enabled_targets(self) -> List[CatalogTargetConfig]:
+        """Return enabled targets."""
+        return [target for target in self.targets if target.enabled]
+
+
 class LoggingConfig(BaseModel):
     """Logging configuration."""
 
@@ -495,6 +575,7 @@ class JobConfig(BaseModel):
     # Source and target configurations (flat structure, merged with recipes)
     source: Optional[Dict[str, Any]] = None  # Source configuration
     target: Optional[Dict[str, Any]] = None  # Target configuration
+    catalog: Optional[CatalogConfig] = None  # Lineage/data catalog targets
 
     # Metadata overrides for tag propagation
     classification_overrides: Optional[Dict[str, str]] = (

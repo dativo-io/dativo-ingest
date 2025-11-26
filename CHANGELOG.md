@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Data Catalog Lineage Framework**: Optional `catalog` block in job configs pushes lineage/metadata to AWS Glue, Databricks Unity Catalog, Nessie, and OpenMetadata (including OpenMetadata smoke tests).
 - **Custom Plugin System**: Support for Python and Rust plugins
   - **Python Plugins:**
     - New `BaseReader` and `BaseWriter` base classes for plugin development
@@ -34,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added performance comparison data for Rust plugins
 
 ### Testing
+- Added `tests/test_data_catalogs.py` covering lineage payload builder, Glue/Unity/Nessie/OpenMetadata publishers, and the OpenMetadata smoke test server.
 - **Comprehensive Test Suite**: 76 total tests covering all plugin functionality
   - 47 unit tests in `test_plugins.py`
   - 19 integration tests in `test_plugin_integration.sh`

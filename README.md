@@ -14,6 +14,7 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 - **Custom Plugins** - Python and Rust plugins for custom readers/writers
 - **Parquet Writer** - Writes validated data with partitioning and file sizing
 - **Iceberg Committer** - Optional catalog integration (files always written to S3)
+- **Data Catalog Lineage** - Pushes lineage metadata to AWS Glue, Databricks Unity Catalog, Nessie, and OpenMetadata when configured
 
 ## Quick Start
 
@@ -120,7 +121,8 @@ Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/r
 2. **Validate** - Validate records against asset schema (strict or warn mode)
 3. **Write** - Write to Parquet files (target: 128-200 MB, supports partitioning)
 4. **Commit** - Optional: Commit to Iceberg catalog (files always written to S3)
-5. **Update State** - Track incremental sync state
+5. **Publish** - Push lineage + governance metadata to configured data catalogs (Glue, Unity Catalog, Nessie, OpenMetadata)
+6. **Update State** - Track incremental sync state
 
 **Catalog Note**: Iceberg catalog is optional. Without catalog, Parquet files are written directly to S3/MinIO. See [docs/CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md).
 
@@ -150,6 +152,19 @@ target:
     s3:
       bucket: "${S3_BUCKET}"
       prefix: "raw/stripe/customers"
+# Optional lineage publishing block
+catalog:
+  targets:
+    - type: openmetadata
+      service: dativo_demo
+      database: analytics
+      schema: trusted
+      table: stripe_customers
+      uri: "${OPENMETADATA_API:-http://localhost:8585/api}"
+    - type: aws_glue
+      database: analytics
+      table: stripe_customers
+      region: us-east-1
 ```
 
 **Asset Definition** - ODCS v3.0.2 schema with governance:
@@ -181,6 +196,17 @@ target:
 
 See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for complete reference.  
 See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal asset example.
+
+### Data Catalog Lineage Block
+
+Add the optional `catalog` block to push lineage, owners, tags, and FinOps metadata into external catalogs after each job run.
+
+- **AWS Glue (`type: aws_glue`)** – requires `database`, optional `table` and `region`.
+- **Databricks Unity Catalog (`type: databricks_unity`)** – requires `workspace_url`, `token`, plus optional `catalog`, `schema`, `table`.
+- **Nessie (`type: nessie`)** – reuses Iceberg commit metadata; supports overriding `catalog`, `branch`, `connection`.
+- **OpenMetadata (`type: openmetadata`)** – requires `uri` (e.g., `http://localhost:8585/api`), optional `service`, `database`, `schema`, `table`.
+
+You can define a single target (`catalog: {type: ...}`) or multiple targets via `catalog.targets`. Local smoke tests for OpenMetadata are available via `pytest tests/test_data_catalogs.py::test_openmetadata_publisher_smoke`.
 
 
 ## Supported Connectors

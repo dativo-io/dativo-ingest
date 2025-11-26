@@ -93,6 +93,14 @@ target:
     s3:
       bucket: "${S3_BUCKET}"
       prefix: "raw/mytenant"
+# Optional lineage publishing block
+catalog:
+  type: openmetadata
+  service: quickstart_lake
+  database: analytics
+  schema: bronze
+  table: my_asset
+  uri: "${OPENMETADATA_API:-http://localhost:8585/api}"
 ```
 
 2. **Create an asset definition** (`assets/csv/v1.0/my_asset.yaml`):
@@ -133,6 +141,16 @@ S3_BUCKET=test-bucket
 ```bash
 dativo run --config jobs/mytenant/my_job.yaml --mode self_hosted
 ```
+
+### Optional: Smoke Test OpenMetadata Lineage
+
+Run the lightweight smoke test (uses an in-memory HTTP server) to verify OpenMetadata publishing logic without deploying the full platform:
+
+```bash
+pytest tests/test_data_catalogs.py::test_openmetadata_publisher_smoke -q
+```
+
+To try a real OpenMetadata instance, point `OPENMETADATA_API` to your server URL (e.g., `http://localhost:8585/api`) and keep the `catalog` block enabled.
 
 ## Next Steps
 

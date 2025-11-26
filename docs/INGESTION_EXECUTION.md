@@ -24,8 +24,9 @@ The ingestion pipeline follows these steps:
 1. **Extract**: Read data from source (CSV, API, database, etc.)
 2. **Validate**: Validate records against asset schema
 3. **Write**: Write validated records to Parquet files
-4. **Commit**: Commit Parquet files to Iceberg table via Nessie
-5. **Update State**: Update incremental sync state (if applicable)
+4. **Commit**: Commit Parquet files to Iceberg table via Nessie (optional)
+5. **Publish Lineage**: Push lineage/governance metadata to configured catalogs (Glue, Unity Catalog, Nessie, OpenMetadata)
+6. **Update State**: Update incremental sync state (if applicable)
 
 ---
 
@@ -119,6 +120,48 @@ Tables are automatically created if they don't exist:
 2. Register files in Iceberg table metadata
 3. Commit metadata changes to Nessie branch
 4. Return commit ID and file count
+
+---
+
+## Data Catalog Lineage
+
+After commits (or successful file uploads), the runner can automatically push lineage metadata to one or more external catalogs. Enable this with the `catalog` block in the job configuration.
+
+Supported providers:
+
+- **AWS Glue** – Table parameters are updated with flattened metadata.
+- **Databricks Unity Catalog** – REST API `/api/2.1/unity-catalog/lineage` receives full lineage payload (including column mappings).
+- **Nessie** – Table properties are updated even when the target config runs in “no catalog” mode.
+- **OpenMetadata** – Lineage edges (with `dativoMetadata`) posted to `/api/v1/lineage/addLineage`.
+
+**Configuration Example:**
+
+```yaml
+catalog:
+  targets:
+    - type: aws_glue
+      database: analytics
+      table: customer_orders
+      region: us-east-1
+    - type: databricks_unity
+      workspace_url: https://example.cloud.databricks.com
+      token: "${DATABRICKS_TOKEN}"
+      catalog: main
+      schema: analytics
+      table: customer_orders
+    - type: openmetadata
+      service: lakehouse_demo
+      database: analytics
+      schema: gold
+      table: customer_orders
+      uri: "${OPENMETADATA_API:-http://localhost:8585/api}"
+```
+
+Each target is optional; disabling a target is as simple as removing it or setting `enabled: false`. A lightweight OpenMetadata smoke test is included in the repo:
+
+```bash
+pytest tests/test_data_catalogs.py::test_openmetadata_publisher_smoke -q
+```
 
 ### Connection Configuration
 

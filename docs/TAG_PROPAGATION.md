@@ -411,6 +411,32 @@ committer.ensure_table_exists()
 committer.commit_files(file_metadata)
 ```
 
+## Data Catalog Publishing
+
+Set the `catalog` block in your job configuration to push the derived metadata (classifications, owners, FinOps, lineage edges) into external catalog systems immediately after each successful run:
+
+- **AWS Glue** – Parameters are updated via `UpdateTable`, making tags/owners queryable in Glue Data Catalog.
+- **Databricks Unity Catalog** – Lineage payloads (including column mappings) are pushed through the `/unity-catalog/lineage` REST API.
+- **Nessie** – Table properties inside Nessie/PyIceberg are refreshed even if the target catalog is not used for commits.
+- **OpenMetadata** – Lineage edges and metadata are posted to `/api/v1/lineage/addLineage`. A local smoke test is available via `pytest tests/test_data_catalogs.py::test_openmetadata_publisher_smoke`.
+
+Example job snippet:
+
+```yaml
+catalog:
+  targets:
+    - type: aws_glue
+      database: analytics
+      table: employee_profile
+      region: us-east-1
+    - type: openmetadata
+      service: demo_lake
+      database: analytics
+      schema: hr
+      table: employee_profile
+      uri: http://localhost:8585/api
+```
+
 ## Testing
 
 Run the tag derivation tests:
@@ -430,7 +456,7 @@ tests/test_tag_derivation.py::test_derive_all_tags PASSED
 
 ## Next Steps
 
-1. **Catalog Integration:** Configure data catalogs (Unity Catalog, Glue, etc.) to read Iceberg properties
+1. **Catalog Integration:** Configure one or more catalog targets via the `catalog` block (Glue, Unity, Nessie, OpenMetadata)
 2. **dbt Macros:** Create dbt macros to propagate tags to downstream models
 3. **Monitoring:** Set up alerts for tables missing required classifications
 4. **Audit:** Query Iceberg properties to ensure compliance across all tables

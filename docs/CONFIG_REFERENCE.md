@@ -75,6 +75,41 @@ logging:
 - `target`: Target-specific configuration overrides
 - `schema_validation_mode`: Validation mode (`strict` or `warn`, defaults to `strict`)
 - `logging`: Logging configuration (level, redaction)
+- `catalog`: Optional lineage publishing block (see below)
+
+### Data Catalog Block
+
+Add the `catalog` block to push lineage metadata into external data catalogs after each run. The block accepts either a single target object or a `targets` array.
+
+```yaml
+catalog:
+  targets:
+    - type: aws_glue
+      database: analytics
+      table: customers
+      region: us-east-1
+    - type: databricks_unity
+      workspace_url: https://example.cloud.databricks.com
+      token: "${DATABRICKS_TOKEN}"
+      catalog: main
+      schema: analytics
+      table: customers
+    - type: openmetadata
+      service: lakehouse_demo
+      database: analytics
+      schema: gold
+      table: customers
+      uri: "${OPENMETADATA_API:-http://localhost:8585/api}"
+```
+
+| Provider (`type`) | Required Keys | Notes |
+| --- | --- | --- |
+| `aws_glue` | `database` | Optional: `table`, `region`, `connection.database`, `connection.region` |
+| `databricks_unity` | `workspace_url`, `token` | Optional: `catalog`, `schema`, `table`, `connection.workspace_url`, `connection.token` |
+| `nessie` | none (reuses target config) | Optional: override `catalog`, `branch`, `warehouse`, `connection` |
+| `openmetadata` | `uri` | Optional: `service`, `database`, `schema`, `table`, `token` |
+
+Set `enabled: false` on a target to temporarily disable publishing without removing its configuration. Local smoke test: `pytest tests/test_data_catalogs.py::test_openmetadata_publisher_smoke -q`.
 
 ---
 
