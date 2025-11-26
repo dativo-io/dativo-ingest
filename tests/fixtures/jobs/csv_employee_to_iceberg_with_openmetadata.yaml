@@ -1,0 +1,66 @@
+# CSV Employee to Iceberg with OpenMetadata catalog integration
+# This is a test job demonstrating catalog integration
+tenant_id: test_tenant
+environment: test
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: tests/fixtures/assets/csv/v1.0/employee.yaml
+
+# Data catalog configuration - OpenMetadata
+catalog:
+  type: openmetadata
+  enabled: true  # Set to false to disable catalog integration
+  connection:
+    host_port: ${OPENMETADATA_HOST_PORT:-http://localhost:8585/api}
+    service_name: dativo_test_ingestion
+    # Optional: JWT token for authentication (omit for no-auth mode)
+    # jwt_token: ${OPENMETADATA_JWT_TOKEN}
+  options:
+    database: test_db
+    schema: default
+
+# Source configuration
+source:
+  files:
+    - path: tests/fixtures/seeds/AdventureWorks-oltp-install-script/Employee.csv
+      object: Employee
+  engine:
+    options:
+      encoding: "utf-16-le"  # File is UTF-16 little-endian
+
+# Target configuration - Iceberg table configuration
+target:
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+
+# Governance overrides
+classification_overrides:
+  EmailAddress: PII
+  
+finops:
+  cost_center: test
+  business_tags: [test, employee, catalog-demo]
+  project: catalog-integration-test
+
+# Execution configuration
+schema_validation_mode: warn  # Warn on validation errors instead of failing
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO

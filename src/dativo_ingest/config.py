@@ -478,6 +478,15 @@ class RetryConfig(BaseModel):
         return self
 
 
+class CatalogConfig(BaseModel):
+    """Data catalog configuration for lineage tracking."""
+
+    type: str  # 'aws_glue', 'databricks_unity', 'nessie', 'openmetadata'
+    enabled: bool = True
+    connection: Dict[str, Any]  # Catalog-specific connection details
+    options: Optional[Dict[str, Any]] = None  # Additional catalog-specific options
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -495,6 +504,9 @@ class JobConfig(BaseModel):
     # Source and target configurations (flat structure, merged with recipes)
     source: Optional[Dict[str, Any]] = None  # Source configuration
     target: Optional[Dict[str, Any]] = None  # Target configuration
+
+    # Data catalog configuration (optional)
+    catalog: Optional[CatalogConfig] = None  # Data catalog for lineage tracking
 
     # Metadata overrides for tag propagation
     classification_overrides: Optional[Dict[str, str]] = (

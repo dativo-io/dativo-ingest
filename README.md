@@ -14,6 +14,7 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 - **Custom Plugins** - Python and Rust plugins for custom readers/writers
 - **Parquet Writer** - Writes validated data with partitioning and file sizing
 - **Iceberg Committer** - Optional catalog integration (files always written to S3)
+- **Data Catalog Integration** - Automatic lineage tracking to AWS Glue, Databricks Unity Catalog, Nessie, and OpenMetadata
 
 ## Quick Start
 
@@ -182,6 +183,34 @@ target:
 See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for complete reference.  
 See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal asset example.
 
+## Data Catalog Integration
+
+Automatically track lineage and push metadata to data catalogs:
+
+```yaml
+catalog:
+  type: openmetadata  # aws_glue, databricks_unity, nessie, openmetadata
+  enabled: true
+  connection:
+    host_port: http://openmetadata:8585/api
+    service_name: dativo_ingestion
+
+source:
+  # ... source config
+
+target:
+  # ... target config
+```
+
+**Features:**
+- Automatic lineage tracking after successful ingestion
+- Push schema, tags, owners, and governance metadata
+- Support for AWS Glue, Databricks Unity Catalog, Nessie, and OpenMetadata
+- Column-level classification tags (PII, sensitive, etc.)
+- FinOps metadata (cost center, business tags)
+
+See [docs/CATALOG_INTEGRATION.md](docs/CATALOG_INTEGRATION.md) for detailed documentation.
+
 
 ## Supported Connectors
 
@@ -199,6 +228,12 @@ See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal a
 - **Iceberg** - Apache Iceberg tables (Parquet format)
 - **S3** - Amazon S3 object storage
 - **MinIO** - MinIO object storage
+
+**Data Catalogs:**
+- **AWS Glue** - AWS-native metadata management
+- **Databricks Unity Catalog** - Unified governance for Databricks
+- **Nessie** - Git-like data catalog with branching
+- **OpenMetadata** - Open-source metadata and governance platform
 
 ## Custom Plugins
 
@@ -318,6 +353,7 @@ src/dativo_ingest/   # Source code
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
+**Catalog Integration:** [docs/CATALOG_INTEGRATION.md](docs/CATALOG_INTEGRATION.md)  
 **Testing:** [tests/README.md](tests/README.md)
 
 

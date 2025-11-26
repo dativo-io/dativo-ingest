@@ -1,0 +1,75 @@
+# PostgreSQL orders to Iceberg with OpenMetadata catalog integration
+tenant_id: acme
+environment: prod
+
+# Source connector - PostgreSQL
+source_connector: postgres
+source_connector_path: /app/connectors/postgres.yaml
+
+# Target connector - Iceberg
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: postgres_orders
+asset_path: /app/assets/postgres/v1.0/db_orders.yaml
+
+# Data catalog configuration - OpenMetadata
+catalog:
+  type: openmetadata
+  enabled: true
+  connection:
+    host_port: ${OPENMETADATA_HOST_PORT:-http://openmetadata:8585/api}
+    service_name: acme_production
+    # For production, use JWT token authentication
+    jwt_token: ${OPENMETADATA_JWT_TOKEN}
+  options:
+    database: acme_production
+    schema: orders
+
+# Source configuration
+source:
+  tables:
+    - object: orders
+  incremental:
+    strategy: timestamp
+    cursor_field: updated_at
+    lookback_days: 1
+
+# Target configuration - Iceberg with Nessie catalog
+target:
+  catalog: nessie
+  branch: acme
+  warehouse: s3://acme-data-lake/
+  connection:
+    nessie:
+      uri: ${NESSIE_URI}
+    s3:
+      bucket: acme-data-lake
+      prefix: raw/postgres/orders
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+      region: ${AWS_REGION}
+
+# Governance overrides
+classification_overrides:
+  customer_email: PII
+  customer_phone: PII
+  billing_address: PII
+
+finops:
+  cost_center: revenue
+  business_tags: [orders, revenue, core-business]
+  project: revenue-analytics
+  environment: production
+
+governance_overrides:
+  retention_days: 2555  # 7 years for financial records
+
+# Execution configuration
+schema_validation_mode: strict
+
+# Logging configuration
+logging:
+  redaction: true
+  level: INFO

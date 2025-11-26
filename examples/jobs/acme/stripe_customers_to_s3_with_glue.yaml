@@ -1,0 +1,66 @@
+# Stripe customers to S3 with AWS Glue catalog integration
+tenant_id: acme
+environment: prod
+
+# Source connector - Stripe with Airbyte engine
+source_connector: stripe
+source_connector_path: /app/connectors/stripe.yaml
+
+# Target connector - S3
+target_connector: s3
+target_connector_path: /app/connectors/s3.yaml
+
+# Asset definition
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+# Data catalog configuration - AWS Glue
+catalog:
+  type: aws_glue
+  enabled: true
+  connection:
+    region: ${AWS_REGION:-us-east-1}
+    database: acme_stripe
+    bucket: acme-stripe-data
+    # AWS credentials from environment or IAM role
+    aws_access_key_id: ${AWS_ACCESS_KEY_ID}
+    aws_secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+
+# Source configuration
+source:
+  objects: [customers]
+  incremental:
+    strategy: created
+    cursor_field: created
+    lookback_days: 7
+
+# Target configuration - S3
+target:
+  file_format: parquet
+  connection:
+    s3:
+      endpoint: ${S3_ENDPOINT}
+      bucket: acme-stripe-data
+      prefix: raw/stripe/customers
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+      region: ${AWS_REGION}
+
+# Governance overrides
+classification_overrides:
+  email: PII
+  phone: PII
+  address: PII
+  
+finops:
+  cost_center: payments
+  business_tags: [stripe, customers, payments]
+  project: customer-360
+
+# Execution configuration
+schema_validation_mode: strict
+
+# Logging configuration
+logging:
+  redaction: true
+  level: INFO

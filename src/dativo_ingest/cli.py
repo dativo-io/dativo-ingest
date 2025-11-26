@@ -1008,6 +1008,68 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             else 0
         )
 
+        # Push lineage to data catalog if configured and job succeeded
+        if job_config.catalog and job_config.catalog.enabled and exit_code == 0:
+            try:
+                from datetime import datetime
+                from .catalog_integrations import create_catalog_client, LineageInfo
+
+                logger.info(
+                    f"Pushing lineage to {job_config.catalog.type} catalog",
+                    extra={
+                        "catalog_type": job_config.catalog.type,
+                        "event_type": "catalog_lineage_pushing",
+                    },
+                )
+
+                # Create catalog client
+                catalog_client = create_catalog_client(job_config.catalog)
+
+                # Extract file paths from metadata
+                file_paths = [
+                    file_meta.get("path", "") for file_meta in all_file_metadata
+                ]
+
+                # Build lineage info
+                lineage_info = LineageInfo(
+                    source_type=source_config.type,
+                    source_name=source_config.objects[0] if source_config.objects else asset_definition.object,
+                    target_type=target_config.type,
+                    target_name=asset_definition.name,
+                    asset_definition=asset_definition,
+                    record_count=total_valid_records,
+                    file_count=total_files_written,
+                    total_bytes=total_bytes,
+                    file_paths=file_paths,
+                    execution_time=datetime.utcnow(),
+                    classification_overrides=job_config.classification_overrides,
+                    finops=job_config.finops,
+                    governance_overrides=job_config.governance_overrides,
+                    source_tags=source_tags,
+                )
+
+                # Push lineage
+                catalog_result = catalog_client.push_lineage(lineage_info)
+
+                logger.info(
+                    f"Successfully pushed lineage to {job_config.catalog.type} catalog",
+                    extra={
+                        "catalog_type": job_config.catalog.type,
+                        "catalog_result": catalog_result,
+                        "event_type": "catalog_lineage_pushed",
+                    },
+                )
+            except Exception as e:
+                # Log warning but don't fail the job
+                logger.warning(
+                    f"Failed to push lineage to catalog: {e}",
+                    extra={
+                        "catalog_type": job_config.catalog.type if job_config.catalog else None,
+                        "event_type": "catalog_lineage_failed",
+                    },
+                    exc_info=True,
+                )
+
         # Emit enhanced metadata
         logger.info(
             "Job execution completed",
