@@ -75,16 +75,19 @@ def test_gdrive_native_extractor_initialization(
     gdrive_source_config, gdrive_connector_recipe_native
 ):
     """Test Google Drive CSV extractor with native engine."""
-    from pathlib import Path as PathOriginal
+    from pathlib import Path
 
-    # Create a mock Path class that always returns True for exists()
-    class MockPath(PathOriginal):
-        def exists(self):
-            return True
+    # Create a mock Path that returns instances with exists() = True
+    def mock_path_constructor(*args, **kwargs):
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        # Preserve string representation
+        mock_path.__str__ = lambda: str(args[0]) if args else ""
+        mock_path.__fspath__ = lambda: str(args[0]) if args else ""
+        return mock_path
 
-    # Mock the Google API imports BEFORE the extractor tries to import them
-    # We need to patch the imports at the module level where they're used
-    with patch("dativo_ingest.connectors.gdrive_csv_extractor.Path", MockPath):
+    # Mock Path in the module where it's used
+    with patch("dativo_ingest.connectors.gdrive_csv_extractor.Path", side_effect=mock_path_constructor):
         # Mock sys.modules to fake the Google API modules
         import sys
 
@@ -136,15 +139,19 @@ def test_gdrive_airbyte_extractor_initialization(
 
 def test_gdrive_extract_metadata(gdrive_source_config, gdrive_connector_recipe_native):
     """Test Google Drive CSV metadata extraction."""
-    from pathlib import Path as PathOriginal
+    from pathlib import Path
 
-    # Create a mock Path class that always returns True for exists()
-    class MockPath(PathOriginal):
-        def exists(self):
-            return True
+    # Create a mock Path that returns instances with exists() = True
+    def mock_path_constructor(*args, **kwargs):
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        # Preserve string representation
+        mock_path.__str__ = lambda: str(args[0]) if args else ""
+        mock_path.__fspath__ = lambda: str(args[0]) if args else ""
+        return mock_path
 
-    # Mock the Google API imports BEFORE the extractor tries to import them
-    with patch("dativo_ingest.connectors.gdrive_csv_extractor.Path", MockPath):
+    # Mock Path in the module where it's used
+    with patch("dativo_ingest.connectors.gdrive_csv_extractor.Path", side_effect=mock_path_constructor):
         import sys
 
         mock_google_oauth2 = MagicMock()
