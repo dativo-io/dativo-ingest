@@ -1,0 +1,68 @@
+# Stripe Customers to Iceberg with OpenMetadata catalog integration
+tenant_id: acme
+environment: prod
+
+# Source connector - Stripe
+source_connector: stripe
+source_connector_path: /app/connectors/stripe.yaml
+
+# Target connector - Iceberg
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+# Source configuration
+source:
+  objects: [customers]
+  incremental:
+    strategy: updated_after
+    cursor_field: created
+    lookback_days: 1
+
+# Target configuration - Iceberg with MinIO
+target:
+  file_format: parquet
+  branch: acme
+  warehouse: s3://lake/acme/
+  connection:
+    nessie:
+      uri: "${NESSIE_URI}"
+    s3:
+      endpoint: "${MINIO_ENDPOINT}"
+      bucket: "acme-data-lake"
+      access_key_id: "${MINIO_ACCESS_KEY}"
+      secret_access_key: "${MINIO_SECRET_KEY}"
+      region: "us-east-1"
+
+# Data Catalog Integration - OpenMetadata
+catalog:
+  type: openmetadata
+  config:
+    uri: "${OPENMETADATA_URI:-http://localhost:8585}"
+    token: "${OPENMETADATA_TOKEN}"
+    api_version: v1
+  metadata:
+    owners:
+      - data-platform@acme.com
+      - stripe-integration@acme.com
+    tags:
+      tier: gold
+      source: stripe
+      domain: payments
+      pii: "true"
+    description: "Stripe customer data for payment processing and analytics"
+  lineage:
+    enabled: true
+    upstream_tables:
+      - stripe.raw.customers
+    downstream_tables:
+      - analytics.customer_360
+      - ml.customer_churn
+
+# Logging configuration
+logging:
+  redaction: true
+  level: INFO

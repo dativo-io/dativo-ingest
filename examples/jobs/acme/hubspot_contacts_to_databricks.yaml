@@ -1,0 +1,63 @@
+# HubSpot Contacts to Iceberg with Databricks Unity Catalog integration
+tenant_id: acme
+environment: prod
+
+# Source connector - HubSpot
+source_connector: hubspot
+source_connector_path: /app/connectors/hubspot.yaml
+
+# Target connector - Iceberg
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: hubspot_contacts
+asset_path: /app/assets/hubspot/v1.0/contacts.yaml
+
+# Source configuration
+source:
+  objects: [contacts]
+  incremental:
+    strategy: updated_after
+    cursor_field: updatedAt
+    lookback_days: 1
+
+# Target configuration - Iceberg with S3
+target:
+  file_format: parquet
+  branch: acme
+  warehouse: s3://acme-data-lake/warehouse/
+  connection:
+    s3:
+      bucket: "acme-data-lake"
+      region: "${AWS_REGION:-us-east-1}"
+
+# Data Catalog Integration - Databricks Unity Catalog
+catalog:
+  type: databricks_unity
+  config:
+    workspace_url: "${DATABRICKS_WORKSPACE_URL}"
+    token: "${DATABRICKS_TOKEN}"
+    catalog: main
+  metadata:
+    owners:
+      - crm-team@acme.com
+      - data-platform@acme.com
+    tags:
+      tier: gold
+      source: hubspot
+      domain: crm
+      pii: "true"
+    description: "HubSpot contact data for CRM and marketing analytics"
+  lineage:
+    enabled: true
+    upstream_tables:
+      - hubspot.raw.contacts
+    downstream_tables:
+      - analytics.contacts_360
+      - ml.lead_scoring
+
+# Logging configuration
+logging:
+  redaction: true
+  level: INFO

@@ -1008,6 +1008,129 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             else 0
         )
 
+        # Push lineage and metadata to data catalog if configured
+        if job_config.catalog and exit_code == 0:
+            try:
+                from .data_catalog import CatalogManager
+
+                logger.info(
+                    "Pushing lineage and metadata to data catalog",
+                    extra={
+                        "catalog_type": job_config.catalog.get("type"),
+                        "event_type": "catalog_sync_started",
+                    },
+                )
+
+                catalog_manager = CatalogManager(
+                    catalog_config=job_config.catalog,
+                    asset_definition=asset_definition,
+                )
+
+                # Determine database and table name
+                target_database = asset_definition.domain or "default"
+                target_table = asset_definition.name
+
+                # Determine storage location
+                connection = target_config.connection or {}
+                s3_config = connection.get("s3") or connection.get("minio", {})
+                bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET")
+                data_product = getattr(asset_definition, "dataProduct", None) or "default"
+                storage_location = f"s3://{bucket}/{target_database}/{data_product}/{target_table}"
+
+                # Sync table metadata
+                try:
+                    table_result = catalog_manager.sync_table_metadata(
+                        database=target_database,
+                        table_name=target_table,
+                        location=storage_location,
+                        additional_metadata={
+                            "records_written": total_valid_records,
+                            "files_written": total_files_written,
+                            "total_bytes": total_bytes,
+                        },
+                    )
+                    logger.info(
+                        "Table metadata synced to catalog",
+                        extra={
+                            "result": table_result,
+                            "event_type": "catalog_table_synced",
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to sync table metadata to catalog: {e}",
+                        extra={"event_type": "catalog_table_sync_failed"},
+                    )
+
+                # Push lineage
+                try:
+                    lineage_result = catalog_manager.push_lineage(
+                        source_type=source_config.type,
+                        source_object=asset_definition.object,
+                        target_database=target_database,
+                        target_table=target_table,
+                        job_id=f"{job_config.tenant_id}.{job_config.asset}",
+                        tenant_id=job_config.tenant_id,
+                        records_written=total_valid_records,
+                        files_written=total_files_written,
+                    )
+                    logger.info(
+                        "Lineage pushed to catalog",
+                        extra={
+                            "result": lineage_result,
+                            "event_type": "catalog_lineage_pushed",
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to push lineage to catalog: {e}",
+                        extra={"event_type": "catalog_lineage_failed"},
+                    )
+
+                # Sync tags
+                try:
+                    tags_result = catalog_manager.sync_tags(
+                        database=target_database,
+                        table_name=target_table,
+                    )
+                    logger.info(
+                        "Tags synced to catalog",
+                        extra={
+                            "result": tags_result,
+                            "event_type": "catalog_tags_synced",
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to sync tags to catalog: {e}",
+                        extra={"event_type": "catalog_tags_failed"},
+                    )
+
+                # Sync owners
+                try:
+                    owners_result = catalog_manager.sync_owners(
+                        database=target_database,
+                        table_name=target_table,
+                    )
+                    logger.info(
+                        "Owners synced to catalog",
+                        extra={
+                            "result": owners_result,
+                            "event_type": "catalog_owners_synced",
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to sync owners to catalog: {e}",
+                        extra={"event_type": "catalog_owners_failed"},
+                    )
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to initialize catalog integration: {e}",
+                    extra={"event_type": "catalog_init_failed"},
+                )
+
         # Emit enhanced metadata
         logger.info(
             "Job execution completed",

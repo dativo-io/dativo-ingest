@@ -190,6 +190,68 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "catalog": {
+      "type": "object",
+      "description": "Optional data catalog integration for lineage and metadata",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["aws_glue", "databricks_unity", "nessie", "openmetadata"],
+          "description": "Type of data catalog to integrate with"
+        },
+        "config": {
+          "type": "object",
+          "description": "Catalog-specific configuration",
+          "properties": {
+            "uri": {"type": "string", "description": "Catalog endpoint URI"},
+            "database": {"type": "string", "description": "Database/catalog name"},
+            "region": {"type": "string", "description": "AWS region (for Glue)"},
+            "workspace_url": {"type": "string", "description": "Databricks workspace URL"},
+            "token": {"type": "string", "description": "Authentication token"},
+            "auth_provider": {"type": "string", "description": "Authentication provider"},
+            "api_version": {"type": "string", "description": "API version"}
+          },
+          "additionalProperties": true
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional metadata to push to catalog",
+          "properties": {
+            "owners": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "List of data owners"
+            },
+            "tags": {
+              "type": "object",
+              "additionalProperties": {"type": "string"},
+              "description": "Custom tags to apply"
+            },
+            "description": {"type": "string", "description": "Table/dataset description"},
+            "tier": {"type": "string", "description": "Data tier (e.g., gold, silver, bronze)"}
+          },
+          "additionalProperties": true
+        },
+        "lineage": {
+          "type": "object",
+          "description": "Lineage tracking configuration",
+          "properties": {
+            "enabled": {"type": "boolean", "default": true},
+            "upstream_tables": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "List of upstream tables/sources"
+            },
+            "downstream_tables": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "List of downstream tables/targets"
+            }
+          }
+        }
+      },
+      "required": ["type", "config"]
     }
   },
   "additionalProperties": false

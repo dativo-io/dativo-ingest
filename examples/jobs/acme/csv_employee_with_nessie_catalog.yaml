@@ -1,0 +1,62 @@
+# CSV Employee data to Iceberg with Nessie catalog integration
+tenant_id: acme
+environment: dev
+
+# Source connector - CSV
+source_connector: csv
+source_connector_path: /app/connectors/csv.yaml
+
+# Target connector - Iceberg
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: /app/assets/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: /app/data/employee.csv
+      object: employee
+
+# Target configuration - Iceberg with MinIO
+target:
+  file_format: parquet
+  branch: dev
+  warehouse: s3://lake/dev/
+  connection:
+    nessie:
+      uri: "${NESSIE_URI:-http://localhost:19120}"
+    s3:
+      endpoint: "${MINIO_ENDPOINT:-http://localhost:9000}"
+      bucket: "dev-data-lake"
+      access_key_id: "${MINIO_ACCESS_KEY:-minioadmin}"
+      secret_access_key: "${MINIO_SECRET_KEY:-minioadmin}"
+      region: "us-east-1"
+
+# Data Catalog Integration - Nessie (enhanced with catalog metadata)
+catalog:
+  type: nessie
+  config:
+    uri: "${NESSIE_URI:-http://localhost:19120}"
+    branch: dev
+  metadata:
+    owners:
+      - hr-team@acme.com
+    tags:
+      tier: bronze
+      source: csv
+      domain: hr
+      pii: "true"
+    description: "Employee data from CSV for HR analytics"
+  lineage:
+    enabled: true
+    upstream_tables: []
+    downstream_tables:
+      - analytics.employee_summary
+
+# Logging configuration
+logging:
+  redaction: true
+  level: DEBUG

@@ -1,0 +1,64 @@
+# PostgreSQL Orders to Iceberg with AWS Glue catalog integration
+tenant_id: acme
+environment: prod
+
+# Source connector - PostgreSQL
+source_connector: postgres
+source_connector_path: /app/connectors/postgres.yaml
+
+# Target connector - Iceberg
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: postgres_orders
+asset_path: /app/assets/postgres/v1.0/db_orders.yaml
+
+# Source configuration
+source:
+  tables:
+    - name: orders
+      object: orders
+  incremental:
+    strategy: updated_at
+    cursor_field: updated_at
+    lookback_days: 1
+
+# Target configuration - Iceberg with S3
+target:
+  file_format: parquet
+  branch: acme
+  warehouse: s3://acme-data-lake/warehouse/
+  connection:
+    nessie:
+      uri: "${NESSIE_URI}"
+    s3:
+      bucket: "acme-data-lake"
+      region: "${AWS_REGION:-us-east-1}"
+
+# Data Catalog Integration - AWS Glue
+catalog:
+  type: aws_glue
+  config:
+    region: "${AWS_REGION:-us-east-1}"
+    database: acme_analytics
+  metadata:
+    owners:
+      - data-engineering@acme.com
+    tags:
+      tier: silver
+      source: postgres
+      domain: orders
+      classification: internal
+    description: "Order data from PostgreSQL for analytics"
+  lineage:
+    enabled: true
+    upstream_tables:
+      - postgres.public.orders
+    downstream_tables:
+      - analytics.orders_enriched
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO

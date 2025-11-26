@@ -14,6 +14,7 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 - **Custom Plugins** - Python and Rust plugins for custom readers/writers
 - **Parquet Writer** - Writes validated data with partitioning and file sizing
 - **Iceberg Committer** - Optional catalog integration (files always written to S3)
+- **Data Catalog Integration** - Automatic lineage and metadata sync to AWS Glue, Databricks Unity Catalog, Nessie, or OpenMetadata
 
 ## Quick Start
 
@@ -318,6 +319,7 @@ src/dativo_ingest/   # Source code
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
+**Catalog Integration:** [docs/CATALOG_INTEGRATION.md](docs/CATALOG_INTEGRATION.md)  
 **Testing:** [tests/README.md](tests/README.md)
 
 
