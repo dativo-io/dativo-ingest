@@ -1,0 +1,45 @@
+# Example job configuration with Databricks Unity Catalog integration
+
+tenant_id: example_tenant
+environment: prod
+
+source_connector: stripe
+source_connector_path: connectors/stripe.yaml
+
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+asset: stripe_customers
+asset_path: assets/stripe/v1.0/customers.yaml
+
+source:
+  objects:
+    - customers
+
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+
+# Databricks Unity Catalog configuration
+catalog:
+  type: databricks_unity
+  
+  connection:
+    # Databricks workspace URL
+    host: "https://your-workspace.cloud.databricks.com"
+    
+    # Databricks access token
+    token: "${DATABRICKS_TOKEN}"
+    
+    # Unity Catalog name
+    catalog: main
+  
+  enabled: true
+  push_lineage: true
+  push_metadata: true
+
+schema_validation_mode: strict
+
+logging:
+  level: INFO

@@ -14,6 +14,7 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 - **Custom Plugins** - Python and Rust plugins for custom readers/writers
 - **Parquet Writer** - Writes validated data with partitioning and file sizing
 - **Iceberg Committer** - Optional catalog integration (files always written to S3)
+- **Data Catalog Integration** - Lineage tracking with OpenMetadata, AWS Glue, Databricks Unity Catalog, and Nessie
 
 ## Quick Start
 
@@ -124,9 +125,33 @@ Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/r
 
 **Catalog Note**: Iceberg catalog is optional. Without catalog, Parquet files are written directly to S3/MinIO. See [docs/CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md).
 
+## Data Catalog Integration
+
+Dativo integrates with popular data catalogs for automatic lineage tracking and metadata management:
+
+- **OpenMetadata** - Open-source metadata platform with rich lineage visualization
+- **AWS Glue Data Catalog** - AWS native data catalog
+- **Databricks Unity Catalog** - Unified governance for Databricks lakehouse
+- **Nessie** - Git-like catalog for Apache Iceberg
+
+Enable catalog integration by adding a `catalog` block to your job configuration:
+
+```yaml
+catalog:
+  type: openmetadata  # or aws_glue, databricks_unity, nessie
+  connection:
+    host_port: "http://openmetadata:8585/api"
+    service_name: "dativo_service"
+  enabled: true
+  push_lineage: true
+  push_metadata: true
+```
+
+See [docs/CATALOG_INTEGRATION.md](docs/CATALOG_INTEGRATION.md) for detailed documentation and examples.
+
 ## Configuration
 
-**Job Config** - Defines source, target, asset, and tenant overrides:
+**Job Config** - Defines source, target, asset, tenant overrides, and optional catalog:
 
 **Path Conventions:**
 - **Local Development**: Use relative paths (e.g., `connectors/stripe.yaml`)

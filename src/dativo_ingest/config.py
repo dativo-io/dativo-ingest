@@ -512,6 +512,9 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+    
+    # Data catalog configuration
+    catalog: Optional[Dict[str, Any]] = None  # Data catalog configuration for lineage tracking
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

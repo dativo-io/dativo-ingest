@@ -759,6 +759,39 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             },
         )
 
+    # Initialize data catalog client for lineage tracking (optional)
+    catalog_client = None
+    lineage_tracker = None
+    if job_config.catalog:
+        try:
+            from .catalog.factory import CatalogClientFactory
+            from .catalog.lineage_tracker import LineageTracker
+
+            catalog_client = CatalogClientFactory.create_from_job_config(
+                {"catalog": job_config.catalog}
+            )
+            if catalog_client:
+                catalog_client.connect()
+                lineage_tracker = LineageTracker(catalog_client)
+                lineage_tracker.start_tracking()
+                logger.info(
+                    f"Catalog client initialized: {job_config.catalog.get('type')}",
+                    extra={
+                        "catalog_type": job_config.catalog.get("type"),
+                        "event_type": "catalog_client_initialized",
+                    },
+                )
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize catalog client: {e}. "
+                "Pipeline will continue without catalog integration.",
+                extra={
+                    "event_type": "catalog_client_init_failed",
+                },
+            )
+            catalog_client = None
+            lineage_tracker = None
+
     # Execute ETL pipeline
     total_records = 0
     total_valid_records = 0
@@ -778,6 +811,27 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     "event_type": "table_ensured",
                 },
             )
+
+        # Push table metadata to data catalog if configured
+        if lineage_tracker and catalog_client:
+            try:
+                table_metadata = lineage_tracker.build_table_metadata(
+                    asset_definition=asset_definition,
+                    target_config=target_config,
+                )
+                lineage_tracker.push_table_metadata(table_metadata)
+                logger.info(
+                    "Table metadata pushed to catalog",
+                    extra={
+                        "table_name": asset_definition.name,
+                        "event_type": "catalog_metadata_pushed",
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to push table metadata to catalog: {e}",
+                    extra={"event_type": "catalog_metadata_failed"},
+                )
 
         # Extract, validate, and write in batches
         for batch_records in extractor.extract(state_manager=state_manager):
@@ -1007,6 +1061,73 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             if all_file_metadata
             else 0
         )
+
+        # Push lineage to data catalog if configured
+        if lineage_tracker and catalog_client:
+            try:
+                lineage_tracker.end_tracking()
+                
+                # Build source and target FQNs
+                catalog_type = job_config.catalog.get("type")
+                target_fqn = lineage_tracker.build_target_fqn(
+                    catalog_type=catalog_type,
+                    asset_definition=asset_definition,
+                    catalog_config=job_config.catalog.get("connection"),
+                )
+                
+                source_connection = source_config.connection if hasattr(source_config, "connection") else None
+                source_fqn = lineage_tracker.build_source_fqn(
+                    source_type=source_config.type,
+                    source_object=asset_definition.object,
+                    source_connection=source_connection,
+                )
+                
+                # Build and push lineage
+                lineage_info = lineage_tracker.build_lineage_info(
+                    source_fqn=source_fqn,
+                    target_fqn=target_fqn,
+                    pipeline_name=f"{job_config.tenant_id}_{asset_definition.name}",
+                    pipeline_description=f"Dativo ingestion pipeline for {asset_definition.name}",
+                    records_read=total_records,
+                    records_written=total_valid_records,
+                    bytes_written=total_bytes,
+                    status="success" if exit_code == 0 else "failed",
+                )
+                lineage_tracker.push_lineage(lineage_info)
+                
+                # Push tags if configured
+                if job_config.catalog.get("push_metadata", True):
+                    table_metadata = lineage_tracker.build_table_metadata(
+                        asset_definition=asset_definition,
+                        target_config=target_config,
+                    )
+                    if table_metadata.tags:
+                        lineage_tracker.push_tags(target_fqn, table_metadata.tags)
+                    
+                    # Set owner if available
+                    if table_metadata.owner:
+                        lineage_tracker.set_owner(target_fqn, table_metadata.owner)
+                
+                logger.info(
+                    "Lineage pushed to catalog",
+                    extra={
+                        "source_fqn": source_fqn,
+                        "target_fqn": target_fqn,
+                        "event_type": "catalog_lineage_pushed",
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to push lineage to catalog: {e}",
+                    extra={"event_type": "catalog_lineage_failed"},
+                )
+            finally:
+                # Close catalog connection
+                if catalog_client:
+                    try:
+                        catalog_client.close()
+                    except Exception:
+                        pass
 
         # Emit enhanced metadata
         logger.info(

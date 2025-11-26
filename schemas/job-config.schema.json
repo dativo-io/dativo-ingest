@@ -190,6 +190,37 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "catalog": {
+      "type": "object",
+      "description": "Data catalog configuration for lineage and metadata tracking",
+      "required": ["type", "connection"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["openmetadata", "aws_glue", "databricks_unity", "nessie"],
+          "description": "Type of data catalog to use"
+        },
+        "connection": {
+          "type": "object",
+          "description": "Catalog connection configuration (catalog-specific)"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to push lineage to catalog"
+        },
+        "push_lineage": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to push lineage information"
+        },
+        "push_metadata": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to push metadata (tags, owners, etc.)"
+        }
+      }
     }
   },
   "additionalProperties": false

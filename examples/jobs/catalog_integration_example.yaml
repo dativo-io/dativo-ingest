@@ -1,0 +1,64 @@
+# Example job configuration with data catalog integration
+# This demonstrates how to configure catalog integration for lineage tracking
+
+tenant_id: example_tenant
+environment: prod
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: customers
+asset_path: assets/csv/v1.0/customers.yaml
+
+# Source configuration
+source:
+  files:
+    - path: data/customers.csv
+      object: customers
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+      prefix: "raw/example_tenant/customers"
+
+# Data catalog configuration (optional)
+# Enables lineage tracking and metadata management
+catalog:
+  # Catalog type: openmetadata, aws_glue, databricks_unity, nessie
+  type: openmetadata
+  
+  # Catalog connection configuration
+  connection:
+    # OpenMetadata server URL
+    host_port: "http://localhost:8585/api"
+    
+    # Optional: Service name in OpenMetadata
+    service_name: "dativo_iceberg_service"
+    
+    # Optional: JWT token for authentication
+    # jwt_token: "${OPENMETADATA_JWT_TOKEN}"
+  
+  # Enable catalog integration (default: true)
+  enabled: true
+  
+  # Push lineage information (default: true)
+  push_lineage: true
+  
+  # Push metadata (tags, owners, etc.) (default: true)
+  push_metadata: true
+
+# Schema validation mode
+schema_validation_mode: strict  # or 'warn'
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

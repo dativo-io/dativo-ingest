@@ -1,0 +1,44 @@
+# Example job configuration with AWS Glue Data Catalog integration
+
+tenant_id: example_tenant
+environment: prod
+
+source_connector: postgres
+source_connector_path: connectors/postgres.yaml
+
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+asset: orders
+asset_path: assets/postgres/v1.0/orders.yaml
+
+source:
+  tables:
+    - name: orders
+      object: orders
+
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+
+# AWS Glue Data Catalog configuration
+catalog:
+  type: aws_glue
+  
+  connection:
+    # AWS region
+    region: us-east-1
+    
+    # Optional: AWS credentials (can also use IAM roles)
+    # aws_access_key_id: "${AWS_ACCESS_KEY_ID}"
+    # aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+  
+  enabled: true
+  push_lineage: true
+  push_metadata: true
+
+schema_validation_mode: strict
+
+logging:
+  level: INFO
