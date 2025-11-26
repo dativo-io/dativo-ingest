@@ -8,6 +8,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+- **External Infrastructure Integration**: Cloud-agnostic deployment with Terraform
+  - **Infrastructure Block**: New optional `infrastructure` configuration block in job configs
+  - **Cloud Provider Support**: AWS, GCP, and Azure (preview)
+  - **Terraform Integration**: 
+    - Reference Terraform modules for AWS (S3, IAM, Glue) and GCP (GCS, service accounts, BigQuery)
+    - Map Terraform outputs to job configuration fields
+    - Support for Terraform workspaces and backends
+  - **Resource Management**:
+    - Reference external infrastructure resources (S3 buckets, IAM roles, Glue catalogs, etc.)
+    - Provider-specific resource types and validation
+    - Resource-level tagging support
+  - **Comprehensive Tag Propagation**:
+    - Infrastructure tags flow through to Iceberg table properties
+    - Cost allocation tags for billing tracking (cost_center, business_unit, project)
+    - Compliance tags for governance (regulations, data_classification, retention_policy)
+    - Provider metadata (provider, region, account_id, project_id)
+  - **Dagster Integration**: 
+    - Helper functions for adding infrastructure metadata to Dagster assets
+    - Cost allocation and compliance metadata extraction
+    - Infrastructure resource configuration for Dagster resources
+    - Multi-tenant asset factory
+  - **Configuration Models**:
+    - `InfrastructureModel` with provider, terraform, tags, and metadata sections
+    - `InfrastructureProviderModel` for cloud provider configuration
+    - `InfrastructureTerraformModel` for Terraform integration
+    - `InfrastructureTagsModel` for cost allocation and compliance tags
+    - `InfrastructureResourceModel` for resource references
+  - **Documentation**:
+    - Comprehensive infrastructure integration guide (`docs/INFRASTRUCTURE_INTEGRATION.md`)
+    - Quick start guide (`INFRASTRUCTURE_QUICKSTART.md`)
+    - Terraform module documentation (`terraform/README.md`)
+    - Example job configurations with infrastructure blocks
+    - Dagster integration examples
+  - **Examples**:
+    - AWS infrastructure integration with Glue catalog
+    - GCP infrastructure integration with BigQuery catalog
+    - Multi-environment setup with environment-specific resources
+    - Multi-tenant deployment patterns
+  - Infrastructure validation in `infrastructure.py` with provider-specific checks
+  - JSON schema validation for infrastructure block
+  
 - **Custom Plugin System**: Support for Python and Rust plugins
   - **Python Plugins:**
     - New `BaseReader` and `BaseWriter` base classes for plugin development

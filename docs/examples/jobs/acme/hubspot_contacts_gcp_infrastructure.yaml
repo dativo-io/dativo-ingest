@@ -1,0 +1,109 @@
+# HubSpot contacts to Iceberg - GCP infrastructure with Terraform
+# Demonstrates GCP external infrastructure integration with BigQuery catalog
+
+tenant_id: acme
+environment: prod
+
+# External infrastructure configuration
+infrastructure:
+  provider:
+    provider: gcp
+    region: us-central1
+    project_id: acme-data-platform
+    resources:
+      # GCS bucket for data lake
+      - resource_type: gcs_bucket
+        resource_id: "gs://acme-dativo-data-lake-prod"
+        resource_name: acme-dativo-data-lake-prod
+        region: us-central1
+        tags:
+          team: data-engineering
+          criticality: high
+      
+      # Service account for compute
+      - resource_type: service_account
+        resource_id: "acme-dativo-etl-prod@acme-data-platform.iam.gserviceaccount.com"
+        resource_name: acme-dativo-etl-prod
+      
+      # BigQuery dataset for Iceberg metadata
+      - resource_type: bigquery_dataset
+        resource_id: "acme-data-platform.acme_iceberg_prod"
+        resource_name: acme_iceberg_prod
+        region: US
+  
+  # Terraform integration
+  terraform:
+    module_path: ./terraform/gcp/dativo-etl
+    workspace: acme-prod
+    backend:
+      type: gcs
+      bucket: acme-terraform-state
+      prefix: dativo/acme/prod
+    variables:
+      project_id: acme-data-platform
+      tenant_id: acme
+      environment: prod
+      region: us-central1
+      gcs_bucket_name: acme-dativo-data-lake-prod
+      enable_bigquery_catalog: true
+      bigquery_dataset_id: acme_iceberg_prod
+    outputs:
+      gcs_bucket_name: "target.connection.gcs.bucket"
+      service_account_email: "infrastructure.metadata.service_account_email"
+      bigquery_dataset_id: "target.catalog.bigquery_dataset"
+  
+  # Infrastructure-level tags for cost allocation and compliance
+  tags:
+    cost_center: data-001
+    business_unit: analytics
+    project: data-platform
+    environment: prod
+    owner: data-team@acme.com
+    compliance: ["GDPR", "CCPA"]
+    custom:
+      data_classification: pii
+      retention_policy: 365_days
+  
+  # Additional metadata
+  metadata:
+    deployment_id: deploy-20250126-002
+    provisioned_by: terraform
+    terraform_version: 1.6.0
+
+# Source connector
+source_connector: hubspot
+source_connector_path: /app/connectors/hubspot.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: hubspot_contacts
+asset_path: /app/assets/hubspot/v1.0/contacts.yaml
+
+# Source configuration
+source:
+  objects: [contacts]
+  incremental:
+    lookback_days: 7
+
+# Target configuration
+target:
+  branch: acme-prod
+  warehouse: gs://acme-dativo-data-lake-prod/
+  connection:
+    gcs:
+      bucket: acme-dativo-data-lake-prod
+      prefix: raw/hubspot/contacts
+  catalog:
+    type: bigquery
+    bigquery_dataset: acme_iceberg_prod
+
+# Schema validation
+schema_validation_mode: strict
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

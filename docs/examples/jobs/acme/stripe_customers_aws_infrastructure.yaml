@@ -1,0 +1,112 @@
+# Stripe customers to Iceberg - AWS infrastructure with Terraform
+# Demonstrates external infrastructure integration with comprehensive tag propagation
+
+tenant_id: acme
+environment: prod
+
+# External infrastructure configuration
+infrastructure:
+  provider:
+    provider: aws
+    region: us-east-1
+    account_id: "123456789012"
+    resources:
+      # S3 bucket for data lake
+      - resource_type: s3_bucket
+        resource_id: "arn:aws:s3:::acme-dativo-data-lake-prod"
+        resource_name: acme-dativo-data-lake-prod
+        region: us-east-1
+        tags:
+          team: data-engineering
+          criticality: high
+      
+      # IAM role for ECS tasks
+      - resource_type: iam_role
+        resource_id: "arn:aws:iam::123456789012:role/acme-dativo-etl-role-prod"
+        resource_name: acme-dativo-etl-role-prod
+        region: us-east-1
+      
+      # Glue catalog database
+      - resource_type: glue_catalog
+        resource_id: "arn:aws:glue:us-east-1:123456789012:database/acme_iceberg_prod"
+        resource_name: acme_iceberg_prod
+        region: us-east-1
+  
+  # Terraform integration
+  terraform:
+    module_path: ./terraform/aws/dativo-etl
+    workspace: acme-prod
+    backend:
+      type: s3
+      bucket: acme-terraform-state
+      key: dativo/acme/prod/terraform.tfstate
+      region: us-east-1
+    variables:
+      tenant_id: acme
+      environment: prod
+      region: us-east-1
+      s3_bucket_name: acme-dativo-data-lake-prod
+      enable_glue_catalog: true
+      glue_database_name: acme_iceberg_prod
+    outputs:
+      s3_bucket_name: "target.connection.s3.bucket"
+      s3_bucket_region: "target.connection.s3.region"
+      iam_role_arn: "infrastructure.metadata.iam_role_arn"
+      glue_database_name: "target.catalog.glue_database"
+  
+  # Infrastructure-level tags for cost allocation and compliance
+  tags:
+    cost_center: DATA-001
+    business_unit: Analytics
+    project: data-platform
+    environment: prod
+    owner: data-team@acme.com
+    compliance: ["SOC2", "GDPR"]
+    custom:
+      data_classification: confidential
+      retention_policy: 90_days
+      backup_enabled: "true"
+  
+  # Additional metadata
+  metadata:
+    deployment_id: deploy-20250126-001
+    provisioned_by: terraform
+    terraform_version: 1.6.0
+
+# Source connector
+source_connector: stripe
+source_connector_path: /app/connectors/stripe.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+# Source configuration
+source:
+  objects: [customers]
+  incremental:
+    lookback_days: 1
+
+# Target configuration
+target:
+  branch: acme-prod
+  warehouse: s3://acme-dativo-data-lake-prod/
+  connection:
+    s3:
+      bucket: acme-dativo-data-lake-prod
+      prefix: raw/stripe/customers
+  catalog:
+    type: glue
+    glue_database: acme_iceberg_prod
+
+# Schema validation
+schema_validation_mode: strict
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

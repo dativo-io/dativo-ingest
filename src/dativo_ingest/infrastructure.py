@@ -1,13 +1,13 @@
-"""Infrastructure health checks for validating dependencies."""
+"""Infrastructure health checks and external infrastructure integration."""
 
 import os
 import socket
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
 
-from .config import JobConfig
+from .config import JobConfig, InfrastructureModel
 
 
 def validate_required_ports(ports: List[int], host: str = "localhost") -> bool:
@@ -129,6 +129,89 @@ def check_s3_connectivity(
         raise ValueError(f"S3 connectivity check failed: {e}")
 
 
+def get_infrastructure_tags(infrastructure: Optional[InfrastructureModel]) -> Dict[str, str]:
+    """Extract infrastructure tags for propagation.
+    
+    Args:
+        infrastructure: Infrastructure configuration
+        
+    Returns:
+        Dictionary of infrastructure tags
+    """
+    if not infrastructure or not infrastructure.tags:
+        return {}
+    
+    tags = {}
+    tags_model = infrastructure.tags
+    
+    # Add standard infrastructure tags
+    if tags_model.cost_center:
+        tags["infrastructure.cost_center"] = tags_model.cost_center
+    if tags_model.business_unit:
+        tags["infrastructure.business_unit"] = tags_model.business_unit
+    if tags_model.project:
+        tags["infrastructure.project"] = tags_model.project
+    if tags_model.environment:
+        tags["infrastructure.environment"] = tags_model.environment
+    if tags_model.owner:
+        tags["infrastructure.owner"] = tags_model.owner
+    if tags_model.compliance:
+        tags["infrastructure.compliance"] = ",".join(tags_model.compliance)
+    
+    # Add custom tags
+    if tags_model.custom:
+        for key, value in tags_model.custom.items():
+            tags[f"infrastructure.custom.{key}"] = value
+    
+    # Add provider metadata
+    tags["infrastructure.provider"] = infrastructure.provider.provider
+    if infrastructure.provider.region:
+        tags["infrastructure.region"] = infrastructure.provider.region
+    if infrastructure.provider.account_id:
+        tags["infrastructure.account_id"] = infrastructure.provider.account_id
+    if infrastructure.provider.project_id:
+        tags["infrastructure.project_id"] = infrastructure.provider.project_id
+    
+    return tags
+
+
+def resolve_terraform_outputs(
+    infrastructure: Optional[InfrastructureModel],
+    terraform_state: Optional[Dict] = None
+) -> Dict[str, str]:
+    """Resolve Terraform outputs and map to job config fields.
+    
+    Args:
+        infrastructure: Infrastructure configuration
+        terraform_state: Optional Terraform state dictionary
+        
+    Returns:
+        Dictionary mapping output names to values
+    """
+    if not infrastructure or not infrastructure.terraform:
+        return {}
+    
+    terraform_config = infrastructure.terraform
+    outputs = {}
+    
+    # If terraform_state provided, extract outputs
+    if terraform_state and "outputs" in terraform_state:
+        tf_outputs = terraform_state["outputs"]
+        
+        # Map Terraform outputs to job config fields
+        if terraform_config.outputs:
+            for output_name, config_field in terraform_config.outputs.items():
+                if output_name in tf_outputs:
+                    output_value = tf_outputs[output_name]
+                    # Extract value from Terraform output structure
+                    if isinstance(output_value, dict) and "value" in output_value:
+                        outputs[config_field] = output_value["value"]
+                    else:
+                        outputs[config_field] = output_value
+    
+    return outputs
+
+
 def validate_infrastructure(job_config: JobConfig) -> None:
     """Validate infrastructure dependencies for a job configuration.
 
@@ -140,6 +223,40 @@ def validate_infrastructure(job_config: JobConfig) -> None:
     """
     errors = []
     warnings = []
+
+    # Check if external infrastructure is configured
+    if job_config.infrastructure:
+        infrastructure = job_config.infrastructure
+        provider = infrastructure.provider.provider
+        
+        warnings.append(
+            f"External infrastructure configured for provider: {provider}"
+        )
+        
+        # Validate provider-specific requirements
+        if provider == "aws":
+            if not infrastructure.provider.region:
+                errors.append("AWS infrastructure requires region")
+            if infrastructure.provider.resources:
+                for resource in infrastructure.provider.resources:
+                    if resource.resource_type == "s3_bucket" and not resource.resource_id:
+                        warnings.append(f"S3 bucket resource missing resource_id")
+        
+        elif provider == "gcp":
+            if not infrastructure.provider.project_id:
+                errors.append("GCP infrastructure requires project_id")
+            if infrastructure.provider.resources:
+                for resource in infrastructure.provider.resources:
+                    if resource.resource_type == "gcs_bucket" and not resource.resource_id:
+                        warnings.append(f"GCS bucket resource missing resource_id")
+        
+        # Validate Terraform configuration if present
+        if infrastructure.terraform:
+            tf_config = infrastructure.terraform
+            if tf_config.module_path and not os.path.exists(tf_config.module_path):
+                warnings.append(
+                    f"Terraform module path does not exist: {tf_config.module_path}"
+                )
 
     # Get target configuration
     try:

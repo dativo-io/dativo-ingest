@@ -190,6 +190,138 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "External infrastructure integration configuration for cloud-agnostic deployment",
+      "required": ["provider"],
+      "properties": {
+        "provider": {
+          "type": "object",
+          "description": "Cloud provider configuration",
+          "required": ["provider"],
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": ["aws", "gcp", "azure"],
+              "description": "Cloud provider name"
+            },
+            "region": {
+              "type": "string",
+              "description": "Default region for resources"
+            },
+            "project_id": {
+              "type": "string",
+              "description": "GCP project ID (required for GCP)"
+            },
+            "account_id": {
+              "type": "string",
+              "description": "AWS account ID"
+            },
+            "resources": {
+              "type": "array",
+              "description": "List of managed infrastructure resources",
+              "items": {
+                "type": "object",
+                "required": ["resource_type"],
+                "properties": {
+                  "resource_type": {
+                    "type": "string",
+                    "description": "Resource type (e.g., s3_bucket, iam_role, glue_catalog)"
+                  },
+                  "resource_id": {
+                    "type": "string",
+                    "description": "Resource identifier (ARN, URI, etc.)"
+                  },
+                  "resource_name": {
+                    "type": "string",
+                    "description": "Human-readable resource name"
+                  },
+                  "region": {
+                    "type": "string",
+                    "description": "Resource region"
+                  },
+                  "tags": {
+                    "type": "object",
+                    "description": "Resource-level tags",
+                    "additionalProperties": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "terraform": {
+          "type": "object",
+          "description": "Terraform integration configuration",
+          "properties": {
+            "module_path": {
+              "type": "string",
+              "description": "Path to Terraform module"
+            },
+            "workspace": {
+              "type": "string",
+              "description": "Terraform workspace name"
+            },
+            "backend": {
+              "type": "object",
+              "description": "Terraform backend configuration",
+              "additionalProperties": true
+            },
+            "variables": {
+              "type": "object",
+              "description": "Terraform input variables",
+              "additionalProperties": true
+            },
+            "outputs": {
+              "type": "object",
+              "description": "Map Terraform output names to job config fields",
+              "additionalProperties": {"type": "string"}
+            }
+          }
+        },
+        "tags": {
+          "type": "object",
+          "description": "Infrastructure-level tags for cost allocation and compliance",
+          "properties": {
+            "cost_center": {
+              "type": "string",
+              "description": "Cost center for billing"
+            },
+            "business_unit": {
+              "type": "string",
+              "description": "Business unit owner"
+            },
+            "project": {
+              "type": "string",
+              "description": "Project name"
+            },
+            "environment": {
+              "type": "string",
+              "description": "Environment (dev, staging, prod)"
+            },
+            "owner": {
+              "type": "string",
+              "description": "Infrastructure owner"
+            },
+            "compliance": {
+              "type": "array",
+              "description": "Compliance requirements (e.g., HIPAA, SOC2)",
+              "items": {"type": "string"}
+            },
+            "custom": {
+              "type": "object",
+              "description": "Custom tags",
+              "additionalProperties": {"type": "string"}
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional infrastructure metadata",
+          "additionalProperties": true
+        }
+      }
     }
   },
   "additionalProperties": false

@@ -1,0 +1,100 @@
+# PostgreSQL orders to Iceberg - Multi-environment setup
+# Demonstrates environment-specific infrastructure with shared Terraform module
+
+tenant_id: acme
+environment: "${ENVIRONMENT}"  # Set via env var: dev, staging, prod
+
+# External infrastructure configuration (environment-specific)
+infrastructure:
+  provider:
+    provider: aws
+    region: "${AWS_REGION}"
+    account_id: "${AWS_ACCOUNT_ID}"
+    resources:
+      # Environment-specific S3 bucket
+      - resource_type: s3_bucket
+        resource_id: "arn:aws:s3:::acme-dativo-data-lake-${ENVIRONMENT}"
+        resource_name: "acme-dativo-data-lake-${ENVIRONMENT}"
+        region: "${AWS_REGION}"
+      
+      # Environment-specific IAM role
+      - resource_type: iam_role
+        resource_id: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/acme-dativo-etl-role-${ENVIRONMENT}"
+        resource_name: "acme-dativo-etl-role-${ENVIRONMENT}"
+      
+      # Environment-specific Glue catalog
+      - resource_type: glue_catalog
+        resource_id: "arn:aws:glue:${AWS_REGION}:${AWS_ACCOUNT_ID}:database/acme_iceberg_${ENVIRONMENT}"
+        resource_name: "acme_iceberg_${ENVIRONMENT}"
+        region: "${AWS_REGION}"
+  
+  # Terraform integration (workspace per environment)
+  terraform:
+    module_path: ./terraform/aws/dativo-etl
+    workspace: "acme-${ENVIRONMENT}"
+    backend:
+      type: s3
+      bucket: acme-terraform-state
+      key: "dativo/acme/${ENVIRONMENT}/terraform.tfstate"
+      region: us-east-1
+    variables:
+      tenant_id: acme
+      environment: "${ENVIRONMENT}"
+      region: "${AWS_REGION}"
+      s3_bucket_name: "acme-dativo-data-lake-${ENVIRONMENT}"
+      enable_glue_catalog: true
+    outputs:
+      s3_bucket_name: "target.connection.s3.bucket"
+      glue_database_name: "target.catalog.glue_database"
+  
+  # Infrastructure tags (environment-specific)
+  tags:
+    cost_center: DATA-001
+    business_unit: Analytics
+    project: data-platform
+    environment: "${ENVIRONMENT}"
+    owner: data-team@acme.com
+    compliance: ["SOC2"]
+    custom:
+      deployment_type: automated
+      managed_by: terraform
+
+# Source connector
+source_connector: postgres
+source_connector_path: /app/connectors/postgres.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+# Asset definition
+asset: postgres_orders
+asset_path: /app/assets/postgres/v1.0/db_orders.yaml
+
+# Source configuration
+source:
+  tables:
+    - name: orders
+      object: db_orders
+  incremental:
+    strategy: updated_at
+    cursor_field: updated_at
+    lookback_days: 1
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "acme-dativo-data-lake-${ENVIRONMENT}"
+      prefix: raw/postgres/orders
+  catalog:
+    type: glue
+    glue_database: "acme_iceberg_${ENVIRONMENT}"
+
+# Schema validation
+schema_validation_mode: strict
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

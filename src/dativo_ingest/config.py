@@ -478,6 +478,79 @@ class RetryConfig(BaseModel):
         return self
 
 
+class InfrastructureResourceModel(BaseModel):
+    """Cloud infrastructure resource reference."""
+
+    resource_type: str  # e.g., "s3_bucket", "iam_role", "glue_catalog"
+    resource_id: Optional[str] = None  # Resource identifier (ARN, URI, etc.)
+    resource_name: Optional[str] = None  # Human-readable name
+    region: Optional[str] = None  # Cloud region
+    tags: Optional[Dict[str, str]] = None  # Resource-level tags
+
+
+class InfrastructureProviderModel(BaseModel):
+    """Cloud provider configuration."""
+
+    provider: str  # "aws", "gcp", "azure"
+    region: Optional[str] = None  # Default region for resources
+    project_id: Optional[str] = None  # GCP project ID
+    account_id: Optional[str] = None  # AWS account ID
+    resources: Optional[List[InfrastructureResourceModel]] = None  # Managed resources
+
+
+class InfrastructureTerraformModel(BaseModel):
+    """Terraform integration configuration."""
+
+    module_path: Optional[str] = None  # Path to Terraform module
+    workspace: Optional[str] = None  # Terraform workspace
+    backend: Optional[Dict[str, Any]] = None  # Terraform backend configuration
+    variables: Optional[Dict[str, Any]] = None  # Terraform input variables
+    outputs: Optional[Dict[str, str]] = None  # Map output names to job config fields
+
+
+class InfrastructureTagsModel(BaseModel):
+    """Infrastructure-level tags for cost allocation and compliance."""
+
+    cost_center: Optional[str] = None  # Cost center for billing
+    business_unit: Optional[str] = None  # Business unit owner
+    project: Optional[str] = None  # Project name
+    environment: Optional[str] = None  # Environment (dev, staging, prod)
+    owner: Optional[str] = None  # Infrastructure owner
+    compliance: Optional[List[str]] = None  # Compliance requirements (e.g., ["HIPAA", "SOC2"])
+    custom: Optional[Dict[str, str]] = None  # Custom tags
+
+
+class InfrastructureModel(BaseModel):
+    """External infrastructure integration configuration.
+    
+    Enables cloud-agnostic deployment of Dativo ETL jobs with comprehensive
+    tag propagation for cost allocation, compliance, and resource traceability.
+    """
+
+    provider: InfrastructureProviderModel  # Cloud provider configuration
+    terraform: Optional[InfrastructureTerraformModel] = None  # Terraform integration
+    tags: Optional[InfrastructureTagsModel] = None  # Infrastructure tags
+    metadata: Optional[Dict[str, Any]] = None  # Additional metadata
+    
+    @model_validator(mode="after")
+    def validate_provider_resources(self) -> "InfrastructureModel":
+        """Validate provider and resource configuration."""
+        if self.provider.provider not in ["aws", "gcp", "azure"]:
+            raise ValueError(
+                f"Unsupported provider: {self.provider.provider}. Must be one of: aws, gcp, azure"
+            )
+        
+        # Validate GCP requires project_id
+        if self.provider.provider == "gcp" and not self.provider.project_id:
+            raise ValueError("GCP provider requires project_id")
+        
+        # Validate AWS requires region
+        if self.provider.provider == "aws" and not self.provider.region:
+            raise ValueError("AWS provider requires region")
+        
+        return self
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -507,6 +580,9 @@ class JobConfig(BaseModel):
         None  # Governance metadata overrides
     )
 
+    # Infrastructure configuration
+    infrastructure: Optional[InfrastructureModel] = None  # External infrastructure configuration
+    
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'
     retry_config: Optional[RetryConfig] = None

@@ -2,6 +2,8 @@
 
 A headless, config-driven ingestion engine. Extracts data from SaaS APIs (Stripe, HubSpot) and databases (PostgreSQL, MySQL) into object storage (S3, MinIO) as Iceberg-backed datasets. Supports Markdown-KV format for LLM-optimized data ingestion.
 
+**NEW:** External infrastructure integration with Terraform enables cloud-agnostic deployment on AWS/GCP with comprehensive tag propagation for cost allocation and compliance tracking.
+
 ## Architecture
 
 Config-driven ingestion engine. All behavior is controlled by YAML configs validated against a connector registry and asset schemas.
@@ -14,6 +16,7 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 - **Custom Plugins** - Python and Rust plugins for custom readers/writers
 - **Parquet Writer** - Writes validated data with partitioning and file sizing
 - **Iceberg Committer** - Optional catalog integration (files always written to S3)
+- **Infrastructure Integration** - Cloud-agnostic Terraform integration for AWS/GCP deployment
 
 ## Quick Start
 
@@ -318,6 +321,7 @@ src/dativo_ingest/   # Source code
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
+**Infrastructure Integration:** [docs/INFRASTRUCTURE_INTEGRATION.md](docs/INFRASTRUCTURE_INTEGRATION.md)  
 **Testing:** [tests/README.md](tests/README.md)
 
 
