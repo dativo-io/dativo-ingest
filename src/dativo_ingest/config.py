@@ -450,6 +450,20 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class CatalogConfig(BaseModel):
+    """Data catalog configuration for lineage and metadata tracking."""
+
+    type: str = Field(
+        ..., description="Catalog type: 'aws_glue', 'databricks_unity', 'nessie', or 'openmetadata'"
+    )
+    connection: Dict[str, Any] = Field(
+        default_factory=dict, description="Catalog-specific connection configuration"
+    )
+    enabled: bool = Field(
+        default=True, description="Whether to push lineage and metadata to catalog"
+    )
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
@@ -512,6 +526,9 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+
+    # Data catalog configuration (optional)
+    catalog: Optional[CatalogConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

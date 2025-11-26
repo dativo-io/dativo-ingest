@@ -719,6 +719,34 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         )
         return 2
 
+    # Initialize data catalog manager (for lineage and metadata tracking)
+    catalog_manager = None
+    if job_config.catalog and job_config.catalog.enabled:
+        try:
+            from .catalogs import CatalogManager
+
+            catalog_manager = CatalogManager(
+                job_config=job_config,
+                asset_definition=asset_definition,
+                target_config=target_config,
+            )
+            logger.info(
+                "Data catalog manager initialized",
+                extra={
+                    "catalog_type": job_config.catalog.type,
+                    "event_type": "catalog_manager_initialized",
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize data catalog manager: {e}. "
+                "Lineage and metadata will not be pushed to catalog.",
+                extra={
+                    "event_type": "catalog_manager_init_failed",
+                },
+            )
+            catalog_manager = None
+
     # Initialize Iceberg committer (only if catalog is configured)
     committer = None
     if target_config.catalog:
@@ -778,6 +806,26 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     "event_type": "table_ensured",
                 },
             )
+
+        # Ensure entity exists in data catalog and push initial metadata
+        if catalog_manager:
+            try:
+                catalog_manager.ensure_entity_exists()
+                catalog_manager.push_metadata()
+                logger.info(
+                    "Entity ensured and metadata pushed to data catalog",
+                    extra={
+                        "catalog_type": job_config.catalog.type,
+                        "event_type": "catalog_entity_ensured",
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to ensure entity in data catalog: {e}",
+                    extra={
+                        "event_type": "catalog_entity_error",
+                    },
+                )
 
         # Extract, validate, and write in batches
         for batch_records in extractor.extract(state_manager=state_manager):
@@ -992,6 +1040,27 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     "event_type": "no_files",
                 },
             )
+
+        # Push lineage to data catalog after successful file commit
+        if catalog_manager and all_file_metadata:
+            try:
+                lineage_result = catalog_manager.push_lineage()
+                if lineage_result:
+                    logger.info(
+                        "Lineage pushed to data catalog",
+                        extra={
+                            "catalog_type": job_config.catalog.type,
+                            "lineage_result": lineage_result,
+                            "event_type": "lineage_pushed",
+                        },
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to push lineage to data catalog: {e}",
+                    extra={
+                        "event_type": "lineage_push_error",
+                    },
+                )
 
         # Determine exit code
         if has_errors and validation_mode == "warn":

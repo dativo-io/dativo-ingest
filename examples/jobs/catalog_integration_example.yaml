@@ -1,0 +1,51 @@
+# Example job configuration with data catalog integration
+# This example shows how to configure lineage and metadata tracking with OpenMetadata
+
+tenant_id: example_tenant
+environment: dev
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: example_table
+asset_path: assets/csv/v1.0/example_table.yaml
+
+# Source configuration
+source:
+  type: csv
+  files:
+    - path: data/example.csv
+      object: example_data
+
+# Target configuration
+target:
+  type: iceberg
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+      prefix: "raw/example_tenant/example_table"
+
+# Data catalog configuration (optional)
+# When present, lineage and metadata will be pushed to the specified catalog
+catalog:
+  type: openmetadata  # Options: aws_glue, databricks_unity, nessie, openmetadata
+  enabled: true
+  connection:
+    api_url: "http://localhost:8585/api"  # OpenMetadata API URL
+    auth_token: "${OPENMETADATA_TOKEN}"  # Optional: authentication token
+    service_name: "dativo_service"  # Optional: service name in OpenMetadata
+    timeout: 30  # Optional: request timeout in seconds
+
+# Schema validation mode
+schema_validation_mode: strict
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

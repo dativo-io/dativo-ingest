@@ -72,9 +72,67 @@ services:
       retries: 5
     command: --default-authentication-plugin=mysql_native_password
 
+  openmetadata:
+    image: openmetadata/openmetadata-server:latest
+    container_name: dativo-openmetadata
+    ports:
+      - "8585:8585"
+    environment:
+      - AIRFLOW_HOST=http://localhost:8080
+      - ELASTICSEARCH_HOST=http://localhost:9200
+      - ELASTICSEARCH_PORT=9200
+      - DB_DRIVER_CLASS=org.postgresql.Driver
+      - DB_HOST=openmetadata-db
+      - DB_USER=openmetadata_user
+      - DB_PASSWORD=openmetadata_password
+      - DB_SCHEME=openmetadata_db
+      - DB_PORT=5432
+    depends_on:
+      - openmetadata-db
+      - elasticsearch
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8585/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  openmetadata-db:
+    image: postgres:15-alpine
+    container_name: dativo-openmetadata-db
+    environment:
+      - POSTGRES_USER=openmetadata_user
+      - POSTGRES_PASSWORD=openmetadata_password
+      - POSTGRES_DB=openmetadata_db
+    volumes:
+      - openmetadata-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openmetadata_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: dativo-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
 volumes:
   nessie-data:
   minio-data:
   postgres-data:
   mysql-data:
+  openmetadata-db-data:
+  elasticsearch-data:
 
