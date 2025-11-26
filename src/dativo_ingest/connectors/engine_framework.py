@@ -306,14 +306,20 @@ class AirbyteExtractor(BaseEngineExtractor):
 class MeltanoExtractor(BaseEngineExtractor):
     """Extractor for Meltano taps/targets."""
 
-    def __init__(self, source_config: SourceConfig, connector_recipe: ConnectorRecipe):
+    def __init__(
+        self,
+        source_config: SourceConfig,
+        connector_recipe: ConnectorRecipe,
+        tenant_id: Optional[str] = None,
+    ):
         """Initialize Meltano extractor.
 
         Args:
             source_config: Source configuration from job
             connector_recipe: Connector recipe with engine configuration
+            tenant_id: Optional tenant ID for credential path resolution
         """
-        super().__init__(source_config, connector_recipe)
+        super().__init__(source_config, connector_recipe, tenant_id)
         self.logger.info(
             "Initialized Meltano extractor",
             extra={
