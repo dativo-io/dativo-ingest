@@ -87,7 +87,10 @@ def test_gdrive_native_extractor_initialization(
         return mock_path
 
     # Mock Path in the module where it's used
-    with patch("dativo_ingest.connectors.gdrive_csv_extractor.Path", side_effect=mock_path_constructor):
+    with patch(
+        "dativo_ingest.connectors.gdrive_csv_extractor.Path",
+        side_effect=mock_path_constructor,
+    ):
         # Mock sys.modules to fake the Google API modules
         import sys
 
@@ -151,7 +154,10 @@ def test_gdrive_extract_metadata(gdrive_source_config, gdrive_connector_recipe_n
         return mock_path
 
     # Mock Path in the module where it's used
-    with patch("dativo_ingest.connectors.gdrive_csv_extractor.Path", side_effect=mock_path_constructor):
+    with patch(
+        "dativo_ingest.connectors.gdrive_csv_extractor.Path",
+        side_effect=mock_path_constructor,
+    ):
         import sys
 
         mock_google_oauth2 = MagicMock()
