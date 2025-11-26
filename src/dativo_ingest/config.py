@@ -450,6 +450,29 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class CatalogConfig(BaseModel):
+    """Data catalog configuration for lineage and metadata push."""
+
+    type: str = Field(
+        ..., description="Catalog type: 'aws_glue', 'databricks_unity', 'nessie', or 'openmetadata'"
+    )
+    connection: Dict[str, Any] = Field(
+        ..., description="Catalog connection configuration"
+    )
+    database: Optional[str] = Field(
+        None, description="Database/schema name (required for some catalogs)"
+    )
+    table_name: Optional[str] = Field(
+        None, description="Table name override (defaults to asset name)"
+    )
+    push_lineage: bool = Field(
+        True, description="Whether to push lineage information"
+    )
+    push_metadata: bool = Field(
+        True, description="Whether to push metadata (tags, owners, etc.)"
+    )
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
@@ -506,6 +529,9 @@ class JobConfig(BaseModel):
     governance_overrides: Optional[Dict[str, Any]] = (
         None  # Governance metadata overrides
     )
+
+    # Catalog configuration (optional)
+    catalog: Optional[CatalogConfig] = None
 
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'

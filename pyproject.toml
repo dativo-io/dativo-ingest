@@ -25,6 +25,7 @@ dependencies = [
     "vcrpy>=5.0.0",
     "google-api-python-client>=2.0.0",
     "google-auth>=2.0.0",
+    # Catalog integrations - requests and boto3 already included above
 ]
 
 [project.optional-dependencies]
