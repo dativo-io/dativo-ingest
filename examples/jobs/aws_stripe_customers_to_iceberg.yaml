@@ -1,0 +1,107 @@
+# Example: Stripe customers to Iceberg with AWS infrastructure
+# This job demonstrates external infrastructure integration with AWS ECS
+
+tenant_id: acme
+environment: prod
+
+source_connector: stripe
+source_connector_path: /app/connectors/stripe.yaml
+
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+asset: stripe_customers
+asset_path: /app/assets/stripe/v1.0/customers.yaml
+
+source:
+  objects: [customers]
+  incremental:
+    lookback_days: 1
+
+target:
+  branch: acme
+  warehouse: s3://lake/acme/
+  connection:
+    nessie:
+      uri: "http://nessie.acme.internal:19120/api/v1"
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/stripe/customers"
+
+# External infrastructure configuration for AWS deployment
+infrastructure:
+  provider: aws
+  
+  runtime:
+    type: ecs
+    compute:
+      cpu: "2048"        # 2 vCPU
+      memory: "4096"     # 4 GB
+    scaling:
+      min_instances: 1
+      max_instances: 5
+      target_cpu_utilization: 70
+    timeout_seconds: 7200  # 2 hours
+  
+  networking:
+    vpc_id: vpc-12345678
+    subnet_ids:
+      - subnet-12345678  # Private subnet AZ1
+      - subnet-87654321  # Private subnet AZ2
+    security_group_ids:
+      - sg-12345678
+    private_access: true
+  
+  storage:
+    state_bucket: dativo-state-acme
+    data_bucket: dativo-data-acme
+    encryption:
+      enabled: true
+      kms_key_id: arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012
+  
+  tags:
+    cost_center: FIN-001
+    business_unit: Finance
+    project: data-platform
+    environment: prod
+    owner: data-team@acme.com
+    compliance:
+      - GDPR
+      - SOC2
+      - PCI-DSS
+    data_classification: Confidential
+    custom:
+      department: payments
+      team: data-engineering
+  
+  terraform:
+    module_source: git::https://github.com/acme/terraform-dativo-job.git
+    module_version: v1.0.0
+    backend:
+      type: s3
+      config:
+        bucket: acme-terraform-state
+        key: dativo/jobs/stripe_customers.tfstate
+        region: us-east-1
+        encrypt: true
+  
+  monitoring:
+    enabled: true
+    log_group: /dativo/jobs/acme/stripe_customers
+    metrics_namespace: Dativo/Jobs
+    alerts:
+      channels:
+        - arn:aws:sns:us-east-1:123456789012:dativo-alerts
+      thresholds:
+        error_rate: 5
+        timeout_rate: 2
+
+logging:
+  redaction: true
+  level: INFO
+
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 10
+  max_delay_seconds: 300
+  backoff_multiplier: 2.0

@@ -1,0 +1,98 @@
+# Example: HubSpot contacts to Iceberg with GCP infrastructure
+# This job demonstrates external infrastructure integration with GCP Cloud Run
+
+tenant_id: acme
+environment: prod
+
+source_connector: hubspot
+source_connector_path: /app/connectors/hubspot.yaml
+
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+asset: hubspot_contacts
+asset_path: /app/assets/hubspot/v1.0/contacts.yaml
+
+source:
+  objects: [contacts]
+  incremental:
+    lookback_days: 1
+
+target:
+  branch: acme
+  warehouse: gs://lake-acme/
+  connection:
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/hubspot/contacts"
+
+# External infrastructure configuration for GCP deployment
+infrastructure:
+  provider: gcp
+  
+  runtime:
+    type: cloud_run
+    compute:
+      cpu: "2"
+      memory: "4Gi"
+    scaling:
+      min_instances: 0
+      max_instances: 10
+      target_cpu_utilization: 75
+    timeout_seconds: 3600  # 1 hour
+  
+  networking:
+    vpc_id: projects/acme-prod/locations/us-central1/connectors/dativo-vpc-connector
+    private_access: true
+  
+  storage:
+    state_bucket: dativo-state-acme
+    data_bucket: dativo-data-acme
+    encryption:
+      enabled: true
+      kms_key_id: projects/acme-prod/locations/us-central1/keyRings/dativo/cryptoKeys/data-encryption
+  
+  tags:
+    cost_center: MKT-002
+    business_unit: Marketing
+    project: crm-integration
+    environment: prod
+    owner: marketing-ops@acme.com
+    compliance:
+      - GDPR
+      - CCPA
+    data_classification: PII
+    custom:
+      department: marketing
+      team: marketing-ops
+      data_source: hubspot
+  
+  terraform:
+    module_source: git::https://github.com/acme/terraform-dativo-job-gcp.git
+    module_version: v1.0.0
+    backend:
+      type: gcs
+      config:
+        bucket: acme-terraform-state
+        prefix: dativo/jobs/hubspot_contacts
+        encryption_key: projects/acme-prod/locations/us-central1/keyRings/terraform/cryptoKeys/state
+  
+  monitoring:
+    enabled: true
+    metrics_namespace: Dativo/Jobs
+    alerts:
+      channels:
+        - projects/acme-prod/notificationChannels/123456789
+      thresholds:
+        error_rate: 5
+        timeout_rate: 2
+
+logging:
+  redaction: true
+  level: INFO
+
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 10
+  max_delay_seconds: 300
+  backoff_multiplier: 2.0

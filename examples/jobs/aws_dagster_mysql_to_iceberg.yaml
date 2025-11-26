@@ -1,0 +1,114 @@
+# Example: MySQL to Iceberg with AWS infrastructure and Dagster orchestration
+# This job demonstrates Dagster-based orchestration on AWS
+
+tenant_id: acme
+environment: prod
+
+source_connector: mysql
+source_connector_path: /app/connectors/mysql.yaml
+
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+asset: mysql_customers
+asset_path: /app/assets/mysql/v1.0/db_customers.yaml
+
+source:
+  tables:
+    - name: customers
+  incremental:
+    strategy: incremental
+    cursor_field: updated_at
+    lookback_days: 1
+
+target:
+  branch: acme
+  warehouse: s3://lake/acme/
+  connection:
+    s3:
+      bucket: "acme-data-lake"
+      prefix: "raw/mysql/customers"
+
+# External infrastructure configuration for Dagster on AWS
+infrastructure:
+  provider: aws
+  
+  runtime:
+    type: dagster  # Dagster orchestration on ECS
+    compute:
+      cpu: "1024"
+      memory: "2048"
+    scaling:
+      min_instances: 1
+      max_instances: 3
+      target_cpu_utilization: 70
+    timeout_seconds: 3600
+  
+  networking:
+    vpc_id: vpc-12345678
+    subnet_ids:
+      - subnet-12345678
+      - subnet-87654321
+    security_group_ids:
+      - sg-12345678  # Allow access to MySQL RDS
+    private_access: true
+  
+  storage:
+    state_bucket: dativo-state-acme
+    data_bucket: dativo-data-acme
+    encryption:
+      enabled: true
+      kms_key_id: arn:aws:kms:us-east-1:123456789012:key/12345678
+  
+  tags:
+    cost_center: DATA-001
+    business_unit: DataPlatform
+    project: data-warehouse
+    environment: prod
+    owner: data-engineering@acme.com
+    compliance:
+      - GDPR
+      - SOC2
+    data_classification: Internal
+    custom:
+      orchestrator: dagster
+      source_system: mysql
+      sync_frequency: daily
+  
+  terraform:
+    module_source: git::https://github.com/acme/terraform-dativo-job.git
+    module_version: v1.0.0
+    backend:
+      type: s3
+      config:
+        bucket: acme-terraform-state
+        key: dativo/jobs/mysql_customers.tfstate
+        region: us-east-1
+        encrypt: true
+    variables:
+      # Custom Terraform variables
+      enable_vpc_endpoints: true
+      enable_container_insights: true
+  
+  monitoring:
+    enabled: true
+    log_group: /dativo/jobs/acme/mysql_customers
+    metrics_namespace: Dativo/Jobs
+    alerts:
+      channels:
+        - arn:aws:sns:us-east-1:123456789012:dativo-alerts
+        - arn:aws:sns:us-east-1:123456789012:data-engineering-oncall
+      thresholds:
+        error_rate: 2
+        timeout_rate: 1
+        records_processed_min: 1000
+
+logging:
+  redaction: true
+  level: INFO
+
+retry_config:
+  max_attempts: 3
+  initial_delay_seconds: 10
+  max_delay_seconds: 300
+  backoff_multiplier: 2.0

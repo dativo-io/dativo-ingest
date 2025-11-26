@@ -10,7 +10,11 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from .config import JobConfig, RunnerConfig
-from .infrastructure import validate_infrastructure
+from .infrastructure import (
+    validate_infrastructure,
+    load_infrastructure_config,
+    validate_infrastructure_for_job,
+)
 from .logging import get_logger, setup_logging, update_logging_settings
 from .secrets import load_secrets
 from .validator import ConnectorValidator, IncrementalStateManager
@@ -1166,6 +1170,63 @@ Examples:
         help="Path to runner configuration YAML file (default: /app/configs/runner.yaml)",
     )
 
+    # Infrastructure command
+    infra_parser = subparsers.add_parser(
+        "infra",
+        help="Infrastructure integration commands",
+        description="Manage external infrastructure integration for cloud deployment via Terraform",
+    )
+    infra_subparsers = infra_parser.add_subparsers(dest="infra_command", help="Infrastructure commands")
+
+    # Generate Terraform variables
+    generate_tfvars_parser = infra_subparsers.add_parser(
+        "generate-tfvars",
+        help="Generate Terraform variables from job configuration",
+    )
+    generate_tfvars_parser.add_argument(
+        "--job-config",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+    generate_tfvars_parser.add_argument(
+        "--output",
+        required=True,
+        help="Output path for Terraform variables file",
+    )
+    generate_tfvars_parser.add_argument(
+        "--format",
+        choices=["json", "tfvars"],
+        default="json",
+        help="Output format (default: json)",
+    )
+
+    # Validate infrastructure configuration
+    validate_infra_parser = infra_subparsers.add_parser(
+        "validate",
+        help="Validate infrastructure configuration",
+    )
+    validate_infra_parser.add_argument(
+        "--job-config",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+
+    # Export tag report
+    tag_report_parser = infra_subparsers.add_parser(
+        "tag-report",
+        help="Export tag propagation report",
+    )
+    tag_report_parser.add_argument(
+        "--job-config",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+    tag_report_parser.add_argument(
+        "--output",
+        required=True,
+        help="Output path for tag report (JSON)",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -1176,8 +1237,140 @@ Examples:
         return run_command(args)
     elif args.command == "start":
         return start_command(args)
+    elif args.command == "infra":
+        return infra_command(args)
     else:
         parser.print_help()
+        return 2
+
+
+def infra_command(args):
+    """Handle infrastructure integration commands.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success, 2 for failure)
+    """
+    logger = get_logger(__name__)
+    
+    if not args.infra_command:
+        logger.error("No infrastructure command specified")
+        return 2
+    
+    try:
+        # Load job configuration
+        job_config = JobConfig.from_yaml(args.job_config)
+        
+        # Load infrastructure configuration
+        if not hasattr(job_config, 'infrastructure') or not job_config.infrastructure:
+            logger.error("No infrastructure configuration found in job config")
+            return 2
+        
+        infra_config = load_infrastructure_config(job_config.infrastructure)
+        
+        if args.infra_command == "generate-tfvars":
+            # Derive asset tags
+            from .tag_derivation import derive_tags_from_asset
+            
+            asset = job_config.get_asset()
+            asset_tags = derive_tags_from_asset(asset)
+            
+            # Export Terraform variables
+            output_path = Path(args.output)
+            infra_config.export_terraform_vars(
+                output_path=output_path,
+                job_config=job_config,
+                asset_tags=asset_tags,
+                format=args.format
+            )
+            
+            logger.info(
+                f"Generated Terraform variables",
+                extra={
+                    "event_type": "tfvars_generated",
+                    "output_path": str(output_path),
+                    "format": args.format,
+                    "provider": infra_config.provider,
+                }
+            )
+            print(f"Terraform variables written to {output_path}")
+            return 0
+        
+        elif args.infra_command == "validate":
+            # Validate infrastructure configuration
+            validate_infrastructure_for_job(job_config, infra_config)
+            
+            logger.info(
+                "Infrastructure configuration validated successfully",
+                extra={
+                    "event_type": "infra_validated",
+                    "provider": infra_config.provider,
+                    "runtime_type": infra_config.runtime.type,
+                }
+            )
+            print("✓ Infrastructure configuration is valid")
+            return 0
+        
+        elif args.infra_command == "tag-report":
+            # Generate tag report
+            from .tag_derivation import derive_tags_from_asset
+            
+            asset = job_config.get_asset()
+            asset_tags = derive_tags_from_asset(asset)
+            
+            # Generate Terraform variables (which includes all tags)
+            tf_vars = infra_config.generate_terraform_vars(job_config, asset_tags)
+            
+            # Create tag report
+            tag_report = {
+                "job_name": job_config.tenant_id + "_" + getattr(job_config, 'asset', 'unknown'),
+                "provider": infra_config.provider,
+                "runtime_type": infra_config.runtime.type,
+                "tags": tf_vars.get("tags", {}),
+                "tag_sources": {
+                    "infrastructure": list(infra_config.tags.to_flat_dict().keys()) if infra_config.tags else [],
+                    "job_metadata": ["TenantId", "Asset", "SourceConnector"],
+                    "asset_tags": [k for k in asset_tags.keys()],
+                    "system_tags": ["ManagedBy", "Terraform", "Module"]
+                },
+                "tag_count": len(tf_vars.get("tags", {}))
+            }
+            
+            # Write report
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w") as f:
+                json.dump(tag_report, f, indent=2)
+            
+            logger.info(
+                f"Generated tag report",
+                extra={
+                    "event_type": "tag_report_generated",
+                    "output_path": str(output_path),
+                    "tag_count": tag_report["tag_count"],
+                }
+            )
+            print(f"Tag report written to {output_path}")
+            print(f"Total tags: {tag_report['tag_count']}")
+            return 0
+        
+        else:
+            logger.error(f"Unknown infrastructure command: {args.infra_command}")
+            return 2
+    
+    except Exception as e:
+        logger.error(
+            f"Infrastructure command failed: {e}",
+            extra={
+                "event_type": "infra_command_failed",
+                "command": args.infra_command,
+                "error": str(e),
+            },
+            exc_info=True
+        )
+        print(f"Error: {e}")
         return 2
 
 

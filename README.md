@@ -311,6 +311,92 @@ state/               # Incremental sync state
 src/dativo_ingest/   # Source code
 ```
 
+## Infrastructure Integration
+
+Dativo now supports **external infrastructure integration** for cloud-agnostic deployment via Terraform with comprehensive tag propagation for cost allocation, compliance, and resource traceability.
+
+### Key Features
+
+- **Cloud-agnostic deployment**: Deploy jobs to AWS, GCP, or Azure with consistent configuration
+- **Terraform integration**: Generate Terraform variables automatically from job configurations
+- **Comprehensive tag propagation**: Automatic tag/label propagation from job config, asset schema, and metadata
+- **Multi-runtime support**: Dagster, Airflow, Kubernetes, ECS, Cloud Run, and more
+- **Cost allocation**: Track costs by tenant, project, environment, and cost center
+- **Compliance tracking**: Propagate data classification and regulatory requirements to cloud resources
+
+### Quick Example
+
+```yaml
+# jobs/acme/stripe_customers_to_iceberg.yaml
+tenant_id: acme
+environment: prod
+
+source_connector: stripe
+target_connector: iceberg
+asset: stripe_customers
+
+# External infrastructure configuration
+infrastructure:
+  provider: aws  # or gcp, azure
+  
+  runtime:
+    type: ecs  # or cloud_run, dagster, kubernetes
+    compute:
+      cpu: "2048"
+      memory: "4096"
+    timeout_seconds: 7200
+  
+  networking:
+    vpc_id: vpc-12345678
+    subnet_ids: [subnet-12345678, subnet-87654321]
+    private_access: true
+  
+  storage:
+    state_bucket: dativo-state-acme
+    data_bucket: dativo-data-acme
+    encryption:
+      enabled: true
+      kms_key_id: arn:aws:kms:...
+  
+  tags:
+    cost_center: FIN-001
+    business_unit: Finance
+    project: data-platform
+    environment: prod
+    owner: data-team@acme.com
+    compliance: [GDPR, SOC2]
+    data_classification: Confidential
+```
+
+### Generate Terraform Variables
+
+```bash
+# Generate Terraform variables from job config
+dativo infra generate-tfvars \
+  --job-config jobs/acme/stripe_customers_to_iceberg.yaml \
+  --output terraform/aws/terraform.tfvars.json
+
+# Validate infrastructure configuration
+dativo infra validate \
+  --job-config jobs/acme/stripe_customers_to_iceberg.yaml
+
+# Export tag report
+dativo infra tag-report \
+  --job-config jobs/acme/stripe_customers_to_iceberg.yaml \
+  --output tags-report.json
+```
+
+### Apply Terraform
+
+```bash
+cd terraform/aws  # or terraform/gcp
+terraform init
+terraform plan -var-file=terraform.tfvars.json
+terraform apply -var-file=terraform.tfvars.json
+```
+
+See [docs/INFRASTRUCTURE_INTEGRATION.md](docs/INFRASTRUCTURE_INTEGRATION.md) for complete documentation.
+
 ## Documentation
 
 **Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
@@ -318,6 +404,7 @@ src/dativo_ingest/   # Source code
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
+**Infrastructure Integration:** [docs/INFRASTRUCTURE_INTEGRATION.md](docs/INFRASTRUCTURE_INTEGRATION.md)  
 **Testing:** [tests/README.md](tests/README.md)
 
 

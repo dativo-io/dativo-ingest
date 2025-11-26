@@ -1,11 +1,22 @@
-"""Infrastructure health checks for validating dependencies."""
+"""Infrastructure health checks and external infrastructure integration for cloud deployment.
+
+This module provides:
+1. Infrastructure health checks for validating dependencies
+2. External infrastructure configuration management
+3. Cloud-agnostic deployment support via Terraform
+4. Tag propagation for cost allocation and compliance
+"""
 
 import os
 import socket
-from typing import List, Optional
+import json
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
 
 import requests
+import yaml
 
 from .config import JobConfig
 
@@ -227,3 +238,425 @@ def validate_infrastructure(job_config: JobConfig) -> None:
     # Raise errors (fatal)
     if errors:
         raise ValueError("; ".join(errors))
+
+
+# ==============================================================================
+# External Infrastructure Integration
+# ==============================================================================
+
+
+@dataclass
+class InfrastructureRuntime:
+    """Runtime environment configuration for job execution."""
+
+    type: str  # dagster, airflow, kubernetes, ecs, cloud_run, cloud_functions
+    compute: Optional[Dict[str, Any]] = None
+    scaling: Optional[Dict[str, Any]] = None
+    timeout_seconds: Optional[int] = None
+
+    def __post_init__(self):
+        """Validate runtime configuration."""
+        valid_types = [
+            "dagster",
+            "airflow",
+            "kubernetes",
+            "ecs",
+            "cloud_run",
+            "cloud_functions",
+        ]
+        if self.type not in valid_types:
+            raise ValueError(
+                f"Invalid runtime type: {self.type}. Must be one of {valid_types}"
+            )
+
+
+@dataclass
+class InfrastructureNetworking:
+    """Network configuration for cloud resources."""
+
+    vpc_id: Optional[str] = None
+    subnet_ids: Optional[List[str]] = None
+    security_group_ids: Optional[List[str]] = None
+    private_access: bool = True
+
+
+@dataclass
+class InfrastructureStorage:
+    """Storage configuration for state and data."""
+
+    state_bucket: Optional[str] = None
+    data_bucket: Optional[str] = None
+    encryption: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class InfrastructureTags:
+    """Cloud resource tags for cost allocation, compliance, and traceability."""
+
+    cost_center: Optional[str] = None
+    business_unit: Optional[str] = None
+    project: Optional[str] = None
+    environment: Optional[str] = None  # dev, staging, prod
+    owner: Optional[str] = None
+    compliance: Optional[List[str]] = None
+    data_classification: Optional[str] = None
+    custom: Optional[Dict[str, str]] = None
+
+    def to_flat_dict(self) -> Dict[str, str]:
+        """Convert tags to flat dictionary for Terraform/cloud provider tags."""
+        tags = {}
+        if self.cost_center:
+            tags["CostCenter"] = self.cost_center
+        if self.business_unit:
+            tags["BusinessUnit"] = self.business_unit
+        if self.project:
+            tags["Project"] = self.project
+        if self.environment:
+            tags["Environment"] = self.environment
+        if self.owner:
+            tags["Owner"] = self.owner
+        if self.compliance:
+            tags["Compliance"] = ",".join(self.compliance)
+        if self.data_classification:
+            tags["DataClassification"] = self.data_classification
+        if self.custom:
+            # Custom tags are added with Custom prefix
+            for key, value in self.custom.items():
+                tags[f"Custom_{key}"] = value
+        return tags
+
+
+@dataclass
+class InfrastructureTerraform:
+    """Terraform-specific configuration."""
+
+    module_source: Optional[str] = None
+    module_version: Optional[str] = None
+    backend: Optional[Dict[str, Any]] = None
+    variables: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class InfrastructureMonitoring:
+    """Monitoring and alerting configuration."""
+
+    enabled: bool = True
+    metrics_namespace: Optional[str] = None
+    log_group: Optional[str] = None
+    alerts: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class InfrastructureConfig:
+    """External infrastructure configuration for cloud deployment.
+
+    This configuration enables jobs to reference infrastructure provisioned
+    outside of Dativo (e.g., via Terraform) and provides metadata that flows
+    into the Terraform module for cloud-agnostic deployment.
+    """
+
+    provider: str  # aws, gcp, azure
+    runtime: InfrastructureRuntime
+    networking: Optional[InfrastructureNetworking] = None
+    storage: Optional[InfrastructureStorage] = None
+    tags: Optional[InfrastructureTags] = None
+    terraform: Optional[InfrastructureTerraform] = None
+    monitoring: Optional[InfrastructureMonitoring] = None
+
+    def __post_init__(self):
+        """Validate infrastructure configuration."""
+        valid_providers = ["aws", "gcp", "azure"]
+        if self.provider not in valid_providers:
+            raise ValueError(
+                f"Invalid provider: {self.provider}. Must be one of {valid_providers}"
+            )
+
+    @classmethod
+    def from_dict(cls, config: Dict[str, Any]) -> "InfrastructureConfig":
+        """Create infrastructure config from dictionary."""
+        # Parse nested objects
+        runtime = InfrastructureRuntime(**config["runtime"])
+        networking = (
+            InfrastructureNetworking(**config["networking"])
+            if config.get("networking")
+            else None
+        )
+        storage = (
+            InfrastructureStorage(**config["storage"])
+            if config.get("storage")
+            else None
+        )
+        tags = InfrastructureTags(**config["tags"]) if config.get("tags") else None
+        terraform = (
+            InfrastructureTerraform(**config["terraform"])
+            if config.get("terraform")
+            else None
+        )
+        monitoring = (
+            InfrastructureMonitoring(**config["monitoring"])
+            if config.get("monitoring")
+            else None
+        )
+
+        return cls(
+            provider=config["provider"],
+            runtime=runtime,
+            networking=networking,
+            storage=storage,
+            tags=tags,
+            terraform=terraform,
+            monitoring=monitoring,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert infrastructure config to dictionary."""
+        result = {
+            "provider": self.provider,
+            "runtime": asdict(self.runtime),
+        }
+        if self.networking:
+            result["networking"] = asdict(self.networking)
+        if self.storage:
+            result["storage"] = asdict(self.storage)
+        if self.tags:
+            result["tags"] = asdict(self.tags)
+        if self.terraform:
+            result["terraform"] = asdict(self.terraform)
+        if self.monitoring:
+            result["monitoring"] = asdict(self.monitoring)
+        return result
+
+    def generate_terraform_vars(
+        self, job_config: JobConfig, asset_tags: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """Generate Terraform variables from infrastructure config and job metadata.
+
+        This method propagates tags from multiple sources:
+        1. Infrastructure tags (cost_center, business_unit, etc.)
+        2. Job configuration metadata (tenant_id, environment)
+        3. Asset tags (from tag_derivation module)
+
+        Args:
+            job_config: Job configuration
+            asset_tags: Optional asset-derived tags (from tag_derivation module)
+
+        Returns:
+            Dictionary of Terraform variables with propagated tags
+        """
+        tf_vars = {
+            "provider": self.provider,
+            "runtime_type": self.runtime.type,
+        }
+
+        # Add runtime configuration
+        if self.runtime.compute:
+            tf_vars["compute"] = self.runtime.compute
+        if self.runtime.scaling:
+            tf_vars["scaling"] = self.runtime.scaling
+        if self.runtime.timeout_seconds:
+            tf_vars["timeout_seconds"] = self.runtime.timeout_seconds
+
+        # Add networking configuration
+        if self.networking:
+            tf_vars["networking"] = asdict(self.networking)
+
+        # Add storage configuration
+        if self.storage:
+            tf_vars["storage"] = asdict(self.storage)
+
+        # Add monitoring configuration
+        if self.monitoring:
+            tf_vars["monitoring"] = asdict(self.monitoring)
+
+        # Propagate tags from multiple sources
+        all_tags = {}
+
+        # 1. Infrastructure tags
+        if self.tags:
+            all_tags.update(self.tags.to_flat_dict())
+
+        # 2. Job metadata tags
+        all_tags["TenantId"] = job_config.tenant_id
+        if hasattr(job_config, "environment") and job_config.environment:
+            all_tags["Environment"] = job_config.environment
+        if hasattr(job_config, "asset") and job_config.asset:
+            all_tags["Asset"] = job_config.asset
+        if hasattr(job_config, "source_connector") and job_config.source_connector:
+            all_tags["SourceConnector"] = job_config.source_connector
+
+        # 3. Asset tags (from tag_derivation module)
+        if asset_tags:
+            # Add asset-derived classification tags
+            for key, value in asset_tags.items():
+                if key.startswith("classification."):
+                    # Convert classification.fields.email -> Classification_email
+                    tag_name = key.replace("classification.", "Classification_").replace(
+                        ".", "_"
+                    )
+                    all_tags[tag_name] = value
+                elif key.startswith("governance."):
+                    tag_name = key.replace("governance.", "Governance_").replace(
+                        ".", "_"
+                    )
+                    all_tags[tag_name] = value
+                elif key.startswith("finops."):
+                    tag_name = key.replace("finops.", "FinOps_").replace(".", "_")
+                    all_tags[tag_name] = value
+
+        # Add ManagedBy tag
+        all_tags["ManagedBy"] = "dativo"
+
+        tf_vars["tags"] = all_tags
+
+        # Add custom terraform variables if specified
+        if self.terraform and self.terraform.variables:
+            tf_vars.update(self.terraform.variables)
+
+        return tf_vars
+
+    def export_terraform_vars(
+        self,
+        output_path: Path,
+        job_config: JobConfig,
+        asset_tags: Optional[Dict[str, str]] = None,
+        format: str = "json",
+    ) -> None:
+        """Export Terraform variables to file.
+
+        Args:
+            output_path: Path to output file
+            job_config: Job configuration
+            asset_tags: Optional asset-derived tags
+            format: Output format ('json' or 'tfvars')
+        """
+        tf_vars = self.generate_terraform_vars(job_config, asset_tags)
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if format == "json":
+            with open(output_path, "w") as f:
+                json.dump(tf_vars, f, indent=2)
+        elif format == "tfvars":
+            with open(output_path, "w") as f:
+                for key, value in tf_vars.items():
+                    if isinstance(value, str):
+                        f.write(f'{key} = "{value}"\n')
+                    elif isinstance(value, dict):
+                        f.write(f"{key} = {json.dumps(value)}\n")
+                    elif isinstance(value, list):
+                        f.write(f"{key} = {json.dumps(value)}\n")
+                    else:
+                        f.write(f"{key} = {value}\n")
+        else:
+            raise ValueError(f"Unsupported format: {format}. Use 'json' or 'tfvars'")
+
+    def validate_infrastructure_config(self) -> List[str]:
+        """Validate infrastructure configuration and return warnings.
+
+        Returns:
+            List of validation warnings (empty if valid)
+        """
+        warnings = []
+
+        # Validate runtime configuration
+        if self.runtime.type in ["ecs", "cloud_run"] and not self.runtime.compute:
+            warnings.append(
+                f"Runtime type '{self.runtime.type}' typically requires compute configuration"
+            )
+
+        # Validate networking configuration
+        if self.provider == "aws" and self.networking:
+            if self.networking.vpc_id and not self.networking.subnet_ids:
+                warnings.append("VPC ID specified but no subnet IDs provided")
+            if self.networking.subnet_ids and not self.networking.vpc_id:
+                warnings.append("Subnet IDs specified but no VPC ID provided")
+
+        # Validate storage configuration
+        if self.storage and self.storage.encryption:
+            if (
+                self.storage.encryption.get("enabled")
+                and not self.storage.encryption.get("kms_key_id")
+            ):
+                warnings.append("Encryption enabled but no KMS key ID specified")
+
+        # Validate tags for compliance
+        if not self.tags:
+            warnings.append(
+                "No tags specified - consider adding tags for cost allocation and compliance"
+            )
+        elif self.tags:
+            if not self.tags.cost_center:
+                warnings.append("No cost_center tag specified")
+            if not self.tags.owner:
+                warnings.append("No owner tag specified")
+            if not self.tags.environment:
+                warnings.append("No environment tag specified")
+
+        return warnings
+
+
+def load_infrastructure_config(
+    config_dict: Optional[Dict[str, Any]]
+) -> Optional[InfrastructureConfig]:
+    """Load infrastructure configuration from dictionary.
+
+    Args:
+        config_dict: Dictionary containing infrastructure configuration
+
+    Returns:
+        InfrastructureConfig or None if no infrastructure specified
+    """
+    if not config_dict:
+        return None
+
+    try:
+        return InfrastructureConfig.from_dict(config_dict)
+    except Exception as e:
+        raise ValueError(f"Invalid infrastructure configuration: {e}")
+
+
+def validate_infrastructure_for_job(
+    job_config: JobConfig, infrastructure: Optional[InfrastructureConfig] = None
+) -> None:
+    """Validate infrastructure dependencies and configuration for a job.
+
+    This function performs both:
+    1. Health checks for existing infrastructure (Nessie, S3, etc.)
+    2. Validation of external infrastructure configuration
+
+    Args:
+        job_config: Job configuration to validate
+        infrastructure: Optional external infrastructure configuration
+
+    Raises:
+        ValueError: If infrastructure validation fails
+    """
+    # Perform existing health checks
+    validate_infrastructure(job_config)
+
+    # Validate external infrastructure configuration
+    if infrastructure:
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        warnings = infrastructure.validate_infrastructure_config()
+        for warning in warnings:
+            logger.warning(
+                f"Infrastructure configuration warning: {warning}",
+                extra={
+                    "event_type": "infrastructure_config_warning",
+                    "warning": warning,
+                    "provider": infrastructure.provider,
+                    "runtime_type": infrastructure.runtime.type,
+                },
+            )
+
+        logger.info(
+            "External infrastructure configuration validated",
+            extra={
+                "event_type": "infrastructure_config_validated",
+                "provider": infrastructure.provider,
+                "runtime_type": infrastructure.runtime.type,
+            },
+        )
