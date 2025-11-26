@@ -1057,6 +1057,8 @@ state/{tenant_id}/{job_name}.json
 |-----------|-------|----------|------------|-------------|----------------|
 | `stripe` | source | payments | ✅ | ✅ | airbyte |
 | `hubspot` | source | crm | ✅ | ✅ | airbyte |
+| `gdrive_csv` | source | files | ✅ | ✅ | native (airbyte, meltano supported) |
+| `google_sheets` | source, target | files | ✅ | ✅ | native (airbyte, meltano supported) |
 | `csv` | source, target | files | ✅ | ✅ | native |
 | `postgres` | source, target | database | ❌ | ✅ | meltano |
 | `mysql` | source, target | database | ❌ | ✅ | meltano |

@@ -1,0 +1,38 @@
+asset:
+  name: stripe_charges
+  source_type: stripe
+  object: charges
+  version: "1.0"
+  
+  schema:
+    - name: id
+      type: string
+      required: true
+    - name: amount
+      type: integer
+      required: false
+    - name: currency
+      type: string
+      required: false
+    - name: customer
+      type: string
+      required: false
+    - name: status
+      type: string
+      required: false
+    - name: created
+      type: timestamp
+      required: true
+  
+  governance:
+    owner: data-team@company.com
+    tags: [payments, charges]
+    classification: []
+    retention_days: 365
+  
+  target:
+    file_format: parquet
+    partitioning: [ingest_date]
+    mode: strict
+
+

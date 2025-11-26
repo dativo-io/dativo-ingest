@@ -30,7 +30,7 @@ connectors:
     roles: [source]  # Source only - file reading
     category: files
     default_engine: native
-    engines_supported: [native]
+    engines_supported: [native, airbyte, meltano]
     allowed_in_cloud: true
     supports_incremental: true
     incremental_strategy_default: file_modified_time
@@ -60,7 +60,7 @@ connectors:
     roles: [source, target]  # Bidirectional - can read and write Google Sheets
     category: files
     default_engine: native
-    engines_supported: [native]
+    engines_supported: [native, airbyte, meltano]
     allowed_in_cloud: true
     supports_incremental: true
     incremental_strategy_default: spreadsheet_modified_time

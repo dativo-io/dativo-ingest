@@ -1,4 +1,5 @@
-# CSV Product to MinIO job for smoke tests
+# CSV Product to MinIO job for smoke tests - Strict validation mode
+# This job should FAIL because the CSV contains invalid data (null in required fields)
 tenant_id: test_tenant
 environment: test
 
@@ -14,10 +15,10 @@ target_connector_path: connectors/minio.yaml
 asset: csv_product
 asset_path: tests/fixtures/assets/csv/v1.0/product.yaml
 
-# Source configuration
+# Source configuration - using invalid CSV with nulls in required fields
 source:
   files:
-    - path: tests/fixtures/seeds/adventureworks/Product.csv
+    - path: tests/fixtures/seeds/adventureworks/Product_invalid.csv
       object: Product
 
 # Target configuration
@@ -25,14 +26,14 @@ target:
   connection:
     endpoint: "${MINIO_ENDPOINT}"
     bucket: test-bucket
-    prefix: raw/csv/product
+    prefix: raw/csv/product_strict
     access_key_id: "${MINIO_ACCESS_KEY}"
     secret_access_key: "${MINIO_SECRET_KEY}"
     secure: false
     path_style_access: true
 
-# Schema validation mode
-schema_validation_mode: warn  # Allow job to complete with validation warnings
+# Schema validation mode - STRICT (should fail on validation errors)
+schema_validation_mode: strict
 
 # Logging configuration
 logging:

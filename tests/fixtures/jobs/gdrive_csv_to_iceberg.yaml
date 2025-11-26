@@ -1,0 +1,44 @@
+# Google Drive CSV to Iceberg job for smoke tests
+tenant_id: test_tenant
+environment: test
+
+# Source connector - Google Drive CSV (native engine)
+source_connector: gdrive_csv
+source_connector_path: connectors/gdrive_csv.yaml
+
+# Target connector - Iceberg with MinIO storage
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: gdrive_csv_file
+asset_path: assets/gdrive_csv/v1.0/file.yaml
+
+# Source configuration
+source:
+  files:
+    - id: "test_file_id"
+      object: file
+  incremental:
+    strategy: file_modified_time
+    lookback_days: 0
+
+# Target configuration - Iceberg with MinIO
+target:
+  file_format: parquet
+  connection:
+    s3:
+      endpoint: "${MINIO_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${MINIO_ACCESS_KEY}"
+      secret_access_key: "${MINIO_SECRET_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+      prefix: "raw/gdrive_csv/files"
+
+# Logging configuration
+logging:
+  redaction: true
+  level: INFO
+
+

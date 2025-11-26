@@ -21,6 +21,10 @@ dependencies = [
     "stripe>=7.0.0",
     "hvac>=2.1.0",
     "google-cloud-secret-manager>=2.20.0",
+    "docker>=6.0.0",
+    "vcrpy>=5.0.0",
+    "google-api-python-client>=2.0.0",
+    "google-auth>=2.0.0",
 ]
 
 [project.optional-dependencies]
