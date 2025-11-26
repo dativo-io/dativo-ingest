@@ -11,14 +11,18 @@ SECRETS_DIR="$FIXTURES_DIR/secrets"
 STATE_DIR="${STATE_DIR:-.local/state}"
 
 # Detect Python interpreter
+# Prefer: 1) venv python, 2) python (GitHub Actions uses this), 3) python3.12, 4) python3
 if [ -f "$PROJECT_ROOT/venv/bin/python" ]; then
     PYTHON_CMD="$PROJECT_ROOT/venv/bin/python"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_CMD="python"
 elif command -v python3.12 >/dev/null 2>&1; then
     PYTHON_CMD="python3.12"
 elif command -v python3 >/dev/null 2>&1; then
     PYTHON_CMD="python3"
 else
-    PYTHON_CMD="python"
+    echo "❌ ERROR: No Python interpreter found"
+    exit 1
 fi
 
 # Test job configuration
