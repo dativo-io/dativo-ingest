@@ -1,10 +1,10 @@
-# Google Drive CSV connector - source only
+# Google Drive CSV connector - Airbyte engine variant for testing
 name: gdrive_csv
 type: gdrive_csv
 roles: [source]  # Source only - file reading
-description: "Google Drive CSV connector"
+description: "Google Drive CSV connector (Airbyte engine)"
 default_engine:
-  type: native
+  type: airbyte
   options:
     native:
       api_version: "v3"

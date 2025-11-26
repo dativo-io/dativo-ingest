@@ -1,0 +1,43 @@
+# Stripe customers to Iceberg job for smoke tests
+tenant_id: test_tenant
+environment: test
+
+# Source connector - Stripe with Airbyte engine
+source_connector: stripe
+source_connector_path: connectors/stripe.yaml
+
+# Target connector - Iceberg with MinIO storage
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: stripe_customers
+asset_path: assets/stripe/v1.0/customers.yaml
+
+# Source configuration
+source:
+  objects: [customers]
+  incremental:
+    strategy: created
+    cursor_field: created
+    lookback_days: 1
+
+# Target configuration - Iceberg with MinIO
+target:
+  file_format: parquet
+  connection:
+    s3:
+      endpoint: "${MINIO_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${MINIO_ACCESS_KEY}"
+      secret_access_key: "${MINIO_SECRET_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+      prefix: "raw/stripe/customers"
+
+# Logging configuration
+logging:
+  redaction: true
+  level: INFO
+
+

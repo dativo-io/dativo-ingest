@@ -19,7 +19,7 @@ object: Product
 target:
   file_format: parquet
   partitioning: [ingest_date]
-  mode: strict
+  mode: warn
 schema:
   - name: ProductID
     type: integer

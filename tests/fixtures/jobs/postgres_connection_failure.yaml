@@ -1,0 +1,53 @@
+# Postgres connection failure test (error scenario test)
+# This job should FAIL with connection error
+tenant_id: test_tenant
+environment: test
+
+# Source connector - Postgres
+source_connector: postgres
+source_connector_path: connectors/postgres.yaml
+
+# Target connector - Iceberg with MinIO storage
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: postgres_employee_markdown_kv
+asset_path: tests/fixtures/assets/markdown_kv/v1.0/employee_markdown_kv.yaml
+
+# Source configuration with intentionally invalid connection details
+source:
+  tables:
+    - name: humanresources.employee
+      object: employee
+  incremental:
+    strategy: updated_at
+    cursor_field: modifieddate
+    lookback_days: 0
+  connection:
+    host: "invalid_host_that_does_not_exist.local"  # Intentionally invalid
+    port: 9999  # Invalid port
+    database: "nonexistent_database"
+    user: "invalid_user"
+    password: "invalid_password"
+
+# Target configuration - Iceberg with MinIO
+target:
+  file_format: parquet
+  markdown_kv_storage:
+    mode: "string"
+  connection:
+    s3:
+      endpoint: "${MINIO_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${MINIO_ACCESS_KEY}"
+      secret_access_key: "${MINIO_SECRET_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+      prefix: "raw/postgres/employee_error_test"
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+

@@ -1,0 +1,38 @@
+asset:
+  name: hubspot_deals
+  source_type: hubspot
+  object: deals
+  version: "1.0"
+  
+  schema:
+    - name: id
+      type: string
+      required: true
+    - name: dealName
+      type: string
+      required: false
+    - name: amount
+      type: decimal
+      required: false
+    - name: dealStage
+      type: string
+      required: false
+    - name: closeDate
+      type: timestamp
+      required: false
+    - name: updatedAt
+      type: timestamp
+      required: true
+  
+  governance:
+    owner: data-team@company.com
+    tags: [crm, deals]
+    classification: []
+    retention_days: 90
+  
+  target:
+    file_format: parquet
+    partitioning: [ingest_date]
+    mode: strict
+
+
