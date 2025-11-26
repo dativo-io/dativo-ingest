@@ -1,4 +1,5 @@
-# CSV Product to MinIO job for smoke tests
+# CSV Product with malformed data (error scenario test)
+# This job should FAIL or handle errors gracefully when parsing malformed CSV
 tenant_id: test_tenant
 environment: test
 
@@ -14,10 +15,10 @@ target_connector_path: connectors/minio.yaml
 asset: csv_product
 asset_path: tests/fixtures/assets/csv/v1.0/product.yaml
 
-# Source configuration
+# Source configuration - using malformed CSV with syntax errors
 source:
   files:
-    - path: tests/fixtures/seeds/adventureworks/Product.csv
+    - path: tests/fixtures/seeds/adventureworks/Product_malformed.csv
       object: Product
 
 # Target configuration
@@ -25,14 +26,14 @@ target:
   connection:
     endpoint: "${MINIO_ENDPOINT}"
     bucket: test-bucket
-    prefix: raw/csv/product
+    prefix: raw/csv/product_malformed
     access_key_id: "${MINIO_ACCESS_KEY}"
     secret_access_key: "${MINIO_SECRET_KEY}"
     secure: false
     path_style_access: true
 
-# Schema validation mode
-schema_validation_mode: warn  # Allow job to complete with validation warnings
+# Schema validation mode - warn to allow job to complete but log errors
+schema_validation_mode: warn
 
 # Logging configuration
 logging:

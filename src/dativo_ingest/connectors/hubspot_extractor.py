@@ -1,4 +1,4 @@
-"""Stripe connector using Airbyte."""
+"""HubSpot connector using Airbyte."""
 
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -7,12 +7,8 @@ from ..validator import IncrementalStateManager
 from .engine_framework import AirbyteExtractor
 
 
-class StripeExtractor(AirbyteExtractor):
-    """Extracts data from Stripe using Airbyte connector.
-
-    Replaces the previous native Python implementation with Airbyte wrapper
-    for better connector ecosystem support and maintenance.
-    """
+class HubSpotExtractor(AirbyteExtractor):
+    """Extracts data from HubSpot using Airbyte connector."""
 
     def __init__(
         self,
@@ -20,11 +16,11 @@ class StripeExtractor(AirbyteExtractor):
         connector_recipe: ConnectorRecipe,
         tenant_id: Optional[str] = None,
     ):
-        """Initialize Stripe extractor.
+        """Initialize HubSpot extractor.
 
         Args:
             source_config: Source configuration with objects and credentials
-            connector_recipe: Stripe connector recipe
+            connector_recipe: HubSpot connector recipe
             tenant_id: Optional tenant ID for credential path resolution
         """
         super().__init__(source_config, connector_recipe, tenant_id)
@@ -32,7 +28,7 @@ class StripeExtractor(AirbyteExtractor):
     def extract(
         self, state_manager: Optional[IncrementalStateManager] = None
     ) -> Iterator[List[Dict[str, Any]]]:
-        """Extract data from Stripe.
+        """Extract data from HubSpot.
 
         Args:
             state_manager: Optional incremental state manager
@@ -52,8 +48,8 @@ class StripeExtractor(AirbyteExtractor):
         base_metadata = super().extract_metadata()
         base_metadata["tags"].update(
             {
-                "connector": "stripe",
-                "category": "payments",
+                "connector": "hubspot",
+                "category": "crm",
             }
         )
         return base_metadata

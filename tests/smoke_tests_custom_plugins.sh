@@ -21,9 +21,11 @@ if [ -z "$PGHOST" ] || [ -z "$PGDATABASE" ] || \
     fi
 fi
 
-# Detect Python interpreter (prefer venv if available)
+# Detect Python interpreter (prefer venv if available, then python3.12, then python3)
 if [ -f "$PROJECT_ROOT/venv/bin/python" ]; then
     PYTHON_CMD="$PROJECT_ROOT/venv/bin/python"
+elif command -v python3.12 >/dev/null 2>&1; then
+    PYTHON_CMD="python3.12"
 elif command -v python3 >/dev/null 2>&1; then
     PYTHON_CMD="python3"
 else
@@ -140,7 +142,7 @@ run_test() {
     
     # Run the test
     set +e
-    OUTPUT=$($PYTHON_CMD -m dativo_ingest.cli run \
+    OUTPUT=$(PYTHONPATH=src $PYTHON_CMD -m dativo_ingest.cli run \
         --job-dir "$TEMP_JOB_DIR" \
         --secrets-dir "$SECRETS_DIR" \
         --mode self_hosted 2>&1)

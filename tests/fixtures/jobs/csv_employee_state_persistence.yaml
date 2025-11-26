@@ -1,0 +1,49 @@
+# CSV Employee to Iceberg job for state persistence testing
+# This job will be run twice to verify state persistence
+tenant_id: test_tenant
+environment: test
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: tests/fixtures/assets/csv/v1.0/employee.yaml
+
+# Source configuration with incremental sync
+source:
+  files:
+    - path: tests/fixtures/seeds/AdventureWorks-oltp-install-script/Employee.csv
+      object: Employee
+  engine:
+    options:
+      encoding: "utf-16-le"  # File is UTF-16 little-endian
+  incremental:
+    strategy: file_modified_time
+    lookback_days: 0  # Only process files modified since last run
+
+# Target configuration - Iceberg table configuration
+target:
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+      prefix: "raw/csv/employee_state_test"
+
+# Execution configuration
+schema_validation_mode: warn  # Warn on validation errors instead of failing
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+

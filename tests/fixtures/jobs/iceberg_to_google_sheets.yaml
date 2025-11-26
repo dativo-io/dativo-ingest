@@ -1,0 +1,38 @@
+# Iceberg to Google Sheets job for smoke tests
+# Tests google_sheets connector as TARGET (writing to Google Sheets)
+tenant_id: test_tenant
+environment: test
+
+# Source connector - CSV (simple source for testing target)
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector - Google Sheets (as target)
+target_connector: google_sheets
+target_connector_path: connectors/google_sheets.yaml
+
+# Asset definition
+asset: google_sheets_sheet
+asset_path: assets/google_sheets/v1.0/sheet.yaml
+
+# Source configuration - simple CSV for testing
+source:
+  files:
+    - path: tests/fixtures/seeds/adventureworks/Product.csv
+      object: sheet
+  incremental:
+    strategy: file_modified_time
+    lookback_days: 0
+
+# Target configuration - Google Sheets
+target:
+  spreadsheet_id: "test_spreadsheet_id_target"  # Target spreadsheet ID
+  range: "A1:Z1000"
+  credentials:
+    file_template: "/secrets/{tenant}/gsheets.json"
+
+# Logging configuration
+logging:
+  redaction: true
+  level: INFO
+

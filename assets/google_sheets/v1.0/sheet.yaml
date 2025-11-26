@@ -1,0 +1,29 @@
+asset:
+  name: google_sheets_sheet
+  source_type: google_sheets
+  object: sheet
+  version: "1.0"
+  
+  schema:
+    - name: id
+      type: string
+      required: true
+    - name: spreadsheetId
+      type: string
+      required: false
+    - name: modifiedTime
+      type: timestamp
+      required: false
+  
+  governance:
+    owner: data-team@company.com
+    tags: [files, sheets]
+    classification: []
+    retention_days: 90
+  
+  target:
+    file_format: parquet
+    partitioning: [ingest_date]
+    mode: strict
+
+
