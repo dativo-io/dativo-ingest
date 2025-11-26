@@ -190,6 +190,192 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "External infrastructure configuration for Terraform integration. Describes runtime environment and metadata that must flow into Terraform module for cloud-agnostic deployment in Dagster.",
+      "properties": {
+        "cloud_provider": {
+          "type": "string",
+          "enum": ["aws", "gcp"],
+          "description": "Cloud provider for infrastructure deployment"
+        },
+        "runtime_environment": {
+          "type": "object",
+          "description": "Runtime environment metadata for infrastructure provisioning",
+          "properties": {
+            "compute_type": {
+              "type": "string",
+              "description": "Compute resource type (e.g., ecs_task, cloud_run, lambda, ec2_instance, gce_instance)",
+              "examples": ["ecs_task", "cloud_run", "lambda", "ec2_instance", "gce_instance"]
+            },
+            "compute_size": {
+              "type": "string",
+              "description": "Compute resource size specification",
+              "examples": ["small", "medium", "large", "xlarge", "2xlarge"]
+            },
+            "memory_mb": {
+              "type": "integer",
+              "minimum": 128,
+              "description": "Memory requirement in megabytes"
+            },
+            "cpu_units": {
+              "type": "integer",
+              "minimum": 256,
+              "description": "CPU units (AWS: 256 = 0.25 vCPU, GCP: 1000 = 1 vCPU)"
+            },
+            "timeout_seconds": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Job execution timeout in seconds"
+            },
+            "network": {
+              "type": "object",
+              "description": "Network configuration",
+              "properties": {
+                "vpc_id": {
+                  "type": "string",
+                  "description": "VPC identifier (AWS) or network name (GCP)"
+                },
+                "subnet_ids": {
+                  "type": "array",
+                  "items": {"type": "string"},
+                  "description": "Subnet identifiers for multi-AZ deployment"
+                },
+                "security_group_ids": {
+                  "type": "array",
+                  "items": {"type": "string"},
+                  "description": "Security group identifiers (AWS) or firewall rule names (GCP)"
+                }
+              }
+            },
+            "storage": {
+              "type": "object",
+              "description": "Storage requirements",
+              "properties": {
+                "ephemeral_storage_gb": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Ephemeral storage requirement in gigabytes"
+                },
+                "persistent_volume": {
+                  "type": "boolean",
+                  "description": "Whether persistent volume is required"
+                }
+              }
+            },
+            "service_account": {
+              "type": "string",
+              "description": "IAM service account or role name for job execution"
+            }
+          }
+        },
+        "tags": {
+          "type": "object",
+          "description": "Tags for cost allocation, compliance, and resource traceability. These tags will be propagated to all Terraform-provisioned resources.",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {
+            "CostCenter": {
+              "type": "string",
+              "description": "Cost center for financial tracking (AWS/GCP standard tag)"
+            },
+            "Project": {
+              "type": "string",
+              "description": "Project identifier (AWS/GCP standard tag)"
+            },
+            "Environment": {
+              "type": "string",
+              "description": "Environment identifier (AWS/GCP standard tag)"
+            },
+            "Owner": {
+              "type": "string",
+              "description": "Resource owner (AWS/GCP standard tag)"
+            },
+            "Compliance": {
+              "type": "string",
+              "description": "Compliance classification (e.g., PII, SENSITIVE, PUBLIC)"
+            },
+            "DataClassification": {
+              "type": "string",
+              "description": "Data classification level"
+            },
+            "Regulation": {
+              "type": "string",
+              "description": "Applicable regulations (e.g., GDPR, CCPA, HIPAA)"
+            },
+            "TenantId": {
+              "type": "string",
+              "description": "Tenant identifier for multi-tenant deployments"
+            },
+            "JobName": {
+              "type": "string",
+              "description": "Job name for resource traceability"
+            },
+            "ManagedBy": {
+              "type": "string",
+              "description": "Infrastructure management tool (e.g., Terraform, Dativo)"
+            }
+          }
+        },
+        "terraform": {
+          "type": "object",
+          "description": "Terraform module configuration and resource references",
+          "properties": {
+            "module_path": {
+              "type": "string",
+              "description": "Path to Terraform module (relative or absolute)"
+            },
+            "module_version": {
+              "type": "string",
+              "description": "Terraform module version constraint"
+            },
+            "resource_refs": {
+              "type": "object",
+              "description": "References to externally provisioned Terraform resources",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "properties": {
+                "execution_role_arn": {
+                  "type": "string",
+                  "description": "ARN of IAM role for job execution (AWS)"
+                },
+                "task_definition_arn": {
+                  "type": "string",
+                  "description": "ARN of ECS task definition (AWS)"
+                },
+                "cluster_name": {
+                  "type": "string",
+                  "description": "ECS cluster name (AWS) or GKE cluster name (GCP)"
+                },
+                "service_account_email": {
+                  "type": "string",
+                  "description": "Service account email for job execution (GCP)"
+                },
+                "vpc_id": {
+                  "type": "string",
+                  "description": "VPC identifier (AWS) or network name (GCP)"
+                },
+                "subnet_id": {
+                  "type": "string",
+                  "description": "Primary subnet identifier"
+                },
+                "log_group_name": {
+                  "type": "string",
+                  "description": "CloudWatch log group name (AWS) or Cloud Logging log name (GCP)"
+                }
+              }
+            },
+            "variables": {
+              "type": "object",
+              "description": "Additional Terraform variables to pass to module",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
     }
   },
   "additionalProperties": false

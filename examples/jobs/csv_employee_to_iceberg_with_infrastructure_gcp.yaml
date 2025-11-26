@@ -1,0 +1,110 @@
+# CSV Employee to Iceberg job with GCP infrastructure configuration
+# This example demonstrates external infrastructure integration for Terraform deployment
+tenant_id: production_tenant
+environment: production
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: tests/fixtures/assets/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: tests/fixtures/seeds/AdventureWorks-oltp-install-script/Employee.csv
+      object: Employee
+  engine:
+    options:
+      encoding: "utf-16-le"
+
+# Target configuration
+target:
+  connection:
+    s3:
+      endpoint: "${GCS_ENDPOINT}"
+      bucket: production-data-bucket
+      access_key_id: "${GCS_ACCESS_KEY_ID}"
+      secret_access_key: "${GCS_SECRET_ACCESS_KEY}"
+      region: "${GCS_REGION}"
+
+# Infrastructure configuration for Terraform integration
+infrastructure:
+  cloud_provider: gcp
+  
+  # Runtime environment metadata for infrastructure provisioning
+  runtime_environment:
+    compute_type: cloud_run  # Options: cloud_run, gce_instance, gke_pod
+    compute_size: medium
+    memory_mb: 2048
+    cpu_units: 1000  # 1 vCPU (1000 = 1 vCPU in GCP)
+    timeout_seconds: 3600
+    
+    network:
+      vpc_id: "projects/my-project/global/networks/dativo-vpc"
+      subnet_ids:
+        - "projects/my-project/regions/us-central1/subnetworks/dativo-subnet-1"
+        - "projects/my-project/regions/us-east1/subnetworks/dativo-subnet-2"
+      security_group_ids:
+        - "dativo-etl-firewall-rule"
+    
+    storage:
+      ephemeral_storage_gb: 20
+      persistent_volume: false
+    
+    service_account: "dativo-etl-execution@my-project.iam.gserviceaccount.com"
+  
+  # Tags for cost allocation, compliance, and resource traceability
+  # These tags will be propagated to all Terraform-provisioned resources
+  tags:
+    CostCenter: "FIN-001"
+    Project: "data-platform"
+    Environment: "production"
+    Owner: "data-engineering-team@company.com"
+    Compliance: "PII"
+    DataClassification: "SENSITIVE"
+    Regulation: "GDPR,CCPA"
+    TenantId: "production_tenant"
+    JobName: "csv_employee_to_iceberg"
+    ManagedBy: "Terraform"
+  
+  # Terraform module configuration
+  terraform:
+    module_path: "modules/dativo-etl-job-gcp"
+    module_version: "~> 1.0"
+    
+    # References to externally provisioned Terraform resources
+    resource_refs:
+      service_account_email: "dativo-etl-execution@my-project.iam.gserviceaccount.com"
+      cluster_name: "dativo-etl-gke-cluster"
+      vpc_id: "projects/my-project/global/networks/dativo-vpc"
+      subnet_id: "projects/my-project/regions/us-central1/subnetworks/dativo-subnet-1"
+      log_group_name: "projects/my-project/logs/dativo-etl"
+    
+    # Additional Terraform variables
+    variables:
+      enable_cloud_logging: true
+      enable_cloud_trace: true
+      enable_auto_scaling: false
+      region: "us-central1"
+
+# Execution configuration
+schema_validation_mode: strict
+
+# Logging configuration
+logging:
+  redaction: true
+  level: INFO
+
+# FinOps metadata (will be merged with infrastructure tags)
+finops:
+  cost_center: "FIN-001"
+  business_tags: ["finance", "reporting", "hr"]
+  project: "data-platform"
+  environment: "production"

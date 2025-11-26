@@ -450,6 +450,60 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class InfrastructureNetworkConfig(BaseModel):
+    """Network configuration for infrastructure."""
+
+    vpc_id: Optional[str] = None
+    subnet_ids: Optional[List[str]] = None
+    security_group_ids: Optional[List[str]] = None
+
+
+class InfrastructureStorageConfig(BaseModel):
+    """Storage configuration for infrastructure."""
+
+    ephemeral_storage_gb: Optional[int] = None
+    persistent_volume: Optional[bool] = None
+
+
+class InfrastructureRuntimeEnvironment(BaseModel):
+    """Runtime environment metadata for infrastructure provisioning."""
+
+    compute_type: Optional[str] = None
+    compute_size: Optional[str] = None
+    memory_mb: Optional[int] = None
+    cpu_units: Optional[int] = None
+    timeout_seconds: Optional[int] = None
+    network: Optional[InfrastructureNetworkConfig] = None
+    storage: Optional[InfrastructureStorageConfig] = None
+    service_account: Optional[str] = None
+
+
+class InfrastructureTerraformConfig(BaseModel):
+    """Terraform module configuration and resource references."""
+
+    module_path: Optional[str] = None
+    module_version: Optional[str] = None
+    resource_refs: Optional[Dict[str, str]] = None
+    variables: Optional[Dict[str, Any]] = None
+
+
+class InfrastructureConfig(BaseModel):
+    """External infrastructure configuration for Terraform integration."""
+
+    cloud_provider: Optional[str] = None  # 'aws' or 'gcp'
+    runtime_environment: Optional[InfrastructureRuntimeEnvironment] = None
+    tags: Optional[Dict[str, str]] = None
+    terraform: Optional[InfrastructureTerraformConfig] = None
+
+    @field_validator("cloud_provider")
+    @classmethod
+    def validate_cloud_provider(cls, v: Optional[str]) -> Optional[str]:
+        """Validate cloud provider value."""
+        if v is not None and v not in ["aws", "gcp"]:
+            raise ValueError(f"cloud_provider must be 'aws' or 'gcp', got: {v}")
+        return v
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
@@ -512,6 +566,9 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+
+    # Infrastructure configuration (optional)
+    infrastructure: Optional[InfrastructureConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":
