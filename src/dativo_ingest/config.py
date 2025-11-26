@@ -496,6 +496,11 @@ class JobConfig(BaseModel):
     source: Optional[Dict[str, Any]] = None  # Source configuration
     target: Optional[Dict[str, Any]] = None  # Target configuration
 
+    # Data catalog configuration (optional)
+    catalog: Optional[Dict[str, Any]] = (
+        None  # Data catalog configuration (glue, unity, nessie, openmetadata)
+    )
+
     # Metadata overrides for tag propagation
     classification_overrides: Optional[Dict[str, str]] = (
         None  # Field-level classification overrides
@@ -715,6 +720,26 @@ class JobConfig(BaseModel):
     def get_asset_path(self) -> str:
         """Get asset definition path."""
         return os.path.expandvars(self.asset_path)
+
+    def get_catalog_config(self):
+        """Get catalog configuration if enabled.
+        
+        Returns:
+            CatalogConfig instance or None if catalog not configured
+        """
+        if not self.catalog:
+            return None
+        
+        # Import here to avoid circular dependencies
+        from .catalogs.base import CatalogConfig
+        
+        # Expand environment variables in catalog config
+        catalog_config = self.catalog.copy()
+        for key, value in catalog_config.items():
+            if isinstance(value, str) and "${" in value:
+                catalog_config[key] = os.path.expandvars(value)
+        
+        return CatalogConfig(**catalog_config)
 
     def validate_schema_presence(self) -> None:
         """Validate that asset definition file exists and contains schema field."""

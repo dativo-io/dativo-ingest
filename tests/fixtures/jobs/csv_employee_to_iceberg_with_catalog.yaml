@@ -1,0 +1,63 @@
+# CSV Employee to Iceberg job with OpenMetadata catalog integration
+tenant_id: test_tenant
+environment: test
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: tests/fixtures/assets/csv/v1.0/employee.yaml
+
+# Data catalog configuration
+catalog:
+  type: openmetadata
+  enabled: true
+  uri: "${OPENMETADATA_URI:-http://localhost:8585/api}"
+  push_lineage: true
+  push_schema: true
+  push_metadata: true
+
+# Source configuration
+source:
+  files:
+    - path: tests/fixtures/seeds/AdventureWorks-oltp-install-script/Employee.csv
+      object: Employee
+  engine:
+    options:
+      encoding: "utf-16-le"  # File is UTF-16 little-endian
+
+# Target configuration
+target:
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+
+# Metadata overrides
+classification_overrides:
+  nationalidnumber: PII
+  birthdate: PII
+
+finops:
+  cost_center: "CC-TEST-001"
+  business_tags:
+    - department:hr
+    - project:employee_analytics
+
+# Execution configuration
+schema_validation_mode: warn
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO

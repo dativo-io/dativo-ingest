@@ -906,6 +906,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 )
 
         # Commit all files to Iceberg (if catalog is configured) or upload to S3 (if no catalog)
+        commit_result = None
         if all_file_metadata:
             # Check if writer has custom commit_files method
             if target_config.custom_writer and hasattr(writer, "commit_files"):
@@ -966,14 +967,14 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                     source_tags=source_tags,
                 )
                 try:
-                    upload_result = upload_committer.commit_files(all_file_metadata)
+                    commit_result = upload_committer.commit_files(all_file_metadata)
                     logger.info(
-                        f"Files uploaded to S3 (no catalog configured): {upload_result.get('files_added', len(all_file_metadata))} file(s)",
+                        f"Files uploaded to S3 (no catalog configured): {commit_result.get('files_added', len(all_file_metadata))} file(s)",
                         extra={
-                            "files_written": upload_result.get(
+                            "files_written": commit_result.get(
                                 "files_added", len(all_file_metadata)
                             ),
-                            "file_paths": upload_result.get("file_paths", []),
+                            "file_paths": commit_result.get("file_paths", []),
                             "event_type": "files_written_no_catalog",
                         },
                     )
@@ -985,6 +986,173 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                         },
                     )
                     return 2
+            
+            # Push to data catalog if configured
+            catalog_config = job_config.get_catalog_config()
+            if catalog_config and catalog_config.enabled:
+                try:
+                    from .catalogs.factory import create_catalog_client
+                    from .catalogs.base import LineageInfo
+                    from datetime import datetime
+                    
+                    catalog_client = create_catalog_client(catalog_config)
+                    
+                    if catalog_client:
+                        logger.info(
+                            f"Publishing to data catalog: {catalog_config.type}",
+                            extra={
+                                "catalog_type": catalog_config.type,
+                                "event_type": "catalog_publishing",
+                            },
+                        )
+                        
+                        # Build dataset fully qualified name
+                        dataset_fqn = catalog_client.get_dataset_fqn(
+                            dataset_name=asset_definition.name,
+                            domain=asset_definition.domain,
+                        )
+                        
+                        # Register/update dataset in catalog
+                        if catalog_config.push_schema:
+                            dataset_metadata = {
+                                "description": getattr(asset_definition.description, "purpose", None) if hasattr(asset_definition, "description") else None,
+                                "owner": asset_definition.team.owner if asset_definition.team else None,
+                                "tags": asset_definition.tags if hasattr(asset_definition, "tags") else None,
+                                "classification": getattr(asset_definition.compliance, "classification", None) if hasattr(asset_definition, "compliance") and asset_definition.compliance else None,
+                                "location": output_base,
+                                "custom_metadata": {
+                                    "tenant_id": job_config.tenant_id,
+                                    "asset_version": str(asset_definition.version),
+                                    "source_type": asset_definition.source_type,
+                                },
+                            }
+                            
+                            register_result = catalog_client.register_dataset(
+                                dataset_name=dataset_fqn,
+                                schema=asset_definition.schema,
+                                metadata=dataset_metadata,
+                            )
+                            
+                            if register_result.get("status") == "success":
+                                logger.info(
+                                    "Dataset registered in catalog",
+                                    extra={
+                                        "dataset_name": dataset_fqn,
+                                        "catalog_type": catalog_config.type,
+                                        "event_type": "catalog_register_success",
+                                    },
+                                )
+                            else:
+                                logger.warning(
+                                    f"Dataset registration in catalog had issues: {register_result.get('error')}",
+                                    extra={
+                                        "catalog_type": catalog_config.type,
+                                        "event_type": "catalog_register_warning",
+                                    },
+                                )
+                        
+                        # Publish lineage information
+                        if catalog_config.push_lineage:
+                            # Determine source dataset name
+                            source_dataset_name = None
+                            if source_config.type == "postgres" or source_config.type == "mysql":
+                                # For databases, construct full table name
+                                if source_config.tables:
+                                    table_info = source_config.tables[0] if isinstance(source_config.tables, list) else source_config.tables
+                                    if isinstance(table_info, dict):
+                                        source_dataset_name = table_info.get("table") or table_info.get("name")
+                            elif source_config.type in ["stripe", "hubspot"]:
+                                # For APIs, use object name
+                                if source_config.objects:
+                                    source_dataset_name = source_config.objects[0] if isinstance(source_config.objects, list) else source_config.objects
+                            elif source_config.type == "csv":
+                                # For files, use file name
+                                if source_config.files:
+                                    file_info = source_config.files[0] if isinstance(source_config.files, list) else source_config.files
+                                    if isinstance(file_info, dict):
+                                        source_dataset_name = file_info.get("object") or file_info.get("path")
+                            
+                            lineage_info = LineageInfo(
+                                source_type=source_config.type,
+                                source_name=source_config.connection.get("database") if source_config.connection and "database" in source_config.connection else None,
+                                source_dataset=source_dataset_name,
+                                source_columns=[field.get("name") for field in asset_definition.schema] if asset_definition.schema else [],
+                                target_type=target_config.type,
+                                target_name=asset_definition.domain or "default",
+                                target_dataset=dataset_fqn,
+                                target_columns=[field.get("name") for field in asset_definition.schema] if asset_definition.schema else [],
+                                pipeline_name=job_config.asset or f"{source_config.type}_to_{target_config.type}",
+                                tenant_id=job_config.tenant_id,
+                                records_processed=total_valid_records,
+                                bytes_processed=sum(file_meta.get("size_bytes", 0) for file_meta in all_file_metadata),
+                                transformation_type="extract_transform_load",
+                                transformation_description=f"Ingestion from {source_config.type} to {target_config.type}",
+                                execution_time=datetime.utcnow(),
+                            )
+                            
+                            lineage_result = catalog_client.publish_lineage(lineage_info)
+                            
+                            if lineage_result.get("status") == "success":
+                                logger.info(
+                                    "Lineage published to catalog",
+                                    extra={
+                                        "catalog_type": catalog_config.type,
+                                        "event_type": "catalog_lineage_success",
+                                    },
+                                )
+                            else:
+                                logger.warning(
+                                    f"Lineage publication had issues: {lineage_result.get('error')}",
+                                    extra={
+                                        "catalog_type": catalog_config.type,
+                                        "event_type": "catalog_lineage_warning",
+                                    },
+                                )
+                        
+                        # Update metadata (tags, owner, classification)
+                        if catalog_config.push_metadata:
+                            metadata_result = catalog_client.update_metadata(
+                                dataset_name=dataset_fqn,
+                                tags=asset_definition.tags if hasattr(asset_definition, "tags") else None,
+                                owner=asset_definition.team.owner if asset_definition.team else None,
+                                classification=getattr(asset_definition.compliance, "classification", None) if hasattr(asset_definition, "compliance") and asset_definition.compliance else None,
+                                custom_metadata=job_config.finops if job_config.finops else None,
+                            )
+                            
+                            if metadata_result.get("status") == "success":
+                                logger.info(
+                                    "Metadata updated in catalog",
+                                    extra={
+                                        "catalog_type": catalog_config.type,
+                                        "event_type": "catalog_metadata_success",
+                                    },
+                                )
+                            else:
+                                logger.warning(
+                                    f"Metadata update had issues: {metadata_result.get('error')}",
+                                    extra={
+                                        "catalog_type": catalog_config.type,
+                                        "event_type": "catalog_metadata_warning",
+                                    },
+                                )
+                        
+                        logger.info(
+                            "Successfully published to data catalog",
+                            extra={
+                                "catalog_type": catalog_config.type,
+                                "event_type": "catalog_publish_complete",
+                            },
+                        )
+                    
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to publish to data catalog (non-fatal): {e}",
+                        extra={
+                            "catalog_type": catalog_config.type if catalog_config else "unknown",
+                            "event_type": "catalog_publish_error",
+                        },
+                    )
+                    # Don't fail the job if catalog publishing fails
         else:
             logger.warning(
                 "No files to commit",

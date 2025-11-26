@@ -14,6 +14,7 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 - **Custom Plugins** - Python and Rust plugins for custom readers/writers
 - **Parquet Writer** - Writes validated data with partitioning and file sizing
 - **Iceberg Committer** - Optional catalog integration (files always written to S3)
+- **Data Catalog Integration** - Automatic lineage and metadata publishing to AWS Glue, Databricks Unity Catalog, Nessie, and OpenMetadata
 
 ## Quick Start
 
@@ -120,13 +121,14 @@ Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/r
 2. **Validate** - Validate records against asset schema (strict or warn mode)
 3. **Write** - Write to Parquet files (target: 128-200 MB, supports partitioning)
 4. **Commit** - Optional: Commit to Iceberg catalog (files always written to S3)
-5. **Update State** - Track incremental sync state
+5. **Catalog Publishing** - Optional: Push lineage and metadata to data catalog
+6. **Update State** - Track incremental sync state
 
-**Catalog Note**: Iceberg catalog is optional. Without catalog, Parquet files are written directly to S3/MinIO. See [docs/CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md).
+**Catalog Note**: Both Iceberg catalog and data catalog integrations are optional. Without catalogs, Parquet files are written directly to S3/MinIO. See [docs/CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md) and [docs/DATA_CATALOG_INTEGRATION.md](docs/DATA_CATALOG_INTEGRATION.md).
 
 ## Configuration
 
-**Job Config** - Defines source, target, asset, and tenant overrides:
+**Job Config** - Defines source, target, asset, catalog, and tenant overrides:
 
 **Path Conventions:**
 - **Local Development**: Use relative paths (e.g., `connectors/stripe.yaml`)
@@ -141,6 +143,16 @@ target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/stripe/v1.0/customers.yaml  # Always versioned
+
+# Optional: Data catalog integration
+catalog:
+  type: openmetadata  # glue, unity, nessie, or openmetadata
+  enabled: true
+  uri: "${OPENMETADATA_URI}"
+  push_lineage: true
+  push_schema: true
+  push_metadata: true
+
 source:
   objects: [customers]
   incremental:
@@ -317,6 +329,7 @@ src/dativo_ingest/   # Source code
 **Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
+**Data Catalog Integration:** [docs/DATA_CATALOG_INTEGRATION.md](docs/DATA_CATALOG_INTEGRATION.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
 **Testing:** [tests/README.md](tests/README.md)
 

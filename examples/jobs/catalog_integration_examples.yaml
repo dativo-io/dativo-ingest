@@ -1,0 +1,228 @@
+# Examples of catalog integration configurations for different catalog types
+#
+# These examples show how to configure data catalog integration in Dativo jobs.
+# Copy the relevant section to your job configuration and adjust as needed.
+
+# ============================================================================
+# Example 1: OpenMetadata (recommended for local development)
+# ============================================================================
+---
+tenant_id: acme
+source_connector: postgres
+source_connector_path: connectors/postgres.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: postgres_orders
+asset_path: assets/postgres/v1.0/orders.yaml
+
+catalog:
+  type: openmetadata
+  enabled: true
+  uri: http://localhost:8585/api  # Or use ${OPENMETADATA_URI}
+  push_lineage: true
+  push_schema: true
+  push_metadata: true
+
+source:
+  tables:
+    - table: orders
+
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+
+# ============================================================================
+# Example 2: AWS Glue Data Catalog
+# ============================================================================
+---
+tenant_id: acme
+source_connector: stripe
+source_connector_path: connectors/stripe.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: stripe_customers
+asset_path: assets/stripe/v1.0/customers.yaml
+
+catalog:
+  type: glue
+  enabled: true
+  aws_region: us-east-1
+  aws_account_id: "123456789012"  # Optional, auto-detected
+  push_lineage: true
+  push_schema: true
+  push_metadata: true
+
+source:
+  objects: [customers]
+
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+
+# ============================================================================
+# Example 3: Databricks Unity Catalog
+# ============================================================================
+---
+tenant_id: acme
+source_connector: mysql
+source_connector_path: connectors/mysql.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: mysql_products
+asset_path: assets/mysql/v1.0/products.yaml
+
+catalog:
+  type: unity  # or 'unity_catalog' or 'databricks'
+  enabled: true
+  workspace_url: https://myworkspace.databricks.com
+  token: "${DATABRICKS_TOKEN}"
+  catalog_name: main
+  push_lineage: true
+  push_schema: true
+  push_metadata: true
+
+source:
+  tables:
+    - table: products
+
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+
+# ============================================================================
+# Example 4: Nessie Catalog (for Iceberg tables)
+# ============================================================================
+---
+tenant_id: acme
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: csv_sales
+asset_path: assets/csv/v1.0/sales.yaml
+
+catalog:
+  type: nessie
+  enabled: true
+  uri: http://localhost:19120/api/v1
+  branch: main
+  token: "${NESSIE_TOKEN}"  # Optional
+  push_lineage: true
+  push_schema: true
+  push_metadata: true
+
+source:
+  files:
+    - path: /data/sales.csv
+
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+  catalog: nessie  # Also configure Iceberg catalog
+
+# ============================================================================
+# Example 5: Multiple environment configurations
+# ============================================================================
+---
+# Development
+tenant_id: acme
+environment: dev
+
+catalog:
+  type: openmetadata
+  enabled: true
+  uri: http://localhost:8585/api
+  push_lineage: true
+  push_schema: true
+  push_metadata: true
+
+---
+# Production
+tenant_id: acme
+environment: prod
+
+catalog:
+  type: glue
+  enabled: true
+  aws_region: us-east-1
+  push_lineage: true
+  push_schema: true
+  push_metadata: true
+
+# ============================================================================
+# Example 6: With metadata overrides
+# ============================================================================
+---
+tenant_id: acme
+source_connector: postgres
+source_connector_path: connectors/postgres.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: postgres_customers
+asset_path: assets/postgres/v1.0/customers.yaml
+
+catalog:
+  type: openmetadata
+  enabled: true
+  uri: "${OPENMETADATA_URI}"
+  push_lineage: true
+  push_schema: true
+  push_metadata: true
+
+source:
+  tables:
+    - table: customers
+
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+
+# Metadata overrides (propagated to catalog)
+classification_overrides:
+  email: PII
+  phone: PII
+  ssn: Sensitive
+
+finops:
+  cost_center: "CC-12345"
+  business_tags:
+    - department:sales
+    - project:crm
+    - owner:data_platform_team
+
+governance_overrides:
+  retention_days: 2555  # 7 years
+  data_classification: sensitive
+
+# ============================================================================
+# Example 7: Selective catalog push (schema only)
+# ============================================================================
+---
+tenant_id: acme
+source_connector: hubspot
+source_connector_path: connectors/hubspot.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: hubspot_contacts
+asset_path: assets/hubspot/v1.0/contacts.yaml
+
+catalog:
+  type: openmetadata
+  enabled: true
+  uri: "${OPENMETADATA_URI}"
+  push_lineage: false  # Don't push lineage
+  push_schema: true    # Only register schema
+  push_metadata: false # Don't push metadata
+
+source:
+  objects: [contacts]
+
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
