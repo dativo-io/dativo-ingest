@@ -304,7 +304,8 @@ class GoogleSheetsExtractor:
         """
         # Delegate to engine extractor if using non-native engine
         if self._use_engine:
-            return self._engine_extractor.extract(state_manager)
+            yield from self._engine_extractor.extract(state_manager)
+            return
 
         # Use native implementation
         spreadsheets = self._get_spreadsheets_to_extract()

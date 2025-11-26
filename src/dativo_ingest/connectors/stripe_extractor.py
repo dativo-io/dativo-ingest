@@ -41,7 +41,7 @@ class StripeExtractor(AirbyteExtractor):
             Batches of records as dictionaries
         """
         # Use parent AirbyteExtractor's extract method
-        return super().extract(state_manager)
+        yield from super().extract(state_manager)
 
     def extract_metadata(self) -> Dict[str, Any]:
         """Extract metadata for Dagster asset tags.
