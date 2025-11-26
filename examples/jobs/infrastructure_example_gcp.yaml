@@ -1,0 +1,90 @@
+# Example job configuration with infrastructure block for GCP deployment
+# Demonstrates cloud-agnostic Terraform integration with GCP
+
+tenant_id: acme
+environment: prod
+
+source_connector: google_sheets
+source_connector_path: /app/connectors/google_sheets.yaml
+
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+asset: vendors
+asset_path: /app/assets/google_sheets/v1.0/vendors_master.yaml
+
+# Source configuration
+source:
+  sheets:
+    - spreadsheet_id: "${GOOGLE_SHEETS_ID}"
+      sheet_name: "Vendors"
+      object: "vendors"
+
+# Target configuration
+target:
+  catalog: nessie
+  file_format: iceberg
+  connection:
+    gcs:
+      bucket: "acme-data-lake"
+      region: "us-central1"
+
+# Infrastructure configuration for GCP Terraform integration
+infrastructure:
+  provider: gcp
+  
+  module_path: "modules/dativo-job-infrastructure-gcp"
+  
+  runtime:
+    compute_type: cloud_run  # GCP Cloud Run
+    memory_mb: 4096
+    cpu_units: 2048
+    timeout_seconds: 5400
+    scaling:
+      min_instances: 0  # Scale to zero when not in use
+      max_instances: 20
+      target_cpu_utilization: 60
+  
+  resource_refs:
+    compute:
+      cloud_run_service: "dativo-job-vendors"
+      project_id: "acme-data-platform"
+    storage:
+      gcs_bucket: "acme-data-lake"
+      gcs_prefix: "google_sheets/vendors"
+    networking:
+      vpc_connector: "dativo-vpc-connector"
+      region: "us-central1"
+    secrets:
+      secret_manager_secret: "projects/acme-data-platform/secrets/google-sheets-credentials"
+  
+  tags:
+    cost-center: "fin-001"  # GCP uses lowercase with hyphens
+    project: "data-platform"
+    business-unit: "procurement"
+    data-classification: "internal"
+    retention-days: "1825"  # 5 years
+  
+  metadata:
+    monitoring_enabled: true
+    alerting_channels: ["pubsub#alerts", "slack#data-ops"]
+    backup_enabled: true
+    encryption_at_rest: true
+    encryption_in_transit: true
+    service_account: "dativo-job@acme-data-platform.iam.gserviceaccount.com"
+
+finops:
+  cost_center: "FIN-001"
+  business_tags: ["procurement", "vendor-management"]
+  project: "data-platform"
+  environment: "prod"
+
+governance_overrides:
+  owner: "data-engineering@acme.com"
+  retention_days: 1825
+
+schema_validation_mode: strict
+
+logging:
+  redaction: true
+  level: INFO

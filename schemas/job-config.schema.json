@@ -190,6 +190,100 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "Infrastructure configuration for cloud-agnostic deployment via Terraform",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["aws", "gcp", "azure"],
+          "description": "Cloud provider for infrastructure deployment"
+        },
+        "module_path": {
+          "type": "string",
+          "description": "Path to Terraform module (relative or absolute)"
+        },
+        "resource_refs": {
+          "type": "object",
+          "description": "References to Terraform-provisioned resources",
+          "properties": {
+            "compute": {
+              "type": "object",
+              "description": "Compute resource references (e.g., ECS task definition, Cloud Run service)",
+              "additionalProperties": true
+            },
+            "storage": {
+              "type": "object",
+              "description": "Storage resource references (e.g., S3 bucket, GCS bucket)",
+              "additionalProperties": true
+            },
+            "networking": {
+              "type": "object",
+              "description": "Networking resource references (e.g., VPC, subnets)",
+              "additionalProperties": true
+            },
+            "secrets": {
+              "type": "object",
+              "description": "Secrets management resource references (e.g., Secrets Manager, Secret Manager)",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "runtime": {
+          "type": "object",
+          "description": "Runtime environment configuration",
+          "properties": {
+            "compute_type": {
+              "type": "string",
+              "enum": ["ecs", "ec2", "lambda", "cloud_run", "cloud_functions", "compute_engine", "kubernetes"],
+              "description": "Compute platform type"
+            },
+            "instance_type": {
+              "type": "string",
+              "description": "Instance type or size (provider-specific)"
+            },
+            "memory_mb": {
+              "type": "integer",
+              "minimum": 128,
+              "description": "Memory allocation in MB"
+            },
+            "cpu_units": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "CPU units (provider-specific)"
+            },
+            "timeout_seconds": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Execution timeout in seconds"
+            },
+            "scaling": {
+              "type": "object",
+              "properties": {
+                "min_instances": {"type": "integer", "minimum": 0},
+                "max_instances": {"type": "integer", "minimum": 1},
+                "target_cpu_utilization": {"type": "number", "minimum": 0, "maximum": 100}
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "tags": {
+          "type": "object",
+          "description": "Tags to propagate to Terraform resources for cost allocation, compliance, and traceability",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional metadata to pass to Terraform module",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": false

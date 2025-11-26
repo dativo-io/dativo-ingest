@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Infrastructure Integration for Terraform**: External infrastructure integration for Dativo ETL jobs in AWS/GCP/Azure
+  - Optional `infrastructure` block in job configurations for cloud-agnostic deployment
+  - Runtime environment configuration (compute type, resources, scaling)
+  - Resource references to Terraform-provisioned infrastructure
+  - Comprehensive tag propagation for cost allocation, compliance, and resource traceability
+  - Tag derivation from job config, asset definitions, and metadata with proper precedence
+  - Cloud provider-specific tag formatting (AWS, GCP, Azure)
+  - Terraform variable export in JSON and .tfvars formats
+  - Dagster integration with infrastructure metadata in asset tags and output metadata
+  - New `terraform_integration` module with utilities for tag derivation and metadata export
+  - Example configurations for AWS and GCP deployments
+  - Documentation in `docs/CONFIG_REFERENCE.md`
 - **Custom Plugin System**: Support for Python and Rust plugins
   - **Python Plugins:**
     - New `BaseReader` and `BaseWriter` base classes for plugin development

@@ -1,0 +1,108 @@
+# Example job configuration with infrastructure block for Terraform integration
+# This demonstrates cloud-agnostic deployment with comprehensive tag propagation
+
+tenant_id: acme
+environment: prod
+
+source_connector: hubspot
+source_connector_path: /app/connectors/hubspot.yaml
+
+target_connector: iceberg
+target_connector_path: /app/connectors/iceberg.yaml
+
+asset: deals
+asset_path: /app/assets/hubspot/v1.0/deals.yaml
+
+# Source configuration
+source:
+  objects: ["deals"]
+  credentials:
+    api_key: "${HUBSPOT_API_KEY}"
+
+# Target configuration
+target:
+  catalog: nessie
+  file_format: iceberg
+  connection:
+    s3:
+      bucket: "acme-data-lake"
+      region: "us-east-1"
+
+# Infrastructure configuration for Terraform integration
+infrastructure:
+  # Cloud provider (aws, gcp, azure)
+  provider: aws
+  
+  # Path to Terraform module (relative or absolute)
+  module_path: "modules/dativo-job-infrastructure"
+  
+  # Runtime environment configuration
+  runtime:
+    compute_type: ecs  # Options: ecs, ec2, lambda, cloud_run, cloud_functions, compute_engine, kubernetes
+    instance_type: "t3.medium"
+    memory_mb: 2048
+    cpu_units: 1024
+    timeout_seconds: 3600
+    scaling:
+      min_instances: 1
+      max_instances: 10
+      target_cpu_utilization: 70
+  
+  # Resource references to Terraform-provisioned resources
+  # These reference resources that are managed outside of Dativo
+  resource_refs:
+    compute:
+      task_definition_arn: "arn:aws:ecs:us-east-1:123456789012:task-definition/dativo-job"
+      cluster_name: "dativo-cluster"
+    storage:
+      s3_bucket: "acme-data-lake"
+      s3_prefix: "hubspot/deals"
+    networking:
+      vpc_id: "vpc-12345678"
+      subnet_ids: ["subnet-12345678", "subnet-87654321"]
+    secrets:
+      secrets_manager_arn: "arn:aws:secretsmanager:us-east-1:123456789012:secret:hubspot-api-key"
+  
+  # Tags to propagate to Terraform resources
+  # These tags are merged with tags derived from asset definition and job config
+  # Tags are used for cost allocation, compliance, and resource traceability
+  tags:
+    # Cost allocation tags
+    cost_center: "FIN-001"
+    project: "data-platform"
+    business_unit: "sales"
+    
+    # Compliance tags
+    data_classification: "internal"
+    retention_days: "2555"  # 7 years
+    
+    # Operational tags
+    managed_by: "dativo"
+    deployment_method: "terraform"
+  
+  # Additional metadata to pass to Terraform module
+  metadata:
+    monitoring_enabled: true
+    alerting_channels: ["slack#data-ops", "pagerduty#oncall"]
+    backup_enabled: true
+    encryption_at_rest: true
+    encryption_in_transit: true
+
+# FinOps metadata (also flows into infrastructure tags)
+finops:
+  cost_center: "FIN-001"
+  business_tags: ["sales", "crm", "revenue"]
+  project: "data-platform"
+  environment: "prod"
+
+# Governance overrides (also flows into infrastructure tags)
+governance_overrides:
+  owner: "data-engineering@acme.com"
+  retention_days: 2555
+
+# Standard ETL configuration
+schema_validation_mode: strict
+
+logging:
+  redaction: true
+  level: INFO

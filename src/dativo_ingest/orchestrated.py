@@ -17,6 +17,7 @@ from dagster import (
 from .config import JobConfig, RunnerConfig
 from .logging import get_logger, setup_logging
 from .retry_policy import RetryPolicy as CustomRetryPolicy
+from .terraform_integration import get_infrastructure_metadata
 from .validator import ConnectorValidator
 
 
@@ -183,6 +184,21 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
             source_config = job_config.get_source()
             connector_type = source_config.type
 
+            # Get asset definition for infrastructure metadata
+            asset_definition = None
+            try:
+                asset_definition = job_config._resolve_asset()
+            except Exception:
+                # Asset may not be available at this stage, that's OK
+                pass
+
+            # Get infrastructure metadata if configured
+            infrastructure_metadata = None
+            if job_config.infrastructure:
+                infrastructure_metadata = get_infrastructure_metadata(
+                    job_config, asset_definition
+                )
+
             # Create custom retry policy if configured
             custom_retry_policy = None
             if job_config.retry_config:
@@ -212,6 +228,16 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
         }
         if schedule_config.tags:
             asset_tags.update(schedule_config.tags)
+
+        # Add infrastructure tags if configured
+        if infrastructure_metadata and "tags" in infrastructure_metadata:
+            # Add infrastructure tags with prefix to avoid conflicts
+            for key, value in infrastructure_metadata["tags"].items():
+                asset_tags[f"infra_{key}"] = str(value)
+
+        # Add infrastructure provider if configured
+        if infrastructure_metadata and "provider" in infrastructure_metadata:
+            asset_tags["infra_provider"] = infrastructure_metadata["provider"]
 
         @asset(
             name=asset_name,
@@ -251,14 +277,18 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
                 execution_time = time.time() - start_time
 
                 # Add enhanced metadata
-                context.add_output_metadata(
-                    {
-                        "tenant_id": tenant_id,
-                        "connector_type": connector_type,
-                        "execution_time_seconds": execution_time,
-                        "status": result.get("status", "unknown"),
-                    }
-                )
+                metadata = {
+                    "tenant_id": tenant_id,
+                    "connector_type": connector_type,
+                    "execution_time_seconds": execution_time,
+                    "status": result.get("status", "unknown"),
+                }
+
+                # Add infrastructure metadata if configured
+                if infrastructure_metadata:
+                    metadata["infrastructure"] = infrastructure_metadata
+
+                context.add_output_metadata(metadata)
 
                 return result
 

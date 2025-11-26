@@ -478,6 +478,57 @@ class RetryConfig(BaseModel):
         return self
 
 
+class ScalingConfig(BaseModel):
+    """Scaling configuration for infrastructure resources."""
+
+    min_instances: Optional[int] = None
+    max_instances: Optional[int] = None
+    target_cpu_utilization: Optional[float] = Field(None, ge=0, le=100)
+
+
+class RuntimeConfig(BaseModel):
+    """Runtime environment configuration for infrastructure."""
+
+    compute_type: Optional[str] = Field(
+        None,
+        description="Compute platform type (ecs, ec2, lambda, cloud_run, cloud_functions, compute_engine, kubernetes)",
+    )
+    instance_type: Optional[str] = None
+    memory_mb: Optional[int] = Field(None, ge=128)
+    cpu_units: Optional[int] = Field(None, ge=1)
+    timeout_seconds: Optional[int] = Field(None, ge=1)
+    scaling: Optional[ScalingConfig] = None
+
+
+class InfrastructureConfig(BaseModel):
+    """Infrastructure configuration for cloud-agnostic deployment via Terraform.
+
+    This configuration describes the runtime environment and metadata that must
+    flow into the Terraform module for provisioning cloud resources. It enables
+    cloud-agnostic deployment of jobs in Dagster via Terraform with comprehensive
+    tag propagation for cost allocation, compliance, and resource traceability.
+    """
+
+    provider: Optional[str] = Field(
+        None, description="Cloud provider (aws, gcp, azure)"
+    )
+    module_path: Optional[str] = Field(
+        None, description="Path to Terraform module (relative or absolute)"
+    )
+    resource_refs: Optional[Dict[str, Any]] = Field(
+        None,
+        description="References to Terraform-provisioned resources (compute, storage, networking, secrets)",
+    )
+    runtime: Optional[RuntimeConfig] = None
+    tags: Optional[Dict[str, str]] = Field(
+        None,
+        description="Tags to propagate to Terraform resources for cost allocation, compliance, and traceability",
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Additional metadata to pass to Terraform module"
+    )
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -512,6 +563,9 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+
+    # Infrastructure configuration for Terraform integration
+    infrastructure: Optional[InfrastructureConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

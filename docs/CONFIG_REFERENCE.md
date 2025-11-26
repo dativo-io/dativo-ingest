@@ -239,6 +239,118 @@ For detailed documentation, see [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md)
 
 ---
 
+## Infrastructure Configuration
+
+The `infrastructure` block enables cloud-agnostic deployment of Dativo ETL jobs via Terraform with comprehensive tag propagation for cost allocation, compliance, and resource traceability. Job definitions can reference infrastructure provisioned outside of Dativo (via Terraform).
+
+### Overview
+
+The infrastructure block describes:
+- **Runtime environment**: Compute platform, resources, scaling configuration
+- **Resource references**: References to Terraform-provisioned resources (compute, storage, networking, secrets)
+- **Tag propagation**: Comprehensive tags derived from job config, asset definitions, and metadata
+- **Cloud provider**: Support for AWS, GCP, and Azure
+
+### Structure
+
+```yaml
+infrastructure:
+  provider: aws  # or gcp, azure
+  module_path: "modules/dativo-job-infrastructure"
+  
+  runtime:
+    compute_type: ecs  # ecs, ec2, lambda, cloud_run, cloud_functions, compute_engine, kubernetes
+    instance_type: "t3.medium"
+    memory_mb: 2048
+    cpu_units: 1024
+    timeout_seconds: 3600
+    scaling:
+      min_instances: 1
+      max_instances: 10
+      target_cpu_utilization: 70
+  
+  resource_refs:
+    compute:
+      task_definition_arn: "arn:aws:ecs:..."
+      cluster_name: "dativo-cluster"
+    storage:
+      s3_bucket: "data-lake"
+      s3_prefix: "hubspot/deals"
+    networking:
+      vpc_id: "vpc-12345678"
+      subnet_ids: ["subnet-..."]
+    secrets:
+      secrets_manager_arn: "arn:aws:secretsmanager:..."
+  
+  tags:
+    cost_center: "FIN-001"
+    project: "data-platform"
+    data_classification: "internal"
+  
+  metadata:
+    monitoring_enabled: true
+    alerting_channels: ["slack#data-ops"]
+```
+
+### Tag Propagation
+
+Tags are automatically derived from multiple sources with proper precedence:
+
+1. **Infrastructure block tags** (highest priority) - Explicitly defined in `infrastructure.tags`
+2. **Job config metadata** - From `finops` and `governance_overrides` sections
+3. **Asset definition tags** - From asset's `finops`, `compliance`, and `team` sections
+4. **Source system tags** - From connector metadata (lowest priority)
+
+Tags are formatted according to cloud provider requirements:
+- **AWS**: Case-sensitive, alphanumeric + special chars
+- **GCP**: Lowercase with hyphens, max 63 chars
+- **Azure**: Similar to AWS format
+
+### Terraform Integration
+
+The infrastructure metadata is exported in Terraform-compatible formats:
+
+1. **JSON variables**: `export_terraform_variables()` returns a dictionary
+2. **TFVARS file**: `export_terraform_tfvars()` creates a `.tfvars` file
+
+Example Terraform module usage:
+
+```hcl
+module "dativo_job" {
+  source = "./modules/dativo-job-infrastructure"
+  
+  tenant_id = var.tenant_id
+  environment = var.environment
+  tags = var.tags
+  
+  runtime = {
+    compute_type = "ecs"
+    memory_mb = 2048
+    cpu_units = 1024
+  }
+}
+```
+
+### Dagster Integration
+
+When using Dagster orchestration, infrastructure metadata is automatically:
+- Added to Dagster asset tags (prefixed with `infra_`)
+- Included in asset output metadata
+- Available for Terraform module consumption
+
+This enables:
+- **Cost allocation**: Track costs per tenant, project, cost center
+- **Compliance**: Tag resources with data classification, retention policies
+- **Resource traceability**: Link cloud resources back to job configurations
+
+### Examples
+
+See example configurations:
+- [AWS Example](../../examples/jobs/infrastructure_example.yaml)
+- [GCP Example](../../examples/jobs/infrastructure_example_gcp.yaml)
+
+---
+
 ## Architecture Overview
 
 ### Component Hierarchy
