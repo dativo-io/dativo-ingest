@@ -1,0 +1,66 @@
+# Example: CSV to Iceberg with Data Catalog Integration
+# This example shows how to configure catalog integration for lineage and metadata push
+
+tenant_id: acme
+environment: prod
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: assets/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: data/employees.csv
+      object: Employee
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+      prefix: "raw/acme/employees"
+
+# Catalog configuration - Optional block for data catalog integration
+# When present, lineage and metadata will be pushed to the catalog
+catalog:
+  type: openmetadata  # Options: openmetadata, aws_glue, databricks_unity, nessie
+  connection:
+    # OpenMetadata configuration
+    api_url: "${OPENMETADATA_API_URL:-http://localhost:8585/api}"
+    auth_token: "${OPENMETADATA_AUTH_TOKEN}"
+    
+    # For AWS Glue, use:
+    # region: "${AWS_REGION}"
+    # aws_access_key_id: "${AWS_ACCESS_KEY_ID}"
+    # aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+    
+    # For Databricks Unity Catalog, use:
+    # workspace_url: "${DATABRICKS_WORKSPACE_URL}"
+    # access_token: "${DATABRICKS_ACCESS_TOKEN}"
+    # catalog: "${DATABRICKS_CATALOG}"
+    # warehouse_id: "${DATABRICKS_WAREHOUSE_ID}"
+    
+    # For Nessie, use:
+    # uri: "${NESSIE_URI:-http://localhost:19120}"
+  
+  database: acme_data  # Database/schema name in catalog
+  table_name: employees  # Optional: override table name (defaults to asset name)
+  push_lineage: true  # Push lineage information (source -> target)
+  push_metadata: true  # Push metadata (tags, owners, descriptions, etc.)
+
+# Execution configuration
+schema_validation_mode: strict
+
+# Logging configuration
+logging:
+  redaction: true
+  level: INFO

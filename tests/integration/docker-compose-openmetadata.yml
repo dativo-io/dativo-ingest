@@ -1,0 +1,104 @@
+version: "3.9"
+
+services:
+  # PostgreSQL database for OpenMetadata
+  postgresql:
+    image: postgres:14
+    container_name: openmetadata-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: openmetadata_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Elasticsearch for OpenMetadata search
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.16.3
+    container_name: openmetadata-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # OpenMetadata server
+  openmetadata-server:
+    image: openmetadata/server:1.3.0
+    container_name: openmetadata-server
+    environment:
+      # Database configuration
+      DB_DRIVER_CLASS: org.postgresql.Driver
+      DB_SCHEME: postgresql
+      DB_USE_SSL: "false"
+      DB_USER: postgres
+      DB_USER_PASSWORD: password
+      DB_HOST: postgresql
+      DB_PORT: 5432
+      OM_DATABASE: openmetadata_db
+      
+      # Elasticsearch configuration
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEME: http
+      ELASTICSEARCH_USER: ""
+      ELASTICSEARCH_PASSWORD: ""
+      
+      # Authentication - disable for testing
+      AUTHENTICATION_PROVIDER: no-auth
+      AUTHORIZER_CLASS_NAME: org.openmetadata.service.security.NoopAuthorizer
+      
+      # Server configuration
+      SERVER_PORT: 8585
+      SERVER_ADMIN_PORT: 8586
+      LOG_LEVEL: INFO
+      
+      # Pipeline Service Client Configuration
+      PIPELINE_SERVICE_CLIENT_ENABLED: "false"
+      
+    ports:
+      - "8585:8585"
+      - "8586:8586"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8585/api/v1/system/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # OpenMetadata UI (optional, for debugging)
+  openmetadata-ui:
+    image: openmetadata/ui:1.3.0
+    container_name: openmetadata-ui
+    environment:
+      OPENMETADATA_SERVER_URL: http://openmetadata-server:8585/api
+    ports:
+      - "8080:8080"
+    depends_on:
+      openmetadata-server:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  elasticsearch-data:
