@@ -25,3 +25,54 @@ except (ImportError, PackageNotFoundError):
                 __version__ = "1.1.0"  # Fallback
     else:
         __version__ = "1.1.0"  # Fallback
+
+# Export error classes for error handling
+from .exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    ConnectionError,
+    DativoError,
+    PluginError,
+    PluginVersionError,
+    RateLimitError,
+    SandboxError,
+    TransientError,
+    ValidationError,
+    get_error_code,
+    is_retryable_error,
+    wrap_exception,
+)
+
+# Export key classes for plugin development
+from .plugins import (
+    BaseReader,
+    BaseWriter,
+    ConnectionTestResult,
+    DiscoveryResult,
+    PluginLoader,
+)
+
+__all__ = [
+    "__version__",
+    # Plugin classes
+    "BaseReader",
+    "BaseWriter",
+    "ConnectionTestResult",
+    "DiscoveryResult",
+    "PluginLoader",
+    # Error classes
+    "DativoError",
+    "ConnectionError",
+    "AuthenticationError",
+    "ValidationError",
+    "ConfigurationError",
+    "TransientError",
+    "RateLimitError",
+    "PluginError",
+    "PluginVersionError",
+    "SandboxError",
+    # Error utilities
+    "is_retryable_error",
+    "get_error_code",
+    "wrap_exception",
+]

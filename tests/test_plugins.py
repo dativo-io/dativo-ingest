@@ -121,7 +121,9 @@ class TestReader:
         plugin_file = tmp_path / "test.py"
         plugin_file.write_text(plugin_code)
 
-        with pytest.raises(ValueError, match="must inherit from"):
+        from dativo_ingest.exceptions import PluginError
+
+        with pytest.raises(PluginError, match="must inherit from"):
             PluginLoader.load_reader(f"{plugin_file}:TestReader")
 
 

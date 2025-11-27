@@ -305,3 +305,62 @@ class SandboxError(PluginError):
             retryable: Whether retryable (default: True for sandbox errors)
         """
         super().__init__(message, error_code, details, retryable)
+
+
+# Helper functions
+def is_retryable_error(error: Exception) -> bool:
+    """Check if an error is retryable.
+
+    Args:
+        error: Exception to check
+
+    Returns:
+        True if error is retryable, False otherwise
+    """
+    if isinstance(error, DativoError):
+        return error.retryable
+    # Unknown errors are not retryable by default
+    return False
+
+
+def get_error_code(error: Exception) -> str:
+    """Get error code from exception.
+
+    Args:
+        error: Exception to extract code from
+
+    Returns:
+        Error code string
+    """
+    if isinstance(error, DativoError):
+        return error.error_code
+    # Return generic error code for unknown exceptions
+    return "UNKNOWN_ERROR"
+
+
+def wrap_exception(
+    error: Exception,
+    error_class: type = DativoError,
+    message: Optional[str] = None,
+) -> DativoError:
+    """Wrap an exception in a Dativo error.
+
+    Args:
+        error: Original exception
+        error_class: Dativo error class to wrap with
+        message: Optional custom message
+
+    Returns:
+        Wrapped Dativo error
+    """
+    if isinstance(error, DativoError):
+        return error
+
+    error_message = message or str(error)
+    return error_class(
+        message=error_message,
+        details={
+            "original_error": type(error).__name__,
+            "original_message": str(error),
+        },
+    )
