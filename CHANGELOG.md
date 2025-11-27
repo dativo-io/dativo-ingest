@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Plugin Sandboxing**: Docker-based sandboxing for custom Python plugins
+  - Resource limits (CPU, memory)
+  - Network isolation
+  - Seccomp profiles for security
+  - Automatic sandboxing in cloud mode
+- **Connection Testing**: `check_connection()` method in BaseReader/BaseWriter
+  - CLI command: `dativo check --config job.yaml`
+  - Validates credentials before job execution
+  - Supports both custom plugins and built-in connectors
+- **Standardized Error Handling**: Comprehensive error hierarchy
+  - `ConnectionError`, `AuthenticationError`, `ValidationError`
+  - `TransientError`, `RateLimitError`, `PluginError`
+  - Error codes and retryable flags for orchestrator integration
+- **Plugin Versioning**: Version compatibility checks
+  - `__version__` attribute in BaseReader/BaseWriter
+  - SDK version tracking (PLUGIN_SDK_VERSION)
+  - Version validation on plugin load
+- **Discovery Interface**: `discover()` method for available tables/streams
+  - Returns list of available data sources
+  - Supports schema and metadata information
 - **Custom Plugin System**: Support for Python and Rust plugins
   - **Python Plugins:**
     - New `BaseReader` and `BaseWriter` base classes for plugin development

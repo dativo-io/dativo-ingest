@@ -10,6 +10,12 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from .config import JobConfig, RunnerConfig
+from .exceptions import (
+    AuthenticationError,
+    ConnectionError,
+    ConfigurationError,
+    DativoError,
+)
 from .infrastructure import validate_infrastructure
 from .logging import get_logger, setup_logging, update_logging_settings
 from .secrets import load_secrets
@@ -1044,6 +1050,501 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         return 2
 
 
+def check_command(args: argparse.Namespace) -> int:
+    """Check connection to source/target systems.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=success, 2=failure)
+    """
+    try:
+        manager_config = _load_secret_manager_config_arg(args.secret_manager_config)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    # Load job configuration
+    try:
+        job_config = JobConfig.from_yaml(args.config)
+    except SystemExit as e:
+        return e.code if e.code else 2
+
+    # Set up logging
+    log_level = job_config.logging.level if job_config.logging else "INFO"
+    redact = job_config.logging.redaction if job_config.logging else False
+    logger = setup_logging(
+        level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id
+    )
+
+    logger.info(
+        "Starting connection check",
+        extra={
+            "event_type": "check_started",
+            "job_config": args.config,
+        },
+    )
+
+    # Load secrets
+    try:
+        secrets = load_secrets(
+            job_config.tenant_id,
+            Path(args.secrets_dir),
+            manager_type=args.secret_manager,
+            manager_config=manager_config,
+        )
+        logger.info(
+            f"Secrets loaded for tenant {job_config.tenant_id}",
+            extra={"event_type": "secrets_loaded"},
+        )
+    except ValueError as e:
+        logger.warning(
+            f"Secrets loading failed (may be optional): {e}",
+            extra={"event_type": "secrets_warning"},
+        )
+
+    # Validate configuration
+    try:
+        job_config.validate_schema_presence()
+        validator = ConnectorValidator()
+        validator.validate_job(job_config, mode=args.mode)
+        logger.info(
+            "Configuration validation passed",
+            extra={"event_type": "config_validated"},
+        )
+    except (SystemExit, ValueError) as e:
+        logger.error(
+            f"Configuration validation failed: {e}",
+            extra={"event_type": "config_validation_failed"},
+        )
+        return 2
+
+    # Check source connection
+    source_config = job_config.get_source()
+    source_status = None
+
+    try:
+        if source_config.custom_reader:
+            # Load custom reader
+            from .plugins import PluginLoader
+
+            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            reader = reader_class(source_config)
+
+            # Check connection
+            source_status = reader.check_connection()
+            logger.info(
+                f"Source connection check: {source_status.get('status')}",
+                extra={
+                    "event_type": "source_check_complete",
+                    "status": source_status.get("status"),
+                    "message": source_status.get("message"),
+                },
+            )
+        else:
+            # For built-in connectors, we can't easily check without full initialization
+            # Log that check is not available for built-in connectors
+            logger.info(
+                "Source connection check not available for built-in connectors",
+                extra={
+                    "event_type": "source_check_skipped",
+                    "connector_type": source_config.type,
+                },
+            )
+            source_status = {
+                "status": "skipped",
+                "message": f"Connection check not implemented for built-in connector: {source_config.type}",
+            }
+    except ConnectionError as e:
+        logger.error(
+            f"Source connection failed: {e}",
+            extra={
+                "event_type": "source_check_failed",
+                "error_code": e.error_code,
+                "retryable": e.retryable,
+            },
+        )
+        source_status = {
+            "status": "failed",
+            "message": str(e),
+            "error_code": e.error_code,
+            "retryable": e.retryable,
+        }
+    except AuthenticationError as e:
+        logger.error(
+            f"Source authentication failed: {e}",
+            extra={
+                "event_type": "source_auth_failed",
+                "error_code": e.error_code,
+            },
+        )
+        source_status = {
+            "status": "failed",
+            "message": str(e),
+            "error_code": e.error_code,
+            "retryable": False,
+        }
+    except Exception as e:
+        logger.error(
+            f"Source check error: {e}",
+            extra={"event_type": "source_check_error"},
+            exc_info=True,
+        )
+        source_status = {
+            "status": "error",
+            "message": str(e),
+        }
+
+    # Check target connection
+    target_config = job_config.get_target()
+    target_status = None
+
+    try:
+        if target_config.custom_writer:
+            # Load custom writer
+            from .plugins import PluginLoader
+
+            # Need asset definition for writer initialization
+            asset_definition = job_config._resolve_asset()
+            output_base = "s3://test"  # Dummy output base for check
+
+            writer_class = PluginLoader.load_writer(target_config.custom_writer)
+            writer = writer_class(asset_definition, target_config, output_base)
+
+            # Check connection
+            target_status = writer.check_connection()
+            logger.info(
+                f"Target connection check: {target_status.get('status')}",
+                extra={
+                    "event_type": "target_check_complete",
+                    "status": target_status.get("status"),
+                    "message": target_status.get("message"),
+                },
+            )
+        else:
+            # For built-in writers (Parquet/Iceberg), check S3 connection
+            connection = target_config.connection or {}
+            s3_config = connection.get("s3") or connection.get("minio", {})
+            bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET")
+
+            if bucket:
+                # Try to access bucket (basic check)
+                try:
+                    import boto3
+                    from botocore.exceptions import ClientError
+
+                    s3_client = boto3.client("s3")
+                    s3_client.head_bucket(Bucket=bucket)
+                    target_status = {
+                        "status": "success",
+                        "message": f"S3 bucket '{bucket}' is accessible",
+                    }
+                    logger.info(
+                        f"Target connection check: success",
+                        extra={
+                            "event_type": "target_check_complete",
+                            "bucket": bucket,
+                        },
+                    )
+                except ClientError as e:
+                    error_code = e.response.get("Error", {}).get("Code", "Unknown")
+                    if error_code == "403":
+                        raise AuthenticationError(
+                            f"Access denied to S3 bucket '{bucket}'",
+                            details={"bucket": bucket, "error_code": error_code},
+                        ) from e
+                    else:
+                        raise ConnectionError(
+                            f"Failed to access S3 bucket '{bucket}': {error_code}",
+                            details={"bucket": bucket, "error_code": error_code},
+                        ) from e
+            else:
+                target_status = {
+                    "status": "skipped",
+                    "message": "S3 bucket not configured",
+                }
+                logger.info(
+                    "Target connection check skipped - no bucket configured",
+                    extra={"event_type": "target_check_skipped"},
+                )
+    except ConnectionError as e:
+        logger.error(
+            f"Target connection failed: {e}",
+            extra={
+                "event_type": "target_check_failed",
+                "error_code": e.error_code,
+                "retryable": e.retryable,
+            },
+        )
+        target_status = {
+            "status": "failed",
+            "message": str(e),
+            "error_code": e.error_code,
+            "retryable": e.retryable,
+        }
+    except AuthenticationError as e:
+        logger.error(
+            f"Target authentication failed: {e}",
+            extra={
+                "event_type": "target_auth_failed",
+                "error_code": e.error_code,
+            },
+        )
+        target_status = {
+            "status": "failed",
+            "message": str(e),
+            "error_code": e.error_code,
+            "retryable": False,
+        }
+    except Exception as e:
+        logger.error(
+            f"Target check error: {e}",
+            extra={"event_type": "target_check_error"},
+            exc_info=True,
+        )
+        target_status = {
+            "status": "error",
+            "message": str(e),
+        }
+
+    # Print results
+    print("\n" + "=" * 60)
+    print("Connection Check Results")
+    print("=" * 60)
+    print(f"\nSource: {source_status.get('status', 'unknown')}")
+    print(f"  {source_status.get('message', 'No message')}")
+    if source_status.get("error_code"):
+        print(f"  Error Code: {source_status.get('error_code')}")
+        print(f"  Retryable: {source_status.get('retryable', False)}")
+
+    print(f"\nTarget: {target_status.get('status', 'unknown')}")
+    print(f"  {target_status.get('message', 'No message')}")
+    if target_status.get("error_code"):
+        print(f"  Error Code: {target_status.get('error_code')}")
+        print(f"  Retryable: {target_status.get('retryable', False)}")
+
+    print("\n" + "=" * 60)
+
+    # Determine exit code
+    source_ok = source_status.get("status") in ["success", "skipped"]
+    target_ok = target_status.get("status") in ["success", "skipped"]
+
+    if source_ok and target_ok:
+        logger.info(
+            "Connection check completed successfully",
+            extra={"event_type": "check_complete", "status": "success"},
+        )
+        return 0
+    else:
+        logger.error(
+            "Connection check failed",
+            extra={
+                "event_type": "check_failed",
+                "source_status": source_status.get("status"),
+                "target_status": target_status.get("status"),
+            },
+        )
+        return 2
+
+
+def discover_command(args: argparse.Namespace) -> int:
+    """Discover available tables/streams from source connector.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=success, 2=failure)
+    """
+    try:
+        manager_config = _load_secret_manager_config_arg(args.secret_manager_config)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    # Load configuration
+    source_config = None
+    tenant_id = None
+
+    if args.config:
+        # Load from job config
+        try:
+            job_config = JobConfig.from_yaml(args.config)
+            source_config = job_config.get_source()
+            tenant_id = job_config.tenant_id
+        except SystemExit as e:
+            return e.code if e.code else 2
+    elif args.connector:
+        # Create minimal source config from connector name
+        from .config import SourceConfig
+
+        # Check if it's a custom reader path
+        if Path(args.connector).exists() and args.connector.endswith(".py"):
+            source_config = SourceConfig(
+                type="custom",
+                custom_reader=args.connector,
+                connection={},
+            )
+        else:
+            # Built-in connector
+            source_config = SourceConfig(
+                type=args.connector,
+                connection={},
+            )
+    else:
+        print("ERROR: Either --connector or --config must be provided", file=sys.stderr)
+        return 2
+
+    # Set up logging
+    logger = setup_logging(
+        level="INFO", redact_secrets=True, tenant_id=tenant_id or "default"
+    )
+
+    logger.info(
+        "Starting discovery",
+        extra={
+            "event_type": "discover_started",
+            "connector": args.connector or args.config,
+        },
+    )
+
+    # Load secrets if tenant_id is available
+    if tenant_id:
+        try:
+            secrets = load_secrets(
+                tenant_id,
+                Path(args.secrets_dir),
+                manager_type=args.secret_manager,
+                manager_config=manager_config,
+            )
+            logger.info(
+                f"Secrets loaded for tenant {tenant_id}",
+                extra={"event_type": "secrets_loaded"},
+            )
+        except ValueError as e:
+            logger.warning(
+                f"Secrets loading failed (may be optional): {e}",
+                extra={"event_type": "secrets_warning"},
+            )
+
+    # Discover streams
+    streams = []
+
+    try:
+        if source_config.custom_reader:
+            # Load custom reader
+            from .plugins import PluginLoader
+
+            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            reader = reader_class(source_config)
+
+            # Call discover method
+            streams = reader.discover()
+            logger.info(
+                f"Discovered {len(streams)} streams from custom reader",
+                extra={
+                    "event_type": "discover_complete",
+                    "stream_count": len(streams),
+                },
+            )
+        else:
+            # For built-in connectors, discovery is connector-specific
+            connector_type = source_config.type
+
+            if connector_type == "postgres":
+                # Discover PostgreSQL tables
+                from .connectors.postgres_extractor import PostgresExtractor
+
+                extractor = PostgresExtractor(source_config)
+                # Use extractor's internal method to list tables
+                # This is a simplified version - would need proper implementation
+                streams = [
+                    {
+                        "name": "tables",
+                        "type": "table",
+                        "message": "Use PostgresExtractor to list tables",
+                    }
+                ]
+            elif connector_type == "mysql":
+                # Discover MySQL tables
+                from .connectors.mysql_extractor import MySQLExtractor
+
+                extractor = MySQLExtractor(source_config)
+                streams = [
+                    {
+                        "name": "tables",
+                        "type": "table",
+                        "message": "Use MySQLExtractor to list tables",
+                    }
+                ]
+            elif connector_type == "stripe":
+                # Stripe objects
+                streams = [
+                    {"name": "customers", "type": "object"},
+                    {"name": "charges", "type": "object"},
+                    {"name": "invoices", "type": "object"},
+                    {"name": "subscriptions", "type": "object"},
+                ]
+            elif connector_type == "hubspot":
+                # HubSpot objects
+                streams = [
+                    {"name": "contacts", "type": "object"},
+                    {"name": "companies", "type": "object"},
+                    {"name": "deals", "type": "object"},
+                ]
+            else:
+                logger.warning(
+                    f"Discovery not implemented for connector: {connector_type}",
+                    extra={
+                        "event_type": "discover_not_implemented",
+                        "connector_type": connector_type,
+                    },
+                )
+                streams = [
+                    {
+                        "name": "unknown",
+                        "type": "unknown",
+                        "message": f"Discovery not implemented for {connector_type}",
+                    }
+                ]
+
+    except Exception as e:
+        logger.error(
+            f"Discovery failed: {e}",
+            extra={"event_type": "discover_error"},
+            exc_info=True,
+        )
+        print(f"ERROR: Discovery failed: {e}", file=sys.stderr)
+        return 2
+
+    # Print results
+    print("\n" + "=" * 60)
+    print("Discovery Results")
+    print("=" * 60)
+    print(f"\nFound {len(streams)} stream(s):\n")
+
+    for idx, stream in enumerate(streams, 1):
+        print(f"{idx}. {stream.get('name', 'unknown')}")
+        print(f"   Type: {stream.get('type', 'unknown')}")
+        if stream.get("schema"):
+            print(f"   Schema: {stream.get('schema')}")
+        if stream.get("metadata"):
+            print(f"   Metadata: {stream.get('metadata')}")
+        if stream.get("message"):
+            print(f"   Note: {stream.get('message')}")
+        print()
+
+    print("=" * 60)
+
+    logger.info(
+        "Discovery completed",
+        extra={"event_type": "discover_complete", "stream_count": len(streams)},
+    )
+
+    return 0
+
+
 def start_command(args: argparse.Namespace) -> int:
     """Start orchestrated mode with Dagster.
 
@@ -1166,6 +1667,79 @@ Examples:
         help="Path to runner configuration YAML file (default: /app/configs/runner.yaml)",
     )
 
+    # Check command
+    check_parser = subparsers.add_parser(
+        "check",
+        help="Check connection to source/target systems",
+        description="Validate connectivity and credentials for a job configuration "
+        "without executing the full job. Useful for testing connections before "
+        "running actual data extraction.",
+    )
+    check_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+    check_parser.add_argument(
+        "--mode",
+        choices=["self_hosted", "cloud"],
+        default="self_hosted",
+        help="Execution mode (default: self_hosted)",
+    )
+    check_parser.add_argument(
+        "--secret-manager",
+        choices=["env", "filesystem", "vault", "aws", "gcp"],
+        default=os.getenv("DATIVO_SECRET_MANAGER", "env"),
+        help="Secret backend to use (default: env or DATIVO_SECRET_MANAGER env var).",
+    )
+    check_parser.add_argument(
+        "--secret-manager-config",
+        help="Path to YAML/JSON file or inline JSON blob with secret manager configuration. "
+        "Falls back to DATIVO_SECRET_MANAGER_CONFIG when omitted.",
+    )
+    check_parser.add_argument(
+        "--secrets-dir",
+        default="/secrets",
+        help="Path to secrets directory (default: /secrets, used by filesystem secret manager)",
+    )
+
+    # Discover command
+    discover_parser = subparsers.add_parser(
+        "discover",
+        help="Discover available tables/streams from source connector",
+        description="List available data sources (tables, streams, objects) that can be "
+        "extracted from a source connector. Useful for generating asset definitions.",
+    )
+    discover_parser.add_argument(
+        "--connector",
+        help="Connector type (e.g., stripe, postgres, mysql) or path to custom reader",
+    )
+    discover_parser.add_argument(
+        "--config",
+        help="Path to job configuration YAML file (alternative to --connector)",
+    )
+    discover_parser.add_argument(
+        "--mode",
+        choices=["self_hosted", "cloud"],
+        default="self_hosted",
+        help="Execution mode (default: self_hosted)",
+    )
+    discover_parser.add_argument(
+        "--secret-manager",
+        choices=["env", "filesystem", "vault", "aws", "gcp"],
+        default=os.getenv("DATIVO_SECRET_MANAGER", "env"),
+        help="Secret backend to use (default: env or DATIVO_SECRET_MANAGER env var).",
+    )
+    discover_parser.add_argument(
+        "--secret-manager-config",
+        help="Path to YAML/JSON file or inline JSON blob with secret manager configuration.",
+    )
+    discover_parser.add_argument(
+        "--secrets-dir",
+        default="/secrets",
+        help="Path to secrets directory (default: /secrets, used by filesystem secret manager)",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -1176,6 +1750,10 @@ Examples:
         return run_command(args)
     elif args.command == "start":
         return start_command(args)
+    elif args.command == "check":
+        return check_command(args)
+    elif args.command == "discover":
+        return discover_command(args)
     else:
         parser.print_help()
         return 2

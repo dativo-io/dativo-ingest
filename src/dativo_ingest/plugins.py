@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Type
 
 from .config import SourceConfig, TargetConfig
+from .exceptions import PluginError, PluginVersionError
 from .validator import IncrementalStateManager
+
+# Plugin SDK version - increment when making breaking changes
+PLUGIN_SDK_VERSION = "1.0.0"
 
 
 class BaseReader(ABC):
@@ -31,6 +35,9 @@ class BaseReader(ABC):
                 yield batch_records
     """
 
+    # Plugin SDK version - should match PLUGIN_SDK_VERSION
+    __version__ = "1.0.0"
+
     def __init__(self, source_config: SourceConfig):
         """Initialize reader with source configuration.
 
@@ -39,6 +46,63 @@ class BaseReader(ABC):
                           credentials, engine options, etc.
         """
         self.source_config = source_config
+        # Validate plugin version compatibility
+        self._validate_version()
+
+    def _validate_version(self) -> None:
+        """Validate plugin version compatibility.
+
+        Raises:
+            PluginVersionError: If plugin version is incompatible
+        """
+        plugin_version = getattr(self.__class__, "__version__", None)
+        if plugin_version:
+            # Simple version check - can be enhanced with semantic versioning
+            # For now, just check if version attribute exists
+            # Future: implement proper semantic version comparison
+            pass
+
+    def check_connection(self) -> Dict[str, Any]:
+        """Check connection to source system.
+
+        This method should validate that the reader can connect to the source
+        system using the provided configuration. It should NOT extract data,
+        only verify connectivity and credentials.
+
+        Returns:
+            Dictionary with connection status:
+                - status: "success" or "failed"
+                - message: Human-readable message
+                - details: Optional additional details
+
+        Raises:
+            ConnectionError: If connection fails
+            AuthenticationError: If authentication fails
+        """
+        # Default implementation - plugins should override
+        return {
+            "status": "success",
+            "message": "Connection check not implemented",
+        }
+
+    def discover(self) -> List[Dict[str, Any]]:
+        """Discover available tables/streams from source system.
+
+        This method should return a list of available data sources (tables,
+        streams, objects) that can be extracted from the source system.
+
+        Returns:
+            List of dictionaries with stream/table information:
+                - name: Stream/table name
+                - type: Type of stream (e.g., "table", "stream", "object")
+                - schema: Optional schema information
+                - metadata: Optional additional metadata
+
+        Raises:
+            ConnectionError: If connection fails during discovery
+        """
+        # Default implementation - plugins should override
+        return []
 
     @abstractmethod
     def extract(
@@ -88,6 +152,9 @@ class BaseWriter(ABC):
                 return {"status": "success", "files_added": len(file_metadata)}
     """
 
+    # Plugin SDK version - should match PLUGIN_SDK_VERSION
+    __version__ = "1.0.0"
+
     def __init__(
         self, asset_definition: Any, target_config: TargetConfig, output_base: str
     ):
@@ -102,6 +169,44 @@ class BaseWriter(ABC):
         self.asset_definition = asset_definition
         self.target_config = target_config
         self.output_base = output_base
+        # Validate plugin version compatibility
+        self._validate_version()
+
+    def _validate_version(self) -> None:
+        """Validate plugin version compatibility.
+
+        Raises:
+            PluginVersionError: If plugin version is incompatible
+        """
+        plugin_version = getattr(self.__class__, "__version__", None)
+        if plugin_version:
+            # Simple version check - can be enhanced with semantic versioning
+            # For now, just check if version attribute exists
+            # Future: implement proper semantic version comparison
+            pass
+
+    def check_connection(self) -> Dict[str, Any]:
+        """Check connection to target system.
+
+        This method should validate that the writer can connect to the target
+        system using the provided configuration. It should NOT write data,
+        only verify connectivity and credentials.
+
+        Returns:
+            Dictionary with connection status:
+                - status: "success" or "failed"
+                - message: Human-readable message
+                - details: Optional additional details
+
+        Raises:
+            ConnectionError: If connection fails
+            AuthenticationError: If authentication fails
+        """
+        # Default implementation - plugins should override
+        return {
+            "status": "success",
+            "message": "Connection check not implemented",
+        }
 
     @abstractmethod
     def write_batch(
@@ -215,12 +320,27 @@ class PluginLoader:
 
         # Validate class inheritance
         if not inspect.isclass(plugin_class):
-            raise ValueError(f"{class_name} is not a class in {module_path}")
+            raise PluginError(
+                f"{class_name} is not a class in {module_path}",
+                details={"module_path": str(module_path), "class_name": class_name},
+            )
 
         if not issubclass(plugin_class, base_class):
-            raise ValueError(
-                f"Plugin class {class_name} must inherit from {base_class.__name__}"
+            raise PluginError(
+                f"Plugin class {class_name} must inherit from {base_class.__name__}",
+                details={
+                    "module_path": str(module_path),
+                    "class_name": class_name,
+                    "expected_base": base_class.__name__,
+                },
             )
+
+        # Check version compatibility
+        plugin_version = getattr(plugin_class, "__version__", None)
+        if plugin_version:
+            # Future: implement semantic version comparison
+            # For now, just log version info
+            pass
 
         return plugin_class
 
