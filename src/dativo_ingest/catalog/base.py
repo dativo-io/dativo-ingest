@@ -257,13 +257,22 @@ class BaseCatalog(ABC):
         """
         if self.asset_definition.description:
             parts = []
-            if self.asset_definition.description.purpose:
-                parts.append(f"Purpose: {self.asset_definition.description.purpose}")
-            if self.asset_definition.description.usage:
-                parts.append(f"Usage: {self.asset_definition.description.usage}")
-            if self.asset_definition.description.limitations:
-                parts.append(
-                    f"Limitations: {self.asset_definition.description.limitations}"
-                )
+            # Handle both DescriptionModel object and dict
+            desc = self.asset_definition.description
+            if isinstance(desc, dict):
+                purpose = desc.get("purpose")
+                usage = desc.get("usage")
+                limitations = desc.get("limitations")
+            else:
+                purpose = desc.purpose if hasattr(desc, "purpose") else None
+                usage = desc.usage if hasattr(desc, "usage") else None
+                limitations = desc.limitations if hasattr(desc, "limitations") else None
+
+            if purpose:
+                parts.append(f"Purpose: {purpose}")
+            if usage:
+                parts.append(f"Usage: {usage}")
+            if limitations:
+                parts.append(f"Limitations: {limitations}")
             return "\n\n".join(parts) if parts else None
         return None
