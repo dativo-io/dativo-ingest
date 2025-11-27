@@ -85,16 +85,19 @@ class DatabricksUnityCatalog(BaseCatalog):
         if schema:
             for field in schema:
                 col_type = self._map_type_to_databricks(field.get("type", "string"))
-                nullable = "" if field.get("required", False) else ""
+                nullable = " NOT NULL" if field.get("required", False) else ""
                 columns_sql.append(f"{field.get('name')} {col_type}{nullable}")
 
         columns_str = ", ".join(columns_sql) if columns_sql else "id string"
+
+        # Escape location to prevent SQL injection
+        escaped_location = self._escape_sql_string(location)
 
         create_sql = f"""
         CREATE TABLE IF NOT EXISTS {full_name}
         ({columns_str})
         USING DELTA
-        LOCATION '{location}'
+        LOCATION '{escaped_location}'
         """
 
         # Execute SQL
@@ -117,6 +120,22 @@ class DatabricksUnityCatalog(BaseCatalog):
             logger.warning(f"Failed to create Unity Catalog table: {e}")
 
         return {"full_name": full_name, "name": table_name}
+
+    def _escape_sql_string(self, value: str) -> str:
+        """Escape SQL string literal to prevent SQL injection.
+
+        Escapes single quotes by doubling them, which is the standard SQL escaping method.
+
+        Args:
+            value: String value to escape
+
+        Returns:
+            Escaped string safe for use in SQL string literals
+        """
+        if value is None:
+            return ""
+        # Escape single quotes by doubling them
+        return str(value).replace("'", "''")
 
     def _map_type_to_databricks(self, field_type: str) -> str:
         """Map field type to Databricks data type.
@@ -184,27 +203,41 @@ class DatabricksUnityCatalog(BaseCatalog):
 
         # Update using ALTER TABLE
         if updates:
-            alter_sql = f"ALTER TABLE {full_name}"
+            # Collect all properties into a single dictionary
+            all_properties = {}
             if "comment" in updates:
-                alter_sql += f" SET TBLPROPERTIES ('comment' = '{updates['comment']}')"
+                all_properties["comment"] = updates["comment"]
             if "properties" in updates:
-                for key, value in updates["properties"].items():
-                    alter_sql += f" SET TBLPROPERTIES ('{key}' = '{value}')"
+                all_properties.update(updates["properties"])
 
-            try:
-                resp = requests.post(
-                    f"{self.workspace_url}/api/2.0/sql/statements",
-                    json={"statement": alter_sql},
-                    headers=self.headers,
-                    timeout=10,
+            # Build single SET TBLPROPERTIES clause with all properties
+            if all_properties:
+                property_pairs = []
+                for key, value in all_properties.items():
+                    # Escape both key and value to prevent SQL injection
+                    escaped_key = self._escape_sql_string(key)
+                    escaped_value = self._escape_sql_string(str(value))
+                    property_pairs.append(f"'{escaped_key}' = '{escaped_value}'")
+
+                properties_str = ", ".join(property_pairs)
+                alter_sql = (
+                    f"ALTER TABLE {full_name} SET TBLPROPERTIES ({properties_str})"
                 )
-                if resp.status_code in [200, 201]:
-                    return {"status": "success", "full_name": full_name}
-            except Exception as e:
-                import logging
 
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to update Unity Catalog metadata: {e}")
+                try:
+                    resp = requests.post(
+                        f"{self.workspace_url}/api/2.0/sql/statements",
+                        json={"statement": alter_sql},
+                        headers=self.headers,
+                        timeout=10,
+                    )
+                    if resp.status_code in [200, 201]:
+                        return {"status": "success", "full_name": full_name}
+                except Exception as e:
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Failed to update Unity Catalog metadata: {e}")
 
         return {"status": "partial", "full_name": full_name}
 
@@ -237,11 +270,15 @@ class DatabricksUnityCatalog(BaseCatalog):
         source_names = [e.get("name") or e.get("location", "") for e in source_entities]
         lineage_prop = ",".join(source_names)
 
+        # Escape user-controlled values to prevent SQL injection
+        escaped_lineage_prop = self._escape_sql_string(lineage_prop)
+        escaped_operation = self._escape_sql_string(operation)
+
         alter_sql = f"""
         ALTER TABLE {full_name}
         SET TBLPROPERTIES (
-            'lineage_sources' = '{lineage_prop}',
-            'lineage_operation' = '{operation}'
+            'lineage_sources' = '{escaped_lineage_prop}',
+            'lineage_operation' = '{escaped_operation}'
         )
         """
 

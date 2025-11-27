@@ -171,6 +171,42 @@ class AWSGlueCatalog(BaseCatalog):
         }
         return type_mapping.get(field_type.lower(), "string")
 
+    def _table_to_table_input(self, table: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert Table response to TableInput for update_table.
+
+        Extracts only the fields allowed in TableInput, excluding read-only fields
+        like CreateTime, UpdateTime, CreatedBy, DatabaseName, CatalogId, etc.
+
+        Args:
+            table: Table dictionary from get_table response
+
+        Returns:
+            TableInput dictionary with only allowed fields
+        """
+        # Allowed fields for TableInput according to AWS Glue API
+        allowed_fields = {
+            "Name",
+            "Description",
+            "Owner",
+            "LastAccessTime",
+            "LastAnalyzedTime",
+            "Retention",
+            "StorageDescriptor",
+            "PartitionKeys",
+            "ViewOriginalText",
+            "ViewExpandedText",
+            "TableType",
+            "Parameters",
+            "TargetTable",
+        }
+
+        table_input = {}
+        for field in allowed_fields:
+            if field in table:
+                table_input[field] = table[field]
+
+        return table_input
+
     def push_metadata(
         self,
         entity: Dict[str, Any],
@@ -199,7 +235,8 @@ class AWSGlueCatalog(BaseCatalog):
             response = self.glue_client.get_table(
                 DatabaseName=database, Name=table_name
             )
-            table_input = response["Table"]
+            # Convert Table response to TableInput (excludes read-only fields)
+            table_input = self._table_to_table_input(response["Table"])
 
             # Update description
             if description:
@@ -255,7 +292,8 @@ class AWSGlueCatalog(BaseCatalog):
             response = self.glue_client.get_table(
                 DatabaseName=database, Name=table_name
             )
-            table_input = response["Table"]
+            # Convert Table response to TableInput (excludes read-only fields)
+            table_input = self._table_to_table_input(response["Table"])
 
             # Store lineage in parameters
             parameters = table_input.get("Parameters", {})
