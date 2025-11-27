@@ -226,6 +226,89 @@
       },
       "required": ["type", "connection"],
       "additionalProperties": false
+    },
+    "observability": {
+      "type": "object",
+      "description": "Cloud observability configuration for metrics and monitoring (optional)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether observability is enabled"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["aws_cloudwatch", "gcp_cloud_monitoring"],
+          "description": "Cloud observability provider"
+        },
+        "config": {
+          "type": "object",
+          "description": "Provider-specific configuration",
+          "properties": {
+            "region": {
+              "type": "string",
+              "description": "AWS region (required for AWS CloudWatch)"
+            },
+            "namespace": {
+              "type": "string",
+              "description": "CloudWatch namespace or GCP resource type prefix"
+            },
+            "project_id": {
+              "type": "string",
+              "description": "GCP project ID (required for GCP Cloud Monitoring)"
+            },
+            "credentials": {
+              "type": "object",
+              "description": "Cloud credentials configuration",
+              "properties": {
+                "aws_access_key_id": {"type": "string"},
+                "aws_secret_access_key": {"type": "string"},
+                "gcp_service_account_key_path": {"type": "string"}
+              },
+              "additionalProperties": true
+            },
+            "dimensions": {
+              "type": "object",
+              "description": "Additional dimensions/labels for metrics",
+              "additionalProperties": {"type": "string"}
+            }
+          },
+          "additionalProperties": true
+        },
+        "metrics": {
+          "type": "object",
+          "description": "Metric collection configuration",
+          "properties": {
+            "job_duration": {
+              "type": "boolean",
+              "default": true,
+              "description": "Collect job execution duration metrics"
+            },
+            "records_processed": {
+              "type": "boolean",
+              "default": true,
+              "description": "Collect records processed metrics"
+            },
+            "errors": {
+              "type": "boolean",
+              "default": true,
+              "description": "Collect error count metrics"
+            },
+            "retries": {
+              "type": "boolean",
+              "default": true,
+              "description": "Collect retry metrics"
+            },
+            "data_volume": {
+              "type": "boolean",
+              "default": true,
+              "description": "Collect data volume metrics (bytes)"
+            }
+          }
+        }
+      },
+      "required": ["provider", "config"],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

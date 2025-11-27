@@ -1,0 +1,68 @@
+# Example: CSV to Iceberg with AWS CloudWatch Observability
+# This example shows how to configure AWS CloudWatch observability for monitoring
+# job execution metrics in the AWS cloud
+
+tenant_id: acme
+environment: prod
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: assets/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: data/employees.csv
+      object: Employee
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+      prefix: "raw/acme/employees"
+
+# Observability configuration - AWS CloudWatch
+observability:
+  enabled: true
+  provider: aws_cloudwatch
+  config:
+    # AWS region where CloudWatch metrics will be sent
+    region: "${AWS_REGION:-us-east-1}"
+    
+    # CloudWatch namespace (metrics will be organized under this namespace)
+    namespace: "Dativo/Ingest"
+    
+    # Optional: AWS credentials (if not using IAM roles)
+    credentials:
+      aws_access_key_id: "${AWS_ACCESS_KEY_ID}"
+      aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+    
+    # Optional: Additional dimensions for all metrics
+    dimensions:
+      team: "data-platform"
+      cost_center: "engineering"
+  
+  # Metric collection configuration (all enabled by default)
+  metrics:
+    job_duration: true           # Job execution time in seconds
+    records_processed: true      # Number of records extracted/validated
+    errors: true                 # Error counts and types
+    retries: true                # Retry attempts
+    data_volume: true            # Data volume in bytes
+
+# Schema validation mode
+schema_validation_mode: strict
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

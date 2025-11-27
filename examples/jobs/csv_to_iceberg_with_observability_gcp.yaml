@@ -1,0 +1,68 @@
+# Example: CSV to Iceberg with GCP Cloud Monitoring Observability
+# This example shows how to configure GCP Cloud Monitoring observability for monitoring
+# job execution metrics in the Google Cloud Platform
+
+tenant_id: acme
+environment: prod
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: assets/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: data/employees.csv
+      object: Employee
+
+# Target configuration
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+      prefix: "raw/acme/employees"
+
+# Observability configuration - GCP Cloud Monitoring
+observability:
+  enabled: true
+  provider: gcp_cloud_monitoring
+  config:
+    # GCP project ID where metrics will be sent
+    project_id: "${GCP_PROJECT_ID}"
+    
+    # Metric type prefix (metrics will be organized under this namespace)
+    # Metrics will appear as: custom.googleapis.com/dativo/{metric_name}
+    namespace: "custom.googleapis.com/dativo"
+    
+    # Optional: Service account credentials (if not using default credentials)
+    credentials:
+      gcp_service_account_key_path: "${GCP_SERVICE_ACCOUNT_KEY_PATH}"
+    
+    # Optional: Additional labels for all metrics
+    dimensions:
+      team: "data-platform"
+      cost_center: "engineering"
+  
+  # Metric collection configuration (all enabled by default)
+  metrics:
+    job_duration: true           # Job execution time in seconds
+    records_processed: true      # Number of records extracted/validated
+    errors: true                 # Error counts and types
+    retries: true                # Retry attempts
+    data_volume: true            # Data volume in bytes
+
+# Schema validation mode
+schema_validation_mode: strict
+
+# Logging
+logging:
+  redaction: true
+  level: INFO

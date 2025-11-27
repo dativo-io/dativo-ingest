@@ -192,6 +192,43 @@ Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/r
 
 **Catalog Note**: Iceberg catalog is optional. Without catalog, Parquet files are written directly to S3/MinIO. See [docs/CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md).
 
+## Cloud Observability
+
+Dativo supports exporting job execution metrics to cloud monitoring services for comprehensive observability:
+
+**Supported Providers:**
+- **AWS CloudWatch** - Export metrics to CloudWatch for AWS-native monitoring
+- **GCP Cloud Monitoring** - Export metrics to Cloud Monitoring for GCP-native monitoring
+
+**Collected Metrics:**
+- Job execution duration
+- Records processed (extraction, validation, writing stages)
+- Data volume (bytes read/written)
+- Error counts and types
+- Retry attempts
+- API calls
+
+**Quick Example (AWS CloudWatch):**
+```yaml
+observability:
+  enabled: true
+  provider: aws_cloudwatch
+  config:
+    region: us-east-1
+    namespace: Dativo/Ingest
+    dimensions:
+      team: data-platform
+  metrics:
+    job_duration: true
+    records_processed: true
+    errors: true
+```
+
+**For detailed configuration and examples, see:**
+- [docs/observability.md](docs/observability.md) - Complete observability guide
+- [examples/jobs/csv_to_iceberg_with_observability_aws.yaml](examples/jobs/csv_to_iceberg_with_observability_aws.yaml) - AWS CloudWatch example
+- [examples/jobs/csv_to_iceberg_with_observability_gcp.yaml](examples/jobs/csv_to_iceberg_with_observability_gcp.yaml) - GCP Cloud Monitoring example
+
 ## Configuration
 
 **Job Config** - Defines source, target, asset, and tenant overrides:

@@ -335,6 +335,38 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         },
     )
 
+    # Initialize observability provider if configured
+    observability_provider = None
+    observability_metrics_config = None
+    if job_config.observability and job_config.observability.enabled:
+        try:
+            from .observability import create_observability_provider
+
+            observability_provider = create_observability_provider(
+                provider_type=job_config.observability.provider,
+                config=job_config.observability.config,
+                tenant_id=job_config.tenant_id,
+                job_name=getattr(job_config, 'asset', None) or 'unknown',
+                environment=job_config.environment,
+            )
+            observability_metrics_config = job_config.observability.metrics
+
+            logger.info(
+                "Cloud observability initialized",
+                extra={
+                    "provider": job_config.observability.provider,
+                    "event_type": "observability_initialized",
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize observability provider: {e}. Continuing without observability.",
+                extra={
+                    "event_type": "observability_init_failed",
+                    "error": str(e),
+                },
+            )
+
     # Validate schema presence
     try:
         job_config.validate_schema_presence()
@@ -1106,6 +1138,48 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             },
         )
 
+        # Record observability metrics for job completion
+        if observability_provider and observability_metrics_config:
+            try:
+                # Record records processed
+                if observability_metrics_config.records_processed:
+                    observability_provider.record_records_processed(
+                        total_records, stage="extraction"
+                    )
+                    observability_provider.record_records_processed(
+                        total_valid_records, stage="validation"
+                    )
+
+                # Record data volume
+                if observability_metrics_config.data_volume:
+                    observability_provider.record_data_volume(
+                        total_bytes, direction="written"
+                    )
+
+                # Record job status
+                if exit_code == 0:
+                    observability_provider.record_job_success()
+                elif exit_code == 1:
+                    observability_provider.record_job_failure("partial_failure")
+                else:
+                    observability_provider.record_job_failure("validation_error")
+
+                # Flush metrics
+                observability_provider.flush()
+
+                logger.debug(
+                    "Observability metrics recorded successfully",
+                    extra={"event_type": "observability_metrics_recorded"},
+                )
+            except Exception as obs_error:
+                logger.warning(
+                    f"Failed to record observability metrics: {obs_error}",
+                    extra={
+                        "event_type": "observability_error",
+                        "error": str(obs_error),
+                    },
+                )
+
         return exit_code
 
     except Exception as e:
@@ -1116,6 +1190,22 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             },
             exc_info=True,
         )
+
+        # Record observability metrics for job failure
+        if observability_provider and observability_metrics_config:
+            try:
+                if observability_metrics_config.errors:
+                    observability_provider.record_job_failure(type(e).__name__)
+                observability_provider.flush()
+            except Exception as obs_error:
+                logger.warning(
+                    f"Failed to record observability failure metrics: {obs_error}",
+                    extra={
+                        "event_type": "observability_error",
+                        "error": str(obs_error),
+                    },
+                )
+
         return 2
 
 

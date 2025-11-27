@@ -9,18 +9,28 @@ from .logging import get_logger
 class MetricsCollector:
     """Collects and emits metrics for job execution."""
 
-    def __init__(self, job_name: str, tenant_id: str):
+    def __init__(
+        self,
+        job_name: str,
+        tenant_id: str,
+        observability_provider: Optional[Any] = None,
+        observability_config: Optional[Any] = None,
+    ):
         """Initialize metrics collector.
 
         Args:
             job_name: Name of the job
             tenant_id: Tenant identifier
+            observability_provider: Optional cloud observability provider
+            observability_config: Optional observability metrics configuration
         """
         self.job_name = job_name
         self.tenant_id = tenant_id
         self.logger = get_logger()
         self.start_time: Optional[float] = None
         self.metrics: Dict[str, Any] = {}
+        self.observability_provider = observability_provider
+        self.observability_config = observability_config
 
     def start(self) -> None:
         """Start metrics collection."""
@@ -30,6 +40,19 @@ class MetricsCollector:
             "tenant_id": self.tenant_id,
             "start_time": self.start_time,
         }
+
+        # Record job start in observability provider
+        if self.observability_provider:
+            try:
+                self.observability_provider.record_job_start()
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to record job start in observability provider: {e}",
+                    extra={
+                        "event_type": "observability_warning",
+                        "error": str(e),
+                    },
+                )
 
     def record_extraction(self, records_count: int, files_count: int = 0) -> None:
         """Record extraction metrics.
@@ -51,6 +74,19 @@ class MetricsCollector:
                 "tenant_id": self.tenant_id,
             },
         )
+
+        # Record in observability provider
+        if self.observability_provider and self.observability_config:
+            try:
+                if self.observability_config.records_processed:
+                    self.observability_provider.record_records_processed(
+                        records_count, stage="extraction"
+                    )
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to record extraction metrics in observability provider: {e}",
+                    extra={"event_type": "observability_warning", "error": str(e)},
+                )
 
     def record_validation(
         self, valid_records: int, invalid_records: int, total_records: int
@@ -111,6 +147,19 @@ class MetricsCollector:
             },
         )
 
+        # Record in observability provider
+        if self.observability_provider and self.observability_config:
+            try:
+                if self.observability_config.data_volume:
+                    self.observability_provider.record_data_volume(
+                        total_bytes, direction="written"
+                    )
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to record writing metrics in observability provider: {e}",
+                    extra={"event_type": "observability_warning", "error": str(e)},
+                )
+
     def record_api_calls(self, api_calls: int, api_type: Optional[str] = None) -> None:
         """Record API call metrics.
 
@@ -136,6 +185,16 @@ class MetricsCollector:
             },
         )
 
+        # Record in observability provider
+        if self.observability_provider:
+            try:
+                self.observability_provider.record_api_calls(api_calls, api_type)
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to record API call metrics in observability provider: {e}",
+                    extra={"event_type": "observability_warning", "error": str(e)},
+                )
+
     def record_error(self, error_type: str, error_count: int = 1) -> None:
         """Record error metrics.
 
@@ -160,12 +219,26 @@ class MetricsCollector:
             },
         )
 
-    def record_retry(self, attempt: int, exit_code: Optional[int] = None) -> None:
+        # Record in observability provider
+        if self.observability_provider and self.observability_config:
+            try:
+                if self.observability_config.errors:
+                    self.observability_provider.record_job_failure(error_type)
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to record error metrics in observability provider: {e}",
+                    extra={"event_type": "observability_warning", "error": str(e)},
+                )
+
+    def record_retry(
+        self, attempt: int, exit_code: Optional[int] = None, max_attempts: int = 3
+    ) -> None:
         """Record retry metrics.
 
         Args:
             attempt: Retry attempt number
             exit_code: Exit code that triggered retry
+            max_attempts: Maximum number of attempts
         """
         if "retries" not in self.metrics:
             self.metrics["retries"] = {"count": 0, "attempts": []}
@@ -185,6 +258,17 @@ class MetricsCollector:
                 "tenant_id": self.tenant_id,
             },
         )
+
+        # Record in observability provider
+        if self.observability_provider and self.observability_config:
+            try:
+                if self.observability_config.retries:
+                    self.observability_provider.record_retry(attempt, max_attempts)
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to record retry metrics in observability provider: {e}",
+                    extra={"event_type": "observability_warning", "error": str(e)},
+                )
 
     def finish(self, status: str = "success") -> Dict[str, Any]:
         """Finish metrics collection and return summary.
@@ -234,5 +318,29 @@ class MetricsCollector:
                 },
             },
         )
+
+        # Record final metrics in observability provider
+        if self.observability_provider and self.observability_config:
+            try:
+                # Record job duration
+                if self.observability_config.job_duration:
+                    self.observability_provider.record_job_duration(execution_time)
+
+                # Record job completion status
+                if status == "success":
+                    self.observability_provider.record_job_success()
+                else:
+                    error_type = self.metrics.get("errors", {}).get("type", "unknown")
+                    if self.observability_config.errors:
+                        self.observability_provider.record_job_failure(error_type)
+
+                # Flush any buffered metrics
+                self.observability_provider.flush()
+
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to finalize observability metrics: {e}",
+                    extra={"event_type": "observability_warning", "error": str(e)},
+                )
 
         return self.metrics

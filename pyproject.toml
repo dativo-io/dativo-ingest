@@ -33,6 +33,10 @@ dev = [
     "pytest>=7.0.0",
     "pytest-mock>=3.0.0",
 ]
+observability = [
+    "boto3>=1.28.0",  # AWS CloudWatch support
+    "google-cloud-monitoring>=2.0.0",  # GCP Cloud Monitoring support
+]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

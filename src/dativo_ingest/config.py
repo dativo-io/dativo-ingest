@@ -472,6 +472,56 @@ class CatalogConfig(BaseModel):
     )
 
 
+class ObservabilityMetricsConfig(BaseModel):
+    """Observability metrics collection configuration."""
+
+    job_duration: bool = Field(True, description="Collect job execution duration metrics")
+    records_processed: bool = Field(True, description="Collect records processed metrics")
+    errors: bool = Field(True, description="Collect error count metrics")
+    retries: bool = Field(True, description="Collect retry metrics")
+    data_volume: bool = Field(True, description="Collect data volume metrics (bytes)")
+
+
+class ObservabilityConfig(BaseModel):
+    """Cloud observability configuration for metrics and monitoring."""
+
+    enabled: bool = Field(True, description="Whether observability is enabled")
+    provider: str = Field(
+        ...,
+        description="Cloud observability provider: 'aws_cloudwatch' or 'gcp_cloud_monitoring'",
+    )
+    config: Dict[str, Any] = Field(
+        ..., description="Provider-specific configuration"
+    )
+    metrics: Optional[ObservabilityMetricsConfig] = Field(
+        default_factory=ObservabilityMetricsConfig,
+        description="Metric collection configuration",
+    )
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        """Validate observability provider."""
+        valid_providers = ["aws_cloudwatch", "gcp_cloud_monitoring"]
+        if v not in valid_providers:
+            raise ValueError(
+                f"Invalid observability provider: {v}. "
+                f"Valid providers: {', '.join(valid_providers)}"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_provider_config(self) -> "ObservabilityConfig":
+        """Validate provider-specific configuration."""
+        if self.provider == "aws_cloudwatch":
+            if "region" not in self.config:
+                raise ValueError("AWS CloudWatch requires 'region' in config")
+        elif self.provider == "gcp_cloud_monitoring":
+            if "project_id" not in self.config:
+                raise ValueError("GCP Cloud Monitoring requires 'project_id' in config")
+        return self
+
+
 class RetryConfig(BaseModel):
     """Retry configuration for transient failures."""
 
@@ -531,6 +581,9 @@ class JobConfig(BaseModel):
 
     # Catalog configuration (optional)
     catalog: Optional[CatalogConfig] = None
+
+    # Observability configuration (optional)
+    observability: Optional[ObservabilityConfig] = None
 
     # Execution configuration
     schema_validation_mode: str = "strict"  # 'strict' or 'warn'
