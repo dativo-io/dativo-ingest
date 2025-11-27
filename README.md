@@ -340,6 +340,22 @@ source:
       batch_size: 50000  # Larger batches with Rust
 ```
 
+#### Cloud Plugin Storage (AWS & GCP)
+
+- Reference plugins directly from S3 (`s3://bucket/path.py:ClassName`) or GCS (`gs://bucket/libplugin.so:create_reader`)
+- Dativo downloads plugins into `.local/plugins` (override with `DATIVO_PLUGIN_CACHE_DIR`)
+- Works for both Python (`.py`) and Rust (`.so/.dylib/.dll`) plugins
+
+```yaml
+source:
+  # Python plugin stored in S3
+  custom_reader: "s3://my-bucket/plugins/json_api_reader.py:JSONAPIReader"
+
+target:
+  # Rust writer stored in GCS
+  custom_writer: "gs://my-bucket/plugins/libparquet_writer.so:create_writer"
+```
+
 ### Performance Benefits
 
 **Rust plugins provide dramatic improvements:**

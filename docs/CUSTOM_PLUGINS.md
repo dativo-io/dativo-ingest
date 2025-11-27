@@ -435,6 +435,26 @@ Examples:
 - `./custom/writers/parquet_writer.py:OptimizedParquetWriter`
 - `/workspace/plugins/delta_writer.py:DeltaLakeWriter`
 
+### Cloud Storage Locations (AWS & GCP)
+
+Custom plugin paths can reference S3 or GCS locations. The runner automatically
+downloads the plugin before loading it.
+
+- **S3:** `s3://my-bucket/path/to/reader.py:MyReader`
+- **GCS:** `gs://my-bucket/plugins/libparquet_writer.so:create_writer`
+- Files are cached under `.local/plugins` (override with `DATIVO_PLUGIN_CACHE_DIR`)
+
+```yaml
+source:
+  custom_reader: "s3://acme-ingest/plugins/json_api_reader.py:JSONAPIReader"
+
+target:
+  custom_writer: "gs://acme-ingest/plugins/libdelta_writer.so:create_writer"
+```
+
+> Tip: store production plugins in versioned prefixes (e.g., `plugins/v1/...`)
+> and restrict bucket access per tenant.
+
 ## Advanced Examples
 
 ### Example 1: Custom JSON Reader with Pagination

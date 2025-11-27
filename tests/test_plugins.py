@@ -12,6 +12,7 @@ Tests cover:
 
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
@@ -1247,6 +1248,104 @@ class TestReader(BaseReader):
             # Verify result
             assert isinstance(result, dict)
             assert "objects" in result or result.get("status") == "success"
+
+
+class TestRemotePluginLoading:
+    """Tests for loading plugins from remote cloud storage."""
+
+    def test_load_python_reader_from_s3_uri(self, tmp_path, monkeypatch):
+        """Ensure Python plugins can be downloaded from S3 URIs."""
+        plugin_code = """
+from dativo_ingest.plugins import BaseReader
+
+class RemoteReader(BaseReader):
+    def extract(self, state_manager=None):
+        yield [{"value": 1}]
+"""
+        remote_dir = tmp_path / "remote"
+        remote_dir.mkdir()
+        remote_file = remote_dir / "reader.py"
+        remote_file.write_text(plugin_code)
+
+        cache_dir = tmp_path / "cache"
+        monkeypatch.setenv("DATIVO_PLUGIN_CACHE_DIR", str(cache_dir))
+
+        download_calls = {"count": 0}
+
+        def fake_client(service_name, **kwargs):
+            assert service_name == "s3"
+
+            class FakeS3Client:
+                def download_file(self_inner, bucket, key, filename):
+                    download_calls["count"] += 1
+                    assert bucket == "test-bucket"
+                    assert key == "plugins/reader.py"
+                    shutil.copyfile(remote_file, filename)
+
+            return FakeS3Client()
+
+        monkeypatch.setattr("boto3.client", fake_client)
+
+        reader_path = "s3://test-bucket/plugins/reader.py:RemoteReader"
+        reader_class = PluginLoader.load_reader(reader_path)
+        source_config = SourceConfig(type="remote")
+        reader = reader_class(source_config)
+        rows = list(reader.extract())
+
+        assert rows[0][0]["value"] == 1
+        assert download_calls["count"] == 1
+
+        # Subsequent loads should hit the cache without another download
+        PluginLoader.load_reader(reader_path)
+        assert download_calls["count"] == 1
+
+    def test_load_python_reader_from_gcs_uri(self, tmp_path, monkeypatch):
+        """Ensure Python plugins can be downloaded from GCS URIs."""
+        plugin_code = """
+from dativo_ingest.plugins import BaseReader
+
+class RemoteReader(BaseReader):
+    def extract(self, state_manager=None):
+        yield [{"value": 2}]
+"""
+        remote_dir = tmp_path / "remote_gcs"
+        remote_dir.mkdir()
+        remote_file = remote_dir / "reader.py"
+        remote_file.write_text(plugin_code)
+
+        cache_dir = tmp_path / "cache_gcs"
+        monkeypatch.setenv("DATIVO_PLUGIN_CACHE_DIR", str(cache_dir))
+
+        download_calls = {"count": 0}
+
+        class FakeBlob:
+            def download_to_filename(self, filename):
+                download_calls["count"] += 1
+                shutil.copyfile(remote_file, filename)
+
+        class FakeBucket:
+            def blob(self, key):
+                assert key == "plugins/reader.py"
+                return FakeBlob()
+
+        class FakeClient:
+            def bucket(self, name):
+                assert name == "gcs-bucket"
+                return FakeBucket()
+
+        monkeypatch.setattr("google.cloud.storage.Client", lambda *args, **kwargs: FakeClient())
+
+        reader_path = "gs://gcs-bucket/plugins/reader.py:RemoteReader"
+        reader_class = PluginLoader.load_reader(reader_path)
+        source_config = SourceConfig(type="remote")
+        reader = reader_class(source_config)
+        rows = list(reader.extract())
+
+        assert rows[0][0]["value"] == 2
+        assert download_calls["count"] == 1
+
+        PluginLoader.load_reader(reader_path)
+        assert download_calls["count"] == 1
 
 
 class TestConnectionTestResult:

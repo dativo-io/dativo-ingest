@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterator, List, Optional, Type
 
 from .config import SourceConfig, TargetConfig
 from .exceptions import PluginError, PluginVersionError
+from .plugin_storage import resolve_plugin_path
 from .validator import IncrementalStateManager
 
 # Plugin SDK version - increment when making breaking changes
@@ -406,6 +407,9 @@ class PluginLoader:
         Raises:
             ValueError: If plugin cannot be loaded or doesn't inherit from base_class
         """
+        # Resolve remote paths (s3://, gs://, etc.) before parsing
+        plugin_path = resolve_plugin_path(plugin_path)
+
         # Parse path and class name
         if ":" not in plugin_path:
             raise ValueError(
@@ -478,6 +482,8 @@ class PluginLoader:
         Raises:
             ValueError: If plugin cannot be loaded
         """
+        plugin_path = resolve_plugin_path(plugin_path)
+
         if ":" not in plugin_path:
             raise ValueError(
                 f"Rust plugin path must be in format 'path/to/libplugin.so:function_name', got: {plugin_path}"

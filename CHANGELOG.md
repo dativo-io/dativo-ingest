@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Plugins receive connection details and can implement format-aware, high-performance processing
   - Comprehensive documentation in `docs/CUSTOM_PLUGINS.md`
   - Integration with existing ETL pipeline (custom plugins work alongside built-in extractors)
+  - Cloud plugin storage via `s3://` and `gs://` URIs with local caching (`DATIVO_PLUGIN_CACHE_DIR`)
   
 ### Changed
 - Updated `SourceConfig` to include optional `custom_reader` field
