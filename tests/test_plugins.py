@@ -1247,3 +1247,215 @@ class TestReader(BaseReader):
             # Verify result
             assert isinstance(result, dict)
             assert "objects" in result or result.get("status") == "success"
+
+
+class TestConnectionTestResult:
+    """Tests for ConnectionTestResult class."""
+
+    def test_connection_result_success(self):
+        """Test successful connection result."""
+        result = ConnectionTestResult(
+            success=True,
+            message="Connected",
+            details={"host": "localhost", "port": 5432},
+        )
+
+        assert result.success is True
+        assert result.message == "Connected"
+        assert result.details["host"] == "localhost"
+        assert result.details["port"] == 5432
+        assert result.error_code is None
+
+        # Test to_dict
+        result_dict = result.to_dict()
+        assert result_dict["success"] is True
+        assert result_dict["message"] == "Connected"
+        assert result_dict["details"]["host"] == "localhost"
+        assert "error_code" not in result_dict or result_dict["error_code"] is None
+
+    def test_connection_result_failure(self):
+        """Test failed connection result."""
+        result = ConnectionTestResult(
+            success=False,
+            message="Connection failed",
+            error_code="CONNECTION_ERROR",
+            details={"error": "timeout"},
+        )
+
+        assert result.success is False
+        assert result.message == "Connection failed"
+        assert result.error_code == "CONNECTION_ERROR"
+        assert result.details["error"] == "timeout"
+
+        # Test to_dict
+        result_dict = result.to_dict()
+        assert result_dict["success"] is False
+        assert result_dict["message"] == "Connection failed"
+        assert result_dict["error_code"] == "CONNECTION_ERROR"
+        assert result_dict["details"]["error"] == "timeout"
+
+
+class TestDiscoveryResult:
+    """Tests for DiscoveryResult class."""
+
+    def test_discovery_result_with_objects(self):
+        """Test discovery result with objects."""
+        objects = [
+            {"name": "users", "type": "table", "schema": {"id": "integer"}},
+            {"name": "orders", "type": "table", "schema": {"order_id": "integer"}},
+        ]
+        metadata = {"database": "test_db", "version": "1.0"}
+
+        result = DiscoveryResult(objects=objects, metadata=metadata)
+
+        assert len(result.objects) == 2
+        assert result.objects[0]["name"] == "users"
+        assert result.objects[1]["name"] == "orders"
+        assert result.metadata["database"] == "test_db"
+        assert result.metadata["version"] == "1.0"
+
+        # Test to_dict
+        result_dict = result.to_dict()
+        assert len(result_dict["objects"]) == 2
+        assert result_dict["objects"][0]["name"] == "users"
+        assert result_dict["metadata"]["database"] == "test_db"
+
+    def test_discovery_result_empty(self):
+        """Test discovery result with no objects."""
+        result = DiscoveryResult(objects=[], metadata={})
+
+        assert len(result.objects) == 0
+        assert isinstance(result.metadata, dict)
+        assert len(result.metadata) == 0
+
+        # Test to_dict
+        result_dict = result.to_dict()
+        assert len(result_dict["objects"]) == 0
+        assert isinstance(result_dict["metadata"], dict)
+
+
+class TestPluginVersioning:
+    """Tests for plugin versioning functionality."""
+
+    def test_reader_version_attribute(self):
+        """Test that reader can have version attribute."""
+        source_config = SourceConfig(type="test")
+
+        class VersionedReader(BaseReader):
+            __version__ = "1.0.0"
+
+            def extract(self, state_manager=None):
+                yield []
+
+        reader = VersionedReader(source_config)
+        assert reader.__version__ == "1.0.0"
+
+    def test_writer_version_attribute(self):
+        """Test that writer can have version attribute."""
+
+        class MockAsset:
+            name = "test"
+            schema = []
+
+        target_config = TargetConfig(type="test")
+
+        class VersionedWriter(BaseWriter):
+            __version__ = "2.0.0"
+
+            def write_batch(self, records, file_counter):
+                return []
+
+        writer = VersionedWriter(MockAsset(), target_config, "/tmp")
+        assert writer.__version__ == "2.0.0"
+
+    def test_reader_default_version(self):
+        """Test that reader has default version from base class."""
+        source_config = SourceConfig(type="test")
+
+        class UnversionedReader(BaseReader):
+            def extract(self, state_manager=None):
+                yield []
+
+        reader = UnversionedReader(source_config)
+        # BaseReader should have a default version
+        assert hasattr(reader, "__version__")
+        assert reader.__version__ is not None
+
+    def test_writer_default_version(self):
+        """Test that writer has default version from base class."""
+
+        class MockAsset:
+            name = "test"
+            schema = []
+
+        target_config = TargetConfig(type="test")
+
+        class UnversionedWriter(BaseWriter):
+            def write_batch(self, records, file_counter):
+                return []
+
+        writer = UnversionedWriter(MockAsset(), target_config, "/tmp")
+        # BaseWriter should have a default version
+        assert hasattr(writer, "__version__")
+        assert writer.__version__ is not None
+
+
+class TestModuleExports:
+    """Tests for module exports and imports."""
+
+    def test_plugin_classes_importable(self):
+        """Test that all plugin classes can be imported from main module."""
+        from dativo_ingest import (
+            BaseReader,
+            BaseWriter,
+            ConnectionTestResult,
+            DiscoveryResult,
+            PluginLoader,
+        )
+
+        assert BaseReader is not None
+        assert BaseWriter is not None
+        assert ConnectionTestResult is not None
+        assert DiscoveryResult is not None
+        assert PluginLoader is not None
+
+    def test_error_classes_importable(self):
+        """Test that all error classes can be imported from main module."""
+        from dativo_ingest import (
+            AuthenticationError,
+            ConfigurationError,
+            ConnectionError,
+            DativoError,
+            PluginError,
+            PluginVersionError,
+            RateLimitError,
+            SandboxError,
+            TransientError,
+            ValidationError,
+            get_error_code,
+            is_retryable_error,
+            wrap_exception,
+        )
+
+        # Verify all classes exist
+        assert DativoError is not None
+        assert ConnectionError is not None
+        assert AuthenticationError is not None
+        assert ValidationError is not None
+        assert ConfigurationError is not None
+        assert TransientError is not None
+        assert RateLimitError is not None
+        assert PluginError is not None
+        assert PluginVersionError is not None
+        assert SandboxError is not None
+        assert callable(is_retryable_error)
+        assert callable(get_error_code)
+        assert callable(wrap_exception)
+
+    def test_version_importable(self):
+        """Test that __version__ can be imported from main module."""
+        from dativo_ingest import __version__
+
+        assert __version__ is not None
+        assert isinstance(__version__, str)
+        assert len(__version__) > 0

@@ -39,7 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `docs/PLUGIN_SANDBOXING.md` - Security guide for plugin sandboxing
   - `docs/CONNECTOR_VS_PLUGIN_DECISION_TREE.md` - Decision tree for choosing connectors vs plugins
   - Example plugins: `examples/plugins/json_api_reader.py` and `examples/plugins/json_file_writer.py`
-  - Verification script: `verify_improvements.py` for validating plugin implementations
 - **Module Exports**: 
   - Exported plugin classes (`BaseReader`, `BaseWriter`, `ConnectionTestResult`, `DiscoveryResult`) from main module
   - Exported error classes and utility functions for clean imports
