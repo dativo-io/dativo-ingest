@@ -262,6 +262,30 @@ source:
 - [Python Examples](examples/plugins/) - JSON API reader, JSON file writer, etc.
 - [Rust Examples](examples/plugins/rust/) - High-performance CSV reader, Parquet writer
 
+## Data Catalog Integration
+
+Dativo supports integration with data catalogs for automatic lineage tracking and metadata management. When configured, lineage information (source → target relationships) and metadata (tags, owners, descriptions) are automatically pushed to your catalog.
+
+**Supported Catalogs:**
+- **OpenMetadata** - Open-source metadata management platform
+- **AWS Glue** - AWS data catalog service
+- **Databricks Unity Catalog** - Databricks' unified catalog
+- **Nessie** - Git-like data catalog (lineage via Iceberg table properties)
+
+**Quick Example:**
+
+```yaml
+catalog:
+  type: openmetadata
+  connection:
+    api_url: "${OPENMETADATA_API_URL:-http://localhost:8585/api}"
+  database: my_database
+  push_lineage: true
+  push_metadata: true
+```
+
+See [docs/CATALOG_INTEGRATION.md](docs/CATALOG_INTEGRATION.md) for complete documentation.
+
 ### Markdown-KV Storage Options
 
 Dativo supports three storage patterns for Markdown-KV format:

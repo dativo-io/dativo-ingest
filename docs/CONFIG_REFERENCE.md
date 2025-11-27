@@ -316,6 +316,42 @@ The Airbyte engine executes Airbyte source connectors as Docker containers:
 - State is managed via Airbyte state messages
 - Integrates with Dativo's incremental state manager
 
+---
+
+## Catalog Configuration
+
+Dativo supports optional integration with data catalogs for automatic lineage tracking and metadata management.
+
+### Catalog Configuration Fields
+
+```yaml
+catalog:
+  type: openmetadata  # or aws_glue, databricks_unity, nessie
+  connection:
+    api_url: "${OPENMETADATA_API_URL:-http://localhost:8585/api}"
+    auth_token: "${OPENMETADATA_AUTH_TOKEN}"
+  database: my_database
+  table_name: my_table  # Optional, defaults to asset name
+  push_lineage: true    # Default: true
+  push_metadata: true   # Default: true
+```
+
+**Fields:**
+- `type` (required): Catalog type (`openmetadata`, `aws_glue`, `databricks_unity`, `nessie`)
+- `connection` (required): Connection configuration (varies by catalog type)
+- `database` (optional): Database/schema name in catalog
+- `table_name` (optional): Table name override (defaults to asset name)
+- `push_lineage` (optional): Whether to push lineage information (default: `true`)
+- `push_metadata` (optional): Whether to push metadata (default: `true`)
+
+**Behavior:**
+- Catalog operations are **non-blocking** - failures log warnings but never break ingestion jobs
+- Lineage is automatically extracted from source → target relationships
+- Metadata includes tags, owners, descriptions from job configuration and asset definitions
+- All catalog operations respect tenant isolation
+
+For detailed catalog-specific configuration, see [CATALOG_INTEGRATION.md](CATALOG_INTEGRATION.md).
+
 **Example Connector Recipe:**
 ```yaml
 name: hubspot
