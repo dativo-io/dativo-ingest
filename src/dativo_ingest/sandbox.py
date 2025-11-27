@@ -57,7 +57,9 @@ class PluginSandbox:
             self.docker_client = docker.from_env()
             # Test Docker connection
             self.docker_client.ping()
-        except DockerException as e:
+        except (DockerException, Exception) as e:
+            # Catch both DockerException and generic Exception
+            # to handle cases where docker.from_env() or ping() raise generic exceptions
             raise SandboxError(
                 f"Failed to connect to Docker: {e}",
                 details={"error": str(e)},
