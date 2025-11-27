@@ -308,6 +308,171 @@ class TestAWSGlueCatalog:
         assert "table" in result
 
 
+class TestDatabricksUnityCatalog:
+    """Test Databricks Unity Catalog integration."""
+
+    @pytest.fixture
+    def databricks_catalog(self, sample_asset_definition, sample_job_config):
+        """Create Databricks Unity Catalog instance."""
+        catalog_config = CatalogConfig(
+            type="databricks_unity",
+            connection={
+                "workspace_url": "https://test.databricks.com",
+                "access_token": "test-token",
+            },
+            database="test_db",
+        )
+        return CatalogFactory.create(
+            catalog_config, sample_asset_definition, sample_job_config
+        )
+
+    def test_escape_sql_string(self, databricks_catalog):
+        """Test SQL string escaping to prevent SQL injection."""
+        # Test normal string
+        assert databricks_catalog._escape_sql_string("normal") == "normal"
+
+        # Test string with single quote
+        assert databricks_catalog._escape_sql_string("test'value") == "test''value"
+
+        # Test SQL injection attempt
+        injection = "'; DROP TABLE foo; --"
+        escaped = databricks_catalog._escape_sql_string(injection)
+        assert escaped == "''; DROP TABLE foo; --"
+        # Verify the escaped string is safe (contains doubled quotes)
+        assert "''" in escaped
+
+        # Test None
+        assert databricks_catalog._escape_sql_string(None) == ""
+
+        # Test multiple quotes
+        assert (
+            databricks_catalog._escape_sql_string("test'value'here")
+            == "test''value''here"
+        )
+
+    @patch("dativo_ingest.catalog.databricks_unity.requests")
+    def test_push_metadata_escapes_description(self, mock_requests, databricks_catalog):
+        """Test that description is properly escaped in SQL."""
+        mock_requests.get.return_value.status_code = 404  # Table doesn't exist
+        mock_requests.post.return_value.status_code = 200
+
+        # Description with SQL injection attempt
+        malicious_description = "'; DROP TABLE foo; --"
+        entity = {"name": "test_table", "database": "test_db"}
+
+        result = databricks_catalog.push_metadata(
+            entity, description=malicious_description
+        )
+
+        # Verify the SQL statement was called
+        assert mock_requests.post.called
+        call_args = mock_requests.post.call_args
+        sql_statement = call_args[1]["json"]["statement"]
+
+        # Verify the description is escaped (single quotes doubled)
+        # The escaped version should appear: first quote becomes ''
+        assert "''; DROP TABLE foo; --" in sql_statement
+        # Verify the SQL statement contains the escaped value in a string literal
+        # The pattern should be: 'comment' = '...escaped value...'
+        assert "'comment' = '" in sql_statement
+        # The escaped value should be between the quotes
+        assert sql_statement.find("'comment' = '") < sql_statement.find("''; DROP")
+
+    @patch("dativo_ingest.catalog.databricks_unity.requests")
+    def test_push_metadata_escapes_tags(self, mock_requests, databricks_catalog):
+        """Test that tags are properly escaped in SQL."""
+        mock_requests.get.return_value.status_code = 404
+        mock_requests.post.return_value.status_code = 200
+
+        # Tags with SQL injection attempt
+        malicious_tags = ["tag1", "tag'with'injection", "normal_tag"]
+        entity = {"name": "test_table", "database": "test_db"}
+
+        result = databricks_catalog.push_metadata(entity, tags=malicious_tags)
+
+        # Verify the SQL statement was called
+        assert mock_requests.post.called
+        call_args = mock_requests.post.call_args
+        sql_statement = call_args[1]["json"]["statement"]
+
+        # Verify tags are escaped
+        assert "tag''with''injection" in sql_statement
+        assert "tag'with'injection" not in sql_statement
+
+    @patch("dativo_ingest.catalog.databricks_unity.requests")
+    def test_push_lineage_escapes_source_names(self, mock_requests, databricks_catalog):
+        """Test that source entity names are properly escaped in SQL."""
+        mock_requests.post.return_value.status_code = 200
+
+        # Source entities with SQL injection attempts
+        source_entities = [
+            {"name": "source1"},
+            {"name": "source'; DROP TABLE foo; --"},
+            {"location": "s3://bucket/file'name"},
+        ]
+        target_entity = {"name": "test_table", "database": "test_db"}
+
+        result = databricks_catalog.push_lineage(source_entities, target_entity)
+
+        # Verify the SQL statement was called
+        assert mock_requests.post.called
+        call_args = mock_requests.post.call_args
+        sql_statement = call_args[1]["json"]["statement"]
+
+        # Verify source names are escaped
+        assert "source''; DROP TABLE foo; --" in sql_statement
+        assert "source'; DROP" not in sql_statement
+
+    @patch("dativo_ingest.catalog.databricks_unity.requests")
+    def test_push_lineage_escapes_operation(self, mock_requests, databricks_catalog):
+        """Test that operation is properly escaped in SQL."""
+        mock_requests.post.return_value.status_code = 200
+
+        source_entities = [{"name": "source1"}]
+        target_entity = {"name": "test_table", "database": "test_db"}
+        malicious_operation = "ingest'; DROP TABLE foo; --"
+
+        result = databricks_catalog.push_lineage(
+            source_entities, target_entity, operation=malicious_operation
+        )
+
+        # Verify the SQL statement was called
+        assert mock_requests.post.called
+        call_args = mock_requests.post.call_args
+        sql_statement = call_args[1]["json"]["statement"]
+
+        # Verify operation is escaped
+        assert "ingest''; DROP TABLE foo; --" in sql_statement
+        assert "ingest'; DROP" not in sql_statement
+
+    @patch("dativo_ingest.catalog.databricks_unity.requests")
+    def test_ensure_entity_exists_escapes_location(
+        self, mock_requests, databricks_catalog
+    ):
+        """Test that location is properly escaped in SQL."""
+        mock_requests.get.return_value.status_code = 404
+        mock_requests.post.return_value.status_code = 200
+
+        # Location with SQL injection attempt
+        malicious_location = "s3://bucket/path'; DROP TABLE foo; --"
+        entity = {
+            "name": "test_table",
+            "database": "test_db",
+            "location": malicious_location,
+        }
+
+        result = databricks_catalog.ensure_entity_exists(entity)
+
+        # Verify the SQL statement was called
+        assert mock_requests.post.called
+        call_args = mock_requests.post.call_args
+        sql_statement = call_args[1]["json"]["statement"]
+
+        # Verify location is escaped
+        assert "path''; DROP TABLE foo; --" in sql_statement
+        assert "path'; DROP" not in sql_statement
+
+
 class TestNessieCatalog:
     """Test Nessie catalog integration."""
 
