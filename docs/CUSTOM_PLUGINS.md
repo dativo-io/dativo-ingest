@@ -20,6 +20,136 @@ The Dativo ETL platform supports custom readers and writers in two languages:
 
 Custom plugins receive the connection configuration from the job definition and can use it to interact with source and target systems.
 
+## Connectors vs Custom Readers/Writers
+
+Understanding when to use **connectors** versus **custom readers/writers** is crucial for making the right architectural choice.
+
+### What Are Connectors?
+
+**Connectors** are tenant-agnostic, reusable YAML recipes that define:
+- **HOW to connect**: Credentials, rate limits, connection templates
+- **Engine support**: Multiple engines (native, airbyte, meltano, singer)
+- **Capabilities**: Supported objects, incremental strategies, roles (source/target)
+- **Metadata**: Registered in `registry/connectors.yaml` with standardized patterns
+
+**Example Connector:**
+```yaml
+# connectors/hubspot.yaml
+name: hubspot
+type: hubspot
+default_engine:
+  type: airbyte
+  options:
+    airbyte:
+      docker_image: "airbyte/source-hubspot:0.2.0"
+credentials:
+  type: api_key
+  from_env: HUBSPOT_API_KEY
+```
+
+### What Are Custom Readers/Writers?
+
+**Custom readers/writers** are code-based plugins (Python or Rust) that:
+- Provide **complete control** over extraction/writing logic
+- Bypass the connector system entirely
+- Can reference a connector as a "base" for metadata only
+- Implement custom business logic, proprietary formats, or performance optimizations
+
+**Example Custom Reader:**
+```yaml
+# Job config
+source_connector: custom_api
+source_connector_path: /app/connectors/csv.yaml  # Just for metadata
+
+source:
+  custom_reader: "/app/plugins/json_api_reader.py:JSONAPIReader"
+  connection:
+    base_url: "https://api.example.com"
+```
+
+### Key Differences
+
+| Aspect | Connectors | Custom Readers/Writers |
+|--------|-----------|------------------------|
+| **Definition** | YAML configuration files | Python/Rust code classes |
+| **Reusability** | Tenant-agnostic, reusable across jobs | Job-specific (unless shared as plugins) |
+| **Engine Support** | Multiple engines (native, airbyte, meltano, singer) | Single implementation approach |
+| **Flexibility** | Standardized patterns | Complete control over logic |
+| **Maintenance** | Configuration-driven | Code-driven |
+| **Performance** | Standard performance | Can optimize (especially with Rust) |
+
+### When to Use Connectors
+
+Use **connectors** when:
+- ✅ You have a **standard data source/target** (Stripe, HubSpot, PostgreSQL, S3, etc.)
+- ✅ You need **reusability** across multiple tenants/jobs
+- ✅ You want **engine flexibility** (ability to switch between native/airbyte/meltano)
+- ✅ You need **standardized connection patterns** and metadata
+- ✅ The data source fits existing connector patterns
+
+**Examples:**
+- SaaS APIs (Stripe, HubSpot, Salesforce)
+- Standard databases (PostgreSQL, MySQL)
+- Cloud storage (S3, MinIO)
+- Standard file formats (CSV, Parquet)
+
+### When to Use Custom Readers/Writers
+
+Use **custom readers/writers** when:
+- ✅ You have a **proprietary API** with custom authentication or protocols
+- ✅ You need **10-100x performance** improvements (Rust plugins)
+- ✅ You're working with **custom file formats** or data structures
+- ✅ You need **complex business logic** not covered by standard connectors
+- ✅ You're **rapidly prototyping** before building a full connector
+- ✅ You need **format-aware optimizations** (e.g., specialized compression)
+
+**Examples:**
+- Proprietary REST APIs with custom auth
+- Custom binary file formats
+- High-performance CSV processing (Rust)
+- Delta Lake or other specialized formats
+- Real-time data streams with custom protocols
+
+### Hybrid Approach
+
+You can use a **connector as a "base"** (for metadata/validation) while using a **custom reader/writer** for the actual work:
+
+```yaml
+source_connector: postgres  # Provides metadata about postgres type
+source_connector_path: /app/connectors/postgres.yaml
+
+source:
+  custom_reader: "/app/plugins/my_custom_postgres_reader.py:MyReader"
+  # Custom reader receives connection details from source_config
+```
+
+This approach gives you:
+- Connector metadata and validation
+- Custom extraction/writing logic
+- Best of both worlds
+
+### Decision Matrix
+
+| Scenario | Recommendation |
+|----------|---------------|
+| Standard SaaS API (Stripe, HubSpot) | **Connector** |
+| Standard database (PostgreSQL, MySQL) | **Connector** |
+| Proprietary API with custom auth | **Custom Reader** |
+| Need 10-100x performance boost | **Custom Reader/Writer (Rust)** |
+| Custom file format | **Custom Reader/Writer** |
+| Rapid prototyping | **Custom Reader/Writer** |
+| Want to switch engines later | **Connector** |
+| Need tenant-agnostic solution | **Connector** |
+| Complex business logic | **Custom Reader/Writer** |
+
+### Best Practices
+
+1. **Start with connectors** for standard data sources - they're easier to maintain and reuse
+2. **Use custom plugins** when connectors don't fit your needs or performance requirements
+3. **Consider Rust plugins** for data-intensive operations where performance is critical
+4. **Document custom plugins** well - they're code, not configuration
+5. **Share custom plugins** across jobs when they solve common problems
+
 ## Choosing Between Python and Rust
 
 | Use Case | Recommendation |
