@@ -89,7 +89,7 @@ dativo run --config <path> --mode <self_hosted|cloud>
 Test connectivity and credentials without running the full job:
 
 ```bash
-dativo check --config <path> --mode <self_hosted|cloud>
+dativo check --config <path> [--json] [--verbose] --mode <self_hosted|cloud>
 ```
 
 This validates:
@@ -97,19 +97,60 @@ This validates:
 - Target connection (S3 bucket access, etc.)
 - Returns detailed error information with retryable flags
 
+**Options:**
+- `--json`: Output results in JSON format
+- `--verbose`: Show detailed information including error details
+
+**Example:**
+```bash
+dativo check --config jobs/acme/stripe_customers.yaml --verbose
+
+# Output:
+# ============================================================
+# Connection Check Results
+# ============================================================
+# 
+# Source: success
+#   Connection successful: API accessible
+#   Details: {'api_version': 'v1', 'account_id': 'acct_123'}
+# 
+# Target: success
+#   S3 bucket 'my-bucket' is accessible
+```
+
 ### Discover Available Streams
 
 List available tables/streams from a connector:
 
 ```bash
 # Using connector type
-dativo discover --connector stripe
+dativo discover --connector stripe [--json] [--verbose]
 
 # Using job config
-dativo discover --config jobs/acme/stripe_customers.yaml
+dativo discover --config jobs/acme/stripe_customers.yaml [--json] [--verbose]
 ```
 
 This helps generate asset definitions by discovering what data is available.
+
+**Options:**
+- `--json`: Output results as JSON
+- `--verbose`: Show detailed information including column schemas
+
+**Example:**
+```bash
+dativo discover --config jobs/postgres_job.yaml --verbose
+
+# Output:
+# ============================================================
+# Discovery Results
+# ============================================================
+# 
+# Found 12 stream(s):
+# 
+# 1. customers
+#    Type: table
+#    Schema: {"id": "integer", "email": "varchar", ...}
+```
 
 **Options:**
 - `--config`: Path to job configuration YAML file (required)

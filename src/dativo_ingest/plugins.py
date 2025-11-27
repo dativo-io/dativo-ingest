@@ -14,6 +14,76 @@ from .validator import IncrementalStateManager
 PLUGIN_SDK_VERSION = "1.0.0"
 
 
+class ConnectionTestResult:
+    """Result of connection testing."""
+
+    def __init__(
+        self,
+        success: bool,
+        message: str,
+        error_code: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize connection test result.
+
+        Args:
+            success: Whether connection test succeeded
+            message: Human-readable message
+            error_code: Optional error code (e.g., "AUTH_FAILED", "NETWORK_ERROR")
+            details: Optional additional details
+        """
+        self.success = success
+        self.message = message
+        self.error_code = error_code
+        self.details = details or {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary.
+
+        Returns:
+            Dictionary representation
+        """
+        result = {
+            "success": self.success,
+            "message": self.message,
+        }
+        if self.error_code:
+            result["error_code"] = self.error_code
+        if self.details:
+            result["details"] = self.details
+        return result
+
+
+class DiscoveryResult:
+    """Result of discovery operation."""
+
+    def __init__(
+        self,
+        objects: List[Dict[str, Any]],
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize discovery result.
+
+        Args:
+            objects: List of available objects/tables/streams
+                    Each object should have at minimum: name, type
+            metadata: Optional metadata about the source
+        """
+        self.objects = objects
+        self.metadata = metadata or {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary.
+
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "objects": self.objects,
+            "metadata": self.metadata,
+        }
+
+
 class BaseReader(ABC):
     """Base class for custom data readers.
 
@@ -62,7 +132,7 @@ class BaseReader(ABC):
             # Future: implement proper semantic version comparison
             pass
 
-    def check_connection(self) -> Dict[str, Any]:
+    def check_connection(self) -> ConnectionTestResult:
         """Check connection to source system.
 
         This method should validate that the reader can connect to the source
@@ -70,39 +140,69 @@ class BaseReader(ABC):
         only verify connectivity and credentials.
 
         Returns:
-            Dictionary with connection status:
-                - status: "success" or "failed"
-                - message: Human-readable message
-                - details: Optional additional details
+            ConnectionTestResult indicating success or failure
 
-        Raises:
-            ConnectionError: If connection fails
-            AuthenticationError: If authentication fails
+        Example:
+            def check_connection(self) -> ConnectionTestResult:
+                try:
+                    # Test connection
+                    response = self.client.ping()
+                    return ConnectionTestResult(
+                        success=True,
+                        message="Connection successful",
+                        details={"server_version": response.version}
+                    )
+                except AuthenticationError as e:
+                    return ConnectionTestResult(
+                        success=False,
+                        message=f"Authentication failed: {e}",
+                        error_code="AUTH_FAILED"
+                    )
+                except NetworkError as e:
+                    return ConnectionTestResult(
+                        success=False,
+                        message=f"Network error: {e}",
+                        error_code="NETWORK_ERROR"
+                    )
         """
         # Default implementation - plugins should override
-        return {
-            "status": "success",
-            "message": "Connection check not implemented",
-        }
+        return ConnectionTestResult(
+            success=True,
+            message="Connection test not implemented",
+            details={"note": "Plugin does not implement check_connection"},
+        )
 
-    def discover(self) -> List[Dict[str, Any]]:
-        """Discover available tables/streams from source system.
+    def discover(self) -> DiscoveryResult:
+        """Discover available objects/tables/streams.
 
-        This method should return a list of available data sources (tables,
-        streams, objects) that can be extracted from the source system.
+        Override this method to implement discovery for your reader.
+        This method should return a list of available objects that can be
+        extracted from the source system.
 
         Returns:
-            List of dictionaries with stream/table information:
-                - name: Stream/table name
-                - type: Type of stream (e.g., "table", "stream", "object")
-                - schema: Optional schema information
-                - metadata: Optional additional metadata
+            DiscoveryResult with list of available objects
 
-        Raises:
-            ConnectionError: If connection fails during discovery
+        Example:
+            def discover(self) -> DiscoveryResult:
+                tables = self.client.list_tables()
+                objects = []
+                for table in tables:
+                    objects.append({
+                        "name": table.name,
+                        "type": "table",
+                        "description": table.description,
+                        "columns": [{"name": col.name, "type": col.type} for col in table.columns]
+                    })
+                return DiscoveryResult(
+                    objects=objects,
+                    metadata={"database": "production", "schema": "public"}
+                )
         """
         # Default implementation - plugins should override
-        return []
+        return DiscoveryResult(
+            objects=[],
+            metadata={"note": "Plugin does not implement discover"},
+        )
 
     @abstractmethod
     def extract(
@@ -185,7 +285,7 @@ class BaseWriter(ABC):
             # Future: implement proper semantic version comparison
             pass
 
-    def check_connection(self) -> Dict[str, Any]:
+    def check_connection(self) -> ConnectionTestResult:
         """Check connection to target system.
 
         This method should validate that the writer can connect to the target
@@ -193,20 +293,39 @@ class BaseWriter(ABC):
         only verify connectivity and credentials.
 
         Returns:
-            Dictionary with connection status:
-                - status: "success" or "failed"
-                - message: Human-readable message
-                - details: Optional additional details
+            ConnectionTestResult indicating success or failure
 
-        Raises:
-            ConnectionError: If connection fails
-            AuthenticationError: If authentication fails
+        Example:
+            def check_connection(self) -> ConnectionTestResult:
+                try:
+                    # Test connection (e.g., S3 bucket access)
+                    self.s3_client.head_bucket(Bucket=self.bucket)
+                    return ConnectionTestResult(
+                        success=True,
+                        message="Connection successful",
+                        details={"bucket": self.bucket}
+                    )
+                except ClientError as e:
+                    error_code = e.response['Error']['Code']
+                    if error_code == '403':
+                        return ConnectionTestResult(
+                            success=False,
+                            message="Access denied",
+                            error_code="AUTH_FAILED"
+                        )
+                    else:
+                        return ConnectionTestResult(
+                            success=False,
+                            message=f"Connection failed: {e}",
+                            error_code="CONNECTION_FAILED"
+                        )
         """
         # Default implementation - plugins should override
-        return {
-            "status": "success",
-            "message": "Connection check not implemented",
-        }
+        return ConnectionTestResult(
+            success=True,
+            message="Connection test not implemented",
+            details={"note": "Plugin does not implement check_connection"},
+        )
 
     @abstractmethod
     def write_batch(

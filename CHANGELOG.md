@@ -13,21 +13,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Network isolation
   - Seccomp profiles for security
   - Automatic sandboxing in cloud mode
+  - Comprehensive documentation in `docs/PLUGIN_SANDBOXING.md`
 - **Connection Testing**: `check_connection()` method in BaseReader/BaseWriter
-  - CLI command: `dativo check --config job.yaml`
+  - CLI command: `dativo check --config job.yaml [--json] [--verbose]`
   - Validates credentials before job execution
   - Supports both custom plugins and built-in connectors
+  - Typed return objects: `ConnectionTestResult` with success, message, error_code, and details
+  - JSON and verbose output options for better integration
 - **Standardized Error Handling**: Comprehensive error hierarchy
-  - `ConnectionError`, `AuthenticationError`, `ValidationError`
-  - `TransientError`, `RateLimitError`, `PluginError`
+  - Full error hierarchy in `exceptions.py`: `ConnectionError`, `AuthenticationError`, `ValidationError`
+  - `TransientError`, `RateLimitError`, `PluginError`, `SandboxError`
   - Error codes and retryable flags for orchestrator integration
+  - Utility functions: `is_retryable_error()`, `get_error_code()`, `wrap_exception()`
+  - Proper error exports in `__init__.py` for clean imports
 - **Plugin Versioning**: Version compatibility checks
   - `__version__` attribute in BaseReader/BaseWriter
   - SDK version tracking (PLUGIN_SDK_VERSION)
   - Version validation on plugin load
 - **Discovery Interface**: `discover()` method for available tables/streams
-  - Returns list of available data sources
-  - Supports schema and metadata information
+  - CLI command: `dativo discover --config job.yaml [--json] [--verbose]`
+  - Typed return objects: `DiscoveryResult` with objects list and metadata
+  - Returns list of available data sources with schema information
+  - JSON and verbose output options for better integration
+- **Enhanced Documentation**:
+  - `docs/PLUGIN_SANDBOXING.md` - Security guide for plugin sandboxing
+  - `docs/CONNECTOR_VS_PLUGIN_DECISION_TREE.md` - Decision tree for choosing connectors vs plugins
+  - Example plugins: `examples/plugins/json_api_reader.py` and `examples/plugins/json_file_writer.py`
+  - Verification script: `verify_improvements.py` for validating plugin implementations
+- **Module Exports**: 
+  - Exported plugin classes (`BaseReader`, `BaseWriter`, `ConnectionTestResult`, `DiscoveryResult`) from main module
+  - Exported error classes and utility functions for clean imports
+  - Added `__all__` for explicit API surface
 - **Custom Plugin System**: Support for Python and Rust plugins
   - **Python Plugins:**
     - New `BaseReader` and `BaseWriter` base classes for plugin development

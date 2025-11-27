@@ -41,6 +41,8 @@ class JSONFileWriter(BaseWriter):
               compress: false
     """
     
+    __version__ = "1.0.0"  # Plugin version
+    
     def __init__(self, asset_definition, target_config, output_base):
         """Initialize JSON file writer.
         
@@ -66,6 +68,66 @@ class JSONFileWriter(BaseWriter):
         self.s3_client = None
         if self.bucket:
             self.s3_client = self._setup_s3_client(s3_config)
+    
+    def check_connection(self):
+        """Test connection to S3/target.
+        
+        Returns:
+            ConnectionTestResult indicating success or failure
+        """
+        from dativo_ingest.plugins import ConnectionTestResult
+        
+        if not self.s3_client or not self.bucket:
+            # Local mode - check write permissions
+            try:
+                local_dir = Path(self.output_base.replace("s3://", ""))
+                local_dir.mkdir(parents=True, exist_ok=True)
+                test_file = local_dir / ".connection_test"
+                test_file.write_text("test")
+                test_file.unlink()
+                return ConnectionTestResult(
+                    success=True,
+                    message="Local filesystem writable",
+                    details={"output_base": str(local_dir)}
+                )
+            except Exception as e:
+                return ConnectionTestResult(
+                    success=False,
+                    message=f"Cannot write to local filesystem: {str(e)}",
+                    error_code="PERMISSION_ERROR"
+                )
+        
+        # S3 mode - test bucket access
+        try:
+            self.s3_client.head_bucket(Bucket=self.bucket)
+            return ConnectionTestResult(
+                success=True,
+                message="S3 bucket accessible",
+                details={
+                    "bucket": self.bucket,
+                    "region": self.region
+                }
+            )
+        except Exception as e:
+            error_msg = str(e)
+            if "403" in error_msg or "Access Denied" in error_msg:
+                return ConnectionTestResult(
+                    success=False,
+                    message="Access denied to S3 bucket",
+                    error_code="AUTH_FAILED"
+                )
+            elif "404" in error_msg or "NoSuchBucket" in error_msg:
+                return ConnectionTestResult(
+                    success=False,
+                    message=f"S3 bucket not found: {self.bucket}",
+                    error_code="RESOURCE_NOT_FOUND"
+                )
+            else:
+                return ConnectionTestResult(
+                    success=False,
+                    message=f"S3 connection failed: {error_msg}",
+                    error_code="CONNECTION_ERROR"
+                )
     
     def _setup_s3_client(self, s3_config: Dict[str, Any]):
         """Set up S3 client with credentials.

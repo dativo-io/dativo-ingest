@@ -12,8 +12,8 @@ import yaml
 from .config import JobConfig, RunnerConfig
 from .exceptions import (
     AuthenticationError,
-    ConnectionError,
     ConfigurationError,
+    ConnectionError,
     DativoError,
 )
 from .infrastructure import validate_infrastructure
@@ -1202,7 +1202,22 @@ def check_command(args: argparse.Namespace) -> int:
             reader = reader_class(source_config)
 
             # Check connection
-            source_status = reader.check_connection()
+            source_result = reader.check_connection()
+            # Convert ConnectionTestResult to dict for compatibility
+            if hasattr(source_result, "to_dict"):
+                source_status = source_result.to_dict()
+                # Convert 'success' to 'status' for backward compatibility
+                source_status["status"] = (
+                    "success" if source_result.success else "failed"
+                )
+            else:
+                # Fallback for old-style dict returns
+                source_status = (
+                    source_result
+                    if isinstance(source_result, dict)
+                    else {"status": "unknown", "message": str(source_result)}
+                )
+
             logger.info(
                 f"Source connection check: {source_status.get('status')}",
                 extra={
@@ -1282,7 +1297,22 @@ def check_command(args: argparse.Namespace) -> int:
             writer = writer_class(asset_definition, target_config, output_base)
 
             # Check connection
-            target_status = writer.check_connection()
+            target_result = writer.check_connection()
+            # Convert ConnectionTestResult to dict for compatibility
+            if hasattr(target_result, "to_dict"):
+                target_status = target_result.to_dict()
+                # Convert 'success' to 'status' for backward compatibility
+                target_status["status"] = (
+                    "success" if target_result.success else "failed"
+                )
+            else:
+                # Fallback for old-style dict returns
+                target_status = (
+                    target_result
+                    if isinstance(target_result, dict)
+                    else {"status": "unknown", "message": str(target_result)}
+                )
+
             logger.info(
                 f"Target connection check: {target_status.get('status')}",
                 extra={
@@ -1377,23 +1407,38 @@ def check_command(args: argparse.Namespace) -> int:
             "message": str(e),
         }
 
+    # Prepare output
+    output_data = {
+        "source": source_status,
+        "target": target_status,
+    }
+
     # Print results
-    print("\n" + "=" * 60)
-    print("Connection Check Results")
-    print("=" * 60)
-    print(f"\nSource: {source_status.get('status', 'unknown')}")
-    print(f"  {source_status.get('message', 'No message')}")
-    if source_status.get("error_code"):
-        print(f"  Error Code: {source_status.get('error_code')}")
-        print(f"  Retryable: {source_status.get('retryable', False)}")
+    if args.json:
+        # JSON output
+        print(json.dumps(output_data, indent=2))
+    else:
+        # Human-readable output
+        print("\n" + "=" * 60)
+        print("Connection Check Results")
+        print("=" * 60)
+        print(f"\nSource: {source_status.get('status', 'unknown')}")
+        print(f"  {source_status.get('message', 'No message')}")
+        if source_status.get("error_code"):
+            print(f"  Error Code: {source_status.get('error_code')}")
+            print(f"  Retryable: {source_status.get('retryable', False)}")
+        if args.verbose and source_status.get("details"):
+            print(f"  Details: {json.dumps(source_status.get('details'), indent=4)}")
 
-    print(f"\nTarget: {target_status.get('status', 'unknown')}")
-    print(f"  {target_status.get('message', 'No message')}")
-    if target_status.get("error_code"):
-        print(f"  Error Code: {target_status.get('error_code')}")
-        print(f"  Retryable: {target_status.get('retryable', False)}")
+        print(f"\nTarget: {target_status.get('status', 'unknown')}")
+        print(f"  {target_status.get('message', 'No message')}")
+        if target_status.get("error_code"):
+            print(f"  Error Code: {target_status.get('error_code')}")
+            print(f"  Retryable: {target_status.get('retryable', False)}")
+        if args.verbose and target_status.get("details"):
+            print(f"  Details: {json.dumps(target_status.get('details'), indent=4)}")
 
-    print("\n" + "=" * 60)
+        print("\n" + "=" * 60)
 
     # Determine exit code
     source_ok = source_status.get("status") in ["success", "skipped"]
@@ -1499,6 +1544,7 @@ def discover_command(args: argparse.Namespace) -> int:
 
     # Discover streams
     streams = []
+    discovery_metadata = {}
 
     try:
         if source_config.custom_reader:
@@ -1509,7 +1555,20 @@ def discover_command(args: argparse.Namespace) -> int:
             reader = reader_class(source_config)
 
             # Call discover method
-            streams = reader.discover()
+            discovery_result = reader.discover()
+            # Convert DiscoveryResult to dict/list for compatibility
+            if hasattr(discovery_result, "to_dict"):
+                result_dict = discovery_result.to_dict()
+                streams = result_dict.get("objects", [])
+                discovery_metadata = result_dict.get("metadata", {})
+            elif isinstance(discovery_result, dict):
+                streams = discovery_result.get("objects", [])
+                discovery_metadata = discovery_result.get("metadata", {})
+            else:
+                # Fallback for old-style list returns
+                streams = discovery_result if isinstance(discovery_result, list) else []
+                discovery_metadata = {}
+
             logger.info(
                 f"Discovered {len(streams)} streams from custom reader",
                 extra={
@@ -1587,24 +1646,51 @@ def discover_command(args: argparse.Namespace) -> int:
         print(f"ERROR: Discovery failed: {e}", file=sys.stderr)
         return 2
 
+    # Prepare output
+    output_data = {
+        "objects": streams,
+        "metadata": discovery_metadata,
+        "count": len(streams),
+    }
+
     # Print results
-    print("\n" + "=" * 60)
-    print("Discovery Results")
-    print("=" * 60)
-    print(f"\nFound {len(streams)} stream(s):\n")
+    if args.json:
+        # JSON output
+        print(json.dumps(output_data, indent=2))
+    else:
+        # Human-readable output
+        print("\n" + "=" * 60)
+        print("Discovery Results")
+        print("=" * 60)
+        if args.verbose and discovery_metadata:
+            print(f"\nMetadata: {json.dumps(discovery_metadata, indent=2)}")
+        print(f"\nFound {len(streams)} stream(s):\n")
 
-    for idx, stream in enumerate(streams, 1):
-        print(f"{idx}. {stream.get('name', 'unknown')}")
-        print(f"   Type: {stream.get('type', 'unknown')}")
-        if stream.get("schema"):
-            print(f"   Schema: {stream.get('schema')}")
-        if stream.get("metadata"):
-            print(f"   Metadata: {stream.get('metadata')}")
-        if stream.get("message"):
-            print(f"   Note: {stream.get('message')}")
-        print()
+        for idx, stream in enumerate(streams, 1):
+            print(f"{idx}. {stream.get('name', 'unknown')}")
+            print(f"   Type: {stream.get('type', 'unknown')}")
+            if stream.get("schema"):
+                if args.verbose:
+                    print(f"   Schema: {json.dumps(stream.get('schema'), indent=6)}")
+                else:
+                    print(f"   Schema: {stream.get('schema')}")
+            if stream.get("metadata"):
+                if args.verbose:
+                    print(
+                        f"   Metadata: {json.dumps(stream.get('metadata'), indent=6)}"
+                    )
+                else:
+                    print(f"   Metadata: {stream.get('metadata')}")
+            if stream.get("message"):
+                print(f"   Note: {stream.get('message')}")
+            if args.verbose:
+                # Show all fields in verbose mode
+                for key, value in stream.items():
+                    if key not in ["name", "type", "schema", "metadata", "message"]:
+                        print(f"   {key}: {value}")
+            print()
 
-    print("=" * 60)
+        print("=" * 60)
 
     logger.info(
         "Discovery completed",
@@ -1771,6 +1857,16 @@ Examples:
         default="/secrets",
         help="Path to secrets directory (default: /secrets, used by filesystem secret manager)",
     )
+    check_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    check_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with additional details",
+    )
 
     # Discover command
     discover_parser = subparsers.add_parser(
@@ -1807,6 +1903,16 @@ Examples:
         "--secrets-dir",
         default="/secrets",
         help="Path to secrets directory (default: /secrets, used by filesystem secret manager)",
+    )
+    discover_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    discover_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with additional details",
     )
 
     args = parser.parse_args()
