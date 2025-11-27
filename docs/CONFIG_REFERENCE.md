@@ -246,6 +246,7 @@ For detailed documentation, see [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md)
 - **Connectors** (`/connectors/`): Tenant-agnostic recipes that define HOW to connect
 - **Assets** (`/assets/`): Schema and governance definitions (ODCS v3.0.2) that define WHAT structure to ingest
 - **Jobs** (`/jobs/<tenant>/`): Tenant-specific strategy implementations that compose connectors with assets
+- **Custom Readers/Writers** (`/plugins/`): Code-based plugins (Python/Rust) for custom extraction/writing logic
 
 ### Configuration Flow
 
@@ -253,6 +254,19 @@ For detailed documentation, see [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md)
 2. **Connector Recipes** provide default connection templates and capabilities
 3. **Asset Definitions** provide schema and governance metadata
 4. **Job Overrides** customize connectors and assets for tenant-specific needs
+5. **Custom Plugins** (optional) provide custom extraction/writing logic when connectors don't fit
+
+### Connectors vs Custom Plugins
+
+**Connectors** are YAML-based, reusable recipes for standard data sources (Stripe, HubSpot, PostgreSQL, etc.). They support multiple engines (native, airbyte, meltano) and provide standardized connection patterns.
+
+**Custom Readers/Writers** are code-based plugins (Python/Rust) that provide complete control over extraction/writing logic. Use them for proprietary APIs, custom formats, or performance-critical operations.
+
+**When to use each:**
+- **Connectors**: Standard data sources, need reusability, want engine flexibility
+- **Custom Plugins**: Proprietary APIs, custom formats, need maximum performance, complex business logic
+
+See [CUSTOM_PLUGINS.md](CUSTOM_PLUGINS.md#connectors-vs-custom-readerswriters) for detailed guidance.
 
 ---
 
