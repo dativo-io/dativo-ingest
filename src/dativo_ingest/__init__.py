@@ -25,3 +25,85 @@ except (ImportError, PackageNotFoundError):
                 __version__ = "1.1.0"  # Fallback
     else:
         __version__ = "1.1.0"  # Fallback
+
+# Export key classes for plugin development
+from .plugins import (
+    BaseReader,
+    BaseWriter,
+    ConnectionTestResult,
+    DiscoveryResult,
+    PluginLoader,
+)
+
+# Export error classes for error handling
+from .errors import (
+    DativoError,
+    ConnectionError,
+    NetworkError,
+    TimeoutError,
+    RateLimitError,
+    AuthenticationError,
+    InvalidCredentialsError,
+    TokenExpiredError,
+    InsufficientPermissionsError,
+    ConfigurationError,
+    InvalidConfigError,
+    MissingConfigError,
+    SchemaValidationError,
+    DataError,
+    DataNotFoundError,
+    DataFormatError,
+    DataValidationError,
+    ResourceError,
+    ResourceNotFoundError,
+    ResourceUnavailableError,
+    PluginError,
+    PluginLoadError,
+    PluginVersionError,
+    PluginExecutionError,
+    TransientError,
+    ServiceUnavailableError,
+    is_retryable_error,
+    get_error_code,
+    wrap_exception,
+)
+
+__all__ = [
+    "__version__",
+    # Plugin classes
+    "BaseReader",
+    "BaseWriter",
+    "ConnectionTestResult",
+    "DiscoveryResult",
+    "PluginLoader",
+    # Error classes
+    "DativoError",
+    "ConnectionError",
+    "NetworkError",
+    "TimeoutError",
+    "RateLimitError",
+    "AuthenticationError",
+    "InvalidCredentialsError",
+    "TokenExpiredError",
+    "InsufficientPermissionsError",
+    "ConfigurationError",
+    "InvalidConfigError",
+    "MissingConfigError",
+    "SchemaValidationError",
+    "DataError",
+    "DataNotFoundError",
+    "DataFormatError",
+    "DataValidationError",
+    "ResourceError",
+    "ResourceNotFoundError",
+    "ResourceUnavailableError",
+    "PluginError",
+    "PluginLoadError",
+    "PluginVersionError",
+    "PluginExecutionError",
+    "TransientError",
+    "ServiceUnavailableError",
+    "is_retryable_error",
+    "get_error_code",
+    "wrap_exception",
+]

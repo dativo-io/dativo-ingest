@@ -7,7 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Added - Platform Improvements (2025-11-27)
+- **Connection Testing Interface**: 
+  - New `check_connection()` method in `BaseReader` and `BaseWriter`
+  - `ConnectionTestResult` class for standardized test results
+  - CLI command: `dativo check --config job.yaml`
+  - Validates credentials and connectivity before job execution
+  - Updated example plugins with connection testing implementation
+
+- **Discovery Interface**:
+  - New `discover()` method in `BaseReader` for exploring available objects
+  - `DiscoveryResult` class for standardized discovery results
+  - CLI command: `dativo discover --config job.yaml [--verbose] [--json]`
+  - List available tables, streams, or endpoints from data sources
+  - Foundation for auto-generating job configurations
+
+- **Standardized Error Handling**:
+  - Comprehensive error hierarchy in `errors.py`
+  - Error code system (e.g., `AUTH_FAILED`, `NETWORK_ERROR`, `TIMEOUT_ERROR`)
+  - Retryable vs. permanent error classification
+  - Helper functions: `is_retryable_error()`, `get_error_code()`, `wrap_exception()`
+  - Error categories: `ConnectionError`, `AuthenticationError`, `ConfigurationError`, 
+    `DataError`, `ResourceError`, `PluginError`, `TransientError`
+  - Enables orchestrators to distinguish between retryable and permanent failures
+
+- **Plugin Interface Versioning**:
+  - `__version__` attribute in `BaseReader` and `BaseWriter`
+  - Plugin version tracking for compatibility checks
+  - Foundation for managing breaking changes
+  - Updated example plugins with version information
+
+- **Enhanced Documentation**:
+  - `docs/CONNECTOR_VS_PLUGIN_DECISION_TREE.md` - Comprehensive decision tree for choosing
+    between standard connectors and custom plugins with real-world examples
+  - `docs/PLUGIN_SANDBOXING.md` - Security guide for plugin sandboxing with Docker and
+    Kubernetes examples, threat model, and best practices
+  - `docs/IMPROVEMENTS_SUMMARY.md` - Summary of all platform improvements
+  - Updated README with new CLI commands and documentation structure
+
+- **Module Exports**:
+  - Exported plugin classes (`BaseReader`, `BaseWriter`, `ConnectionTestResult`, 
+    `DiscoveryResult`) from main module
+  - Exported error classes for clean imports
+  - Added `__all__` for explicit API surface
+
+### Changed
+- Updated `BaseReader` with optional `check_connection()` and `discover()` methods
+- Updated `BaseWriter` with optional `check_connection()` method
+- Updated `cli.py` with `check` and `discover` commands
+- Enhanced `__init__.py` with comprehensive exports
+- Updated example plugins to demonstrate new interfaces
+
+### Added - Previous
 - **Custom Plugin System**: Support for Python and Rust plugins
   - **Python Plugins:**
     - New `BaseReader` and `BaseWriter` base classes for plugin development

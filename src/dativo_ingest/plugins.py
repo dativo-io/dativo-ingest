@@ -9,6 +9,79 @@ from typing import Any, Dict, Iterator, List, Optional, Type
 from .config import SourceConfig, TargetConfig
 from .validator import IncrementalStateManager
 
+# Plugin interface version
+__version__ = "1.0.0"
+
+
+class ConnectionTestResult:
+    """Result of connection testing."""
+
+    def __init__(
+        self,
+        success: bool,
+        message: str,
+        error_code: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize connection test result.
+
+        Args:
+            success: Whether connection test succeeded
+            message: Human-readable message
+            error_code: Optional error code (e.g., "AUTH_FAILED", "NETWORK_ERROR")
+            details: Optional additional details
+        """
+        self.success = success
+        self.message = message
+        self.error_code = error_code
+        self.details = details or {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary.
+
+        Returns:
+            Dictionary representation
+        """
+        result = {
+            "success": self.success,
+            "message": self.message,
+        }
+        if self.error_code:
+            result["error_code"] = self.error_code
+        if self.details:
+            result["details"] = self.details
+        return result
+
+
+class DiscoveryResult:
+    """Result of discovery operation."""
+
+    def __init__(
+        self,
+        objects: List[Dict[str, Any]],
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize discovery result.
+
+        Args:
+            objects: List of available objects/tables/streams
+                    Each object should have at minimum: name, type
+            metadata: Optional metadata about the source
+        """
+        self.objects = objects
+        self.metadata = metadata or {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary.
+
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "objects": self.objects,
+            "metadata": self.metadata,
+        }
+
 
 class BaseReader(ABC):
     """Base class for custom data readers.
@@ -19,10 +92,20 @@ class BaseReader(ABC):
 
     Example:
         class MyCustomReader(BaseReader):
+            __version__ = "1.0.0"  # Plugin version
+            
             def __init__(self, source_config: SourceConfig):
                 super().__init__(source_config)
                 # Initialize your reader with connection details
                 self.connection = self._setup_connection()
+
+            def check_connection(self) -> ConnectionTestResult:
+                # Test connection to source system
+                try:
+                    self.connection.ping()
+                    return ConnectionTestResult(True, "Connection successful")
+                except Exception as e:
+                    return ConnectionTestResult(False, str(e), "CONNECTION_FAILED")
 
             def extract(self, state_manager: Optional[IncrementalStateManager] = None) -> Iterator[List[Dict[str, Any]]]:
                 # Your custom extraction logic
@@ -30,6 +113,8 @@ class BaseReader(ABC):
                 # Yield batches of records
                 yield batch_records
     """
+
+    __version__ = "1.0.0"  # Default version, override in subclasses
 
     def __init__(self, source_config: SourceConfig):
         """Initialize reader with source configuration.
@@ -39,6 +124,76 @@ class BaseReader(ABC):
                           credentials, engine options, etc.
         """
         self.source_config = source_config
+
+    def check_connection(self) -> ConnectionTestResult:
+        """Test connection to source system.
+
+        Override this method to implement connection testing for your reader.
+        This method should validate credentials and connectivity without
+        performing full data extraction.
+
+        Returns:
+            ConnectionTestResult indicating success or failure
+
+        Example:
+            def check_connection(self) -> ConnectionTestResult:
+                try:
+                    # Test connection
+                    response = self.client.ping()
+                    return ConnectionTestResult(
+                        success=True,
+                        message="Connection successful",
+                        details={"server_version": response.version}
+                    )
+                except AuthenticationError as e:
+                    return ConnectionTestResult(
+                        success=False,
+                        message=f"Authentication failed: {e}",
+                        error_code="AUTH_FAILED"
+                    )
+                except NetworkError as e:
+                    return ConnectionTestResult(
+                        success=False,
+                        message=f"Network error: {e}",
+                        error_code="NETWORK_ERROR"
+                    )
+        """
+        return ConnectionTestResult(
+            success=True,
+            message="Connection test not implemented",
+            details={"note": "Plugin does not implement check_connection"},
+        )
+
+    def discover(self) -> DiscoveryResult:
+        """Discover available objects/tables/streams.
+
+        Override this method to implement discovery for your reader.
+        This method should return a list of available objects that can be
+        extracted from the source system.
+
+        Returns:
+            DiscoveryResult with list of available objects
+
+        Example:
+            def discover(self) -> DiscoveryResult:
+                tables = self.client.list_tables()
+                objects = []
+                for table in tables:
+                    objects.append({
+                        "name": table.name,
+                        "type": "table",
+                        "description": table.description,
+                        "columns": [{"name": col.name, "type": col.type} for col in table.columns]
+                    })
+                return DiscoveryResult(
+                    objects=objects,
+                    metadata={"database": "production", "schema": "public"}
+                )
+        """
+        return DiscoveryResult(
+            objects=[],
+            metadata={"note": "Plugin does not implement discover"},
+        )
 
     @abstractmethod
     def extract(
@@ -72,10 +227,20 @@ class BaseWriter(ABC):
 
     Example:
         class MyCustomWriter(BaseWriter):
+            __version__ = "1.0.0"  # Plugin version
+            
             def __init__(self, asset_definition: AssetDefinition, target_config: TargetConfig, output_base: str):
                 super().__init__(asset_definition, target_config, output_base)
                 # Initialize your writer with connection details
                 self.connection = self._setup_connection()
+
+            def check_connection(self) -> ConnectionTestResult:
+                # Test connection to target system
+                try:
+                    self.connection.ping()
+                    return ConnectionTestResult(True, "Connection successful")
+                except Exception as e:
+                    return ConnectionTestResult(False, str(e), "CONNECTION_FAILED")
 
             def write_batch(self, records: List[Dict[str, Any]], file_counter: int) -> List[Dict[str, Any]]:
                 # Your custom writing logic
@@ -87,6 +252,8 @@ class BaseWriter(ABC):
                 # Optional: Implement commit logic
                 return {"status": "success", "files_added": len(file_metadata)}
     """
+
+    __version__ = "1.0.0"  # Default version, override in subclasses
 
     def __init__(
         self, asset_definition: Any, target_config: TargetConfig, output_base: str
@@ -102,6 +269,47 @@ class BaseWriter(ABC):
         self.asset_definition = asset_definition
         self.target_config = target_config
         self.output_base = output_base
+
+    def check_connection(self) -> ConnectionTestResult:
+        """Test connection to target system.
+
+        Override this method to implement connection testing for your writer.
+        This method should validate credentials and connectivity without
+        performing actual writes.
+
+        Returns:
+            ConnectionTestResult indicating success or failure
+
+        Example:
+            def check_connection(self) -> ConnectionTestResult:
+                try:
+                    # Test connection (e.g., S3 bucket access)
+                    self.s3_client.head_bucket(Bucket=self.bucket)
+                    return ConnectionTestResult(
+                        success=True,
+                        message="Connection successful",
+                        details={"bucket": self.bucket}
+                    )
+                except ClientError as e:
+                    error_code = e.response['Error']['Code']
+                    if error_code == '403':
+                        return ConnectionTestResult(
+                            success=False,
+                            message="Access denied",
+                            error_code="AUTH_FAILED"
+                        )
+                    else:
+                        return ConnectionTestResult(
+                            success=False,
+                            message=f"Connection failed: {e}",
+                            error_code="CONNECTION_FAILED"
+                        )
+        """
+        return ConnectionTestResult(
+            success=True,
+            message="Connection test not implemented",
+            details={"note": "Plugin does not implement check_connection"},
+        )
 
     @abstractmethod
     def write_batch(

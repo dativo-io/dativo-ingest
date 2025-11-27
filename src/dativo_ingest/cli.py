@@ -1085,6 +1085,243 @@ def start_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def check_command(args: argparse.Namespace) -> int:
+    """Test connection for a job configuration.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=success, 2=failure)
+    """
+    # Load job configuration
+    try:
+        job_config = JobConfig.from_yaml(args.config)
+    except SystemExit as e:
+        return e.code if e.code else 2
+
+    # Set up logging
+    log_level = job_config.logging.level if job_config.logging else "INFO"
+    redact = job_config.logging.redaction if job_config.logging else False
+    logger = setup_logging(
+        level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id
+    )
+
+    logger.info(
+        "Testing connection",
+        extra={
+            "connector_type": job_config.get_source().type,
+            "event_type": "connection_test_started",
+        },
+    )
+
+    # Get source config
+    source_config = job_config.get_source()
+    
+    # Initialize extractor
+    try:
+        if source_config.custom_reader:
+            from .plugins import PluginLoader
+            
+            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            extractor = reader_class(source_config)
+        else:
+            # Import appropriate extractor based on type
+            if source_config.type == "csv":
+                from .connectors.csv_extractor import CSVExtractor
+                extractor = CSVExtractor(source_config)
+            elif source_config.type == "postgres":
+                from .connectors.postgres_extractor import PostgresExtractor
+                extractor = PostgresExtractor(source_config)
+            elif source_config.type == "mysql":
+                from .connectors.mysql_extractor import MySQLExtractor
+                extractor = MySQLExtractor(source_config)
+            else:
+                logger.error(
+                    f"Connection testing not yet implemented for connector type: {source_config.type}",
+                    extra={"event_type": "connection_test_not_implemented"},
+                )
+                return 2
+    except Exception as e:
+        logger.error(
+            f"Failed to initialize connector: {e}",
+            extra={"event_type": "connector_init_error"},
+            exc_info=True,
+        )
+        return 2
+
+    # Test connection
+    try:
+        if hasattr(extractor, "check_connection"):
+            result = extractor.check_connection()
+            
+            if result.success:
+                logger.info(
+                    f"✓ Connection successful: {result.message}",
+                    extra={
+                        "event_type": "connection_test_success",
+                        "details": result.details,
+                    },
+                )
+                print(f"✓ Connection successful: {result.message}")
+                if result.details:
+                    print(f"  Details: {result.details}")
+                return 0
+            else:
+                logger.error(
+                    f"✗ Connection failed: {result.message}",
+                    extra={
+                        "event_type": "connection_test_failed",
+                        "error_code": result.error_code,
+                        "details": result.details,
+                    },
+                )
+                print(f"✗ Connection failed: {result.message}")
+                if result.error_code:
+                    print(f"  Error code: {result.error_code}")
+                if result.details:
+                    print(f"  Details: {result.details}")
+                return 2
+        else:
+            logger.warning(
+                "Connector does not implement check_connection",
+                extra={"event_type": "connection_test_not_implemented"},
+            )
+            print("⚠ Connection test not implemented for this connector")
+            return 0  # Not a failure, just not implemented
+    except Exception as e:
+        logger.error(
+            f"Connection test failed with exception: {e}",
+            extra={"event_type": "connection_test_error"},
+            exc_info=True,
+        )
+        print(f"✗ Connection test failed: {e}")
+        return 2
+
+
+def discover_command(args: argparse.Namespace) -> int:
+    """Discover available objects/tables/streams for a connector.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=success, 2=failure)
+    """
+    # Load job configuration
+    try:
+        job_config = JobConfig.from_yaml(args.config)
+    except SystemExit as e:
+        return e.code if e.code else 2
+
+    # Set up logging
+    log_level = job_config.logging.level if job_config.logging else "INFO"
+    redact = job_config.logging.redaction if job_config.logging else False
+    logger = setup_logging(
+        level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id
+    )
+
+    logger.info(
+        "Starting discovery",
+        extra={
+            "connector_type": job_config.get_source().type,
+            "event_type": "discovery_started",
+        },
+    )
+
+    # Get source config
+    source_config = job_config.get_source()
+    
+    # Initialize extractor
+    try:
+        if source_config.custom_reader:
+            from .plugins import PluginLoader
+            
+            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            extractor = reader_class(source_config)
+        else:
+            # Import appropriate extractor based on type
+            if source_config.type == "csv":
+                from .connectors.csv_extractor import CSVExtractor
+                extractor = CSVExtractor(source_config)
+            elif source_config.type == "postgres":
+                from .connectors.postgres_extractor import PostgresExtractor
+                extractor = PostgresExtractor(source_config)
+            elif source_config.type == "mysql":
+                from .connectors.mysql_extractor import MySQLExtractor
+                extractor = MySQLExtractor(source_config)
+            else:
+                logger.error(
+                    f"Discovery not yet implemented for connector type: {source_config.type}",
+                    extra={"event_type": "discovery_not_implemented"},
+                )
+                return 2
+    except Exception as e:
+        logger.error(
+            f"Failed to initialize connector: {e}",
+            extra={"event_type": "connector_init_error"},
+            exc_info=True,
+        )
+        return 2
+
+    # Perform discovery
+    try:
+        if hasattr(extractor, "discover"):
+            result = extractor.discover()
+            
+            logger.info(
+                f"Discovery completed: found {len(result.objects)} objects",
+                extra={
+                    "event_type": "discovery_success",
+                    "object_count": len(result.objects),
+                },
+            )
+            
+            print(f"\n✓ Discovery completed: found {len(result.objects)} objects\n")
+            
+            if result.metadata:
+                print("Source Metadata:")
+                for key, value in result.metadata.items():
+                    print(f"  {key}: {value}")
+                print()
+            
+            if result.objects:
+                print("Available Objects:")
+                for obj in result.objects:
+                    print(f"\n  • {obj.get('name', 'unknown')}")
+                    if obj.get('type'):
+                        print(f"    Type: {obj['type']}")
+                    if obj.get('description'):
+                        print(f"    Description: {obj['description']}")
+                    if obj.get('columns'):
+                        print(f"    Columns: {len(obj['columns'])}")
+                        if args.verbose:
+                            for col in obj['columns']:
+                                print(f"      - {col.get('name', 'unknown')}: {col.get('type', 'unknown')}")
+            
+            # Output as JSON if requested
+            if args.json:
+                import json
+                print("\n" + json.dumps(result.to_dict(), indent=2))
+            
+            return 0
+        else:
+            logger.warning(
+                "Connector does not implement discover",
+                extra={"event_type": "discovery_not_implemented"},
+            )
+            print("⚠ Discovery not implemented for this connector")
+            return 0  # Not a failure, just not implemented
+    except Exception as e:
+        logger.error(
+            f"Discovery failed with exception: {e}",
+            extra={"event_type": "discovery_error"},
+            exc_info=True,
+        )
+        print(f"✗ Discovery failed: {e}")
+        return 2
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -1097,6 +1334,12 @@ Examples:
 
   # Start orchestrated mode
   dativo start orchestrated --runner-config /app/configs/runner.yaml
+  
+  # Test connection
+  dativo check --config /app/configs/jobs/stripe.yaml
+  
+  # Discover available objects
+  dativo discover --config /app/configs/jobs/stripe.yaml --verbose
         """,
     )
 
@@ -1166,6 +1409,43 @@ Examples:
         help="Path to runner configuration YAML file (default: /app/configs/runner.yaml)",
     )
 
+    # Check command
+    check_parser = subparsers.add_parser(
+        "check",
+        help="Test connection for a job configuration",
+        description="Validate credentials and test connectivity to source/target systems "
+        "without performing data extraction or loading.",
+    )
+    check_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+
+    # Discover command
+    discover_parser = subparsers.add_parser(
+        "discover",
+        help="Discover available objects/tables/streams",
+        description="List all available objects (tables, streams, endpoints) that can be "
+        "extracted from the source system. Useful for finding available data sources.",
+    )
+    discover_parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+    discover_parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed information including column schemas",
+    )
+    discover_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -1176,6 +1456,10 @@ Examples:
         return run_command(args)
     elif args.command == "start":
         return start_command(args)
+    elif args.command == "check":
+        return check_command(args)
+    elif args.command == "discover":
+        return discover_command(args)
     else:
         parser.print_help()
         return 2

@@ -106,6 +106,50 @@ dativo run --job-dir jobs/acme \
 
 > Detailed configuration examples for every secret backend live in [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md).
 
+### Test Connection
+
+```bash
+dativo check --config <path>
+```
+
+Test connection to source/target systems without running full job. Validates credentials and connectivity.
+
+**Example:**
+```bash
+dativo check --config jobs/acme/stripe_customers.yaml
+
+# Output:
+# ✓ Connection successful: API accessible
+#   Details: {'api_version': 'v1', 'account_id': 'acct_123'}
+```
+
+### Discover Available Objects
+
+```bash
+dativo discover --config <path> [--verbose] [--json]
+```
+
+Discover available tables, streams, or endpoints from a data source.
+
+**Options:**
+- `--verbose`: Show detailed information including column schemas
+- `--json`: Output results as JSON
+
+**Example:**
+```bash
+dativo discover --config jobs/postgres_job.yaml --verbose
+
+# Output:
+# ✓ Discovery completed: found 12 objects
+#
+# Available Objects:
+#   • customers
+#     Type: table
+#     Columns: 15
+#       - id: integer
+#       - email: varchar
+```
+
 ### Start Orchestrated Mode
 
 ```bash
@@ -313,11 +357,19 @@ src/dativo_ingest/   # Source code
 
 ## Documentation
 
+### Getting Started
 **Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
 **Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
+
+### Plugin Development
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
+**Connector vs Plugin:** [docs/CONNECTOR_VS_PLUGIN_DECISION_TREE.md](docs/CONNECTOR_VS_PLUGIN_DECISION_TREE.md)  
+**Plugin Sandboxing:** [docs/PLUGIN_SANDBOXING.md](docs/PLUGIN_SANDBOXING.md)  
+
+### Operations
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
-**Testing:** [tests/README.md](tests/README.md)
+**Testing:** [tests/README.md](tests/README.md)  
+**Improvements Summary:** [docs/IMPROVEMENTS_SUMMARY.md](docs/IMPROVEMENTS_SUMMARY.md)
 
 
