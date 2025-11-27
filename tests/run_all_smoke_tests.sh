@@ -294,6 +294,11 @@ run_test_suite \
     "Custom Plugin Smoke Tests" \
     "$SCRIPT_DIR/smoke_tests_custom_plugins.sh"
 
+# Run test suite 3: Sandbox smoke tests (requires Docker)
+run_test_suite \
+    "Sandbox Smoke Tests" \
+    "$SCRIPT_DIR/smoke_tests_sandbox.sh"
+
 # Print final summary
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════════════════╗"
