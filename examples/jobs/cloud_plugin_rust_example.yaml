@@ -1,0 +1,80 @@
+# Example job configuration using Rust plugins with cloud execution
+# This demonstrates how to run Rust plugins in the cloud for high-performance data processing
+
+tenant_id: acme
+environment: prod
+
+source_connector: custom_csv
+source_connector_path: /app/connectors/csv.yaml
+
+target_connector: custom_storage
+target_connector_path: /app/connectors/s3.yaml
+
+asset: performance_data
+asset_path: /app/assets/csv/v1.0/person.yaml
+
+# Source configuration with Rust reader plugin and cloud execution
+source:
+  # Rust plugin format: "path/to/libplugin.so:create_reader"
+  custom_reader: "/app/rust/target/release/libcsv_reader.so:create_reader"
+  
+  # Connection details
+  connection:
+    path: "/data/input"
+  
+  # Engine options with cloud execution configuration
+  engine:
+    options:
+      batch_size: 10000
+    
+    # Cloud execution configuration for AWS Lambda with custom runtime
+    cloud_execution:
+      enabled: true
+      provider: "aws"
+      runtime: "provided.al2"  # Custom runtime for Rust
+      memory_mb: 1024
+      timeout_seconds: 600
+      
+      # AWS-specific configuration
+      aws:
+        role_arn: "arn:aws:iam::123456789012:role/lambda-rust-plugin-role"
+      
+      # Environment variables
+      environment_variables:
+        RUST_LOG: "info"
+        RUST_BACKTRACE: "1"
+  
+  files:
+    - "data.csv"
+
+# Target configuration with custom writer (also using cloud execution)
+target:
+  # Rust plugin for writing
+  custom_writer: "/app/rust/target/release/libparquet_writer.so:create_writer"
+  
+  type: "parquet"
+  file_format: "parquet"
+  
+  connection:
+    s3:
+      bucket: "my-data-lake"
+      region: "us-east-1"
+  
+  # Cloud execution for writer plugin
+  engine:
+    cloud_execution:
+      enabled: true
+      provider: "aws"
+      runtime: "provided.al2"
+      memory_mb: 2048
+      timeout_seconds: 900
+      
+      aws:
+        role_arn: "arn:aws:iam::123456789012:role/lambda-rust-plugin-role"
+
+# Standard ETL configuration
+schema_validation_mode: strict
+
+logging:
+  redaction: true
+  level: INFO

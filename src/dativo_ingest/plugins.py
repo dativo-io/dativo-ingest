@@ -368,6 +368,9 @@ class PluginLoader:
     Supports both Python and Rust plugins:
     - Python: "path/to/module.py:ClassName"
     - Rust: "path/to/libplugin.so:function_name" (or .dylib, .dll)
+    
+    Supports cloud execution (optional):
+    - Configure cloud_execution in engine config to run plugins in AWS Lambda or GCP Cloud Functions
     """
 
     @staticmethod
@@ -551,17 +554,33 @@ class PluginLoader:
             raise ValueError(f"Unsupported base class for Rust plugin: {base_class}")
 
     @staticmethod
-    def load_reader(plugin_path: str) -> Type[BaseReader]:
+    def load_reader(plugin_path: str, cloud_config: Optional[Dict[str, Any]] = None) -> Type[BaseReader]:
         """Load a custom reader class (Python or Rust).
 
         Args:
             plugin_path: Path to reader plugin
                         Python: "path/to/module.py:ClassName"
                         Rust: "path/to/libplugin.so:create_reader"
+            cloud_config: Optional cloud execution configuration
 
         Returns:
             Reader class inheriting from BaseReader
         """
+        # Check if cloud execution is enabled
+        if cloud_config and cloud_config.get("enabled", False):
+            from .cloud_plugin_executor import (
+                CloudExecutionConfig,
+                create_cloud_reader_wrapper,
+            )
+            
+            cloud_exec_config = CloudExecutionConfig.from_dict(cloud_config)
+            plugin_type = PluginLoader._detect_plugin_type(plugin_path)
+            
+            return create_cloud_reader_wrapper(
+                plugin_path, plugin_type, cloud_exec_config
+            )
+        
+        # Local execution
         plugin_type = PluginLoader._detect_plugin_type(plugin_path)
 
         if plugin_type == "python":
@@ -572,17 +591,33 @@ class PluginLoader:
             raise ValueError(f"Unsupported plugin type: {plugin_type}")
 
     @staticmethod
-    def load_writer(plugin_path: str) -> Type[BaseWriter]:
+    def load_writer(plugin_path: str, cloud_config: Optional[Dict[str, Any]] = None) -> Type[BaseWriter]:
         """Load a custom writer class (Python or Rust).
 
         Args:
             plugin_path: Path to writer plugin
                         Python: "path/to/module.py:ClassName"
                         Rust: "path/to/libplugin.so:create_writer"
+            cloud_config: Optional cloud execution configuration
 
         Returns:
             Writer class inheriting from BaseWriter
         """
+        # Check if cloud execution is enabled
+        if cloud_config and cloud_config.get("enabled", False):
+            from .cloud_plugin_executor import (
+                CloudExecutionConfig,
+                create_cloud_writer_wrapper,
+            )
+            
+            cloud_exec_config = CloudExecutionConfig.from_dict(cloud_config)
+            plugin_type = PluginLoader._detect_plugin_type(plugin_path)
+            
+            return create_cloud_writer_wrapper(
+                plugin_path, plugin_type, cloud_exec_config
+            )
+        
+        # Local execution
         plugin_type = PluginLoader._detect_plugin_type(plugin_path)
 
         if plugin_type == "python":

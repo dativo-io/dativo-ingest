@@ -1,0 +1,82 @@
+# Example job configuration using custom plugins with AWS Lambda execution
+# This demonstrates how to run custom plugins in AWS Lambda for better isolation and scalability
+
+tenant_id: acme
+environment: prod
+
+source_connector: custom_api
+source_connector_path: /app/connectors/csv.yaml  # Use any connector as base
+
+target_connector: custom_storage
+target_connector_path: /app/connectors/s3.yaml  # Use any connector as base
+
+asset: custom_data
+asset_path: /app/assets/csv/v1.0/person.yaml  # Use any asset as base
+
+# Source configuration with custom reader and cloud execution
+source:
+  # Specify custom reader plugin
+  # Format: "path/to/module.py:ClassName"
+  custom_reader: "/app/plugins/json_api_reader.py:JSONAPIReader"
+  
+  # Connection details (passed to your custom reader)
+  connection:
+    base_url: "https://api.example.com/v1"
+    timeout: 30
+  
+  # Credentials (passed to your custom reader)
+  credentials:
+    token: "${API_TOKEN}"
+  
+  # Engine options with cloud execution configuration
+  engine:
+    options:
+      page_size: 100
+      max_pages: null  # null = no limit
+    
+    # Cloud execution configuration for AWS Lambda
+    cloud_execution:
+      enabled: true
+      provider: "aws"  # "aws" or "gcp"
+      runtime: "python3.11"
+      memory_mb: 512
+      timeout_seconds: 300
+      
+      # AWS-specific configuration
+      aws:
+        # IAM role for Lambda execution (optional, will create default if not provided)
+        role_arn: "arn:aws:iam::123456789012:role/lambda-plugin-execution-role"
+        
+        # VPC configuration (optional, for accessing resources in VPC)
+        security_groups:
+          - "sg-0123456789abcdef0"
+        subnets:
+          - "subnet-0123456789abcdef0"
+          - "subnet-0123456789abcdef1"
+      
+      # Environment variables to pass to Lambda function
+      environment_variables:
+        LOG_LEVEL: "INFO"
+        CUSTOM_VAR: "value"
+  
+  # Objects to extract (passed to your custom reader)
+  objects: ["users", "orders"]
+
+# Target configuration (standard local execution)
+target:
+  type: "parquet"
+  file_format: "parquet"
+  connection:
+    s3:
+      bucket: "my-data-lake"
+      region: "us-east-1"
+  engine:
+    options:
+      compression: "snappy"
+
+# Standard ETL configuration
+schema_validation_mode: strict
+
+logging:
+  redaction: true
+  level: INFO

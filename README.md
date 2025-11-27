@@ -12,6 +12,7 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 - **Connector Registry** - Validates connector types, engines, and modes
 - **Asset Schemas** - ODCS v3.0.2 compliant schema definitions
 - **Custom Plugins** - Python and Rust plugins for custom readers/writers
+- **Cloud Plugin Execution** - Optional execution of plugins in AWS Lambda or GCP Cloud Functions
 - **Parquet Writer** - Writes validated data with partitioning and file sizing
 - **Iceberg Committer** - Optional catalog integration (files always written to S3)
 
@@ -274,6 +275,11 @@ Dativo supports custom readers and writers in **Python and Rust**, with enterpri
 
 ### Key Features
 
+- **Cloud Execution**: Run plugins in AWS Lambda or GCP Cloud Functions (NEW!)
+  - Better isolation and security
+  - Scalable execution with auto-scaling
+  - Pay-per-use pricing model
+  - Support for both Python and Rust plugins
 - **Plugin Sandboxing**: Docker-based isolation for Python plugins in cloud mode
   - Resource limits (CPU, memory)
   - Network isolation
@@ -340,6 +346,24 @@ source:
       batch_size: 50000  # Larger batches with Rust
 ```
 
+**Cloud Execution (Python or Rust):**
+
+```yaml
+source:
+  custom_reader: "/app/plugins/my_reader.py:MyCustomReader"
+  connection:
+    endpoint: "https://api.example.com"
+  engine:
+    cloud_execution:
+      enabled: true
+      provider: "aws"  # or "gcp"
+      runtime: "python3.11"
+      memory_mb: 512
+      timeout_seconds: 300
+```
+
+Benefits: Better isolation, scalability, and cost optimization. See [docs/cloud_plugin_execution.md](docs/cloud_plugin_execution.md) for details.
+
 ### Performance Benefits
 
 **Rust plugins provide dramatic improvements:**
@@ -349,6 +373,8 @@ source:
 
 ### Documentation
 
+- [Plugin Development Guide](docs/PLUGIN_DEVELOPMENT.md) - Complete guide for developing plugins
+- [Cloud Plugin Execution](docs/cloud_plugin_execution.md) - Run plugins in AWS Lambda or GCP Cloud Functions
 - [Custom Plugins Guide](docs/CUSTOM_PLUGINS.md) - Comprehensive guide for Python and Rust
 - [Plugin Decision Tree](docs/PLUGIN_DECISION_TREE.md) - When to use connectors vs. plugins
 - [Python Examples](examples/plugins/) - JSON API reader, JSON file writer, etc.

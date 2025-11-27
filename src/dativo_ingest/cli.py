@@ -425,7 +425,19 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 },
             )
 
-            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            # Extract cloud execution config if present
+            cloud_config = None
+            if source_config.engine and "cloud_execution" in source_config.engine:
+                cloud_config = source_config.engine["cloud_execution"]
+                logger.info(
+                    "Cloud execution enabled for custom reader",
+                    extra={
+                        "provider": cloud_config.get("provider", "aws"),
+                        "event_type": "cloud_execution_enabled",
+                    },
+                )
+
+            reader_class = PluginLoader.load_reader(source_config.custom_reader, cloud_config)
             extractor = reader_class(source_config)
 
             logger.info(
@@ -685,7 +697,19 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 },
             )
 
-            writer_class = PluginLoader.load_writer(target_config.custom_writer)
+            # Extract cloud execution config if present
+            cloud_config = None
+            if target_config.engine and "cloud_execution" in target_config.engine:
+                cloud_config = target_config.engine["cloud_execution"]
+                logger.info(
+                    "Cloud execution enabled for custom writer",
+                    extra={
+                        "provider": cloud_config.get("provider", "aws"),
+                        "event_type": "cloud_execution_enabled",
+                    },
+                )
+
+            writer_class = PluginLoader.load_writer(target_config.custom_writer, cloud_config)
             writer = writer_class(asset_definition, target_config, output_base)
 
             logger.info(
@@ -1198,7 +1222,12 @@ def check_command(args: argparse.Namespace) -> int:
             # Load custom reader
             from .plugins import PluginLoader
 
-            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            # Extract cloud execution config if present
+            cloud_config = None
+            if source_config.engine and "cloud_execution" in source_config.engine:
+                cloud_config = source_config.engine["cloud_execution"]
+
+            reader_class = PluginLoader.load_reader(source_config.custom_reader, cloud_config)
             reader = reader_class(source_config)
 
             # Check connection
@@ -1293,7 +1322,12 @@ def check_command(args: argparse.Namespace) -> int:
             asset_definition = job_config._resolve_asset()
             output_base = "s3://test"  # Dummy output base for check
 
-            writer_class = PluginLoader.load_writer(target_config.custom_writer)
+            # Extract cloud execution config if present
+            cloud_config = None
+            if target_config.engine and "cloud_execution" in target_config.engine:
+                cloud_config = target_config.engine["cloud_execution"]
+
+            writer_class = PluginLoader.load_writer(target_config.custom_writer, cloud_config)
             writer = writer_class(asset_definition, target_config, output_base)
 
             # Check connection
@@ -1551,7 +1585,12 @@ def discover_command(args: argparse.Namespace) -> int:
             # Load custom reader
             from .plugins import PluginLoader
 
-            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            # Extract cloud execution config if present
+            cloud_config = None
+            if source_config.engine and "cloud_execution" in source_config.engine:
+                cloud_config = source_config.engine["cloud_execution"]
+
+            reader_class = PluginLoader.load_reader(source_config.custom_reader, cloud_config)
             reader = reader_class(source_config)
 
             # Call discover method
