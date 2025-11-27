@@ -101,7 +101,10 @@ class DatabricksUnityCatalog(BaseCatalog):
         try:
             resp = requests.post(
                 f"{self.workspace_url}/api/2.0/sql/statements",
-                json={"statement": create_sql, "warehouse_id": self.catalog_config.connection.get("warehouse_id")},
+                json={
+                    "statement": create_sql,
+                    "warehouse_id": self.catalog_config.connection.get("warehouse_id"),
+                },
                 headers=self.headers,
                 timeout=30,
             )
@@ -225,7 +228,9 @@ class DatabricksUnityCatalog(BaseCatalog):
             Lineage push result
         """
         catalog_name = self.catalog_config.connection.get("catalog", "main")
-        database = target_entity.get("database") or self.catalog_config.database or "default"
+        database = (
+            target_entity.get("database") or self.catalog_config.database or "default"
+        )
         table_name = target_entity.get("name") or self.asset_definition.name
         full_name = f"{catalog_name}.{database}.{table_name}"
 

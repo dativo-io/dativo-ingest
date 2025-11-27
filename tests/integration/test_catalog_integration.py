@@ -120,7 +120,11 @@ class TestOpenMetadataIntegration:
         )
 
     def test_catalog_creation(
-        self, openmetadata_server, openmetadata_auth_token, sample_asset, sample_job_config
+        self,
+        openmetadata_server,
+        openmetadata_auth_token,
+        sample_asset,
+        sample_job_config,
     ):
         """Test creating catalog instance."""
         catalog_config = CatalogConfig(
@@ -137,7 +141,11 @@ class TestOpenMetadataIntegration:
         assert catalog.__class__.__name__ == "OpenMetadataCatalog"
 
     def test_ensure_entity_exists(
-        self, openmetadata_server, openmetadata_auth_token, sample_asset, sample_job_config
+        self,
+        openmetadata_server,
+        openmetadata_auth_token,
+        sample_asset,
+        sample_job_config,
     ):
         """Test ensuring entity exists in OpenMetadata."""
         catalog_config = CatalogConfig(
@@ -162,7 +170,11 @@ class TestOpenMetadataIntegration:
         assert "fqn" in result or "name" in result
 
     def test_push_metadata(
-        self, openmetadata_server, openmetadata_auth_token, sample_asset, sample_job_config
+        self,
+        openmetadata_server,
+        openmetadata_auth_token,
+        sample_asset,
+        sample_job_config,
     ):
         """Test pushing metadata to OpenMetadata."""
         catalog_config = CatalogConfig(
@@ -192,7 +204,11 @@ class TestOpenMetadataIntegration:
         assert result["status"] in ["success", "partial"]
 
     def test_push_lineage(
-        self, openmetadata_server, openmetadata_auth_token, sample_asset, sample_job_config
+        self,
+        openmetadata_server,
+        openmetadata_auth_token,
+        sample_asset,
+        sample_job_config,
     ):
         """Test pushing lineage to OpenMetadata."""
         catalog_config = CatalogConfig(
@@ -214,7 +230,9 @@ class TestOpenMetadataIntegration:
         catalog.ensure_entity_exists(target_entity, schema=sample_asset.schema)
 
         # Push lineage
-        result = catalog.push_lineage(source_entities, target_entity, operation="ingest")
+        result = catalog.push_lineage(
+            source_entities, target_entity, operation="ingest"
+        )
 
         assert result["status"] in ["success", "partial", "skipped"]
 

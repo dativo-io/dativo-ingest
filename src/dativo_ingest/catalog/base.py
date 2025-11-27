@@ -167,11 +167,15 @@ class BaseCatalog(ABC):
         bucket = s3_config.get("bucket") or "default-bucket"
         domain = self.asset_definition.domain or "default"
         data_product = getattr(self.asset_definition, "dataProduct", None) or "default"
-        table_name = self.asset_definition.name.lower().replace("-", "_").replace(" ", "_")
+        table_name = (
+            self.asset_definition.name.lower().replace("-", "_").replace(" ", "_")
+        )
 
         s3_path = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
 
-        table_name_override = self.catalog_config.table_name or self.asset_definition.name
+        table_name_override = (
+            self.catalog_config.table_name or self.asset_definition.name
+        )
         database = self.catalog_config.database or domain
 
         return {
@@ -201,14 +205,20 @@ class BaseCatalog(ABC):
             tags.append(f"domain:{self.asset_definition.domain}")
 
         # Data product tag
-        if hasattr(self.asset_definition, "dataProduct") and self.asset_definition.dataProduct:
+        if (
+            hasattr(self.asset_definition, "dataProduct")
+            and self.asset_definition.dataProduct
+        ):
             tags.append(f"data-product:{self.asset_definition.dataProduct}")
 
         # Source type tag
         tags.append(f"source-type:{self.asset_definition.source_type}")
 
         # Compliance classification tags
-        if self.asset_definition.compliance and self.asset_definition.compliance.classification:
+        if (
+            self.asset_definition.compliance
+            and self.asset_definition.compliance.classification
+        ):
             for classification in self.asset_definition.compliance.classification:
                 tags.append(f"classification:{classification}")
 
@@ -252,6 +262,8 @@ class BaseCatalog(ABC):
             if self.asset_definition.description.usage:
                 parts.append(f"Usage: {self.asset_definition.description.usage}")
             if self.asset_definition.description.limitations:
-                parts.append(f"Limitations: {self.asset_definition.description.limitations}")
+                parts.append(
+                    f"Limitations: {self.asset_definition.description.limitations}"
+                )
             return "\n\n".join(parts) if parts else None
         return None

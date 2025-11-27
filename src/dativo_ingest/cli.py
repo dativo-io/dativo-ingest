@@ -1019,7 +1019,9 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
 
                 # Ensure target entity exists
                 target_entity = catalog._extract_target_entity()
-                catalog.ensure_entity_exists(target_entity, schema=asset_definition.schema)
+                catalog.ensure_entity_exists(
+                    target_entity, schema=asset_definition.schema
+                )
 
                 # Push metadata if enabled
                 if job_config.catalog.push_metadata:
@@ -1066,7 +1068,9 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 logger.warning(
                     f"Failed to push to catalog: {e}",
                     extra={
-                        "catalog_type": job_config.catalog.type if job_config.catalog else None,
+                        "catalog_type": (
+                            job_config.catalog.type if job_config.catalog else None
+                        ),
                         "event_type": "catalog_push_failed",
                     },
                     exc_info=True,
