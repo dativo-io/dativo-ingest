@@ -1240,6 +1240,20 @@ def check_command(args: argparse.Namespace) -> int:
                 "status": "skipped",
                 "message": f"Connection check not implemented for built-in connector: {source_config.type}",
             }
+    except AuthenticationError as e:
+        logger.error(
+            f"Source authentication failed: {e}",
+            extra={
+                "event_type": "source_auth_failed",
+                "error_code": e.error_code,
+            },
+        )
+        source_status = {
+            "status": "failed",
+            "message": str(e),
+            "error_code": e.error_code,
+            "retryable": False,
+        }
     except ConnectionError as e:
         logger.error(
             f"Source connection failed: {e}",
@@ -1254,20 +1268,6 @@ def check_command(args: argparse.Namespace) -> int:
             "message": str(e),
             "error_code": e.error_code,
             "retryable": e.retryable,
-        }
-    except AuthenticationError as e:
-        logger.error(
-            f"Source authentication failed: {e}",
-            extra={
-                "event_type": "source_auth_failed",
-                "error_code": e.error_code,
-            },
-        )
-        source_status = {
-            "status": "failed",
-            "message": str(e),
-            "error_code": e.error_code,
-            "retryable": False,
         }
     except Exception as e:
         logger.error(
@@ -1367,6 +1367,20 @@ def check_command(args: argparse.Namespace) -> int:
                     "Target connection check skipped - no bucket configured",
                     extra={"event_type": "target_check_skipped"},
                 )
+    except AuthenticationError as e:
+        logger.error(
+            f"Target authentication failed: {e}",
+            extra={
+                "event_type": "target_auth_failed",
+                "error_code": e.error_code,
+            },
+        )
+        target_status = {
+            "status": "failed",
+            "message": str(e),
+            "error_code": e.error_code,
+            "retryable": False,
+        }
     except ConnectionError as e:
         logger.error(
             f"Target connection failed: {e}",
@@ -1381,20 +1395,6 @@ def check_command(args: argparse.Namespace) -> int:
             "message": str(e),
             "error_code": e.error_code,
             "retryable": e.retryable,
-        }
-    except AuthenticationError as e:
-        logger.error(
-            f"Target authentication failed: {e}",
-            extra={
-                "event_type": "target_auth_failed",
-                "error_code": e.error_code,
-            },
-        )
-        target_status = {
-            "status": "failed",
-            "message": str(e),
-            "error_code": e.error_code,
-            "retryable": False,
         }
     except Exception as e:
         logger.error(
