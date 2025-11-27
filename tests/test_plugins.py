@@ -19,7 +19,13 @@ from typing import Any, Dict, Iterator, List, Optional
 import pytest
 
 from dativo_ingest.config import SourceConfig, TargetConfig
-from dativo_ingest.plugins import BaseReader, BaseWriter, PluginLoader
+from dativo_ingest.plugins import (
+    BaseReader,
+    BaseWriter,
+    ConnectionTestResult,
+    DiscoveryResult,
+    PluginLoader,
+)
 from dativo_ingest.validator import IncrementalStateManager
 
 
@@ -121,7 +127,9 @@ class TestReader:
         plugin_file = tmp_path / "test.py"
         plugin_file.write_text(plugin_code)
 
-        with pytest.raises(ValueError, match="must inherit from"):
+        from dativo_ingest.exceptions import PluginError
+
+        with pytest.raises(PluginError, match="must inherit from"):
             PluginLoader.load_reader(f"{plugin_file}:TestReader")
 
 
@@ -961,3 +969,493 @@ class SimpleReader(BaseReader):
         # extract_metadata should not exist
         assert not hasattr(reader, "extract_metadata")
         assert not hasattr(reader, "get_source_tags")
+
+
+class TestPluginConnectionAndDiscovery:
+    """Tests for check_connection() and discover() methods."""
+
+    def test_reader_check_connection_default(self):
+        """Test default check_connection implementation."""
+        source_config = SourceConfig(type="test", connection={})
+
+        class TestReader(BaseReader):
+            def extract(self, state_manager=None):
+                yield []
+
+        reader = TestReader(source_config)
+        result = reader.check_connection()
+
+        assert isinstance(result, ConnectionTestResult)
+        assert result.success is True
+        assert (
+            "connection" in result.message.lower()
+            or "success" in result.message.lower()
+        )
+
+    def test_reader_check_connection_custom(self, tmp_path):
+        """Test custom check_connection implementation."""
+        reader_code = """
+from dativo_ingest.plugins import BaseReader, ConnectionTestResult
+
+class TestReader(BaseReader):
+    def check_connection(self):
+        return ConnectionTestResult(
+            success=True,
+            message="Custom connection check",
+            details={"custom": "data"}
+        )
+    
+    def extract(self, state_manager=None):
+        yield []
+"""
+
+        reader_file = tmp_path / "test_reader.py"
+        reader_file.write_text(reader_code)
+
+        reader_class = PluginLoader.load_reader(f"{reader_file}:TestReader")
+        source_config = SourceConfig(type="test")
+        reader = reader_class(source_config)
+
+        result = reader.check_connection()
+        assert isinstance(result, ConnectionTestResult)
+        assert result.success is True
+        assert result.message == "Custom connection check"
+        assert result.details["custom"] == "data"
+
+    def test_writer_check_connection_default(self):
+        """Test default check_connection implementation for writer."""
+
+        class MockAsset:
+            name = "test"
+            schema = []
+
+        target_config = TargetConfig(type="test")
+
+        class TestWriter(BaseWriter):
+            def write_batch(self, records, file_counter):
+                return []
+
+        writer = TestWriter(MockAsset(), target_config, "/tmp")
+        result = writer.check_connection()
+
+        assert isinstance(result, ConnectionTestResult)
+        assert result.success is True
+
+    def test_writer_check_connection_custom(self, tmp_path):
+        """Test custom check_connection implementation for writer."""
+        writer_code = """
+from dativo_ingest.plugins import BaseWriter, ConnectionTestResult
+
+class TestWriter(BaseWriter):
+    def check_connection(self):
+        return ConnectionTestResult(
+            success=False,
+            message="Connection failed",
+            error_code="CONNECTION_ERROR"
+        )
+    
+    def write_batch(self, records, file_counter):
+        return []
+"""
+
+        writer_file = tmp_path / "test_writer.py"
+        writer_file.write_text(writer_code)
+
+        writer_class = PluginLoader.load_writer(f"{writer_file}:TestWriter")
+
+        class MockAsset:
+            name = "test"
+            schema = []
+
+        target_config = TargetConfig(type="test")
+        writer = writer_class(MockAsset(), target_config, "/tmp")
+
+        result = writer.check_connection()
+        assert isinstance(result, ConnectionTestResult)
+        assert result.success is False
+        assert result.error_code == "CONNECTION_ERROR"
+
+    def test_reader_discover_default(self):
+        """Test default discover implementation."""
+        source_config = SourceConfig(type="test", connection={})
+
+        class TestReader(BaseReader):
+            def extract(self, state_manager=None):
+                yield []
+
+        reader = TestReader(source_config)
+        result = reader.discover()
+
+        assert isinstance(result, DiscoveryResult)
+        assert result.objects == []
+        assert isinstance(result.metadata, dict)
+
+    def test_reader_discover_custom(self, tmp_path):
+        """Test custom discover implementation."""
+        reader_code = """
+from dativo_ingest.plugins import BaseReader, DiscoveryResult
+
+class TestReader(BaseReader):
+    def discover(self):
+        return DiscoveryResult(
+            objects=[
+                {"name": "table1", "type": "table"},
+                {"name": "table2", "type": "table"}
+            ],
+            metadata={"database": "test_db"}
+        )
+    
+    def extract(self, state_manager=None):
+        yield []
+"""
+
+        reader_file = tmp_path / "test_reader.py"
+        reader_file.write_text(reader_code)
+
+        reader_class = PluginLoader.load_reader(f"{reader_file}:TestReader")
+        source_config = SourceConfig(type="test")
+        reader = reader_class(source_config)
+
+        result = reader.discover()
+        assert isinstance(result, DiscoveryResult)
+        assert len(result.objects) == 2
+        assert result.objects[0]["name"] == "table1"
+        assert result.metadata["database"] == "test_db"
+
+
+class TestPluginSandboxExecution:
+    """Tests for plugin execution through sandbox (cloud mode)."""
+
+    def test_plugin_check_connection_via_sandbox(self, tmp_path):
+        """Test check_connection through sandbox with mocked Docker."""
+        import sys
+        from unittest.mock import Mock, patch
+
+        # Mock docker module if not already mocked
+        if "docker" not in sys.modules or not hasattr(
+            sys.modules.get("docker"), "from_env"
+        ):
+            mock_docker = Mock()
+            mock_docker.from_env = Mock()
+            mock_docker_errors = Mock()
+            mock_docker_errors.DockerException = Exception
+            sys.modules["docker"] = mock_docker
+            sys.modules["docker.errors"] = mock_docker_errors
+
+        reader_code = """
+from dativo_ingest.plugins import BaseReader, ConnectionTestResult
+
+class TestReader(BaseReader):
+    def check_connection(self):
+        return ConnectionTestResult(
+            success=True,
+            message="Connection successful",
+            details={"test": "data"}
+        )
+    
+    def extract(self, state_manager=None):
+        yield []
+"""
+
+        reader_file = tmp_path / "test_reader.py"
+        reader_file.write_text(reader_code)
+
+        with patch("dativo_ingest.sandbox.docker.from_env") as mock_docker:
+            from dativo_ingest.sandbox import PluginSandbox
+
+            # Mock Docker client
+            mock_client = Mock()
+            mock_client.ping.return_value = True
+            mock_docker.return_value = mock_client
+
+            # Mock container
+            mock_container = Mock()
+            mock_container.wait.return_value = {"StatusCode": 0}
+            mock_container.logs.return_value = b'{"status": "success", "result": {"success": true, "message": "Connection successful", "details": {"test": "data"}}}'
+            mock_client.containers.create.return_value = mock_container
+
+            # Create sandbox and execute
+            sandbox = PluginSandbox(str(reader_file))
+            result = sandbox.execute(
+                "check_connection", {"type": "test", "connection": {}}
+            )
+
+            # Verify Docker was called
+            mock_client.containers.create.assert_called_once()
+            mock_container.start.assert_called_once()
+            mock_container.wait.assert_called_once()
+
+            # Verify result
+            assert isinstance(result, dict)
+            assert result.get("success") is True or result.get("status") == "success"
+
+    def test_plugin_discover_via_sandbox(self, tmp_path):
+        """Test discover through sandbox with mocked Docker."""
+        import sys
+        from unittest.mock import Mock, patch
+
+        # Mock docker module if not already mocked
+        if "docker" not in sys.modules or not hasattr(
+            sys.modules.get("docker"), "from_env"
+        ):
+            mock_docker = Mock()
+            mock_docker.from_env = Mock()
+            mock_docker_errors = Mock()
+            mock_docker_errors.DockerException = Exception
+            sys.modules["docker"] = mock_docker
+            sys.modules["docker.errors"] = mock_docker_errors
+
+        reader_code = """
+from dativo_ingest.plugins import BaseReader, DiscoveryResult
+
+class TestReader(BaseReader):
+    def discover(self):
+        return DiscoveryResult(
+            objects=[{"name": "stream1", "type": "stream"}],
+            metadata={"source": "test"}
+        )
+    
+    def extract(self, state_manager=None):
+        yield []
+"""
+
+        reader_file = tmp_path / "test_reader.py"
+        reader_file.write_text(reader_code)
+
+        with patch("dativo_ingest.sandbox.docker.from_env") as mock_docker:
+            from dativo_ingest.sandbox import PluginSandbox
+
+            # Mock Docker client
+            mock_client = Mock()
+            mock_client.ping.return_value = True
+            mock_docker.return_value = mock_client
+
+            # Mock container
+            mock_container = Mock()
+            mock_container.wait.return_value = {"StatusCode": 0}
+            mock_container.logs.return_value = b'{"status": "success", "result": {"objects": [{"name": "stream1", "type": "stream"}], "metadata": {"source": "test"}}}'
+            mock_client.containers.create.return_value = mock_container
+
+            # Create sandbox and execute
+            sandbox = PluginSandbox(str(reader_file))
+            result = sandbox.execute("discover", {"type": "test", "connection": {}})
+
+            # Verify Docker was called
+            mock_client.containers.create.assert_called_once()
+            mock_container.start.assert_called_once()
+
+            # Verify result
+            assert isinstance(result, dict)
+            assert "objects" in result or result.get("status") == "success"
+
+
+class TestConnectionTestResult:
+    """Tests for ConnectionTestResult class."""
+
+    def test_connection_result_success(self):
+        """Test successful connection result."""
+        result = ConnectionTestResult(
+            success=True,
+            message="Connected",
+            details={"host": "localhost", "port": 5432},
+        )
+
+        assert result.success is True
+        assert result.message == "Connected"
+        assert result.details["host"] == "localhost"
+        assert result.details["port"] == 5432
+        assert result.error_code is None
+
+        # Test to_dict
+        result_dict = result.to_dict()
+        assert result_dict["success"] is True
+        assert result_dict["message"] == "Connected"
+        assert result_dict["details"]["host"] == "localhost"
+        assert "error_code" not in result_dict or result_dict["error_code"] is None
+
+    def test_connection_result_failure(self):
+        """Test failed connection result."""
+        result = ConnectionTestResult(
+            success=False,
+            message="Connection failed",
+            error_code="CONNECTION_ERROR",
+            details={"error": "timeout"},
+        )
+
+        assert result.success is False
+        assert result.message == "Connection failed"
+        assert result.error_code == "CONNECTION_ERROR"
+        assert result.details["error"] == "timeout"
+
+        # Test to_dict
+        result_dict = result.to_dict()
+        assert result_dict["success"] is False
+        assert result_dict["message"] == "Connection failed"
+        assert result_dict["error_code"] == "CONNECTION_ERROR"
+        assert result_dict["details"]["error"] == "timeout"
+
+
+class TestDiscoveryResult:
+    """Tests for DiscoveryResult class."""
+
+    def test_discovery_result_with_objects(self):
+        """Test discovery result with objects."""
+        objects = [
+            {"name": "users", "type": "table", "schema": {"id": "integer"}},
+            {"name": "orders", "type": "table", "schema": {"order_id": "integer"}},
+        ]
+        metadata = {"database": "test_db", "version": "1.0"}
+
+        result = DiscoveryResult(objects=objects, metadata=metadata)
+
+        assert len(result.objects) == 2
+        assert result.objects[0]["name"] == "users"
+        assert result.objects[1]["name"] == "orders"
+        assert result.metadata["database"] == "test_db"
+        assert result.metadata["version"] == "1.0"
+
+        # Test to_dict
+        result_dict = result.to_dict()
+        assert len(result_dict["objects"]) == 2
+        assert result_dict["objects"][0]["name"] == "users"
+        assert result_dict["metadata"]["database"] == "test_db"
+
+    def test_discovery_result_empty(self):
+        """Test discovery result with no objects."""
+        result = DiscoveryResult(objects=[], metadata={})
+
+        assert len(result.objects) == 0
+        assert isinstance(result.metadata, dict)
+        assert len(result.metadata) == 0
+
+        # Test to_dict
+        result_dict = result.to_dict()
+        assert len(result_dict["objects"]) == 0
+        assert isinstance(result_dict["metadata"], dict)
+
+
+class TestPluginVersioning:
+    """Tests for plugin versioning functionality."""
+
+    def test_reader_version_attribute(self):
+        """Test that reader can have version attribute."""
+        source_config = SourceConfig(type="test")
+
+        class VersionedReader(BaseReader):
+            __version__ = "1.0.0"
+
+            def extract(self, state_manager=None):
+                yield []
+
+        reader = VersionedReader(source_config)
+        assert reader.__version__ == "1.0.0"
+
+    def test_writer_version_attribute(self):
+        """Test that writer can have version attribute."""
+
+        class MockAsset:
+            name = "test"
+            schema = []
+
+        target_config = TargetConfig(type="test")
+
+        class VersionedWriter(BaseWriter):
+            __version__ = "2.0.0"
+
+            def write_batch(self, records, file_counter):
+                return []
+
+        writer = VersionedWriter(MockAsset(), target_config, "/tmp")
+        assert writer.__version__ == "2.0.0"
+
+    def test_reader_default_version(self):
+        """Test that reader has default version from base class."""
+        source_config = SourceConfig(type="test")
+
+        class UnversionedReader(BaseReader):
+            def extract(self, state_manager=None):
+                yield []
+
+        reader = UnversionedReader(source_config)
+        # BaseReader should have a default version
+        assert hasattr(reader, "__version__")
+        assert reader.__version__ is not None
+
+    def test_writer_default_version(self):
+        """Test that writer has default version from base class."""
+
+        class MockAsset:
+            name = "test"
+            schema = []
+
+        target_config = TargetConfig(type="test")
+
+        class UnversionedWriter(BaseWriter):
+            def write_batch(self, records, file_counter):
+                return []
+
+        writer = UnversionedWriter(MockAsset(), target_config, "/tmp")
+        # BaseWriter should have a default version
+        assert hasattr(writer, "__version__")
+        assert writer.__version__ is not None
+
+
+class TestModuleExports:
+    """Tests for module exports and imports."""
+
+    def test_plugin_classes_importable(self):
+        """Test that all plugin classes can be imported from main module."""
+        from dativo_ingest import (
+            BaseReader,
+            BaseWriter,
+            ConnectionTestResult,
+            DiscoveryResult,
+            PluginLoader,
+        )
+
+        assert BaseReader is not None
+        assert BaseWriter is not None
+        assert ConnectionTestResult is not None
+        assert DiscoveryResult is not None
+        assert PluginLoader is not None
+
+    def test_error_classes_importable(self):
+        """Test that all error classes can be imported from main module."""
+        from dativo_ingest import (
+            AuthenticationError,
+            ConfigurationError,
+            ConnectionError,
+            DativoError,
+            PluginError,
+            PluginVersionError,
+            RateLimitError,
+            SandboxError,
+            TransientError,
+            ValidationError,
+            get_error_code,
+            is_retryable_error,
+            wrap_exception,
+        )
+
+        # Verify all classes exist
+        assert DativoError is not None
+        assert ConnectionError is not None
+        assert AuthenticationError is not None
+        assert ValidationError is not None
+        assert ConfigurationError is not None
+        assert TransientError is not None
+        assert RateLimitError is not None
+        assert PluginError is not None
+        assert PluginVersionError is not None
+        assert SandboxError is not None
+        assert callable(is_retryable_error)
+        assert callable(get_error_code)
+        assert callable(wrap_exception)
+
+    def test_version_importable(self):
+        """Test that __version__ can be imported from main module."""
+        from dativo_ingest import __version__
+
+        assert __version__ is not None
+        assert isinstance(__version__, str)
+        assert len(__version__) > 0

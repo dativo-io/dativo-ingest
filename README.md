@@ -84,6 +84,74 @@ docker run --rm -p 3000:3000 \
 dativo run --config <path> --mode <self_hosted|cloud>
 ```
 
+### Check Connection
+
+Test connectivity and credentials without running the full job:
+
+```bash
+dativo check --config <path> [--json] [--verbose] --mode <self_hosted|cloud>
+```
+
+This validates:
+- Source connection and authentication
+- Target connection (S3 bucket access, etc.)
+- Returns detailed error information with retryable flags
+
+**Options:**
+- `--json`: Output results in JSON format
+- `--verbose`: Show detailed information including error details
+
+**Example:**
+```bash
+dativo check --config jobs/acme/stripe_customers.yaml --verbose
+
+# Output:
+# ============================================================
+# Connection Check Results
+# ============================================================
+# 
+# Source: success
+#   Connection successful: API accessible
+#   Details: {'api_version': 'v1', 'account_id': 'acct_123'}
+# 
+# Target: success
+#   S3 bucket 'my-bucket' is accessible
+```
+
+### Discover Available Streams
+
+List available tables/streams from a connector:
+
+```bash
+# Using connector type
+dativo discover --connector stripe [--json] [--verbose]
+
+# Using job config
+dativo discover --config jobs/acme/stripe_customers.yaml [--json] [--verbose]
+```
+
+This helps generate asset definitions by discovering what data is available.
+
+**Options:**
+- `--json`: Output results as JSON
+- `--verbose`: Show detailed information including column schemas
+
+**Example:**
+```bash
+dativo discover --config jobs/postgres_job.yaml --verbose
+
+# Output:
+# ============================================================
+# Discovery Results
+# ============================================================
+# 
+# Found 12 stream(s):
+# 
+# 1. customers
+#    Type: table
+#    Schema: {"id": "integer", "email": "varchar", ...}
+```
+
 **Options:**
 - `--config`: Path to job configuration YAML file (required)
 - `--mode`: Execution mode - `self_hosted` (default) or `cloud`
@@ -200,7 +268,30 @@ See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal a
 - **S3** - Amazon S3 object storage
 - **MinIO** - MinIO object storage
 
-## Custom Plugins
+## Plugin System
+
+Dativo supports custom readers and writers in **Python and Rust**, with enterprise-grade features:
+
+### Key Features
+
+- **Plugin Sandboxing**: Docker-based isolation for Python plugins in cloud mode
+  - Resource limits (CPU, memory)
+  - Network isolation
+  - Seccomp security profiles
+- **Connection Testing**: Validate credentials before job execution
+  - `check_connection()` method in all plugins
+  - CLI command: `dativo check --config job.yaml`
+- **Discovery Interface**: Discover available tables/streams
+  - `discover()` method returns available data sources
+  - CLI command: `dativo discover --connector <name>`
+- **Version Management**: Plugin version compatibility checks
+  - `__version__` attribute tracking
+  - SDK version validation
+- **Standardized Errors**: Comprehensive error hierarchy
+  - Retryable vs. permanent failure detection
+  - Error codes for observability
+
+### Custom Plugins
 
 Dativo supports custom readers and writers in **Python and Rust**, allowing you to:
 - Read from any source format or system (e.g., proprietary APIs, custom file formats)
@@ -259,6 +350,7 @@ source:
 ### Documentation
 
 - [Custom Plugins Guide](docs/CUSTOM_PLUGINS.md) - Comprehensive guide for Python and Rust
+- [Plugin Decision Tree](docs/PLUGIN_DECISION_TREE.md) - When to use connectors vs. plugins
 - [Python Examples](examples/plugins/) - JSON API reader, JSON file writer, etc.
 - [Rust Examples](examples/plugins/rust/) - High-performance CSV reader, Parquet writer
 
