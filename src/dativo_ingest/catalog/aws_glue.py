@@ -42,9 +42,9 @@ class AWSGlueCatalog(BaseCatalog):
         self.aws_access_key_id = connection.get("aws_access_key_id") or os.getenv(
             "AWS_ACCESS_KEY_ID"
         )
-        self.aws_secret_access_key = connection.get("aws_secret_access_key") or os.getenv(
-            "AWS_SECRET_ACCESS_KEY"
-        )
+        self.aws_secret_access_key = connection.get(
+            "aws_secret_access_key"
+        ) or os.getenv("AWS_SECRET_ACCESS_KEY")
 
         # Create Glue client
         self.glue_client = boto3.client(
@@ -79,12 +79,17 @@ class AWSGlueCatalog(BaseCatalog):
             if e.response["Error"]["Code"] == "EntityNotFoundException":
                 # Create database
                 self.glue_client.create_database(
-                    DatabaseInput={"Name": database, "Description": f"Database for {database}"}
+                    DatabaseInput={
+                        "Name": database,
+                        "Description": f"Database for {database}",
+                    }
                 )
 
         # Check if table exists
         try:
-            response = self.glue_client.get_table(DatabaseName=database, Name=table_name)
+            response = self.glue_client.get_table(
+                DatabaseName=database, Name=table_name
+            )
             return {
                 "entity_id": response["Table"]["Name"],
                 "database": database,
@@ -125,7 +130,10 @@ class AWSGlueCatalog(BaseCatalog):
         parameters = {}
         if self.asset_definition.domain:
             parameters["domain"] = self.asset_definition.domain
-        if hasattr(self.asset_definition, "dataProduct") and self.asset_definition.dataProduct:
+        if (
+            hasattr(self.asset_definition, "dataProduct")
+            and self.asset_definition.dataProduct
+        ):
             parameters["data_product"] = self.asset_definition.dataProduct
         if self.asset_definition.team and self.asset_definition.team.owner:
             parameters["owner"] = self.asset_definition.team.owner
@@ -188,7 +196,9 @@ class AWSGlueCatalog(BaseCatalog):
 
         try:
             # Get existing table
-            response = self.glue_client.get_table(DatabaseName=database, Name=table_name)
+            response = self.glue_client.get_table(
+                DatabaseName=database, Name=table_name
+            )
             table_input = response["Table"]
 
             # Update description
@@ -207,9 +217,7 @@ class AWSGlueCatalog(BaseCatalog):
             table_input["Parameters"] = parameters
 
             # Update table
-            self.glue_client.update_table(
-                DatabaseName=database, TableInput=table_input
-            )
+            self.glue_client.update_table(DatabaseName=database, TableInput=table_input)
 
             return {"status": "success", "database": database, "table": table_name}
         except Exception as e:
@@ -238,16 +246,22 @@ class AWSGlueCatalog(BaseCatalog):
         Returns:
             Lineage push result
         """
-        database = target_entity.get("database") or self.catalog_config.database or "default"
+        database = (
+            target_entity.get("database") or self.catalog_config.database or "default"
+        )
         table_name = target_entity.get("name") or self.asset_definition.name
 
         try:
-            response = self.glue_client.get_table(DatabaseName=database, Name=table_name)
+            response = self.glue_client.get_table(
+                DatabaseName=database, Name=table_name
+            )
             table_input = response["Table"]
 
             # Store lineage in parameters
             parameters = table_input.get("Parameters", {})
-            source_names = [e.get("name") or e.get("location", "") for e in source_entities]
+            source_names = [
+                e.get("name") or e.get("location", "") for e in source_entities
+            ]
             parameters["lineage_sources"] = ",".join(source_names)
             parameters["lineage_operation"] = operation
 

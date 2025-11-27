@@ -10,10 +10,7 @@ from datetime import datetime
 
 import pytest
 
-from dativo_ingest.catalog_integrations import (
-    LineageInfo,
-    OpenMetadataCatalogClient,
-)
+from dativo_ingest.catalog_integrations import LineageInfo, OpenMetadataCatalogClient
 from dativo_ingest.config import AssetDefinition, CatalogConfig
 
 
@@ -37,7 +34,9 @@ def catalog_config():
         type="openmetadata",
         enabled=True,
         connection={
-            "host_port": os.getenv("OPENMETADATA_HOST_PORT", "http://localhost:8585/api"),
+            "host_port": os.getenv(
+                "OPENMETADATA_HOST_PORT", "http://localhost:8585/api"
+            ),
             "service_name": "dativo_test_ingestion",
         },
         options={
@@ -56,10 +55,30 @@ def sample_asset():
         source_type="postgres",
         object="users",
         schema=[
-            {"name": "id", "type": "integer", "required": True, "description": "User ID"},
-            {"name": "email", "type": "string", "required": True, "description": "User email"},
-            {"name": "name", "type": "string", "required": True, "description": "Full name"},
-            {"name": "created_at", "type": "timestamp", "required": True, "description": "Creation timestamp"},
+            {
+                "name": "id",
+                "type": "integer",
+                "required": True,
+                "description": "User ID",
+            },
+            {
+                "name": "email",
+                "type": "string",
+                "required": True,
+                "description": "User email",
+            },
+            {
+                "name": "name",
+                "type": "string",
+                "required": True,
+                "description": "Full name",
+            },
+            {
+                "name": "created_at",
+                "type": "timestamp",
+                "required": True,
+                "description": "Creation timestamp",
+            },
         ],
         team={"owner": "data-team@company.com"},
         domain="analytics",
@@ -81,7 +100,7 @@ class TestOpenMetadataSmoke:
 
         client = OpenMetadataCatalogClient(catalog_config)
         om_client = client._get_client()
-        
+
         # Test basic connectivity
         assert om_client is not None
 
@@ -118,7 +137,7 @@ class TestOpenMetadataSmoke:
         assert result["catalog"] == "openmetadata"
         assert "table_fqn" in result
         assert "table_id" in result
-        
+
         # Verify table FQN format
         expected_fqn = "dativo_test_ingestion.test_db.default.test_users_table"
         assert result["table_fqn"] == expected_fqn
@@ -137,10 +156,30 @@ class TestOpenMetadataSmoke:
             source_type="stripe",
             object="orders",
             schema=[
-                {"name": "order_id", "type": "string", "required": True, "description": "Order ID"},
-                {"name": "customer_email", "type": "string", "required": True, "description": "Customer email"},
-                {"name": "amount", "type": "double", "required": True, "description": "Order amount"},
-                {"name": "created", "type": "timestamp", "required": True, "description": "Order timestamp"},
+                {
+                    "name": "order_id",
+                    "type": "string",
+                    "required": True,
+                    "description": "Order ID",
+                },
+                {
+                    "name": "customer_email",
+                    "type": "string",
+                    "required": True,
+                    "description": "Customer email",
+                },
+                {
+                    "name": "amount",
+                    "type": "double",
+                    "required": True,
+                    "description": "Order amount",
+                },
+                {
+                    "name": "created",
+                    "type": "timestamp",
+                    "required": True,
+                    "description": "Order timestamp",
+                },
             ],
             team={
                 "owner": "finance-team@company.com",
@@ -252,7 +291,8 @@ class TestOpenMetadataEndToEnd:
 
         # Create test job with catalog config
         job_yaml = tmp_path / "test_job.yaml"
-        job_yaml.write_text("""
+        job_yaml.write_text(
+            """
 tenant_id: test_tenant
 source_connector_path: connectors/csv.yaml
 target_connector_path: connectors/iceberg.yaml
@@ -283,7 +323,8 @@ target:
 
 logging:
   level: INFO
-""")
+"""
+        )
 
         # Note: This test would require full infrastructure setup
         # For now, we just verify the job config can be loaded with catalog

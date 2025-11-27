@@ -121,7 +121,11 @@ class OpenMetadataCatalog(BaseCatalog):
                 timeout=10,
             )
             if resp.status_code == 200:
-                return {"entity_id": resp.json().get("id"), "fqn": fqn, "name": table_name}
+                return {
+                    "entity_id": resp.json().get("id"),
+                    "fqn": fqn,
+                    "name": table_name,
+                }
         except Exception:
             pass
 
@@ -138,8 +142,12 @@ class OpenMetadataCatalog(BaseCatalog):
                 columns.append(
                     {
                         "name": field.get("name"),
-                        "dataType": self._map_type_to_openmetadata(field.get("type", "string")),
-                        "constraint": "NOT_NULL" if field.get("required", False) else "NULL",
+                        "dataType": self._map_type_to_openmetadata(
+                            field.get("type", "string")
+                        ),
+                        "constraint": (
+                            "NOT_NULL" if field.get("required", False) else "NULL"
+                        ),
                     }
                 )
             table_config["columns"] = columns
@@ -152,7 +160,11 @@ class OpenMetadataCatalog(BaseCatalog):
                 timeout=10,
             )
             if resp.status_code in [200, 201]:
-                return {"entity_id": resp.json().get("id"), "fqn": fqn, "name": table_name}
+                return {
+                    "entity_id": resp.json().get("id"),
+                    "fqn": fqn,
+                    "name": table_name,
+                }
         except Exception as e:
             import logging
 
@@ -238,7 +250,9 @@ class OpenMetadataCatalog(BaseCatalog):
                         timeout=5,
                     )
                     if user_resp.status_code == 200:
-                        owner_list.append({"id": user_resp.json().get("id"), "type": "user"})
+                        owner_list.append(
+                            {"id": user_resp.json().get("id"), "type": "user"}
+                        )
                 except Exception:
                     # If user not found, create a simple owner reference
                     owner_list.append({"name": owner, "type": "user"})
@@ -262,7 +276,11 @@ class OpenMetadataCatalog(BaseCatalog):
                 timeout=10,
             )
             if resp.status_code in [200, 201]:
-                return {"status": "success", "entity_id": table_data.get("id"), "fqn": fqn}
+                return {
+                    "status": "success",
+                    "entity_id": table_data.get("id"),
+                    "fqn": fqn,
+                }
         except Exception as e:
             import logging
 
@@ -287,7 +305,9 @@ class OpenMetadataCatalog(BaseCatalog):
         Returns:
             Lineage push result
         """
-        database = target_entity.get("database") or self.catalog_config.database or "default"
+        database = (
+            target_entity.get("database") or self.catalog_config.database or "default"
+        )
         table_name = target_entity.get("name") or self.asset_definition.name
         service_fqn = self._get_or_create_service("databaseService", "dativo-ingest")
         target_fqn = f"{service_fqn}.{database}.{table_name}"

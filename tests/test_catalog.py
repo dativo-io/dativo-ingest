@@ -53,7 +53,10 @@ class TestCatalogConfig:
         """Test creating a catalog config."""
         config = CatalogConfig(
             type="openmetadata",
-            connection={"api_url": "http://localhost:8585/api", "auth_token": "test-token"},
+            connection={
+                "api_url": "http://localhost:8585/api",
+                "auth_token": "test-token",
+            },
             database="test_db",
         )
         assert config.type == "openmetadata"
@@ -75,13 +78,20 @@ class TestCatalogConfig:
 class TestCatalogFactory:
     """Test CatalogFactory."""
 
-    def test_create_openmetadata_catalog(self, sample_asset_definition, sample_job_config):
+    def test_create_openmetadata_catalog(
+        self, sample_asset_definition, sample_job_config
+    ):
         """Test creating OpenMetadata catalog."""
         catalog_config = CatalogConfig(
             type="openmetadata",
-            connection={"api_url": "http://localhost:8585/api", "auth_token": "test-token"},
+            connection={
+                "api_url": "http://localhost:8585/api",
+                "auth_token": "test-token",
+            },
         )
-        catalog = CatalogFactory.create(catalog_config, sample_asset_definition, sample_job_config)
+        catalog = CatalogFactory.create(
+            catalog_config, sample_asset_definition, sample_job_config
+        )
         assert catalog.__class__.__name__ == "OpenMetadataCatalog"
 
     def test_create_aws_glue_catalog(self, sample_asset_definition, sample_job_config):
@@ -96,13 +106,20 @@ class TestCatalogFactory:
             )
             assert catalog.__class__.__name__ == "AWSGlueCatalog"
 
-    def test_create_databricks_unity_catalog(self, sample_asset_definition, sample_job_config):
+    def test_create_databricks_unity_catalog(
+        self, sample_asset_definition, sample_job_config
+    ):
         """Test creating Databricks Unity Catalog."""
         catalog_config = CatalogConfig(
             type="databricks_unity",
-            connection={"workspace_url": "https://test.databricks.com", "access_token": "token"},
+            connection={
+                "workspace_url": "https://test.databricks.com",
+                "access_token": "token",
+            },
         )
-        catalog = CatalogFactory.create(catalog_config, sample_asset_definition, sample_job_config)
+        catalog = CatalogFactory.create(
+            catalog_config, sample_asset_definition, sample_job_config
+        )
         assert catalog.__class__.__name__ == "DatabricksUnityCatalog"
 
     def test_create_nessie_catalog(self, sample_asset_definition, sample_job_config):
@@ -111,17 +128,23 @@ class TestCatalogFactory:
             type="nessie",
             connection={"uri": "http://localhost:19120"},
         )
-        catalog = CatalogFactory.create(catalog_config, sample_asset_definition, sample_job_config)
+        catalog = CatalogFactory.create(
+            catalog_config, sample_asset_definition, sample_job_config
+        )
         assert catalog.__class__.__name__ == "NessieCatalog"
 
-    def test_create_unsupported_catalog(self, sample_asset_definition, sample_job_config):
+    def test_create_unsupported_catalog(
+        self, sample_asset_definition, sample_job_config
+    ):
         """Test creating unsupported catalog type."""
         catalog_config = CatalogConfig(
             type="unsupported",
             connection={},
         )
         with pytest.raises(ValueError, match="Unsupported catalog type"):
-            CatalogFactory.create(catalog_config, sample_asset_definition, sample_job_config)
+            CatalogFactory.create(
+                catalog_config, sample_asset_definition, sample_job_config
+            )
 
 
 class TestOpenMetadataCatalog:
@@ -132,10 +155,15 @@ class TestOpenMetadataCatalog:
         """Create OpenMetadata catalog instance."""
         catalog_config = CatalogConfig(
             type="openmetadata",
-            connection={"api_url": "http://localhost:8585/api", "auth_token": "test-token"},
+            connection={
+                "api_url": "http://localhost:8585/api",
+                "auth_token": "test-token",
+            },
             database="test_db",
         )
-        return CatalogFactory.create(catalog_config, sample_asset_definition, sample_job_config)
+        return CatalogFactory.create(
+            catalog_config, sample_asset_definition, sample_job_config
+        )
 
     def test_extract_source_entities(self, openmetadata_catalog):
         """Test extracting source entities."""
@@ -177,13 +205,22 @@ class TestOpenMetadataCatalog:
         """Test ensuring entity exists."""
         # Mock service creation
         mock_requests.get.return_value.status_code = 200
-        mock_requests.get.return_value.json.return_value = {"fullyQualifiedName": "test-service"}
+        mock_requests.get.return_value.json.return_value = {
+            "fullyQualifiedName": "test-service"
+        }
 
         # Mock table creation
         mock_requests.post.return_value.status_code = 201
-        mock_requests.post.return_value.json.return_value = {"id": "test-id", "fqn": "test.fqn"}
+        mock_requests.post.return_value.json.return_value = {
+            "id": "test-id",
+            "fqn": "test.fqn",
+        }
 
-        entity = {"name": "test_table", "database": "test_db", "location": "s3://bucket/table"}
+        entity = {
+            "name": "test_table",
+            "database": "test_db",
+            "location": "s3://bucket/table",
+        }
         result = openmetadata_catalog.ensure_entity_exists(entity)
         assert "fqn" in result or "name" in result
 
@@ -199,7 +236,10 @@ class TestOpenMetadataCatalog:
 
         entity = {"name": "test_table", "database": "test_db"}
         result = openmetadata_catalog.push_metadata(
-            entity, tags=["tag1"], owners=["owner@example.com"], description="Test description"
+            entity,
+            tags=["tag1"],
+            owners=["owner@example.com"],
+            description="Test description",
         )
         assert result["status"] in ["success", "partial"]
 
@@ -208,7 +248,9 @@ class TestOpenMetadataCatalog:
         """Test pushing lineage."""
         # Mock service creation
         mock_requests.get.return_value.status_code = 200
-        mock_requests.get.return_value.json.return_value = {"fullyQualifiedName": "test-service"}
+        mock_requests.get.return_value.json.return_value = {
+            "fullyQualifiedName": "test-service"
+        }
 
         # Mock lineage push
         mock_requests.put.return_value.status_code = 200
@@ -231,17 +273,23 @@ class TestAWSGlueCatalog:
             database="test_db",
         )
         with patch("dativo_ingest.catalog.aws_glue.boto3"):
-            return CatalogFactory.create(catalog_config, sample_asset_definition, sample_job_config)
+            return CatalogFactory.create(
+                catalog_config, sample_asset_definition, sample_job_config
+            )
 
     @patch("dativo_ingest.catalog.aws_glue.boto3")
-    def test_ensure_entity_exists(self, mock_boto3, sample_asset_definition, sample_job_config):
+    def test_ensure_entity_exists(
+        self, mock_boto3, sample_asset_definition, sample_job_config
+    ):
         """Test ensuring entity exists in Glue."""
         catalog_config = CatalogConfig(
             type="aws_glue",
             connection={"region": "us-east-1"},
             database="test_db",
         )
-        catalog = CatalogFactory.create(catalog_config, sample_asset_definition, sample_job_config)
+        catalog = CatalogFactory.create(
+            catalog_config, sample_asset_definition, sample_job_config
+        )
 
         # Mock Glue client
         mock_client = MagicMock()
@@ -251,7 +299,11 @@ class TestAWSGlueCatalog:
         mock_client.create_database.return_value = {}
         mock_client.create_table.return_value = {}
 
-        entity = {"name": "test_table", "database": "test_db", "location": "s3://bucket/table"}
+        entity = {
+            "name": "test_table",
+            "database": "test_db",
+            "location": "s3://bucket/table",
+        }
         result = catalog.ensure_entity_exists(entity)
         assert "table" in result
 
@@ -267,7 +319,9 @@ class TestNessieCatalog:
             connection={"uri": "http://localhost:19120"},
             database="test_db",
         )
-        return CatalogFactory.create(catalog_config, sample_asset_definition, sample_job_config)
+        return CatalogFactory.create(
+            catalog_config, sample_asset_definition, sample_job_config
+        )
 
     def test_push_lineage(self, nessie_catalog):
         """Test pushing lineage to Nessie."""

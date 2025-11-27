@@ -454,7 +454,8 @@ class CatalogConfig(BaseModel):
     """Data catalog configuration for lineage and metadata push."""
 
     type: str = Field(
-        ..., description="Catalog type: 'aws_glue', 'databricks_unity', 'nessie', or 'openmetadata'"
+        ...,
+        description="Catalog type: 'aws_glue', 'databricks_unity', 'nessie', or 'openmetadata'",
     )
     connection: Dict[str, Any] = Field(
         ..., description="Catalog connection configuration"
@@ -465,9 +466,7 @@ class CatalogConfig(BaseModel):
     table_name: Optional[str] = Field(
         None, description="Table name override (defaults to asset name)"
     )
-    push_lineage: bool = Field(
-        True, description="Whether to push lineage information"
-    )
+    push_lineage: bool = Field(True, description="Whether to push lineage information")
     push_metadata: bool = Field(
         True, description="Whether to push metadata (tags, owners, etc.)"
     )
