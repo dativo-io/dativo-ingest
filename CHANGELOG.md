@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Cloud Observability Hooks**: optional `observability` block on job configs that pushes metrics/log summaries to AWS CloudWatch or Google Cloud Monitoring/Logging. Includes schema validations, docs, and runtime emitters wired into the CLI pipeline.
 - **Plugin Sandboxing**: Docker-based sandboxing for custom Python plugins
   - Resource limits (CPU, memory)
   - Network isolation

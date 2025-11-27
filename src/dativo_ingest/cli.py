@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -18,6 +19,7 @@ from .exceptions import (
 )
 from .infrastructure import validate_infrastructure
 from .logging import get_logger, setup_logging, update_logging_settings
+from .observability import ObservabilityAdapter
 from .secrets import load_secrets
 from .validator import ConnectorValidator, IncrementalStateManager
 
@@ -311,6 +313,17 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
     # Resolve source and target configs
     source_config = job_config.get_source()
     target_config = job_config.get_target()
+
+    # Prepare observability context
+    job_start_time = time.time()
+    job_name = job_config.asset or Path(job_config.asset_path).stem
+    job_context = {
+        "job_name": job_name,
+        "tenant_id": job_config.tenant_id,
+        "source_connector": source_config.type,
+        "target_connector": target_config.type,
+    }
+    observability = ObservabilityAdapter(job_config.observability, job_context)
 
     # Store tenant_id for credential path resolution (will be passed to extractors)
     tenant_id = job_config.tenant_id
@@ -1106,6 +1119,29 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             },
         )
 
+        execution_time = time.time() - job_start_time
+        observability_metrics = {
+            "records_extracted": total_records,
+            "records_valid": total_valid_records,
+            "records_invalid": max(total_records - total_valid_records, 0),
+            "files_written": total_files_written,
+            "bytes_written": total_bytes,
+            "execution_time_seconds": execution_time,
+        }
+        status_label = (
+            "success" if exit_code == 0 else "partial" if exit_code == 1 else "failed"
+        )
+        observability.emit_job_summary(
+            status=status_label,
+            metrics=observability_metrics,
+            mode=mode,
+            validation_mode=validation_mode,
+            extra={
+                "exit_code": exit_code,
+                "has_errors": has_errors,
+            },
+        )
+
         return exit_code
 
     except Exception as e:
@@ -1115,6 +1151,30 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 "event_type": "job_error",
             },
             exc_info=True,
+        )
+
+        execution_time = time.time() - job_start_time
+        failure_metrics = {
+            "records_extracted": total_records,
+            "records_valid": total_valid_records,
+            "records_invalid": max(total_records - total_valid_records, 0),
+            "files_written": total_files_written,
+            "bytes_written": sum(
+                file_meta.get("size_bytes", 0) for file_meta in all_file_metadata
+            )
+            if "all_file_metadata" in locals()
+            else 0,
+            "execution_time_seconds": execution_time,
+        }
+        observability.emit_job_summary(
+            status="failed",
+            metrics=failure_metrics,
+            mode=mode,
+            validation_mode=locals().get("validation_mode", job_config.schema_validation_mode),
+            extra={
+                "exit_code": 2,
+                "error": str(e),
+            },
         )
         return 2
 

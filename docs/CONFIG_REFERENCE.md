@@ -75,6 +75,45 @@ logging:
 - `target`: Target-specific configuration overrides
 - `schema_validation_mode`: Validation mode (`strict` or `warn`, defaults to `strict`)
 - `logging`: Logging configuration (level, redaction)
+- `observability`: Cloud metrics/log forwarding configuration (AWS/GCP)
+
+### Observability Configuration
+
+Add optional observability hooks per job to push metrics/log summaries into AWS or GCP tooling. This is especially useful in cloud deployments where you want centralized dashboards or alerts without building a custom exporter.
+
+```yaml
+observability:
+  provider: aws
+  metrics_enabled: true
+  logs_enabled: true
+  aws:
+    region: us-east-1
+    cloudwatch_namespace: "Dativo/Jobs"
+    log_group: "/dativo/${tenant_id}"
+    log_stream_prefix: "stripe_customers"
+    dimensions:
+      environment: prod
+```
+
+- `metrics_enabled` / `logs_enabled`: toggle per signal
+- `aws.region`: defaults to `AWS_REGION`
+- `aws.cloudwatch_namespace`: namespace for custom metrics
+- `aws.log_group` / `log_stream_prefix`: override CloudWatch Logs destination
+- `aws.dimensions`: optional dictionary of additional CloudWatch dimensions
+
+For Google Cloud:
+
+```yaml
+observability:
+  provider: gcp
+  gcp:
+    project_id: "my-project"
+    metric_prefix: "custom.googleapis.com/dativo/jobs"
+    log_name: "dativo_jobs"
+    credentials_path: "/app/secrets/gcp.json"  # optional (uses ADC otherwise)
+```
+
+Dativo automatically emits record counts, files written, bytes written, execution time, and exit status after every job run. Metrics go to CloudWatch or Cloud Monitoring, and structured job summaries are written to CloudWatch Logs or Cloud Logging.
 
 ---
 

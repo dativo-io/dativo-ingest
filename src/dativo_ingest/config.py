@@ -5,7 +5,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import jsonschema
 import yaml
@@ -443,6 +443,98 @@ class TargetConfig(BaseModel):
         return self
 
 
+class AWSObservabilityConfig(BaseModel):
+    """Provider-specific configuration for AWS observability."""
+
+    region: Optional[str] = Field(
+        default=None, description="AWS region to use (defaults to AWS_REGION env)"
+    )
+    cloudwatch_namespace: str = Field(
+        default="Dativo/Jobs", description="CloudWatch namespace for custom metrics"
+    )
+    log_group: Optional[str] = Field(
+        default=None,
+        description="CloudWatch Logs group name (defaults to /dativo/{tenant_id})",
+    )
+    log_stream_prefix: Optional[str] = Field(
+        default=None,
+        description="Prefix for CloudWatch log stream names (defaults to job name)",
+    )
+    dimensions: Optional[Dict[str, str]] = Field(
+        default=None, description="Additional CloudWatch metric dimensions"
+    )
+    profile: Optional[str] = Field(
+        default=None, description="AWS profile name for credential resolution"
+    )
+    endpoint_url: Optional[str] = Field(
+        default=None, description="Optional custom endpoint URL (e.g., for localstack)"
+    )
+    create_log_group: bool = Field(
+        default=True, description="Automatically create log group if it does not exist"
+    )
+    create_log_stream: bool = Field(
+        default=True, description="Automatically create log stream if it does not exist"
+    )
+
+
+class GCPObservabilityConfig(BaseModel):
+    """Provider-specific configuration for GCP observability."""
+
+    project_id: str = Field(..., description="GCP project to write metrics/logs to")
+    metric_prefix: str = Field(
+        default="custom.googleapis.com/dativo/jobs",
+        description="Metric type prefix for Cloud Monitoring",
+    )
+    log_name: str = Field(
+        default="dativo_jobs", description="Structured log name in Cloud Logging"
+    )
+    credentials_path: Optional[str] = Field(
+        default=None,
+        description="Path to service account key (defaults to ADC when not set)",
+    )
+    resource_type: str = Field(
+        default="global", description="Monitored resource type for metrics/logs"
+    )
+    labels: Optional[Dict[str, str]] = Field(
+        default=None, description="Additional resource labels"
+    )
+
+
+class ObservabilityConfig(BaseModel):
+    """Observability configuration for emitting metrics/logs to cloud providers."""
+
+    provider: Literal["aws", "gcp"]
+    metrics_enabled: bool = Field(
+        default=True, description="Enable metrics export for the provider"
+    )
+    logs_enabled: bool = Field(
+        default=True, description="Enable log forwarding for the provider"
+    )
+    traces_enabled: bool = Field(
+        default=False,
+        description="Reserved for future distributed tracing support for the provider",
+    )
+    aws: Optional[AWSObservabilityConfig] = Field(
+        default=None, description="AWS-specific observability configuration"
+    )
+    gcp: Optional[GCPObservabilityConfig] = Field(
+        default=None, description="GCP-specific observability configuration"
+    )
+
+    @model_validator(mode="after")
+    def validate_provider_config(self) -> "ObservabilityConfig":
+        """Ensure provider-specific configuration is present."""
+        if self.provider == "aws" and not self.aws:
+            raise ValueError(
+                "observability.aws configuration is required when provider is 'aws'"
+            )
+        if self.provider == "gcp" and not self.gcp:
+            raise ValueError(
+                "observability.gcp configuration is required when provider is 'gcp'"
+            )
+        return self
+
+
 class LoggingConfig(BaseModel):
     """Logging configuration."""
 
@@ -537,6 +629,7 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+    observability: Optional[ObservabilityConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

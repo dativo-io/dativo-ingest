@@ -96,6 +96,30 @@ class TestJobConfigLoading:
         with pytest.raises((yaml.YAMLError, SystemExit)):
             JobConfig.from_yaml(config_path)
 
+    def test_load_job_with_observability(self, valid_job_config, valid_asset_file):
+        """Ensure observability sections are parsed."""
+        with open(valid_job_config, "r") as handle:
+            data = yaml.safe_load(handle)
+
+        data["observability"] = {
+            "provider": "aws",
+            "metrics_enabled": True,
+            "logs_enabled": True,
+            "aws": {
+                "region": "us-west-2",
+                "log_group": "/dativo/test",
+                "log_stream_prefix": "unit-test",
+            },
+        }
+
+        with open(valid_job_config, "w") as handle:
+            yaml.safe_dump(data, handle)
+
+        config = JobConfig.from_yaml(valid_job_config)
+        assert config.observability is not None
+        assert config.observability.provider == "aws"
+        assert config.observability.aws.log_group == "/dativo/test"
+
 
 class TestAssetDefinitionValidation:
     """Test asset definition schema validation."""

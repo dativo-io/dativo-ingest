@@ -226,6 +226,86 @@
       },
       "required": ["type", "connection"],
       "additionalProperties": false
+    },
+    "observability": {
+      "type": "object",
+      "description": "Cloud observability configuration for metrics/log forwarding",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["aws", "gcp"],
+          "description": "Cloud provider that receives observability data"
+        },
+        "metrics_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Emit metrics to the configured provider"
+        },
+        "logs_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Forward structured job summaries as logs"
+        },
+        "traces_enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reserved for future tracing support"
+        },
+        "aws": {
+          "type": "object",
+          "properties": {
+            "region": {"type": "string"},
+            "cloudwatch_namespace": {"type": "string"},
+            "log_group": {"type": "string"},
+            "log_stream_prefix": {"type": "string"},
+            "dimensions": {
+              "type": "object",
+              "additionalProperties": {"type": "string"}
+            },
+            "profile": {"type": "string"},
+            "endpoint_url": {"type": "string"},
+            "create_log_group": {"type": "boolean"},
+            "create_log_stream": {"type": "boolean"}
+          },
+          "additionalProperties": false
+        },
+        "gcp": {
+          "type": "object",
+          "properties": {
+            "project_id": {"type": "string"},
+            "metric_prefix": {"type": "string"},
+            "log_name": {"type": "string"},
+            "credentials_path": {"type": "string"},
+            "resource_type": {"type": "string"},
+            "labels": {
+              "type": "object",
+              "additionalProperties": {"type": "string"}
+            }
+          },
+          "required": ["project_id"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["provider"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {"provider": {"const": "aws"}}
+          },
+          "then": {
+            "required": ["aws"]
+          }
+        },
+        {
+          "if": {
+            "properties": {"provider": {"const": "gcp"}}
+          },
+          "then": {
+            "required": ["gcp"]
+          }
+        }
+      ]
     }
   },
   "additionalProperties": false

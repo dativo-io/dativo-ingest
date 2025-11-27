@@ -218,6 +218,15 @@ target:
     s3:
       bucket: "${S3_BUCKET}"
       prefix: "raw/stripe/customers"
+observability:
+  provider: aws
+  metrics_enabled: true
+  logs_enabled: true
+  aws:
+    region: us-east-1
+    cloudwatch_namespace: "Dativo/Jobs"
+    log_group: "/dativo/acme"
+    log_stream_prefix: "stripe_customers"
 ```
 
 **Asset Definition** - ODCS v3.0.2 schema with governance:
@@ -237,6 +246,23 @@ target:
   file_format: parquet
   partitioning: [ingest_date]
 ```
+
+### Cloud Observability
+
+Jobs can optionally push structured metrics/logs to AWS CloudWatch or Google Cloud Operations Suite by adding an `observability` block:
+
+```yaml
+observability:
+  provider: gcp
+  metrics_enabled: true
+  logs_enabled: true
+  gcp:
+    project_id: "my-gcp-project"
+    metric_prefix: "custom.googleapis.com/dativo/jobs"
+    log_name: "dativo_jobs"
+```
+
+At the end of every job run, Dativo emits record counts, file counts, bytes written, execution time, and exit status to the configured backend. CloudWatch emits custom metrics plus optional structured log events, while GCP uses Cloud Monitoring + Cloud Logging.
 
 **Quick Templates:**
 ```bash
