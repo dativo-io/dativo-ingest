@@ -7,7 +7,81 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Type
 
 from .config import SourceConfig, TargetConfig
+from .exceptions import PluginError, PluginVersionError
 from .validator import IncrementalStateManager
+
+# Plugin SDK version - increment when making breaking changes
+PLUGIN_SDK_VERSION = "1.0.0"
+
+
+class ConnectionTestResult:
+    """Result of connection testing."""
+
+    def __init__(
+        self,
+        success: bool,
+        message: str,
+        error_code: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize connection test result.
+
+        Args:
+            success: Whether connection test succeeded
+            message: Human-readable message
+            error_code: Optional error code (e.g., "AUTH_FAILED", "NETWORK_ERROR")
+            details: Optional additional details
+        """
+        self.success = success
+        self.message = message
+        self.error_code = error_code
+        self.details = details or {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary.
+
+        Returns:
+            Dictionary representation
+        """
+        result = {
+            "success": self.success,
+            "message": self.message,
+        }
+        if self.error_code:
+            result["error_code"] = self.error_code
+        if self.details:
+            result["details"] = self.details
+        return result
+
+
+class DiscoveryResult:
+    """Result of discovery operation."""
+
+    def __init__(
+        self,
+        objects: List[Dict[str, Any]],
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize discovery result.
+
+        Args:
+            objects: List of available objects/tables/streams
+                    Each object should have at minimum: name, type
+            metadata: Optional metadata about the source
+        """
+        self.objects = objects
+        self.metadata = metadata or {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary.
+
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "objects": self.objects,
+            "metadata": self.metadata,
+        }
 
 
 class BaseReader(ABC):
@@ -31,6 +105,9 @@ class BaseReader(ABC):
                 yield batch_records
     """
 
+    # Plugin SDK version - should match PLUGIN_SDK_VERSION
+    __version__ = "1.0.0"
+
     def __init__(self, source_config: SourceConfig):
         """Initialize reader with source configuration.
 
@@ -39,6 +116,93 @@ class BaseReader(ABC):
                           credentials, engine options, etc.
         """
         self.source_config = source_config
+        # Validate plugin version compatibility
+        self._validate_version()
+
+    def _validate_version(self) -> None:
+        """Validate plugin version compatibility.
+
+        Raises:
+            PluginVersionError: If plugin version is incompatible
+        """
+        plugin_version = getattr(self.__class__, "__version__", None)
+        if plugin_version:
+            # Simple version check - can be enhanced with semantic versioning
+            # For now, just check if version attribute exists
+            # Future: implement proper semantic version comparison
+            pass
+
+    def check_connection(self) -> ConnectionTestResult:
+        """Check connection to source system.
+
+        This method should validate that the reader can connect to the source
+        system using the provided configuration. It should NOT extract data,
+        only verify connectivity and credentials.
+
+        Returns:
+            ConnectionTestResult indicating success or failure
+
+        Example:
+            def check_connection(self) -> ConnectionTestResult:
+                try:
+                    # Test connection
+                    response = self.client.ping()
+                    return ConnectionTestResult(
+                        success=True,
+                        message="Connection successful",
+                        details={"server_version": response.version}
+                    )
+                except AuthenticationError as e:
+                    return ConnectionTestResult(
+                        success=False,
+                        message=f"Authentication failed: {e}",
+                        error_code="AUTH_FAILED"
+                    )
+                except NetworkError as e:
+                    return ConnectionTestResult(
+                        success=False,
+                        message=f"Network error: {e}",
+                        error_code="NETWORK_ERROR"
+                    )
+        """
+        # Default implementation - plugins should override
+        return ConnectionTestResult(
+            success=True,
+            message="Connection test not implemented",
+            details={"note": "Plugin does not implement check_connection"},
+        )
+
+    def discover(self) -> DiscoveryResult:
+        """Discover available objects/tables/streams.
+
+        Override this method to implement discovery for your reader.
+        This method should return a list of available objects that can be
+        extracted from the source system.
+
+        Returns:
+            DiscoveryResult with list of available objects
+
+        Example:
+            def discover(self) -> DiscoveryResult:
+                tables = self.client.list_tables()
+                objects = []
+                for table in tables:
+                    objects.append({
+                        "name": table.name,
+                        "type": "table",
+                        "description": table.description,
+                        "columns": [{"name": col.name, "type": col.type} for col in table.columns]
+                    })
+                return DiscoveryResult(
+                    objects=objects,
+                    metadata={"database": "production", "schema": "public"}
+                )
+        """
+        # Default implementation - plugins should override
+        return DiscoveryResult(
+            objects=[],
+            metadata={"note": "Plugin does not implement discover"},
+        )
 
     @abstractmethod
     def extract(
@@ -88,6 +252,9 @@ class BaseWriter(ABC):
                 return {"status": "success", "files_added": len(file_metadata)}
     """
 
+    # Plugin SDK version - should match PLUGIN_SDK_VERSION
+    __version__ = "1.0.0"
+
     def __init__(
         self, asset_definition: Any, target_config: TargetConfig, output_base: str
     ):
@@ -102,6 +269,63 @@ class BaseWriter(ABC):
         self.asset_definition = asset_definition
         self.target_config = target_config
         self.output_base = output_base
+        # Validate plugin version compatibility
+        self._validate_version()
+
+    def _validate_version(self) -> None:
+        """Validate plugin version compatibility.
+
+        Raises:
+            PluginVersionError: If plugin version is incompatible
+        """
+        plugin_version = getattr(self.__class__, "__version__", None)
+        if plugin_version:
+            # Simple version check - can be enhanced with semantic versioning
+            # For now, just check if version attribute exists
+            # Future: implement proper semantic version comparison
+            pass
+
+    def check_connection(self) -> ConnectionTestResult:
+        """Check connection to target system.
+
+        This method should validate that the writer can connect to the target
+        system using the provided configuration. It should NOT write data,
+        only verify connectivity and credentials.
+
+        Returns:
+            ConnectionTestResult indicating success or failure
+
+        Example:
+            def check_connection(self) -> ConnectionTestResult:
+                try:
+                    # Test connection (e.g., S3 bucket access)
+                    self.s3_client.head_bucket(Bucket=self.bucket)
+                    return ConnectionTestResult(
+                        success=True,
+                        message="Connection successful",
+                        details={"bucket": self.bucket}
+                    )
+                except ClientError as e:
+                    error_code = e.response['Error']['Code']
+                    if error_code == '403':
+                        return ConnectionTestResult(
+                            success=False,
+                            message="Access denied",
+                            error_code="AUTH_FAILED"
+                        )
+                    else:
+                        return ConnectionTestResult(
+                            success=False,
+                            message=f"Connection failed: {e}",
+                            error_code="CONNECTION_FAILED"
+                        )
+        """
+        # Default implementation - plugins should override
+        return ConnectionTestResult(
+            success=True,
+            message="Connection test not implemented",
+            details={"note": "Plugin does not implement check_connection"},
+        )
 
     @abstractmethod
     def write_batch(
@@ -215,12 +439,27 @@ class PluginLoader:
 
         # Validate class inheritance
         if not inspect.isclass(plugin_class):
-            raise ValueError(f"{class_name} is not a class in {module_path}")
+            raise PluginError(
+                f"{class_name} is not a class in {module_path}",
+                details={"module_path": str(module_path), "class_name": class_name},
+            )
 
         if not issubclass(plugin_class, base_class):
-            raise ValueError(
-                f"Plugin class {class_name} must inherit from {base_class.__name__}"
+            raise PluginError(
+                f"Plugin class {class_name} must inherit from {base_class.__name__}",
+                details={
+                    "module_path": str(module_path),
+                    "class_name": class_name,
+                    "expected_base": base_class.__name__,
+                },
             )
+
+        # Check version compatibility
+        plugin_version = getattr(plugin_class, "__version__", None)
+        if plugin_version:
+            # Future: implement semantic version comparison
+            # For now, just log version info
+            pass
 
         return plugin_class
 

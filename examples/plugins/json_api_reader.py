@@ -39,6 +39,8 @@ class JSONAPIReader(BaseReader):
           objects: ["users", "orders"]
     """
     
+    __version__ = "1.0.0"  # Plugin version
+    
     def __init__(self, source_config):
         """Initialize JSON API reader.
         
@@ -63,6 +65,91 @@ class JSONAPIReader(BaseReader):
         engine_opts = source_config.engine.get("options", {}) if source_config.engine else {}
         self.page_size = engine_opts.get("page_size", 100)
         self.max_pages = engine_opts.get("max_pages")
+    
+    def check_connection(self):
+        """Test connection to API.
+        
+        Returns:
+            ConnectionTestResult indicating success or failure
+        """
+        from dativo_ingest.plugins import ConnectionTestResult
+        
+        try:
+            # Try to hit the base URL or a health endpoint
+            response = self.session.get(
+                f"{self.base_url}/health" if self.base_url.endswith("/v1") else self.base_url,
+                timeout=self.timeout
+            )
+            
+            if response.status_code == 200:
+                return ConnectionTestResult(
+                    success=True,
+                    message="API connection successful",
+                    details={"status_code": response.status_code}
+                )
+            elif response.status_code == 401:
+                return ConnectionTestResult(
+                    success=False,
+                    message="Authentication failed",
+                    error_code="AUTH_FAILED"
+                )
+            elif response.status_code == 403:
+                return ConnectionTestResult(
+                    success=False,
+                    message="Insufficient permissions",
+                    error_code="INSUFFICIENT_PERMISSIONS"
+                )
+            else:
+                return ConnectionTestResult(
+                    success=False,
+                    message=f"API returned status {response.status_code}",
+                    error_code="CONNECTION_ERROR"
+                )
+        except requests.exceptions.Timeout:
+            return ConnectionTestResult(
+                success=False,
+                message=f"Connection timeout after {self.timeout}s",
+                error_code="TIMEOUT_ERROR"
+            )
+        except requests.exceptions.ConnectionError as e:
+            return ConnectionTestResult(
+                success=False,
+                message=f"Network error: {str(e)}",
+                error_code="NETWORK_ERROR"
+            )
+        except Exception as e:
+            return ConnectionTestResult(
+                success=False,
+                message=f"Unexpected error: {str(e)}",
+                error_code="CONNECTION_ERROR"
+            )
+    
+    def discover(self):
+        """Discover available API endpoints.
+        
+        Returns:
+            DiscoveryResult with available objects
+        """
+        from dativo_ingest.plugins import DiscoveryResult
+        
+        # If objects are specified in config, return those
+        objects = self.source_config.objects or []
+        
+        discovered = []
+        for obj_name in objects:
+            discovered.append({
+                "name": obj_name,
+                "type": "endpoint",
+                "description": f"API endpoint: {obj_name}"
+            })
+        
+        return DiscoveryResult(
+            objects=discovered,
+            metadata={
+                "base_url": self.base_url,
+                "api_version": "v1"
+            }
+        )
     
     def extract(
         self, state_manager: Optional[IncrementalStateManager] = None
