@@ -94,6 +94,74 @@ class TestWriter(BaseWriter):
         assert len(metadata) == 1
         assert metadata[0]["path"] == "test.dat"
 
+    def test_load_reader_from_cloud_uri(self, tmp_path, monkeypatch):
+        """Test loading a Python reader from cloud storage URI."""
+        plugin_code = """
+from dativo_ingest.plugins import BaseReader
+
+class CloudReader(BaseReader):
+    def extract(self, state_manager=None):
+        yield [{"id": 42}]
+"""
+
+        cached_path = tmp_path / "cache" / "cloud_reader.py"
+        cached_path.parent.mkdir(parents=True, exist_ok=True)
+        cached_path.write_text(plugin_code)
+
+        monkeypatch.setattr(
+            "dativo_ingest.plugins.resolve_plugin_path",
+            lambda path: cached_path,
+        )
+
+        reader_class = PluginLoader.load_reader(
+            "s3://plugins/cloud_reader.py:CloudReader"
+        )
+        assert reader_class.__name__ == "CloudReader"
+        records = list(reader_class(SourceConfig(type="test")).extract())
+        assert records[0][0]["id"] == 42
+
+    def test_load_rust_reader_from_cloud_uri(self, tmp_path, monkeypatch):
+        """Test loading a Rust reader from cloud storage without touching ctypes."""
+        lib_path = tmp_path / "libcloud_reader.so"
+        lib_path.write_bytes(b"fake")
+
+        monkeypatch.setattr(
+            "dativo_ingest.plugins.resolve_plugin_path",
+            lambda path: lib_path,
+        )
+
+        import sys
+        import types
+
+        fake_bridge = types.ModuleType("dativo_ingest.rust_plugin_bridge")
+
+        def fake_reader_wrapper(_lib_path, _func_name):
+            class DummyReader(BaseReader):
+                def extract(self, state_manager=None):
+                    yield [{"source": "rust"}]
+
+            return DummyReader
+
+        def fake_writer_wrapper(_asset, _target, _output_base):
+            class DummyWriter(BaseWriter):
+                def write_batch(self, records, file_counter):
+                    return [{"path": "dummy", "records": len(records)}]
+
+            return DummyWriter
+
+        fake_bridge.create_rust_reader_wrapper = fake_reader_wrapper
+        fake_bridge.create_rust_writer_wrapper = fake_writer_wrapper
+        monkeypatch.setitem(
+            sys.modules, "dativo_ingest.rust_plugin_bridge", fake_bridge
+        )
+
+        reader_class = PluginLoader.load_reader(
+            "gs://plugins/libcloud_reader.so:create_reader"
+        )
+        reader = reader_class(SourceConfig(type="test"))
+        batches = list(reader.extract())
+        assert batches[0][0]["source"] == "rust"
+
     def test_invalid_path_format(self):
         """Test error handling for invalid path format."""
         with pytest.raises(ValueError, match="must be in format"):

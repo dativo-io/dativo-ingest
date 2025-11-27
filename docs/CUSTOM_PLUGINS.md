@@ -435,6 +435,27 @@ Examples:
 - `./custom/writers/parquet_writer.py:OptimizedParquetWriter`
 - `/workspace/plugins/delta_writer.py:DeltaLakeWriter`
 
+### Cloud Storage Paths (AWS & GCP)
+
+You can host plugin artifacts in S3 or Google Cloud Storage and reference them
+directly in your job configuration:
+
+```yaml
+source:
+  custom_reader: "s3://acme-plugins/readers/json_reader.py:JSONReader"
+
+target:
+  custom_writer: "gs://acme-plugins/writers/libparquet_writer.so:create_writer"
+```
+
+At runtime the plugin files are downloaded to a local cache and treated like
+on-disk modules. Use the following environment variables to control caching:
+
+- `DATIVO_PLUGIN_CACHE_DIR`: Override the default cache directory (defaults to
+  the system temporary directory).
+- `DATIVO_PLUGIN_REFRESH=true`: Force a fresh download on the next run, useful
+  when rolling out a new plugin version.
+
 ## Advanced Examples
 
 ### Example 1: Custom JSON Reader with Pagination

@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Seccomp profiles for security
   - Automatic sandboxing in cloud mode
   - Comprehensive documentation in `docs/PLUGIN_SANDBOXING.md`
+- **Cloud Plugin Storage**: Optional S3 (`s3://`) and GCS (`gs://`) support for
+  custom Python and Rust plugins. `PluginLoader` now downloads remote artifacts
+  into a configurable cache (`DATIVO_PLUGIN_CACHE_DIR`) with opt-in refresh
+  controls (`DATIVO_PLUGIN_REFRESH`). Documentation and tests cover end-to-end
+  usage.
 - **Connection Testing**: `check_connection()` method in BaseReader/BaseWriter
   - CLI command: `dativo check --config job.yaml [--json] [--verbose]`
   - Validates credentials before job execution

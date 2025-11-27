@@ -2,9 +2,13 @@
 
 import importlib.util
 import inspect
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Type
+from urllib.parse import urlparse
+
+from .cloud_plugins import is_cloud_uri, resolve_plugin_path
 
 from .config import SourceConfig, TargetConfig
 from .exceptions import PluginError, PluginVersionError
@@ -371,6 +375,22 @@ class PluginLoader:
     """
 
     @staticmethod
+    def _extract_suffix(module_path_str: str) -> str:
+        """Extract file suffix from local or remote plugin path."""
+        if is_cloud_uri(module_path_str):
+            parsed = urlparse(os.path.expandvars(module_path_str))
+            return Path(parsed.path).suffix.lower()
+        return Path(os.path.expandvars(module_path_str)).suffix.lower()
+
+    @staticmethod
+    def _resolve_plugin_source(module_path_str: str) -> Path:
+        """Materialize plugin source locally, handling cloud URIs transparently."""
+        expanded = os.path.expandvars(module_path_str)
+        if is_cloud_uri(expanded):
+            return resolve_plugin_path(expanded)
+        return Path(expanded).expanduser()
+
+    @staticmethod
     def _detect_plugin_type(plugin_path: str) -> str:
         """Detect plugin type from file extension.
 
@@ -380,12 +400,12 @@ class PluginLoader:
         Returns:
             Plugin type: "python" or "rust"
         """
-        module_path_str = plugin_path.split(":")[0]
-        path = Path(module_path_str)
+        module_path_str = plugin_path.rsplit(":", 1)[0]
+        suffix = PluginLoader._extract_suffix(module_path_str)
 
-        if path.suffix == ".py":
+        if suffix == ".py":
             return "python"
-        elif path.suffix in [".so", ".dylib", ".dll"]:
+        elif suffix in [".so", ".dylib", ".dll"]:
             return "rust"
         else:
             # Default to Python for backward compatibility
@@ -413,7 +433,7 @@ class PluginLoader:
             )
 
         module_path_str, class_name = plugin_path.rsplit(":", 1)
-        module_path = Path(module_path_str)
+        module_path = PluginLoader._resolve_plugin_source(module_path_str)
 
         if not module_path.exists():
             raise ValueError(f"Plugin module not found: {module_path}")
@@ -484,33 +504,42 @@ class PluginLoader:
             )
 
         lib_path_str, func_name = plugin_path.rsplit(":", 1)
-        lib_path = Path(lib_path_str)
+        expanded_lib_path = os.path.expandvars(lib_path_str)
+        is_remote = is_cloud_uri(expanded_lib_path)
+        original_path = Path(expanded_lib_path).expanduser()
+        lib_path = PluginLoader._resolve_plugin_source(lib_path_str)
 
         # If the specified file doesn't exist, try alternative extensions
         if not lib_path.exists():
+            if is_remote:
+                raise ValueError(
+                    f"Rust plugin library not found: {lib_path_str}\n"
+                    f"Tried: {lib_path}"
+                )
+
             # Try .dylib (macOS), .so (Linux), .dll (Windows)
             alternatives = []
-            if lib_path.suffix == ".so":
+            if original_path.suffix == ".so":
                 alternatives = [
-                    lib_path.with_suffix(".dylib"),
-                    lib_path.with_suffix(".dll"),
+                    original_path.with_suffix(".dylib"),
+                    original_path.with_suffix(".dll"),
                 ]
-            elif lib_path.suffix == ".dylib":
+            elif original_path.suffix == ".dylib":
                 alternatives = [
-                    lib_path.with_suffix(".so"),
-                    lib_path.with_suffix(".dll"),
+                    original_path.with_suffix(".so"),
+                    original_path.with_suffix(".dll"),
                 ]
-            elif lib_path.suffix == ".dll":
+            elif original_path.suffix == ".dll":
                 alternatives = [
-                    lib_path.with_suffix(".so"),
-                    lib_path.with_suffix(".dylib"),
+                    original_path.with_suffix(".so"),
+                    original_path.with_suffix(".dylib"),
                 ]
             else:
                 # No extension or unknown extension, try all
                 alternatives = [
-                    lib_path.with_suffix(".so"),
-                    lib_path.with_suffix(".dylib"),
-                    lib_path.with_suffix(".dll"),
+                    original_path.with_suffix(".so"),
+                    original_path.with_suffix(".dylib"),
+                    original_path.with_suffix(".dll"),
                 ]
 
             # Try alternatives

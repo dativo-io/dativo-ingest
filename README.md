@@ -274,6 +274,10 @@ Dativo supports custom readers and writers in **Python and Rust**, with enterpri
 
 ### Key Features
 
+- **Cloud Plugin Storage**: Reference custom plugins directly from `s3://` or `gs://`
+  URIs. Files are downloaded into a local cache (`DATIVO_PLUGIN_CACHE_DIR`,
+  defaulting to system temp). Set `DATIVO_PLUGIN_REFRESH=true` to force a fresh
+  download when rolling out plugin updates.
 - **Plugin Sandboxing**: Docker-based isolation for Python plugins in cloud mode
   - Resource limits (CPU, memory)
   - Network isolation
