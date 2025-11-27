@@ -24,23 +24,45 @@ dativo start orchestrated --runner-config tests/fixtures/runner.yaml
 - ✅ Structured JSON logging is implemented (`src/dativo_ingest/logging.py`)
 - ✅ Secret redaction is supported
 - ✅ Tenant tagging is supported
-- ❌ Metrics collection (not yet implemented)
+- ✅ Cloud log streaming to AWS CloudWatch (`observability.aws`) and GCP Cloud Logging (`observability.gcp`)
+- ✅ Job-level CloudWatch metrics (ExecutionTimeSeconds, JobStatus, RecordsProcessed, FilesWritten) when `metrics_namespace` is provided
 - ❌ Distributed tracing (not yet implemented)
 
 **Required Actions**:
 - Initialize logging with appropriate level and redaction settings
-- Set up metrics exporter (e.g., Prometheus, StatsD)
-- Initialize tracing (e.g., OpenTelemetry)
-- Configure observability endpoints
+- Initialize tracing (e.g., OpenTelemetry) for future distributed traces
 
 **Implementation**:
 ```python
-# In startup sequence
+# In startup sequence / job execution
 from dativo_ingest.logging import setup_logging
-logger = setup_logging(level="INFO", redact_secrets=True)
+from dativo_ingest.observability import ObservabilityManager
 
-# TODO: Add metrics initialization
-# TODO: Add tracing initialization
+logger = setup_logging(level="INFO", redact_secrets=True, tenant_id=job_config.tenant_id)
+observability = ObservabilityManager(job_config, logger=logger, redact_secrets=True)
+observability.start()
+
+# ... run job ...
+
+observability.notify_completion(exit_code=0, status="success", metadata={"total_records": 100})
+observability.close()
+```
+
+Add the following block to a job config to enable cloud destinations:
+
+```yaml
+logging:
+  level: INFO
+  redaction: true
+
+observability:
+  aws:
+    region: us-east-1
+    log_group: "/dativo/prod"
+    metrics_namespace: "Dativo/Ingest"
+  gcp:
+    project_id: "prod-gcp-project"
+    log_name: "dativo_jobs"
 ```
 
 ### 2. Load Secrets from Secrets Storage

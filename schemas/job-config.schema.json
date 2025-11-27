@@ -191,6 +191,98 @@
         }
       }
     },
+    "observability": {
+      "type": "object",
+      "description": "Optional cloud observability destinations (AWS CloudWatch and/or GCP Cloud Logging)",
+      "properties": {
+        "aws": {
+          "type": "object",
+          "required": ["region", "log_group"],
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "region": {
+              "type": "string",
+              "description": "AWS region for CloudWatch (e.g., us-east-1)"
+            },
+            "log_group": {
+              "type": "string",
+              "description": "CloudWatch Log Group name"
+            },
+            "log_stream_prefix": {
+              "type": "string",
+              "description": "Prefix applied to generated log stream names"
+            },
+            "log_stream_name": {
+              "type": "string",
+              "description": "Optional override for the log stream name"
+            },
+            "create_log_group": {
+              "type": "boolean",
+              "default": true,
+              "description": "Create the log group automatically if it does not exist"
+            },
+            "retention_days": {
+              "type": ["integer", "null"],
+              "minimum": 1,
+              "description": "Retention policy in days for the log group"
+            },
+            "metrics_namespace": {
+              "type": ["string", "null"],
+              "description": "Optional CloudWatch namespace used for emitting job-level metrics"
+            },
+            "metric_dimensions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Additional CloudWatch metric dimensions (TenantId and Job are always set)"
+            }
+          },
+          "additionalProperties": false
+        },
+        "gcp": {
+          "type": "object",
+          "required": ["project_id"],
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "project_id": {
+              "type": "string",
+              "description": "GCP project that owns Cloud Logging destination"
+            },
+            "log_name": {
+              "type": "string",
+              "default": "dativo_ingest",
+              "description": "Cloud Logging log name"
+            },
+            "credentials_path": {
+              "type": ["string", "null"],
+              "description": "Optional path to a service-account JSON key"
+            },
+            "resource_type": {
+              "type": "string",
+              "default": "global",
+              "description": "Monitored resource type for Cloud Logging entries"
+            },
+            "labels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Labels applied to every Cloud Logging entry"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
     "catalog": {
       "type": "object",
       "description": "Data catalog configuration for lineage and metadata push (optional)",

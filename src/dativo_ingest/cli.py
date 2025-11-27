@@ -18,6 +18,7 @@ from .exceptions import (
 )
 from .infrastructure import validate_infrastructure
 from .logging import get_logger, setup_logging, update_logging_settings
+from .observability import ObservabilityManager
 from .secrets import load_secrets
 from .validator import ConnectorValidator, IncrementalStateManager
 
@@ -319,6 +320,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
     # Always update tenant_id to ensure correct tenant context for this job
     log_level = job_config.logging.level if job_config.logging else None
     redact = job_config.logging.redaction if job_config.logging else None
+    redact_flag = redact if redact is not None else False
 
     # Update logging settings (tenant_id always updated, level/redact only if specified)
     logger = update_logging_settings(
@@ -326,6 +328,26 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         redact_secrets=redact,
         tenant_id=job_config.tenant_id,
     )
+    observability_manager = ObservabilityManager(
+        job_config,
+        logger=logger,
+        redact_secrets=redact_flag,
+    )
+    observability_manager.start()
+
+    def finalize_and_return(
+        exit_code: int,
+        status: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Emit observability signals and tear down handlers before exiting."""
+        observability_manager.notify_completion(
+            exit_code=exit_code,
+            status=status,
+            metadata=metadata,
+        )
+        observability_manager.close()
+        return exit_code
 
     logger.info(
         "Starting job execution",
@@ -353,7 +375,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 "event_type": "job_error",
             },
         )
-        return e.code if e.code else 2
+        return finalize_and_return(e.code if e.code else 2, "failed")
 
     # Validate connector and mode restrictions
     try:
@@ -374,7 +396,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 "event_type": "job_error",
             },
         )
-        return e.code if e.code else 2
+        return finalize_and_return(e.code if e.code else 2, "failed")
 
     # Load asset definition
     try:
@@ -393,7 +415,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 "event_type": "asset_error",
             },
         )
-        return 2
+        return finalize_and_return(2, "failed")
 
     # Initialize state manager for incremental syncs
     state_manager = None
@@ -479,7 +501,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                         "Stripe connector requires connector_recipe for Airbyte engine",
                         extra={"event_type": "extractor_error"},
                     )
-                    return 2
+                    return finalize_and_return(2, "failed")
             elif source_config.type == "hubspot":
                 # HubSpot uses Airbyte but has custom extractor for metadata
                 if connector_recipe:
@@ -493,7 +515,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                         "HubSpot connector requires connector_recipe for Airbyte engine",
                         extra={"event_type": "extractor_error"},
                     )
-                    return 2
+                    return finalize_and_return(2, "failed")
             elif source_config.type == "csv":
                 from .connectors.csv_extractor import CSVExtractor
 
@@ -562,7 +584,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                         "event_type": "extractor_error",
                     },
                 )
-                return 2
+                return finalize_and_return(2, "failed")
 
         # Extract source tags from extractor if available (for three-level tag hierarchy)
         if hasattr(extractor, "extract_metadata"):
@@ -616,7 +638,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             },
             exc_info=True,
         )
-        return 2
+        return finalize_and_return(2, "failed")
 
     # Initialize schema validator
     try:
@@ -638,7 +660,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 "event_type": "validator_error",
             },
         )
-        return 2
+        return finalize_and_return(2, "failed")
 
     # Initialize writer based on target config or custom writer
     try:
@@ -723,7 +745,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             },
             exc_info=True,
         )
-        return 2
+        return finalize_and_return(2, "failed")
 
     # Initialize Iceberg committer (only if catalog is configured)
     committer = None
@@ -893,7 +915,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                             "error_summary": error_summary,
                         },
                     )
-                    return 2
+                    return finalize_and_return(2, "failed")
 
             # Write valid records to Parquet
             if valid_records:
@@ -935,7 +957,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                             "event_type": "custom_writer_commit_failed",
                         },
                     )
-                    return 2
+                    return finalize_and_return(2, "failed")
             elif committer:
                 try:
                     commit_result = committer.commit_files(all_file_metadata)
@@ -990,7 +1012,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                             "event_type": "upload_failed",
                         },
                     )
-                    return 2
+                    return finalize_and_return(2, "failed")
         else:
             logger.warning(
                 "No files to commit",
@@ -1083,6 +1105,16 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 )
                 # Don't fail the job if catalog push fails
 
+        job_metadata = {
+            "records_extracted": total_records,
+            "records_valid": total_valid_records,
+            "records_invalid": total_records - total_valid_records,
+            "files_written": total_files_written,
+            "total_bytes": total_bytes,
+            "validation_mode": validation_mode,
+            "has_errors": has_errors,
+        }
+
         # Emit enhanced metadata
         logger.info(
             "Job execution completed",
@@ -1093,20 +1125,18 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 "total_bytes": total_bytes,
                 "exit_code": exit_code,
                 "event_type": "job_finished",
-                # Enhanced metadata for observability
-                "metadata": {
-                    "records_extracted": total_records,
-                    "records_valid": total_valid_records,
-                    "records_invalid": total_records - total_valid_records,
-                    "files_written": total_files_written,
-                    "total_bytes": total_bytes,
-                    "validation_mode": validation_mode,
-                    "has_errors": has_errors,
-                },
+                "metadata": job_metadata,
             },
         )
 
-        return exit_code
+        status_label = "success" if exit_code == 0 else ("partial" if exit_code == 1 else "failed")
+        observability_summary = {
+            "total_records": total_records,
+            "files_written": total_files_written,
+            "total_bytes": total_bytes,
+        }
+
+        return finalize_and_return(exit_code, status_label, metadata=observability_summary)
 
     except Exception as e:
         logger.error(
@@ -1116,7 +1146,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             },
             exc_info=True,
         )
-        return 2
+        return finalize_and_return(2, "failed")
 
 
 def check_command(args: argparse.Namespace) -> int:

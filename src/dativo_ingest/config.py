@@ -450,6 +450,80 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class AWSObservabilityConfig(BaseModel):
+    """AWS CloudWatch observability settings."""
+
+    enabled: bool = True
+    region: str = Field(
+        ...,
+        description="AWS region for CloudWatch Logs/metrics (e.g., us-east-1)",
+    )
+    log_group: str = Field(
+        ..., description="CloudWatch Logs group name (created if enabled)"
+    )
+    log_stream_prefix: Optional[str] = Field(
+        default="dativo",
+        description="Prefix applied to generated log stream names",
+    )
+    log_stream_name: Optional[str] = Field(
+        default=None,
+        description="Override log stream name (defaults to `<prefix>/<tenant>/<job>`)",
+    )
+    create_log_group: bool = Field(
+        default=True, description="Create the log group automatically if missing"
+    )
+    retention_days: Optional[int] = Field(
+        default=None,
+        description="Retention policy (in days) for the log group. Leave unset to keep AWS default.",
+    )
+    metrics_namespace: Optional[str] = Field(
+        default=None,
+        description="Optional CloudWatch namespace used for emitting job-level metrics",
+    )
+    metric_dimensions: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Additional CloudWatch metric dimensions (TenantId and Job are always added)",
+    )
+
+
+class GCPObservabilityConfig(BaseModel):
+    """GCP Cloud Logging observability settings."""
+
+    enabled: bool = True
+    project_id: str = Field(..., description="GCP project that owns Cloud Logging sink")
+    log_name: str = Field(
+        default="dativo_ingest",
+        description="Cloud Logging log name (used for routing and log-based metrics)",
+    )
+    credentials_path: Optional[str] = Field(
+        default=None,
+        description="Optional path to a service-account JSON file (defaults to Application Default Credentials)",
+    )
+    resource_type: str = Field(
+        default="global",
+        description="Cloud Logging monitored resource type (e.g., global, k8s_container)",
+    )
+    labels: Optional[Dict[str, str]] = Field(
+        default=None, description="Additional labels attached to every Cloud Logging entry"
+    )
+
+
+class ObservabilityConfig(BaseModel):
+    """Cloud observability destinations."""
+
+    aws: Optional[AWSObservabilityConfig] = None
+    gcp: Optional[GCPObservabilityConfig] = None
+
+    @model_validator(mode="after")
+    def validate_destinations(self) -> "ObservabilityConfig":
+        """Require at least one provider when observability block is defined."""
+        if not self.aws and not self.gcp:
+            raise ValueError(
+                "observability must define at least one provider block ('aws' and/or 'gcp')"
+            )
+        return self
+
+
 class CatalogConfig(BaseModel):
     """Data catalog configuration for lineage and metadata push."""
 
@@ -537,6 +611,7 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+    observability: Optional[ObservabilityConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

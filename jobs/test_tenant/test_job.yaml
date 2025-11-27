@@ -34,3 +34,16 @@ schema_validation_mode: strict  # or 'warn'
 logging:
   redaction: true
   level: INFO
+
+# Observability (optional - disable by default for local testing)
+observability:
+  aws:
+    enabled: false
+    region: us-east-1
+    log_group: "/dativo/test_tenant"
+    log_stream_prefix: "jobs/test"
+    metrics_namespace: "Dativo/Ingest"
+  gcp:
+    enabled: false
+    project_id: "your-gcp-project-id"
+    log_name: "dativo_test_job"

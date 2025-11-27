@@ -220,6 +220,32 @@ target:
       prefix: "raw/stripe/customers"
 ```
 
+### Logging & Cloud Observability
+
+Every job can opt into structured logging only (default) or also fan out logs/metrics to managed services:
+
+```yaml
+logging:
+  level: INFO
+  redaction: true
+
+observability:
+  aws:
+    region: us-east-1          # Required
+    log_group: "/dativo/jobs"  # Required
+    log_stream_prefix: "prod"  # Optional (defaults to dativo/<tenant>/<job>)
+    metrics_namespace: "Dativo/Ingest"  # Optional job-level CloudWatch metrics
+  gcp:
+    project_id: "my-gcp-project"   # Required
+    log_name: "dativo_jobs"        # Optional (defaults to dativo_ingest)
+    credentials_path: "/secrets/prod/gcp.json"  # Optional service-account override
+```
+
+- **AWS CloudWatch**: when configured, Dativo streams all JSON logs to the provided log group/stream and (optionally) emits job-level metrics (`ExecutionTimeSeconds`, `JobStatus`, `RecordsProcessed`, `FilesWritten`) to the namespace you choose.
+- **GCP Cloud Logging**: when configured, structured logs stream directly to Cloud Logging using the provided project/log name. Credentials fall back to ADC but can be overridden per job.
+
+Set `enabled: false` on either provider to keep template values without activating them (helpful for sample jobs).
+
 **Asset Definition** - ODCS v3.0.2 schema with governance:
 ```yaml
 $schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json

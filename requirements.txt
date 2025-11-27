@@ -29,6 +29,15 @@ pynessie>=0.60.0
 # Storage access
 boto3>=1.28.0
 
+# Cloud integrations
+google-api-python-client>=2.0.0
+google-auth>=2.0.0
+google-cloud-secret-manager>=2.20.0
+google-cloud-logging>=3.8.0
+
+# Observability
+watchtower>=3.0.0
+
 # Data catalog integration (optional)
 # openmetadata-ingestion ~= 1.3.0  # Uncomment if using OpenMetadata catalog
 
