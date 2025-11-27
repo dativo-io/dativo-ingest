@@ -639,14 +639,16 @@ try:
         sys.exit(1)
 
     # Instantiate plugin class with provided arguments
+    # kwargs_data is ALWAYS for instantiation (never passed to method call)
+    # args_data is for instantiation if kwargs_data is empty, otherwise for method call
     try:
-        # Try to instantiate with args and kwargs
-        if args_data and kwargs_data:
-            instance = plugin_class(*args_data, **kwargs_data)
-        elif args_data:
-            instance = plugin_class(*args_data)
-        elif kwargs_data:
+        if kwargs_data:
+            # kwargs provided - use them for instantiation, args_data might be for method call
             instance = plugin_class(**kwargs_data)
+            # args_data will be used for method call if provided
+        elif args_data:
+            # Only args provided - use them for instantiation
+            instance = plugin_class(*args_data)
         else:
             # No arguments - try to instantiate without args (may fail)
             instance = plugin_class()
@@ -662,14 +664,14 @@ try:
     # Execute the method
     try:
         method = getattr(instance, '{method_name}')
-        # Call method - args_data was used for instantiation, so only pass kwargs to method
-        # This allows methods like check_connection() that take no args to work correctly
-        has_kwargs = len(kwargs_data) > 0 if isinstance(kwargs_data, dict) else bool(kwargs_data)
-        
-        if has_kwargs:
-            result = method(**kwargs_data)
+        # Call method - kwargs_data was used for instantiation only, never passed to method
+        # args_data is used for method call if kwargs_data was provided (otherwise it was used for instantiation)
+        if kwargs_data and args_data and len(args_data) > 0:
+            # kwargs were used for instantiation, so args are for method call
+            result = method(*args_data)
         else:
-            # No keyword arguments - call method without args
+            # No args for method call - call without args
+            # This works for methods like check_connection() that take no arguments
             result = method()
         
         # Serialize result to JSON

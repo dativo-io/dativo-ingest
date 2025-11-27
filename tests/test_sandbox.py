@@ -425,6 +425,55 @@ class TestReader(BaseReader):
         with pytest.raises(SandboxError, match="Plugin execution failed"):
             sandbox.execute("check_connection")
 
+    @patch("dativo_ingest.sandbox.docker.from_env")
+    def test_execute_check_connection_with_source_config(self, mock_docker, tmp_path):
+        """Test that check_connection works when source_config is passed as kwarg for instantiation.
+
+        This verifies the fix for the bug where kwargs_data was incorrectly passed to method calls.
+        The source_config should be used for plugin instantiation only, not passed to check_connection().
+        """
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_code = """
+from dativo_ingest.plugins import BaseReader, ConnectionTestResult
+
+class TestReader(BaseReader):
+    def check_connection(self):
+        # check_connection takes no arguments - this should work even if source_config
+        # was passed as a kwarg to execute() for instantiation
+        return ConnectionTestResult(
+            success=True,
+            message="Connection successful",
+            details={"test": "data"}
+        )
+"""
+        plugin_file.write_text(plugin_code)
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker.return_value = mock_client
+
+        # Mock container
+        mock_container = Mock()
+        mock_container.wait.return_value = {"StatusCode": 0}
+        mock_container.logs.return_value = b'{"status": "success", "result": {"success": true, "message": "Connection successful", "details": {"test": "data"}}}'
+        mock_client.containers.create.return_value = mock_container
+
+        sandbox = PluginSandbox(str(plugin_file))
+        # This is how check_connection is actually called - with source_config as kwarg
+        # The source_config should be used for instantiation, not passed to check_connection()
+        source_config = {"type": "test", "connection": {}}
+        result = sandbox.execute("check_connection", source_config=source_config)
+
+        # Verify Docker was called
+        mock_client.containers.create.assert_called_once()
+        mock_container.start.assert_called_once()
+        mock_container.wait.assert_called_once()
+
+        # Verify result is parsed correctly
+        assert isinstance(result, dict)
+        assert result.get("success") is True or "success" in str(result)
+
 
 class TestScriptContentValidation:
     """Test that generated scripts have correct content."""
@@ -445,6 +494,34 @@ class TestScriptContentValidation:
         assert "kwargs_data" in script
         # Verify the arguments are actually used in method calls
         assert "method(" in script or "result = method" in script
+
+    def test_script_does_not_pass_kwargs_to_method_call(self, tmp_path):
+        """Test that kwargs_data is NOT passed to method calls (only used for instantiation).
+
+        This verifies the fix for the bug where kwargs_data was incorrectly passed to method calls.
+        Methods like check_connection() take no arguments, so kwargs should not be passed.
+        """
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        sandbox = PluginSandbox(str(plugin_file))
+        # Generate script with kwargs (like source_config) - these should be used for instantiation only
+        script = sandbox._generate_execution_script(
+            plugin_file.name, "check_connection", source_config={"type": "test"}
+        )
+
+        # Verify kwargs_data is used for instantiation
+        assert "kwargs_data" in script
+        assert (
+            "plugin_class(**kwargs_data)" in script
+            or "instance = plugin_class(**kwargs_data)" in script
+        )
+
+        # Verify kwargs_data is NOT passed to method call
+        # The method call should be method() or method(*args_data), not method(**kwargs_data)
+        assert "method(**kwargs_data)" not in script
+        # Verify method is called without kwargs
+        assert "result = method()" in script or "method()" in script
 
     def test_script_handles_plugin_instantiation(self, tmp_path):
         """Test that script properly handles plugin instantiation."""

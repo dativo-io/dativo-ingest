@@ -167,10 +167,10 @@ def main():
     try:
         print("Executing check_connection in sandbox...")
         # Create source_config dict (will be serialized to JSON)
-        # Pass as positional arg for __init__, not as kwarg to check_connection
+        # Pass as kwarg for instantiation, not as positional arg to check_connection
         source_config_dict = {"type": "test", "connection": {}}
         try:
-            result = sandbox.execute("check_connection", source_config_dict)
+            result = sandbox.execute("check_connection", source_config=source_config_dict)
         except Exception as e:
             print(f"❌ Execution error: {e}")
             # Try to get more details from the error
