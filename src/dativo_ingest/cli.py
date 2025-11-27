@@ -1008,6 +1008,75 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             else 0
         )
 
+        # Push lineage and metadata to catalog if configured
+        if job_config.catalog:
+            try:
+                from .catalog import CatalogFactory
+
+                catalog = CatalogFactory.create(
+                    job_config.catalog, asset_definition, job_config
+                )
+
+                # Ensure target entity exists
+                target_entity = catalog._extract_target_entity()
+                catalog.ensure_entity_exists(
+                    target_entity, schema=asset_definition.schema
+                )
+
+                # Push metadata if enabled
+                if job_config.catalog.push_metadata:
+                    tags = catalog._extract_tags()
+                    owners = catalog._extract_owners()
+                    description = catalog._extract_description()
+
+                    metadata_result = catalog.push_metadata(
+                        target_entity,
+                        tags=tags,
+                        owners=owners,
+                        description=description,
+                        custom_properties={
+                            "source_type": asset_definition.source_type,
+                            "asset_version": str(asset_definition.version),
+                            "tenant_id": job_config.tenant_id,
+                        },
+                    )
+                    logger.info(
+                        "Catalog metadata pushed",
+                        extra={
+                            "catalog_type": job_config.catalog.type,
+                            "status": metadata_result.get("status"),
+                            "event_type": "catalog_metadata_pushed",
+                        },
+                    )
+
+                # Push lineage if enabled
+                if job_config.catalog.push_lineage:
+                    source_entities = catalog._extract_source_entities()
+                    lineage_result = catalog.push_lineage(
+                        source_entities, target_entity, operation="ingest"
+                    )
+                    logger.info(
+                        "Catalog lineage pushed",
+                        extra={
+                            "catalog_type": job_config.catalog.type,
+                            "status": lineage_result.get("status"),
+                            "sources_count": len(source_entities),
+                            "event_type": "catalog_lineage_pushed",
+                        },
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to push to catalog: {e}",
+                    extra={
+                        "catalog_type": (
+                            job_config.catalog.type if job_config.catalog else None
+                        ),
+                        "event_type": "catalog_push_failed",
+                    },
+                    exc_info=True,
+                )
+                # Don't fail the job if catalog push fails
+
         # Emit enhanced metadata
         logger.info(
             "Job execution completed",

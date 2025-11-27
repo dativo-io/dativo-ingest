@@ -190,6 +190,42 @@
           "description": "Whether to redact sensitive information in logs"
         }
       }
+    },
+    "catalog": {
+      "type": "object",
+      "description": "Data catalog configuration for lineage and metadata push (optional)",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["openmetadata", "aws_glue", "databricks_unity", "nessie"],
+          "description": "Catalog type"
+        },
+        "connection": {
+          "type": "object",
+          "description": "Catalog connection configuration (varies by catalog type)",
+          "additionalProperties": true
+        },
+        "database": {
+          "type": "string",
+          "description": "Database/schema name (required for some catalogs)"
+        },
+        "table_name": {
+          "type": "string",
+          "description": "Table name override (defaults to asset name)"
+        },
+        "push_lineage": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to push lineage information"
+        },
+        "push_metadata": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to push metadata (tags, owners, etc.)"
+        }
+      },
+      "required": ["type", "connection"],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
