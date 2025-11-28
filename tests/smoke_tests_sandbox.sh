@@ -36,7 +36,7 @@ if ! docker info &> /dev/null; then
 fi
 
 # Verify Docker can pull images (test connectivity)
-if ! docker pull python:3.10-slim &> /dev/null; then
+if ! docker pull python:3.10 &> /dev/null; then
     echo -e "${YELLOW}⚠️  Warning: Cannot pull Docker images (may be network issue)${NC}"
     echo "   The test will try to use cached images if available"
 else
