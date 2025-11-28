@@ -312,10 +312,25 @@ class TestSandboxInitialization:
         assert sandbox.network_disabled is True
 
     @patch("dativo_ingest.sandbox.docker")
-    def test_sandbox_init_docker_error(self, mock_docker_module, tmp_path):
+    @patch("dativo_ingest.sandbox.Path")
+    def test_sandbox_init_docker_error(
+        self, mock_path_class, mock_docker_module, tmp_path
+    ):
         """Test sandbox initialization with Docker error."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
+
+        # Mock Path.home() to return a path where Colima socket doesn't exist
+        # Create a chain of mocks for the path operations using MagicMock
+        mock_colima_socket = MagicMock()
+        mock_colima_socket.exists.return_value = False
+        mock_default = MagicMock()
+        mock_default.__truediv__.return_value = mock_colima_socket
+        mock_colima = MagicMock()
+        mock_colima.__truediv__.return_value = mock_default
+        mock_home = MagicMock()
+        mock_home.__truediv__.return_value = mock_colima
+        mock_path_class.home.return_value = mock_home
 
         mock_docker_module.from_env.side_effect = Exception("Docker not available")
 
@@ -323,10 +338,25 @@ class TestSandboxInitialization:
             PluginSandbox(str(plugin_file))
 
     @patch("dativo_ingest.sandbox.docker")
-    def test_sandbox_init_docker_ping_fails(self, mock_docker_module, tmp_path):
+    @patch("dativo_ingest.sandbox.Path")
+    def test_sandbox_init_docker_ping_fails(
+        self, mock_path_class, mock_docker_module, tmp_path
+    ):
         """Test sandbox initialization when Docker ping fails."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
+
+        # Mock Path.home() to return a path where Colima socket doesn't exist
+        # Create a chain of mocks for the path operations using MagicMock
+        mock_colima_socket = MagicMock()
+        mock_colima_socket.exists.return_value = False
+        mock_default = MagicMock()
+        mock_default.__truediv__.return_value = mock_colima_socket
+        mock_colima = MagicMock()
+        mock_colima.__truediv__.return_value = mock_default
+        mock_home = MagicMock()
+        mock_home.__truediv__.return_value = mock_colima
+        mock_path_class.home.return_value = mock_home
 
         mock_client = Mock()
         mock_client.ping.side_effect = Exception("Connection failed")
