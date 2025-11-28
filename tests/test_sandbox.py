@@ -705,6 +705,12 @@ class TestImageNotFoundErrorHandling:
                 self.explanation = msg
 
         mock_image_error = MockImageNotFound("No such image: python:3.10")
+
+        # Mock images.get() to raise ImageNotFound (triggers pull attempt)
+        # Mock images.pull() to also raise ImageNotFound (pull fails)
+        # Mock containers.create() to raise ImageNotFound (diagnostic container creation fails)
+        mock_client.images.get.side_effect = mock_image_error
+        mock_client.images.pull.side_effect = mock_image_error
         mock_client.containers.create.side_effect = mock_image_error
 
         # Patch ImageNotFound to be our mock exception
@@ -714,11 +720,19 @@ class TestImageNotFoundErrorHandling:
             with pytest.raises(SandboxError) as exc_info:
                 sandbox.execute("check_connection")
 
-            # Verify error details
-            assert "Docker image not found" in str(exc_info.value)
-            assert "python:3.10" in str(exc_info.value)
+            # Verify error details - now it should say "Failed to pull" since we try to pull automatically
+            error_msg = str(exc_info.value)
+            assert (
+                "Failed to pull Docker image" in error_msg
+                or "Docker image not found" in error_msg
+            )
+            assert "python:3.10" in error_msg
             assert "docker pull" in str(exc_info.value)
-            assert exc_info.value.details.get("error_type") == "ImageNotFound"
+            # Error type is now ImagePullError since we try to pull automatically
+            assert exc_info.value.details.get("error_type") in [
+                "ImagePullError",
+                "ImageNotFound",
+            ]
 
     @patch("dativo_ingest.sandbox.docker")
     def test_execute_image_not_found_main_container(self, mock_docker_module, tmp_path):
@@ -788,7 +802,9 @@ class TestImageNotFoundErrorHandling:
         mock_main_container.start.side_effect = Exception("seccomp profile error")
 
         mock_unconfined_container = Mock()
-        mock_unconfined_container.start.side_effect = Exception("unconfined seccomp also failed")
+        mock_unconfined_container.start.side_effect = Exception(
+            "unconfined seccomp also failed"
+        )
 
         mock_image_error = MockImageNotFound("No such image: python:3.10")
 
@@ -1043,7 +1059,9 @@ class TestSeccompRetry:
         mock_main_container_first.start.side_effect = Exception("seccomp profile error")
 
         mock_unconfined_container = Mock()
-        mock_unconfined_container.start.side_effect = Exception("unconfined seccomp also failed")
+        mock_unconfined_container.start.side_effect = Exception(
+            "unconfined seccomp also failed"
+        )
 
         mock_main_container_retry = Mock()
         mock_main_container_retry.wait.return_value = {"StatusCode": 0}
