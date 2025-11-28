@@ -418,11 +418,32 @@ class RustPluginSandbox:
         )
 
         # Create and run container
+        # First, ensure the Docker image is available (pull if needed)
+        image_name = container_config.get("image", self.container_image)
+        try:
+            self.docker_client.images.get(image_name)
+        except ImageNotFound:
+            # Image not found - try to pull it automatically
+            try:
+                self.docker_client.images.pull(image_name)
+            except Exception as pull_error:
+                # Pull failed - raise helpful error
+                raise SandboxError(
+                    f"Failed to pull Docker image {image_name}: {pull_error}. "
+                    f"Please ensure the image is available or pull it manually with 'docker pull {image_name}'",
+                    details={
+                        "error": str(pull_error),
+                        "image": image_name,
+                        "error_type": "ImagePullError",
+                    },
+                    retryable=True,  # Network issues might be retryable
+                ) from pull_error
+
         try:
             try:
                 container = self.docker_client.containers.create(**container_config)
             except ImageNotFound as image_error:
-                # Docker image is missing - this is a configuration issue
+                # Docker image is missing even after pull attempt
                 # Extract image name from explanation (format: "No such image: dativo/rust-plugin-runner:latest")
                 explanation = getattr(image_error, "explanation", "")
                 if explanation and "No such image:" in explanation:

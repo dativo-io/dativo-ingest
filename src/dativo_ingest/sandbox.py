@@ -639,7 +639,7 @@ class PluginSandbox:
                         )
                     # If we get here, the diagnostic container ran successfully
                 except ImageNotFound as image_error:
-                    # Docker image is missing - this is a configuration issue, not a volume mount issue
+                    # Docker image is missing - try to pull it automatically
                     # Extract image name from explanation (format: "No such image: python:3.10")
                     explanation = getattr(image_error, "explanation", "")
                     if explanation:
@@ -659,15 +659,36 @@ class PluginSandbox:
                     # Clean up image name - remove any quotes or extra whitespace
                     image_name = image_name.strip("\"'")
 
-                    raise SandboxError(
-                        f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
-                        details={
-                            "error": str(image_error),
-                            "image": image_name,
-                            "error_type": "ImageNotFound",
-                        },
-                        retryable=False,
-                    )
+                    # Try to pull the image automatically
+                    try:
+                        self.docker_client.images.pull(image_name)
+                        # Retry diagnostic container creation after pulling image
+                        diagnostic_container = self.docker_client.containers.create(
+                            **diagnostic_config
+                        )
+                        diagnostic_container.start()
+                        diag_result = diagnostic_container.wait(timeout=10)
+                        diag_exit_code = diag_result.get("StatusCode", 1)
+
+                        # Retrieve logs before removing container
+                        if diag_exit_code != 0:
+                            diag_logs_raw = diagnostic_container.logs(
+                                stdout=True, stderr=True
+                            )
+                        diagnostic_container.remove(force=True)
+                        # Continue with normal flow if pull and retry succeeded
+                    except Exception as pull_error:
+                        # Pull failed - raise helpful error
+                        raise SandboxError(
+                            f"Failed to pull Docker image {image_name}: {pull_error}. "
+                            f"Please ensure the image is available or pull it manually with 'docker pull {image_name}'",
+                            details={
+                                "error": str(pull_error),
+                                "image": image_name,
+                                "error_type": "ImagePullError",
+                            },
+                            retryable=True,  # Network issues might be retryable
+                        ) from pull_error
                 except Exception as diag_error:
                     # If diagnostic container creation/start fails, it might be a volume mount issue,
                     # a Docker runtime issue (e.g., Colima permissions), or a test environment issue
@@ -723,10 +744,31 @@ class PluginSandbox:
                     # Otherwise, silently continue (likely a test environment with mocks)
 
                 # Create the actual container for plugin execution
+                # First, ensure the Docker image is available (pull if needed)
+                image_name = container_config.get("image", "python:3.10")
+                try:
+                    self.docker_client.images.get(image_name)
+                except ImageNotFound:
+                    # Image not found - try to pull it automatically
+                    try:
+                        self.docker_client.images.pull(image_name)
+                    except Exception as pull_error:
+                        # Pull failed - raise helpful error
+                        raise SandboxError(
+                            f"Failed to pull Docker image {image_name}: {pull_error}. "
+                            f"Please ensure the image is available or pull it manually with 'docker pull {image_name}'",
+                            details={
+                                "error": str(pull_error),
+                                "image": image_name,
+                                "error_type": "ImagePullError",
+                            },
+                            retryable=True,  # Network issues might be retryable
+                        ) from pull_error
+
                 try:
                     container = self.docker_client.containers.create(**container_config)
                 except ImageNotFound as image_error:
-                    # Docker image is missing - this is a configuration issue
+                    # Docker image is missing even after pull attempt
                     # Extract image name from explanation (format: "No such image: python:3.10")
                     explanation = getattr(image_error, "explanation", "")
                     if explanation:
