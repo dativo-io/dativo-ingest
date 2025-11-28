@@ -37,9 +37,11 @@ test-integration:
 
 # Smoke tests: Run actual CLI commands with test fixtures (true E2E)
 # Includes tag propagation verification
-# Automatically sets up infrastructure services (Postgres, MySQL, MinIO, Nessie) if needed
+# REQUIRES: Infrastructure services (Postgres, MySQL, MinIO, Nessie) - automatically set up and torn down
 # Note: Infrastructure services are dependencies for testing, NOT the dativo-ingest service
 # The dativo-ingest CLI runs locally and connects to these services
+# Docker configuration is checked before tests run
+# Infrastructure is automatically stopped after tests complete
 # Uses run_all_smoke_tests.sh which runs both original and custom plugin smoke tests
 # Users can also run: dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 test-smoke:
