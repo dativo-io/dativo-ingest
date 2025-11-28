@@ -1,5 +1,5 @@
 # Multi-stage build for Rust plugin runner
-FROM rust:1.75-slim as builder
+FROM rust:stable-slim as builder
 
 WORKDIR /build
 
