@@ -252,27 +252,51 @@ check_environment() {
 # Main execution
 echo "🔍 Pre-flight checks..."
 
-# Step 1: Setup infrastructure services (Postgres, MySQL, MinIO, Nessie) if needed
+# Step 1: Check Docker configuration for sandbox tests
+if [ -f "$SCRIPT_DIR/check_docker_config.sh" ]; then
+    echo "🔍 Checking Docker configuration..."
+    if ! bash "$SCRIPT_DIR/check_docker_config.sh"; then
+        echo ""
+        echo -e "${RED}❌ Docker configuration check failed.${NC}"
+        echo "   Please fix Docker configuration issues before running smoke tests."
+        exit 1
+    fi
+    echo ""
+else
+    echo -e "${YELLOW}⚠️  Docker configuration check script not found${NC}"
+    echo "   Proceeding without Docker configuration validation..."
+    echo ""
+fi
+
+# Step 2: Setup infrastructure services (Postgres, MySQL, MinIO, Nessie) - REQUIRED
 # Note: These are infrastructure dependencies for testing, NOT the dativo-ingest service
 # The dativo-ingest CLI runs locally and connects to these services
+INFRASTRUCTURE_STARTED=0
 if [ "$SKIP_INFRASTRUCTURE_SETUP" = "false" ]; then
     if [ -f "$SCRIPT_DIR/setup_smoke_test_infrastructure.sh" ]; then
         # Docker is REQUIRED for smoke tests (infrastructure services run in Docker)
-        if ! bash "$SCRIPT_DIR/setup_smoke_test_infrastructure.sh"; then
+        if ! bash "$SCRIPT_DIR/setup_smoke_test_infrastructure.sh" --no-teardown; then
             echo ""
             echo -e "${RED}❌ Infrastructure setup failed. Docker is required for smoke tests.${NC}"
             echo "   Use --skip-infrastructure-setup flag only if services are already running."
             exit 1
         fi
+        INFRASTRUCTURE_STARTED=1
         echo ""
     else
-        echo -e "${YELLOW}⚠️  Infrastructure setup script not found${NC}"
-        echo ""
+        echo -e "${RED}❌ Infrastructure setup script not found${NC}"
+        echo "   Infrastructure setup is required for smoke tests."
+        exit 1
     fi
 else
     echo "ℹ️  Skipping infrastructure setup (--skip-infrastructure-setup flag)"
     echo "   Assuming services are already running..."
     echo ""
+    # Verify services are actually running
+    if ! docker ps --format '{{.Names}}' | grep -q "dativo-postgres\|dativo-mysql\|dativo-minio\|dativo-nessie"; then
+        echo -e "${YELLOW}⚠️  Warning: Infrastructure services don't appear to be running${NC}"
+        echo "   Some tests may fail."
+    fi
 fi
 
 # Step 2: Setup environment variables if needed
@@ -309,6 +333,21 @@ echo -e "${GREEN}✅ Passed:  $TOTAL_PASSED${NC}"
 echo -e "${RED}❌ Failed:  $TOTAL_FAILED${NC}"
 echo -e "${YELLOW}⚠️  Skipped: $TOTAL_SKIPPED${NC}"
 echo ""
+
+# Cleanup: Stop infrastructure services if we started them
+if [ $INFRASTRUCTURE_STARTED -eq 1 ]; then
+    echo ""
+    echo -e "${BLUE}🧹 Cleaning up infrastructure services...${NC}"
+    cd "$PROJECT_ROOT"
+    DOCKER_COMPOSE="docker compose -f $PROJECT_ROOT/docker-compose.dev.yml"
+    if $DOCKER_COMPOSE down >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ Infrastructure services stopped${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Warning: Failed to stop some infrastructure services${NC}"
+        echo "   You may need to stop them manually: docker compose -f docker-compose.dev.yml down"
+    fi
+    echo ""
+fi
 
 # Exit with error if any tests failed
 if [ $TOTAL_FAILED -gt 0 ]; then

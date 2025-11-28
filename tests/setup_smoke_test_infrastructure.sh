@@ -3,6 +3,9 @@
 # These are dependencies (Postgres, MySQL, MinIO, Nessie), NOT the dativo-ingest service
 # The dativo-ingest CLI runs locally and connects to these services
 # This script automatically detects if services are running and starts them if needed
+#
+# Usage: setup_smoke_test_infrastructure.sh [--no-teardown]
+#   --no-teardown: Don't register cleanup trap (for manual cleanup)
 
 set +e  # Don't exit on error - we want to continue even if some checks fail
 
@@ -267,6 +270,22 @@ echo ""
 echo -e "${GREEN}✅ Infrastructure services started${NC}"
 echo "   Postgres: localhost:5432 | MySQL: localhost:3306"
 echo "   MinIO: http://localhost:9000 | Nessie: http://localhost:19120/api/v1"
+
+# Register cleanup function if not disabled
+if [[ "$*" != *"--no-teardown"* ]]; then
+    # Create a cleanup function
+    cleanup_infrastructure() {
+        echo ""
+        echo -e "${BLUE}🧹 Cleaning up infrastructure services...${NC}"
+        cd "$PROJECT_ROOT"
+        $DOCKER_COMPOSE down >/dev/null 2>&1
+        echo -e "${GREEN}✅ Infrastructure services stopped${NC}"
+    }
+    
+    # Register cleanup on script exit (if called from run_all_smoke_tests.sh)
+    # The actual cleanup will be handled by run_all_smoke_tests.sh
+    export INFRASTRUCTURE_STARTED=1
+fi
 
 exit 0
 

@@ -214,7 +214,7 @@ class TestReader(BaseReader):
     @patch("dativo_ingest.sandbox.docker")
     def test_sandbox_config_with_enabled_field(self, mock_docker, tmp_path):
         """Test that sandbox config with 'enabled' field doesn't cause TypeError.
-        
+
         This tests the scenario where sandbox_config is extracted from PluginSandboxConfig
         via model_dump(), which includes the 'enabled' field. The 'enabled' field should
         be filtered out before passing to PluginSandbox constructor.
@@ -265,12 +265,12 @@ class TestReader(BaseReader):
         assert isinstance(reader, SandboxedReaderWrapper)
         # The enabled field should still be in sandbox_config (for reference)
         assert reader.sandbox_config == sandbox_config
-        
+
         # But PluginSandbox should be initialized without TypeError
         # Verify that the sandbox was created successfully
         assert hasattr(reader, "sandbox")
         assert reader.sandbox is not None
-        
+
         # Verify that enabled was filtered out (check that PluginSandbox doesn't have enabled attribute)
         # PluginSandbox should have cpu_limit, memory_limit, etc. but not enabled
         assert hasattr(reader.sandbox, "cpu_limit")

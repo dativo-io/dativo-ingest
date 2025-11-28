@@ -23,7 +23,7 @@ try:
     if "" in sys.path:
         sys.path.remove("")
 
-    from docker.errors import DockerException
+    from docker.errors import DockerException, ImageNotFound
 
     import docker
 
@@ -36,6 +36,7 @@ except (ImportError, AttributeError):
         sys.path = original_path
     docker = None
     DockerException = Exception
+    ImageNotFound = Exception
 
 from .exceptions import SandboxError
 
@@ -399,7 +400,20 @@ class RustPluginSandbox:
 
         # Create and run container
         try:
-            container = self.docker_client.containers.create(**container_config)
+            try:
+                container = self.docker_client.containers.create(**container_config)
+            except ImageNotFound as image_error:
+                # Docker image is missing - this is a configuration issue
+                image_name = getattr(image_error, "explanation", self.container_image)
+                raise SandboxError(
+                    f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
+                    details={
+                        "error": str(image_error),
+                        "image": image_name,
+                        "error_type": "ImageNotFound",
+                    },
+                    retryable=False,
+                )
 
             # Start container
             container.start()
@@ -409,17 +423,19 @@ class RustPluginSandbox:
             # in a single process to maintain state
             init_request = json.dumps({"init": plugin_path_in_container})
             method_request = json.dumps(request)
-            
+
             # Use base64 encoding to safely pass JSON through shell
             # This avoids issues with special characters, quotes, newlines, etc.
             init_b64 = base64.b64encode(init_request.encode("utf-8")).decode("utf-8")
-            method_b64 = base64.b64encode(method_request.encode("utf-8")).decode("utf-8")
-            
+            method_b64 = base64.b64encode(method_request.encode("utf-8")).decode(
+                "utf-8"
+            )
+
             # Use shlex.quote to properly escape base64 strings for shell safety
             # This prevents shell interpretation issues with special characters
             init_b64_quoted = shlex.quote(init_b64)
             method_b64_quoted = shlex.quote(method_b64)
-            
+
             # Use a single exec_run that pipes both requests to rust-plugin-runner
             # This ensures both requests go to the same process, maintaining state
             # Pipe both decoded JSON lines to the same rust-plugin-runner process
@@ -427,17 +443,17 @@ class RustPluginSandbox:
                 [
                     "sh",
                     "-c",
-                    f'(echo {init_b64_quoted} | base64 -d; echo {method_b64_quoted} | base64 -d) | rust-plugin-runner',
+                    f"(echo {init_b64_quoted} | base64 -d; echo {method_b64_quoted} | base64 -d) | rust-plugin-runner",
                 ],
                 stdin=True,
             )
 
             # Get output from exec_run (stdout and stderr combined)
             output = result.output.decode("utf-8") if result.output else ""
-            
+
             # Also get logs from container (in case output is in logs)
             logs = container.logs(stdout=True, stderr=True).decode("utf-8")
-            
+
             # Combine outputs, preferring exec_run output
             combined_output = output if output else logs
 
@@ -459,7 +475,11 @@ class RustPluginSandbox:
             # The rust-plugin-runner outputs one JSON response per line
             # We want the last non-empty line (which should be the method response)
             try:
-                result_lines = [line.strip() for line in combined_output.strip().split("\n") if line.strip()]
+                result_lines = [
+                    line.strip()
+                    for line in combined_output.strip().split("\n")
+                    if line.strip()
+                ]
                 if result_lines:
                     # The last line should be the method response
                     # The first line should be the init response
@@ -469,7 +489,7 @@ class RustPluginSandbox:
                     else:
                         # Fallback: parse the only line
                         result_json = json.loads(result_lines[0])
-                    
+
                     # Extract the "data" or "result" field if present
                     if isinstance(result_json, dict):
                         if "data" in result_json:
