@@ -88,13 +88,32 @@ class PluginSandbox:
             # Test Docker connection
             self.docker_client.ping()
         except (DockerException, Exception) as e:
-            # Catch both DockerException and generic Exception
-            # to handle cases where docker.from_env() or ping() raise generic exceptions
-            raise SandboxError(
-                f"Failed to connect to Docker: {e}",
-                details={"error": str(e)},
-                retryable=False,
-            ) from e
+            # If default connection fails, try Colima socket (common on macOS)
+            # This is a fallback for development environments using Colima
+            colima_socket = Path.home() / ".colima" / "default" / "docker.sock"
+            if colima_socket.exists():
+                try:
+                    self.docker_client = docker.DockerClient(
+                        base_url=f"unix://{colima_socket}"
+                    )
+                    self.docker_client.ping()
+                except Exception as colima_error:
+                    # Colima socket also failed - raise original error
+                    raise SandboxError(
+                        f"Failed to connect to Docker: {e}",
+                        details={
+                            "error": str(e),
+                            "colima_fallback_error": str(colima_error),
+                        },
+                        retryable=False,
+                    ) from e
+            else:
+                # No Colima socket - raise original error
+                raise SandboxError(
+                    f"Failed to connect to Docker: {e}",
+                    details={"error": str(e)},
+                    retryable=False,
+                ) from e
 
         # Default seccomp profile (restrictive)
         self.default_seccomp = self._get_default_seccomp_profile()
@@ -335,22 +354,30 @@ class PluginSandbox:
             Container configuration dictionary
         """
         # Find the project root (where src/ directory is located)
-        # Start from plugin path and walk up to find src/dativo_ingest
-        current_path = self.plugin_path.parent
+        # Start from this module's location (sandbox.py) to find src/dativo_ingest
+        # This ensures we can find the project root even when plugins are in temp directories
         dativo_ingest_src = None
         project_root = None
 
         # Walk up the directory tree to find src/dativo_ingest
-        for _ in range(10):  # Limit search depth
-            src_dir = current_path / "src"
-            if src_dir.exists() and (src_dir / "dativo_ingest").exists():
-                project_root = current_path
-                dativo_ingest_src = src_dir
-                break
-            parent = current_path.parent
-            if parent == current_path:  # Reached filesystem root
-                break
-            current_path = parent
+        # Start from the directory containing this file (sandbox.py)
+        search_path = Path(__file__).parent.parent  # src/dativo_ingest -> src
+        if search_path.exists() and (search_path / "dativo_ingest").exists():
+            project_root = search_path.parent  # src -> project_root
+            dativo_ingest_src = search_path
+        else:
+            # Fallback: try walking up from plugin path
+            current_path = self.plugin_path.parent
+            for _ in range(10):  # Limit search depth
+                src_dir = current_path / "src"
+                if src_dir.exists() and (src_dir / "dativo_ingest").exists():
+                    project_root = current_path
+                    dativo_ingest_src = src_dir
+                    break
+                parent = current_path.parent
+                if parent == current_path:  # Reached filesystem root
+                    break
+                current_path = parent
 
         # Build volumes dictionary
         # Use absolute path for volume mount (required for Docker)
@@ -884,8 +911,16 @@ class PluginSandbox:
                 exit_code = result.get("StatusCode", 1)
 
                 if exit_code != 0:
+                    # Include last few lines of logs in error message for easier debugging
+                    log_lines = logs.strip().split("\n")
+                    last_logs = (
+                        "\n".join(log_lines[-10:]) if len(log_lines) > 10 else logs
+                    )
+                    error_msg = f"Plugin execution failed with exit code {exit_code}"
+                    if last_logs:
+                        error_msg += f"\nLast log lines:\n{last_logs}"
                     raise SandboxError(
-                        f"Plugin execution failed with exit code {exit_code}",
+                        error_msg,
                         details={
                             "exit_code": exit_code,
                             "logs": logs,
