@@ -472,8 +472,13 @@ class PluginSandbox:
 
         try:
             # Generate execution script
+            # Ensure plugin filename doesn't include class name (should already be stripped in __init__)
+            plugin_filename = self.plugin_path.name
+            # Double-check: strip class name if somehow it's still there
+            if ":" in plugin_filename:
+                plugin_filename = plugin_filename.split(":")[0]
             script_content = self._generate_execution_script(
-                self.plugin_path.name, method_name, *args, **kwargs
+                plugin_filename, method_name, *args, **kwargs
             )
             # Write script and ensure it's flushed to disk
             with open(script_path, "w") as f:
@@ -995,7 +1000,10 @@ class PluginSandbox:
                 ):
                     # Pydantic model - serialize it
                     try:
-                        return model_dump_attr()
+                        result = model_dump_attr()
+                        # If result is also a Mock, don't use it
+                        if not isinstance(result, (Mock, MagicMock)):
+                            return result
                     except Exception:
                         pass
                 # Fallback: use a simple placeholder that won't break JSON
@@ -1007,7 +1015,10 @@ class PluginSandbox:
                 ):
                     # Pydantic model
                     try:
-                        return model_dump_method()
+                        result = model_dump_method()
+                        # If result is also a Mock, don't use it
+                        if not isinstance(result, (Mock, MagicMock)):
+                            return result
                     except Exception:
                         pass
             elif hasattr(obj, "__dict__") and not isinstance(obj, type):
@@ -1043,11 +1054,18 @@ import traceback
 try:
     # Load plugin module
     plugin_path = "{plugin_path_in_container}"
+    # Ensure path doesn't include class name (should already be clean, but double-check)
+    if ":" in plugin_path:
+        plugin_path = plugin_path.split(":")[0]
     spec = importlib.util.spec_from_file_location("plugin", plugin_path)
     if spec is None or spec.loader is None:
         print(json.dumps({{
             "status": "error",
-            "message": f"Failed to create spec for plugin: {{plugin_path}}"
+            "message": f"Failed to create spec for plugin: {{plugin_path}}",
+            "details": {{
+                "plugin_path": plugin_path,
+                "file_exists": __import__("os").path.exists(plugin_path) if __import__("os").path else False
+            }}
         }}))
         sys.exit(1)
     
