@@ -18,7 +18,19 @@ if "" in sys.path:
     sys.path.remove("")
 
 try:
+    import os
+
     import docker
+
+    # Try to connect to Docker
+    # First, check if DOCKER_HOST is set
+    docker_host = os.environ.get("DOCKER_HOST")
+
+    # If not set and standard socket doesn't exist, try Colima socket
+    if not docker_host:
+        colima_socket = Path.home() / ".colima" / "default" / "docker.sock"
+        if colima_socket.exists():
+            os.environ["DOCKER_HOST"] = f"unix://{colima_socket}"
 
     docker_client = docker.from_env()
     docker_client.ping()
@@ -26,7 +38,20 @@ try:
 except Exception as e:
     # Docker not available - skip integration tests
     DOCKER_AVAILABLE = False
-    print(f"Docker check failed: {e}")
+    # Print to stderr so it's visible even if stdout is captured
+    import sys as sys_module
+
+    print(
+        f"Docker check failed: {type(e).__name__}: {e}",
+        file=sys_module.stderr,
+    )
+    # Also try to provide helpful message about Colima
+    colima_socket = Path.home() / ".colima" / "default" / "docker.sock"
+    if colima_socket.exists() and "DOCKER_HOST" not in os.environ:
+        print(
+            f"Note: Colima socket found at {colima_socket}, but connection still failed.",
+            file=sys_module.stderr,
+        )
 finally:
     # Restore path
     sys.path = original_path
