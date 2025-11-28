@@ -68,7 +68,9 @@ class PluginSandbox:
         Raises:
             SandboxError: If Docker is not available or initialization fails
         """
-        self.plugin_path = Path(plugin_path)
+        # Strip class name if present (format: "path/to/file.py:ClassName" -> "path/to/file.py")
+        file_path = plugin_path.split(":")[0] if ":" in plugin_path else plugin_path
+        self.plugin_path = Path(file_path)
         self.cpu_limit = cpu_limit
         self.memory_limit = memory_limit
         self.network_disabled = network_disabled
@@ -977,9 +979,57 @@ class PluginSandbox:
         Returns:
             Python script content
         """
-        # Serialize arguments to JSON for passing to script
-        args_json = json.dumps(args, default=str)
-        kwargs_json = json.dumps(kwargs, default=str)
+
+        # Helper function to serialize objects, handling Mock objects properly
+        def serialize_value(obj):
+            """Serialize a value, handling Mock objects and other special cases."""
+            from unittest.mock import MagicMock, Mock
+
+            if isinstance(obj, (Mock, MagicMock)):
+                # For Mock objects, try to get a dict representation or use a placeholder
+                model_dump_attr = getattr(obj, "model_dump", None)
+                if (
+                    model_dump_attr
+                    and callable(model_dump_attr)
+                    and not isinstance(model_dump_attr, (Mock, MagicMock))
+                ):
+                    # Pydantic model - serialize it
+                    try:
+                        return model_dump_attr()
+                    except Exception:
+                        pass
+                # Fallback: use a simple placeholder that won't break JSON
+                return {"_mock": True}
+            elif hasattr(obj, "model_dump"):
+                model_dump_method = getattr(obj, "model_dump", None)
+                if callable(model_dump_method) and not isinstance(
+                    model_dump_method, (Mock, MagicMock)
+                ):
+                    # Pydantic model
+                    try:
+                        return model_dump_method()
+                    except Exception:
+                        pass
+            elif hasattr(obj, "__dict__") and not isinstance(obj, type):
+                # Regular object with __dict__ (but not a class)
+                try:
+                    return {k: serialize_value(v) for k, v in obj.__dict__.items()}
+                except Exception:
+                    pass
+            # For everything else, return as-is (will be handled by json.dumps default=str)
+            return obj
+
+        # Serialize arguments to JSON, handling Mock objects
+        serialized_args = [serialize_value(arg) for arg in args]
+        serialized_kwargs = {k: serialize_value(v) for k, v in kwargs.items()}
+
+        args_json = json.dumps(serialized_args, default=str)
+        kwargs_json = json.dumps(serialized_kwargs, default=str)
+
+        # Escape JSON strings for embedding in Python script
+        # Replace backslashes first, then single quotes, to avoid double-escaping
+        args_json_escaped = args_json.replace("\\", "\\\\").replace("'", "\\'")
+        kwargs_json_escaped = kwargs_json.replace("\\", "\\\\").replace("'", "\\'")
 
         # Use absolute path in container
         plugin_path_in_container = f"/usr/local/plugins/{plugin_file}"
@@ -1022,8 +1072,8 @@ try:
 
     # Deserialize arguments
     try:
-        args_data = json.loads('{args_json}')
-        kwargs_data = json.loads('{kwargs_json}')
+        args_data = json.loads('{args_json_escaped}')
+        kwargs_data = json.loads('{kwargs_json_escaped}')
     except json.JSONDecodeError as e:
         print(json.dumps({{
             "status": "error",
