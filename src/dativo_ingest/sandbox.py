@@ -78,10 +78,8 @@ class PluginSandbox:
         self.network_disabled = network_disabled
         self.seccomp_profile = seccomp_profile
         self.timeout = timeout
-        # Default to custom image with jsonschema, fallback to python:3.10
-        self.container_image = container_image or "dativo/python-plugin-runner:latest"
 
-        # Initialize Docker client
+        # Initialize Docker client first (needed for image detection)
         if docker is None:
             raise SandboxError(
                 "Docker package not available. Install with: pip install docker",
@@ -120,6 +118,21 @@ class PluginSandbox:
                     details={"error": str(e)},
                     retryable=False,
                 ) from e
+
+        # Set container image (check for custom image if not specified)
+        # Default to python:3.10 for backward compatibility
+        if container_image:
+            self.container_image = container_image
+        else:
+            # Try custom image first, fallback to python:3.10
+            custom_image = "dativo/python-plugin-runner:latest"
+            try:
+                # Check if custom image exists locally
+                self.docker_client.images.get(custom_image)
+                self.container_image = custom_image
+            except (ImageNotFound, Exception):
+                # Custom image not available, use default
+                self.container_image = "python:3.10"
 
         # Default seccomp profile (restrictive)
         self.default_seccomp = self._get_default_seccomp_profile()

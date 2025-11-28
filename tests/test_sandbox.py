@@ -160,10 +160,25 @@ class TestReader(BaseReader):
 class TestContainerConfiguration:
     """Test container configuration building."""
 
-    def test_build_container_config_basic(self, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_build_container_config_basic(self, mock_docker_module, tmp_path):
         """Test basic container configuration."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
+
+        # Mock Docker client - make custom image check fail so it uses python:3.10
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+
+        # Make images.get() raise exception for custom image only
+        def image_get_side_effect(image_name):
+            if image_name == "dativo/python-plugin-runner:latest":
+                # Raise a generic exception that will be caught
+                raise Exception("Image not found")
+            return MagicMock()  # Return mock for other images
+
+        mock_client.images.get.side_effect = image_get_side_effect
+        mock_docker_module.from_env.return_value = mock_client
 
         sandbox = PluginSandbox(str(plugin_file))
         config = sandbox._build_container_config(["python", "script.py"])
