@@ -362,7 +362,7 @@ class PluginSandbox:
             env["PYTHONPATH"] = "/app/plugins"
 
         config = {
-            "image": "python:3.10-slim",  # Base Python image
+            "image": "python:3.10",  # Base Python image (full image for better stability)
             "command": command,
             "network_disabled": self.network_disabled,
             "mem_limit": self.memory_limit,
@@ -530,14 +530,25 @@ class PluginSandbox:
                     # If we get here, the diagnostic container ran successfully
                 except ImageNotFound as image_error:
                     # Docker image is missing - this is a configuration issue, not a volume mount issue
-                    # Extract image name from explanation (format: "No such image: python:3.10-slim")
+                    # Extract image name from explanation (format: "No such image: python:3.10")
                     explanation = getattr(image_error, "explanation", "")
-                    if explanation and "No such image:" in explanation:
-                        # Extract image name from "No such image: python:3.10-slim"
-                        image_name = explanation.split("No such image:")[-1].strip()
+                    if explanation:
+                        # Try to extract image name from various formats
+                        if "No such image:" in explanation:
+                            # Format: "No such image: python:3.10"
+                            image_name = explanation.split("No such image:")[-1].strip()
+                        elif ":" in explanation and not explanation.startswith("http"):
+                            # Might already be just the image name (e.g., "python:3.10")
+                            image_name = explanation.strip()
+                        else:
+                            # Fallback to default
+                            image_name = "python:3.10"
                     else:
-                        # Fallback to default or use explanation as-is if it's already just the image name
-                        image_name = explanation if explanation else "python:3.10-slim"
+                        image_name = "python:3.10"
+
+                    # Clean up image name - remove any quotes or extra whitespace
+                    image_name = image_name.strip("\"'")
+
                     raise SandboxError(
                         f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
                         details={
@@ -571,14 +582,21 @@ class PluginSandbox:
                     container = self.docker_client.containers.create(**container_config)
                 except ImageNotFound as image_error:
                     # Docker image is missing - this is a configuration issue
-                    # Extract image name from explanation (format: "No such image: python:3.10-slim")
+                    # Extract image name from explanation (format: "No such image: python:3.10")
                     explanation = getattr(image_error, "explanation", "")
-                    if explanation and "No such image:" in explanation:
-                        # Extract image name from "No such image: python:3.10-slim"
-                        image_name = explanation.split("No such image:")[-1].strip()
+                    if explanation:
+                        # Try to extract image name from various formats
+                        if "No such image:" in explanation:
+                            # Format: "No such image: python:3.10"
+                            image_name = explanation.split("No such image:")[-1].strip()
+                        elif ":" in explanation and not explanation.startswith("http"):
+                            # Might already be just the image name (e.g., "python:3.10")
+                            image_name = explanation.strip()
+                        else:
+                            # Fallback to default
+                            image_name = "python:3.10"
                     else:
-                        # Fallback to default or use explanation as-is if it's already just the image name
-                        image_name = explanation if explanation else "python:3.10-slim"
+                        image_name = "python:3.10"
                     raise SandboxError(
                         f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
                         details={
@@ -614,18 +632,28 @@ class PluginSandbox:
                             container.start()
                         except ImageNotFound as image_error:
                             # Docker image is missing - this is a configuration issue
-                            # Extract image name from explanation (format: "No such image: python:3.10-slim")
+                            # Extract image name from explanation (format: "No such image: python:3.10")
                             explanation = getattr(image_error, "explanation", "")
-                            if explanation and "No such image:" in explanation:
-                                # Extract image name from "No such image: python:3.10-slim"
-                                image_name = explanation.split("No such image:")[
-                                    -1
-                                ].strip()
+                            if explanation:
+                                # Try to extract image name from various formats
+                                if "No such image:" in explanation:
+                                    # Format: "No such image: python:3.10"
+                                    image_name = explanation.split("No such image:")[
+                                        -1
+                                    ].strip()
+                                elif ":" in explanation and not explanation.startswith(
+                                    "http"
+                                ):
+                                    # Might already be just the image name (e.g., "python:3.10")
+                                    image_name = explanation.strip()
+                                else:
+                                    # Fallback to default
+                                    image_name = "python:3.10"
                             else:
-                                # Fallback to default or use explanation as-is if it's already just the image name
-                                image_name = (
-                                    explanation if explanation else "python:3.10-slim"
-                                )
+                                image_name = "python:3.10"
+
+                            # Clean up image name - remove any quotes or extra whitespace
+                            image_name = image_name.strip("\"'")
                             raise SandboxError(
                                 f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
                                 details={

@@ -40,7 +40,7 @@ echo -e "${GREEN}✅ Docker daemon is running${NC}"
 
 # Check 3: Docker can pull images
 echo -n "   Checking Docker image pull capability... "
-if docker pull python:3.10-slim >/dev/null 2>&1; then
+if docker pull python:3.10 >/dev/null 2>&1; then
     echo -e "${GREEN}✅${NC}"
 else
     echo -e "${YELLOW}⚠️${NC}"
@@ -52,7 +52,7 @@ fi
 # Check 4: Test basic container creation
 echo -n "   Testing basic container creation... "
 TEST_CONTAINER="dativo-docker-check-$$"
-if docker run --rm --name "$TEST_CONTAINER" python:3.10-slim echo "test" >/dev/null 2>&1; then
+if docker run --rm --name "$TEST_CONTAINER" python:3.10 echo "test" >/dev/null 2>&1; then
     echo -e "${GREEN}✅${NC}"
 else
     echo -e "${RED}❌${NC}"
@@ -62,7 +62,7 @@ fi
 
 # Check 5: Test read-only filesystem support
 echo -n "   Testing read-only filesystem support... "
-if docker run --rm --read-only python:3.10-slim echo "test" >/dev/null 2>&1; then
+if docker run --rm --read-only python:3.10 echo "test" >/dev/null 2>&1; then
     echo -e "${GREEN}✅${NC}"
 else
     echo -e "${YELLOW}⚠️${NC}"
@@ -73,7 +73,7 @@ fi
 
 # Check 6: Test tmpfs support
 echo -n "   Testing tmpfs support... "
-if docker run --rm --tmpfs /tmp:size=100m python:3.10-slim ls /tmp >/dev/null 2>&1; then
+if docker run --rm --tmpfs /tmp:size=100m python:3.10 ls /tmp >/dev/null 2>&1; then
     echo -e "${GREEN}✅${NC}"
 else
     echo -e "${YELLOW}⚠️${NC}"
@@ -88,13 +88,13 @@ TEMP_DIR=$(mktemp -d 2>/dev/null || echo "/tmp/dativo-test-$$")
 mkdir -p "$TEMP_DIR"
 echo "test" > "$TEMP_DIR/test.txt"
 chmod 755 "$TEMP_DIR" 2>/dev/null || true
-if docker run --rm -v "$TEMP_DIR:/test:ro" python:3.10-slim cat /test/test.txt >/dev/null 2>&1; then
+if docker run --rm -v "$TEMP_DIR:/test:ro" python:3.10 cat /test/test.txt >/dev/null 2>&1; then
     echo -e "${GREEN}✅${NC}"
     rm -rf "$TEMP_DIR" 2>/dev/null || true
 else
     # Try with absolute path
     ABS_TEMP_DIR=$(cd "$TEMP_DIR" && pwd)
-    if docker run --rm -v "$ABS_TEMP_DIR:/test:ro" python:3.10-slim cat /test/test.txt >/dev/null 2>&1; then
+    if docker run --rm -v "$ABS_TEMP_DIR:/test:ro" python:3.10 cat /test/test.txt >/dev/null 2>&1; then
         echo -e "${GREEN}✅${NC}"
         rm -rf "$TEMP_DIR" 2>/dev/null || true
     else
@@ -118,7 +118,7 @@ cat > "$TEMP_SECCOMP" << 'EOF'
 }
 EOF
 
-if docker run --rm --security-opt "seccomp=$TEMP_SECCOMP" python:3.10-slim echo "test" >/dev/null 2>&1; then
+if docker run --rm --security-opt "seccomp=$TEMP_SECCOMP" python:3.10 echo "test" >/dev/null 2>&1; then
     echo -e "${GREEN}✅${NC}"
 else
     echo -e "${YELLOW}⚠️${NC}"
@@ -130,7 +130,7 @@ rm -f "$TEMP_SECCOMP"
 
 # Check 9: Test network isolation
 echo -n "   Testing network isolation support... "
-if docker run --rm --network none python:3.10-slim echo "test" >/dev/null 2>&1; then
+if docker run --rm --network none python:3.10 echo "test" >/dev/null 2>&1; then
     echo -e "${GREEN}✅${NC}"
 else
     echo -e "${YELLOW}⚠️${NC}"
@@ -141,7 +141,7 @@ fi
 
 # Check 10: Test resource limits
 echo -n "   Testing resource limits support... "
-if docker run --rm --memory="128m" --cpus="0.5" python:3.10-slim echo "test" >/dev/null 2>&1; then
+if docker run --rm --memory="128m" --cpus="0.5" python:3.10 echo "test" >/dev/null 2>&1; then
     echo -e "${GREEN}✅${NC}"
 else
     echo -e "${YELLOW}⚠️${NC}"

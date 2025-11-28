@@ -52,9 +52,10 @@ class PerfReader(BaseReader):
         return ConnectionTestResult(success=True, message="OK")
     
     def extract(self, state_manager=None):
-        # Required abstract method - return empty generator for performance test
-        # Use a generator that yields nothing
-        return iter([])
+        # Required abstract method - must be a generator function
+        # Yield nothing for performance test
+        if False:  # This ensures it's a generator function
+            yield
 """
         )
 
