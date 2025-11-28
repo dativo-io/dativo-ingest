@@ -218,9 +218,9 @@ class TestContainerConfiguration:
         sandbox = PluginSandbox(str(plugin_file), cpu_limit=0.5, memory_limit="512m")
         config = sandbox._build_container_config(["python", "script.py"])
 
-        assert config["cpu_period"] == 100000
-        assert config["cpu_quota"] == 50000  # 0.5 * 100000
-        assert config["mem_limit"] == "512m"
+        assert config.get("cpu_period") == 100000
+        assert config.get("cpu_quota") == 50000  # 0.5 * 100000
+        assert config.get("mem_limit") == "512m"
 
 
 class TestArgumentHandling:
@@ -254,10 +254,9 @@ class TestArgumentHandling:
         # Should handle no arguments
         assert "args_data" in script
         assert "kwargs_data" in script
-        # Should handle empty args/kwargs (args used for instantiation, kwargs for method call)
-        assert "args_data" in script and "kwargs_data" in script
-        # Should handle empty kwargs for method call
-        assert "has_kwargs" in script or "kwargs_data" in script
+        # Should handle empty args/kwargs - separated into instantiation_kwargs and method_kwargs
+        assert "instantiation_kwargs" in script
+        assert "method_kwargs" in script
 
 
 class TestResultParsing:
@@ -295,40 +294,40 @@ class TestResultParsing:
 class TestSandboxInitialization:
     """Test sandbox initialization and error handling."""
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_sandbox_init_success(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_sandbox_init_success(self, mock_docker_module, tmp_path):
         """Test successful sandbox initialization."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
 
         mock_client = Mock()
         mock_client.ping.return_value = True
-        mock_docker.return_value = mock_client
+        mock_docker_module.from_env.return_value = mock_client
 
         sandbox = PluginSandbox(str(plugin_file))
         assert sandbox.plugin_path == plugin_file
         assert sandbox.network_disabled is True
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_sandbox_init_docker_error(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_sandbox_init_docker_error(self, mock_docker_module, tmp_path):
         """Test sandbox initialization with Docker error."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
 
-        mock_docker.side_effect = Exception("Docker not available")
+        mock_docker_module.from_env.side_effect = Exception("Docker not available")
 
         with pytest.raises(SandboxError, match="Failed to connect to Docker"):
             PluginSandbox(str(plugin_file))
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_sandbox_init_docker_ping_fails(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_sandbox_init_docker_ping_fails(self, mock_docker_module, tmp_path):
         """Test sandbox initialization when Docker ping fails."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
 
         mock_client = Mock()
         mock_client.ping.side_effect = Exception("Connection failed")
-        mock_docker.return_value = mock_client
+        mock_docker_module.from_env.return_value = mock_client
 
         with pytest.raises(SandboxError, match="Failed to connect to Docker"):
             PluginSandbox(str(plugin_file))
@@ -345,11 +344,11 @@ class TestShouldSandboxPlugin:
         assert should_sandbox_plugin(str(plugin_file), mode="cloud") is True
 
     def test_should_sandbox_cloud_mode_rust(self, tmp_path):
-        """Test that Rust plugins are not sandboxed in cloud mode."""
+        """Test that Rust plugins are sandboxed in cloud mode."""
         plugin_file = tmp_path / "test.so"
         plugin_file.write_text("")
 
-        assert should_sandbox_plugin(str(plugin_file), mode="cloud") is False
+        assert should_sandbox_plugin(str(plugin_file), mode="cloud") is True
 
     def test_should_sandbox_self_hosted_mode(self, tmp_path):
         """Test that plugins are not sandboxed in self_hosted mode."""
@@ -362,8 +361,8 @@ class TestShouldSandboxPlugin:
 class TestSandboxExecution:
     """Test sandbox execution (with mocked Docker)."""
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_execute_plugin_method_mocked(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_plugin_method_mocked(self, mock_docker_module, tmp_path):
         """Test executing a plugin method with mocked Docker."""
         # Create a test plugin
         plugin_file = tmp_path / "test_plugin.py"
@@ -383,7 +382,7 @@ class TestReader(BaseReader):
         # Mock Docker client
         mock_client = Mock()
         mock_client.ping.return_value = True
-        mock_docker.return_value = mock_client
+        mock_docker_module.from_env.return_value = mock_client
 
         # Mock container
         mock_container = Mock()
@@ -394,17 +393,18 @@ class TestReader(BaseReader):
         sandbox = PluginSandbox(str(plugin_file))
         result = sandbox.execute("check_connection")
 
-        # Verify Docker was called
-        mock_client.containers.create.assert_called_once()
-        mock_container.start.assert_called_once()
-        mock_container.wait.assert_called_once()
+        # Verify Docker was called (diagnostic container + actual container)
+        assert mock_client.containers.create.call_count == 2
+        # start() and wait() are called for both diagnostic and actual containers
+        assert mock_container.start.call_count == 2
+        assert mock_container.wait.call_count == 2
 
         # Verify result is parsed correctly
         assert isinstance(result, dict)
         assert "success" in result or result.get("status") == "success"
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_execute_plugin_method_error(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_plugin_method_error(self, mock_docker_module, tmp_path):
         """Test executing a plugin method that fails."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
@@ -412,11 +412,15 @@ class TestReader(BaseReader):
         # Mock Docker client
         mock_client = Mock()
         mock_client.ping.return_value = True
-        mock_docker.return_value = mock_client
+        mock_docker_module.from_env.return_value = mock_client
 
         # Mock container with error
+        # First call (diagnostic) succeeds, second call (actual) fails
         mock_container = Mock()
-        mock_container.wait.return_value = {"StatusCode": 1}
+        mock_container.wait.side_effect = [
+            {"StatusCode": 0},  # Diagnostic container succeeds
+            {"StatusCode": 1},  # Actual plugin container fails
+        ]
         mock_container.logs.return_value = b"Error occurred"
         mock_client.containers.create.return_value = mock_container
 
@@ -425,8 +429,10 @@ class TestReader(BaseReader):
         with pytest.raises(SandboxError, match="Plugin execution failed"):
             sandbox.execute("check_connection")
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_execute_check_connection_with_source_config(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_check_connection_with_source_config(
+        self, mock_docker_module, tmp_path
+    ):
         """Test that check_connection works when source_config is passed as kwarg for instantiation.
 
         This verifies the fix for the bug where kwargs_data was incorrectly passed to method calls.
@@ -451,7 +457,7 @@ class TestReader(BaseReader):
         # Mock Docker client
         mock_client = Mock()
         mock_client.ping.return_value = True
-        mock_docker.return_value = mock_client
+        mock_docker_module.from_env.return_value = mock_client
 
         # Mock container
         mock_container = Mock()
@@ -465,10 +471,11 @@ class TestReader(BaseReader):
         source_config = {"type": "test", "connection": {}}
         result = sandbox.execute("check_connection", source_config=source_config)
 
-        # Verify Docker was called
-        mock_client.containers.create.assert_called_once()
-        mock_container.start.assert_called_once()
-        mock_container.wait.assert_called_once()
+        # Verify Docker was called (diagnostic container + actual container)
+        assert mock_client.containers.create.call_count == 2
+        # start() and wait() are called for both diagnostic and actual containers
+        assert mock_container.start.call_count == 2
+        assert mock_container.wait.call_count == 2
 
         # Verify result is parsed correctly
         assert isinstance(result, dict)
@@ -510,18 +517,22 @@ class TestScriptContentValidation:
             plugin_file.name, "check_connection", source_config={"type": "test"}
         )
 
-        # Verify kwargs_data is used for instantiation
-        assert "kwargs_data" in script
+        # Verify kwargs_data is separated into instantiation_kwargs and method_kwargs
+        assert "instantiation_kwargs" in script
+        assert "method_kwargs" in script
+        # Verify instantiation_kwargs is used for instantiation
         assert (
-            "plugin_class(**kwargs_data)" in script
-            or "instance = plugin_class(**kwargs_data)" in script
+            "plugin_class(**instantiation_kwargs)" in script
+            or "instance = plugin_class(**instantiation_kwargs)" in script
         )
 
-        # Verify kwargs_data is NOT passed to method call
-        # The method call should be method() or method(*args_data), not method(**kwargs_data)
-        assert "method(**kwargs_data)" not in script
-        # Verify method is called without kwargs
-        assert "result = method()" in script or "method()" in script
+        # For check_connection, method_kwargs should be empty (source_config goes to instantiation_kwargs)
+        # So the method should be called without args
+        # The script has general code for method(**method_kwargs) but for check_connection it should use the else branch
+        # Verify method is called without kwargs for check_connection (the else branch)
+        assert "result = method()" in script or (
+            "else:" in script and "result = method()" in script.split("else:")[-1]
+        )
 
     def test_script_handles_plugin_instantiation(self, tmp_path):
         """Test that script properly handles plugin instantiation."""
@@ -535,8 +546,9 @@ class TestScriptContentValidation:
 
         # Verify instantiation logic is present
         assert "plugin_class(" in script or "instance = plugin_class" in script
-        # Verify it handles different argument combinations
-        assert "args_data" in script and "kwargs_data" in script
+        # Verify it handles different argument combinations - uses instantiation_kwargs
+        assert "instantiation_kwargs" in script
+        assert "method_kwargs" in script
 
     def test_script_handles_method_execution(self, tmp_path):
         """Test that script properly executes the method."""
@@ -551,8 +563,8 @@ class TestScriptContentValidation:
         # Verify method execution logic
         assert "getattr(instance" in script
         assert "method(" in script or "result = method" in script
-        # Verify it handles different argument combinations
-        assert "args_data" in script and "kwargs_data" in script
+        # Verify it handles different argument combinations - uses method_kwargs
+        assert "method_kwargs" in script
 
     def test_script_returns_actual_result(self, tmp_path):
         """Test that script returns actual result, not placeholder."""

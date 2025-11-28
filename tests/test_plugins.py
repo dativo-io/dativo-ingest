@@ -1180,10 +1180,11 @@ class TestReader(BaseReader):
                 "check_connection", {"type": "test", "connection": {}}
             )
 
-            # Verify Docker was called
-            mock_client.containers.create.assert_called_once()
-            mock_container.start.assert_called_once()
-            mock_container.wait.assert_called_once()
+            # Verify Docker was called (diagnostic container + actual container)
+            assert mock_client.containers.create.call_count == 2
+            # start() and wait() are called for both diagnostic and actual containers
+            assert mock_container.start.call_count == 2
+            assert mock_container.wait.call_count == 2
 
             # Verify result
             assert isinstance(result, dict)
@@ -1240,9 +1241,10 @@ class TestReader(BaseReader):
             sandbox = PluginSandbox(str(reader_file))
             result = sandbox.execute("discover", {"type": "test", "connection": {}})
 
-            # Verify Docker was called
-            mock_client.containers.create.assert_called_once()
-            mock_container.start.assert_called_once()
+            # Verify Docker was called (diagnostic container + actual container)
+            assert mock_client.containers.create.call_count == 2
+            # start() is called for both diagnostic and actual containers
+            assert mock_container.start.call_count == 2
 
             # Verify result
             assert isinstance(result, dict)
