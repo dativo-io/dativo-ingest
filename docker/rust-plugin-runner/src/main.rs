@@ -119,7 +119,7 @@ impl PluginRunner {
                 }
 
                 // Convert C string to Rust string
-                let result_str = std::ffi::CStr::from_ptr(result_ptr as *const i8)
+                let result_str = std::ffi::CStr::from_ptr(result_ptr as *const u8)
                     .to_str()
                     .unwrap()
                     .to_string();
@@ -163,7 +163,7 @@ impl PluginRunner {
                 }
 
                 // Convert C string to Rust string
-                let result_str = std::ffi::CStr::from_ptr(result_ptr as *const i8)
+                let result_str = std::ffi::CStr::from_ptr(result_ptr as *const u8)
                     .to_str()
                     .unwrap()
                     .to_string();
