@@ -125,10 +125,10 @@ class TestRustSandboxContainerConfiguration:
         assert config["image"] == "dativo/rust-plugin-runner:latest"
         assert config["network_disabled"] is True
         assert config["read_only"] is True
-        assert config["working_dir"] == "/app/plugins"
-        # Check that /app/plugins is in the volume bindings
+        assert config["working_dir"] == "/usr/local/plugins"
+        # Check that /usr/local/plugins is in the volume bindings (FHS-compliant)
         volumes = config["volumes"]
-        assert any(v.get("bind") == "/app/plugins" for v in volumes.values())
+        assert any(v.get("bind") == "/usr/local/plugins" for v in volumes.values())
 
     @patch("dativo_ingest.rust_sandbox.docker")
     def test_build_container_config_resource_limits(self, mock_docker_module, tmp_path):

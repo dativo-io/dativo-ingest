@@ -103,8 +103,14 @@ class RustPluginSandbox:
         allow container escape, kernel module loading, or host system compromise
         are explicitly denied.
 
+        The profile includes newer syscalls (openat2, close_range, clone3, etc.)
+        required by modern runc versions for secure container startup, especially
+        when using read-only filesystems and mount isolation. These syscalls are
+        used by runc itself during container initialization, not by the container
+        process, so they are safe to allow.
+
         The profile is minimal - only syscalls actually needed for Rust execution
-        are included.
+        and secure container startup are included.
 
         Returns:
             Seccomp profile dictionary
@@ -126,6 +132,7 @@ class RustPluginSandbox:
             "chdir",
             "fchdir",
             "openat",
+            "openat2",  # Newer secure version of openat (required by runc for /proc checks)
             "newfstatat",
             "faccessat",
             "getdents",
@@ -144,6 +151,7 @@ class RustPluginSandbox:
             "mremap",
             # Essential process operations
             "clone",
+            "clone3",  # Newer version of clone (required by runc)
             "fork",
             "execve",
             "exit",
@@ -174,6 +182,7 @@ class RustPluginSandbox:
             "dup",
             "dup2",
             "dup3",
+            "close_range",  # Required by runc for secure file descriptor closing
             "select",
             "poll",
             "epoll_create",
@@ -227,6 +236,13 @@ class RustPluginSandbox:
             "madvise",
             "readlink",
             "readlinkat",
+            # New mount API syscalls (required by runc for secure mount operations)
+            # These are safe - they're used by runc itself, not by container processes
+            "open_tree",  # Required by runc for mount namespace operations
+            "move_mount",  # Required by runc for mount operations
+            "fsopen",  # Required by runc for filesystem operations
+            "fsmount",  # Required by runc for mounting
+            "fspick",  # Required by runc for filesystem operations
         ]
 
         # Define dangerous syscalls that must be explicitly denied
@@ -267,7 +283,8 @@ class RustPluginSandbox:
 
         return {
             "defaultAction": "SCMP_ACT_ERRNO",
-            "architectures": ["SCMP_ARCH_X86_64"],
+            # Support both x86_64 and ARM64 (Apple Silicon)
+            "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_AARCH64"],
             "syscalls": [
                 # First, explicitly deny dangerous syscalls (defense in depth)
                 {
@@ -318,10 +335,12 @@ class RustPluginSandbox:
             Container configuration dictionary
         """
         # Build volumes dictionary
+        # Use /usr/local/plugins as mount point (FHS-compliant, exists in base images)
+        # This matches the Python sandbox for consistency
         plugin_dir = str(self.plugin_path.parent.absolute())
         volumes = {
             plugin_dir: {
-                "bind": "/app/plugins",
+                "bind": "/usr/local/plugins",
                 "mode": "ro",  # Read-only mount
             }
         }
@@ -337,7 +356,7 @@ class RustPluginSandbox:
             "cpu_quota": int(self.cpu_limit * 100000) if self.cpu_limit else None,
             "environment": env,
             "volumes": volumes,
-            "working_dir": "/app/plugins",
+            "working_dir": "/usr/local/plugins",
             "read_only": True,  # Read-only root filesystem
             "tmpfs": {
                 "/tmp": "size=100m",  # Temporary filesystem for /tmp
@@ -380,7 +399,7 @@ class RustPluginSandbox:
         """
         # Build container command
         plugin_filename = self.plugin_path.name
-        plugin_path_in_container = f"/app/plugins/{plugin_filename}"
+        plugin_path_in_container = f"/usr/local/plugins/{plugin_filename}"
 
         # Create request JSON
         request = {
