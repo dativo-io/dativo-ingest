@@ -1,5 +1,6 @@
 # Multi-stage build for Rust plugin runner
-FROM rust:stable-slim as builder
+# Using rust:slim (latest stable) to support Cargo.lock v4 format
+FROM rust:slim as builder
 
 WORKDIR /build
 
