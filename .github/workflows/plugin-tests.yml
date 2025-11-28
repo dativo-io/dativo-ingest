@@ -253,6 +253,14 @@ jobs:
           cd examples/plugins/rust
           cargo build --release
       
+      - name: Check Docker configuration (for sandbox tests)
+        run: |
+          # Check Docker configuration for sandbox tests (if available)
+          if [ -f tests/check_docker_config.sh ]; then
+            chmod +x tests/check_docker_config.sh
+            bash tests/check_docker_config.sh || echo "⚠️  Docker configuration check had warnings (non-critical for plugin tests)"
+          fi
+
       - name: Run master test suite
         env:
           PYTHONPATH: ${{ github.workspace }}/src
