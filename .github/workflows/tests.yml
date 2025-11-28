@@ -151,6 +151,22 @@ jobs:
           chmod +x tests/check_docker_config.sh
           bash tests/check_docker_config.sh || echo "⚠️  Docker configuration check had warnings (non-critical)"
 
+      - name: Build Rust plugins (if needed)
+        run: |
+          # Install Rust if not already available
+          if ! command -v cargo &> /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            source $HOME/.cargo/env
+          fi
+          
+          # Build Rust plugins if the script exists
+          if [ -f tests/build_rust_plugins.sh ]; then
+            chmod +x tests/build_rust_plugins.sh
+            bash tests/build_rust_plugins.sh
+          else
+            echo "⚠️  Rust plugin build script not found, skipping build"
+          fi
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
