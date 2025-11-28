@@ -149,9 +149,9 @@ build-plugin-images:
 	@echo "🐳 Building plugin sandbox Docker images..."
 	@if command -v docker >/dev/null 2>&1; then \
 		echo "Building Python plugin runner image..."; \
-		docker build -t dativo/python-plugin-runner:latest -f docker/python-plugin-runner/Dockerfile . || exit 1; \
+		docker build --pull -t dativo/python-plugin-runner:latest -f docker/python-plugin-runner/Dockerfile . || exit 1; \
 		echo "Building Rust plugin runner image..."; \
-		docker build -t dativo/rust-plugin-runner:latest -f docker/rust-plugin-runner/Dockerfile docker/rust-plugin-runner/ || exit 1; \
+		docker build --pull -t dativo/rust-plugin-runner:latest -f docker/rust-plugin-runner/Dockerfile docker/rust-plugin-runner/ || exit 1; \
 		echo "✅ Plugin images built successfully"; \
 	else \
 		echo "⚠️  Docker not found. Skipping plugin image build."; \
