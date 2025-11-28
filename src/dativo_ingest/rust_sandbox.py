@@ -404,7 +404,14 @@ class RustPluginSandbox:
                 container = self.docker_client.containers.create(**container_config)
             except ImageNotFound as image_error:
                 # Docker image is missing - this is a configuration issue
-                image_name = getattr(image_error, "explanation", self.container_image)
+                # Extract image name from explanation (format: "No such image: dativo/rust-plugin-runner:latest")
+                explanation = getattr(image_error, "explanation", "")
+                if explanation and "No such image:" in explanation:
+                    # Extract image name from "No such image: dativo/rust-plugin-runner:latest"
+                    image_name = explanation.split("No such image:")[-1].strip()
+                else:
+                    # Fallback to default or use explanation as-is if it's already just the image name
+                    image_name = explanation if explanation else self.container_image
                 raise SandboxError(
                     f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
                     details={
