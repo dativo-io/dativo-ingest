@@ -3,9 +3,11 @@
 FROM python:3.10-slim
 
 # Install common dependencies that plugins may need
-# jsonschema is required for config validation in dativo_ingest
+# These are required for dativo_ingest to import and work correctly
 RUN pip install --no-cache-dir \
-    jsonschema \
+    jsonschema>=4.0.0 \
+    pyyaml>=6.0 \
+    pydantic>=2.0.0 \
     && rm -rf /root/.cache/pip
 
 # Create non-root user for security
