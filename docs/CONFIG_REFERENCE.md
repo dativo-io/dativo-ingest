@@ -7,8 +7,9 @@ Complete reference guide for configuring jobs, assets, connectors, and storage o
 1. [Job Configuration](#job-configuration)
 2. [Asset Definitions](#asset-definitions)
 3. [Markdown-KV Storage](#markdown-kv-storage)
-4. [Architecture Overview](#architecture-overview)
-5. [Additional Resources](#additional-resources)
+4. [Plugin Configuration](#plugin-configuration)
+5. [Architecture Overview](#architecture-overview)
+6. [Additional Resources](#additional-resources)
 
 ---
 
