@@ -1128,13 +1128,44 @@ try:
     spec.loader.exec_module(module)
 
     # Find plugin class - look for classes that have the requested method
+    # Skip abstract base classes (BaseReader, BaseWriter) and prefer concrete implementations
     plugin_class = None
+    candidates = []
     for name, obj in module.__dict__.items():
-        if (isinstance(obj, type) and 
-            hasattr(obj, '{method_name}') and
-            callable(getattr(obj, '{method_name}', None))):
+        if not isinstance(obj, type):
+            continue
+        
+        # Skip base classes by name
+        if name in ('BaseReader', 'BaseWriter'):
+            continue
+        
+        # Check if class has the requested method
+        if not (hasattr(obj, '{method_name}') and callable(getattr(obj, '{method_name}', None))):
+            continue
+        
+        # Check if class is abstract (has abstract methods)
+        from abc import ABC
+        is_abstract = False
+        try:
+            if issubclass(obj, ABC):
+                # Check if class has any abstract methods
+                abstract_methods = getattr(obj, '__abstractmethods__', frozenset())
+                if abstract_methods and len(abstract_methods) > 0:
+                    is_abstract = True
+        except Exception:
+            pass
+        
+        if not is_abstract:
+            # Found a concrete class - use it
             plugin_class = obj
             break
+        else:
+            # Keep abstract classes as fallback (shouldn't happen, but just in case)
+            candidates.append(obj)
+    
+    # If no concrete class found, use first candidate (shouldn't happen in practice)
+    if not plugin_class and candidates:
+        plugin_class = candidates[0]
 
     if not plugin_class:
         print(json.dumps({{
