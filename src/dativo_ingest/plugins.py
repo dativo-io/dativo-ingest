@@ -464,16 +464,25 @@ class PluginLoader:
         return plugin_class
 
     @staticmethod
-    def load_rust_plugin(plugin_path: str, base_class: Type) -> Type:
+    def load_rust_plugin(
+        plugin_path: str,
+        base_class: Type,
+        mode: str = "self_hosted",
+        sandbox_config: Optional[Dict[str, Any]] = None,
+        plugin_config: Optional[Dict[str, Any]] = None,
+    ) -> Type:
         """Load a Rust plugin as a wrapper class.
 
         Args:
             plugin_path: Path to Rust shared library
                         Format: "path/to/libplugin.so:create_reader" or "create_writer"
             base_class: Expected base class (BaseReader or BaseWriter)
+            mode: Execution mode (self_hosted or cloud)
+            sandbox_config: Optional sandbox configuration dict
+            plugin_config: Optional plugin configuration dict (for checking sandbox enabled)
 
         Returns:
-            Wrapper class that uses Rust plugin
+            Wrapper class that uses Rust plugin (may be sandboxed wrapper)
 
         Raises:
             ValueError: If plugin cannot be loaded
@@ -530,6 +539,60 @@ class PluginLoader:
         if not lib_path.is_file():
             raise ValueError(f"Rust plugin path is not a file: {lib_path}")
 
+        # Check if sandboxing is needed (after resolving lib_path)
+        from .sandbox import should_sandbox_plugin
+
+        should_sandbox = should_sandbox_plugin(str(lib_path), mode, plugin_config)
+
+        if should_sandbox:
+            # Use sandboxed wrapper for Rust plugins
+            # Create sandbox instance
+            sandbox_kwargs = {}
+            if sandbox_config:
+                sandbox_kwargs.update(sandbox_config)
+
+            if base_class == BaseReader:
+                # Create sandboxed reader wrapper
+                def create_sandboxed_rust_reader(source_config):
+                    from .rust_sandboxed_wrapper import SandboxedRustReaderWrapper
+
+                    return SandboxedRustReaderWrapper(
+                        str(lib_path),
+                        source_config,
+                        mode,
+                        sandbox_kwargs,
+                    )
+
+                create_sandboxed_rust_reader.__name__ = (
+                    f"SandboxedRustReader_{lib_path.stem}"
+                )
+                return create_sandboxed_rust_reader
+            elif base_class == BaseWriter:
+                # Create sandboxed writer wrapper
+                def create_sandboxed_rust_writer(
+                    asset_definition, target_config, output_base
+                ):
+                    from .rust_sandboxed_wrapper import SandboxedRustWriterWrapper
+
+                    return SandboxedRustWriterWrapper(
+                        str(lib_path),
+                        asset_definition,
+                        target_config,
+                        output_base,
+                        mode,
+                        sandbox_kwargs,
+                    )
+
+                create_sandboxed_rust_writer.__name__ = (
+                    f"SandboxedRustWriter_{lib_path.stem}"
+                )
+                return create_sandboxed_rust_writer
+            else:
+                raise ValueError(
+                    f"Unsupported base class for Rust plugin: {base_class}"
+                )
+
+        # No sandboxing - use existing direct loading
         # Import Rust plugin loader (optional dependency)
         try:
             from .rust_plugin_bridge import (
@@ -551,43 +614,110 @@ class PluginLoader:
             raise ValueError(f"Unsupported base class for Rust plugin: {base_class}")
 
     @staticmethod
-    def load_reader(plugin_path: str) -> Type[BaseReader]:
+    def load_reader(
+        plugin_path: str,
+        mode: str = "self_hosted",
+        sandbox_config: Optional[Dict[str, Any]] = None,
+        plugin_config: Optional[Dict[str, Any]] = None,
+    ) -> Type[BaseReader]:
         """Load a custom reader class (Python or Rust).
 
         Args:
             plugin_path: Path to reader plugin
                         Python: "path/to/module.py:ClassName"
                         Rust: "path/to/libplugin.so:create_reader"
+            mode: Execution mode (self_hosted or cloud)
+            sandbox_config: Optional sandbox configuration dict
+            plugin_config: Optional plugin configuration dict (for checking sandbox enabled)
 
         Returns:
-            Reader class inheriting from BaseReader
+            Reader class inheriting from BaseReader (may be sandboxed wrapper)
         """
+        from .sandbox import should_sandbox_plugin
+
         plugin_type = PluginLoader._detect_plugin_type(plugin_path)
 
         if plugin_type == "python":
-            return PluginLoader.load_class_from_path(plugin_path, BaseReader)
+            plugin_class = PluginLoader.load_class_from_path(plugin_path, BaseReader)
+
+            # Check if sandboxing is needed
+            if should_sandbox_plugin(plugin_path, mode, plugin_config):
+                from .sandboxed_plugin_wrapper import SandboxedReaderWrapper
+
+                # Return a factory function that creates sandboxed wrapper
+                def create_sandboxed_reader(source_config):
+                    return SandboxedReaderWrapper(
+                        plugin_path, source_config, mode, sandbox_config
+                    )
+
+                # Make it look like a class for compatibility
+                create_sandboxed_reader.__name__ = plugin_class.__name__
+                create_sandboxed_reader.__module__ = plugin_class.__module__
+                return create_sandboxed_reader
+            else:
+                return plugin_class
         elif plugin_type == "rust":
-            return PluginLoader.load_rust_plugin(plugin_path, BaseReader)
+            # Rust sandboxing will be handled in load_rust_plugin
+            return PluginLoader.load_rust_plugin(
+                plugin_path, BaseReader, mode, sandbox_config, plugin_config
+            )
         else:
             raise ValueError(f"Unsupported plugin type: {plugin_type}")
 
     @staticmethod
-    def load_writer(plugin_path: str) -> Type[BaseWriter]:
+    def load_writer(
+        plugin_path: str,
+        mode: str = "self_hosted",
+        sandbox_config: Optional[Dict[str, Any]] = None,
+        plugin_config: Optional[Dict[str, Any]] = None,
+    ) -> Type[BaseWriter]:
         """Load a custom writer class (Python or Rust).
 
         Args:
             plugin_path: Path to writer plugin
                         Python: "path/to/module.py:ClassName"
                         Rust: "path/to/libplugin.so:create_writer"
+            mode: Execution mode (self_hosted or cloud)
+            sandbox_config: Optional sandbox configuration dict
+            plugin_config: Optional plugin configuration dict (for checking sandbox enabled)
 
         Returns:
-            Writer class inheriting from BaseWriter
+            Writer class inheriting from BaseWriter (may be sandboxed wrapper)
         """
+        from .sandbox import should_sandbox_plugin
+
         plugin_type = PluginLoader._detect_plugin_type(plugin_path)
 
         if plugin_type == "python":
-            return PluginLoader.load_class_from_path(plugin_path, BaseWriter)
+            plugin_class = PluginLoader.load_class_from_path(plugin_path, BaseWriter)
+
+            # Check if sandboxing is needed
+            if should_sandbox_plugin(plugin_path, mode, plugin_config):
+                from .sandboxed_plugin_wrapper import SandboxedWriterWrapper
+
+                # Return a factory function that creates sandboxed wrapper
+                def create_sandboxed_writer(
+                    asset_definition, target_config, output_base
+                ):
+                    return SandboxedWriterWrapper(
+                        plugin_path,
+                        asset_definition,
+                        target_config,
+                        output_base,
+                        mode,
+                        sandbox_config,
+                    )
+
+                # Make it look like a class for compatibility
+                create_sandboxed_writer.__name__ = plugin_class.__name__
+                create_sandboxed_writer.__module__ = plugin_class.__module__
+                return create_sandboxed_writer
+            else:
+                return plugin_class
         elif plugin_type == "rust":
-            return PluginLoader.load_rust_plugin(plugin_path, BaseWriter)
+            # Rust sandboxing will be handled in load_rust_plugin
+            return PluginLoader.load_rust_plugin(
+                plugin_path, BaseWriter, mode, sandbox_config, plugin_config
+            )
         else:
             raise ValueError(f"Unsupported plugin type: {plugin_type}")
