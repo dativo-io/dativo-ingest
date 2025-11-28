@@ -500,13 +500,19 @@ class PluginSandbox:
                     diagnostic_container.start()
                     diag_result = diagnostic_container.wait(timeout=10)
                     diag_exit_code = diag_result.get("StatusCode", 1)
+                    
+                    # Retrieve logs before removing container (needed for error reporting)
+                    diag_logs_raw = None
+                    if diag_exit_code != 0:
+                        diag_logs_raw = diagnostic_container.logs(
+                            stdout=True, stderr=True
+                        )
+                    
                     diagnostic_container.remove(force=True)
-
+                    
                     if diag_exit_code != 0:
                         # Diagnostic failed - this indicates a volume mount issue
-                        diag_logs = diagnostic_container.logs(
-                            stdout=True, stderr=True
-                        ).decode("utf-8")
+                        diag_logs = diag_logs_raw.decode("utf-8") if diag_logs_raw else ""
                         raise SandboxError(
                             f"Volume mount issue: Cannot access mounted directory /app/plugins",
                             details={
