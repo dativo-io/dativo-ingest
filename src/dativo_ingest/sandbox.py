@@ -22,7 +22,7 @@ try:
     if "" in sys.path:
         sys.path.remove("")
 
-    from docker.errors import DockerException
+    from docker.errors import DockerException, ImageNotFound
 
     import docker
 
@@ -35,6 +35,7 @@ except (ImportError, AttributeError):
         sys.path = original_path
     docker = None
     DockerException = Exception
+    ImageNotFound = Exception
 
 from .exceptions import SandboxError
 
@@ -500,19 +501,21 @@ class PluginSandbox:
                     diagnostic_container.start()
                     diag_result = diagnostic_container.wait(timeout=10)
                     diag_exit_code = diag_result.get("StatusCode", 1)
-                    
+
                     # Retrieve logs before removing container (needed for error reporting)
                     diag_logs_raw = None
                     if diag_exit_code != 0:
                         diag_logs_raw = diagnostic_container.logs(
                             stdout=True, stderr=True
                         )
-                    
+
                     diagnostic_container.remove(force=True)
-                    
+
                     if diag_exit_code != 0:
                         # Diagnostic failed - this indicates a volume mount issue
-                        diag_logs = diag_logs_raw.decode("utf-8") if diag_logs_raw else ""
+                        diag_logs = (
+                            diag_logs_raw.decode("utf-8") if diag_logs_raw else ""
+                        )
                         raise SandboxError(
                             f"Volume mount issue: Cannot access mounted directory /app/plugins",
                             details={
@@ -525,6 +528,18 @@ class PluginSandbox:
                             retryable=False,
                         )
                     # If we get here, the diagnostic container ran successfully
+                except ImageNotFound as image_error:
+                    # Docker image is missing - this is a configuration issue, not a volume mount issue
+                    image_name = getattr(image_error, "explanation", "python:3.10-slim")
+                    raise SandboxError(
+                        f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
+                        details={
+                            "error": str(image_error),
+                            "image": image_name,
+                            "error_type": "ImageNotFound",
+                        },
+                        retryable=False,
+                    )
                 except Exception as diag_error:
                     # If diagnostic container creation/start fails, it might be a volume mount issue
                     # or it could be a test environment where containers aren't fully mocked
@@ -545,7 +560,20 @@ class PluginSandbox:
                     # Otherwise, silently continue (likely a test environment)
 
                 # Create the actual container for plugin execution
-                container = self.docker_client.containers.create(**container_config)
+                try:
+                    container = self.docker_client.containers.create(**container_config)
+                except ImageNotFound as image_error:
+                    # Docker image is missing - this is a configuration issue
+                    image_name = getattr(image_error, "explanation", "python:3.10-slim")
+                    raise SandboxError(
+                        f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
+                        details={
+                            "error": str(image_error),
+                            "image": image_name,
+                            "error_type": "ImageNotFound",
+                        },
+                        retryable=False,
+                    )
 
                 # Try to start container - if seccomp profile causes issues, retry without it
                 try:
@@ -565,10 +593,25 @@ class PluginSandbox:
                             container.remove(force=True)
                         except Exception:
                             pass
-                        container = self.docker_client.containers.create(
-                            **container_config
-                        )
-                        container.start()
+                        try:
+                            container = self.docker_client.containers.create(
+                                **container_config
+                            )
+                            container.start()
+                        except ImageNotFound as image_error:
+                            # Docker image is missing - this is a configuration issue
+                            image_name = getattr(
+                                image_error, "explanation", "python:3.10-slim"
+                            )
+                            raise SandboxError(
+                                f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
+                                details={
+                                    "error": str(image_error),
+                                    "image": image_name,
+                                    "error_type": "ImageNotFound",
+                                },
+                                retryable=False,
+                            )
                     else:
                         # Re-raise if it's a different error
                         raise
