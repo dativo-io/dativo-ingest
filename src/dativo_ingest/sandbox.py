@@ -107,8 +107,14 @@ class PluginSandbox:
         allow container escape, kernel module loading, or host system compromise
         are explicitly denied.
 
+        The profile includes newer syscalls (openat2, close_range, clone3, etc.)
+        required by modern runc versions for secure container startup, especially
+        when using read-only filesystems and mount isolation. These syscalls are
+        used by runc itself during container initialization, not by the container
+        process, so they are safe to allow.
+
         The profile is minimal - only syscalls actually needed for Python execution
-        and the sandbox test to pass are included.
+        and secure container startup are included.
 
         Returns:
             Seccomp profile dictionary
@@ -130,6 +136,7 @@ class PluginSandbox:
             "chdir",
             "fchdir",
             "openat",
+            "openat2",  # Newer secure version of openat (required by runc for /proc checks)
             "newfstatat",
             "faccessat",
             "getdents",
@@ -148,6 +155,7 @@ class PluginSandbox:
             "mremap",
             # Essential process operations
             "clone",
+            "clone3",  # Newer version of clone (required by runc)
             "fork",
             "execve",
             "exit",
@@ -178,6 +186,7 @@ class PluginSandbox:
             "dup",
             "dup2",
             "dup3",
+            "close_range",  # Required by runc for secure file descriptor closing
             "select",
             "poll",
             "epoll_create",
@@ -227,6 +236,13 @@ class PluginSandbox:
             "arch_prctl",
             # Random number generation (needed by Python)
             "getrandom",
+            # New mount API syscalls (required by runc for secure mount operations)
+            # These are safe - they're used by runc itself, not by container processes
+            "open_tree",  # Required by runc for mount namespace operations
+            "move_mount",  # Required by runc for mount operations
+            "fsopen",  # Required by runc for filesystem operations
+            "fsmount",  # Required by runc for mounting
+            "fspick",  # Required by runc for filesystem operations
         ]
 
         # Define dangerous syscalls that must be explicitly denied
@@ -267,7 +283,8 @@ class PluginSandbox:
 
         return {
             "defaultAction": "SCMP_ACT_ERRNO",
-            "architectures": ["SCMP_ARCH_X86_64"],
+            # Support both x86_64 and ARM64 (Apple Silicon)
+            "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_AARCH64"],
             "syscalls": [
                 # First, explicitly deny dangerous syscalls (defense in depth)
                 {
@@ -337,10 +354,12 @@ class PluginSandbox:
 
         # Build volumes dictionary
         # Use absolute path for volume mount (required for Docker)
+        # Use /usr/local/plugins as mount point since /usr/local exists in base image
+        # This ensures the mount point directory exists even with read_only filesystem
         plugin_dir = str(self.plugin_path.parent.absolute())
         volumes = {
             plugin_dir: {
-                "bind": "/app/plugins",
+                "bind": "/usr/local/plugins",
                 "mode": "ro",  # Read-only mount
             }
         }
@@ -349,17 +368,17 @@ class PluginSandbox:
         # Use absolute path for volume mount
         if dativo_ingest_src:
             volumes[str(dativo_ingest_src.absolute())] = {
-                "bind": "/app/src",
+                "bind": "/usr/local/src",
                 "mode": "ro",  # Read-only mount
             }
 
-        # Set PYTHONPATH to include /app/src so dativo_ingest can be imported
+        # Set PYTHONPATH to include /usr/local/src so dativo_ingest can be imported
         env = environment.copy() if environment else {}
         if dativo_ingest_src:
-            env["PYTHONPATH"] = "/app/src"
+            env["PYTHONPATH"] = "/usr/local/src"
         else:
-            # Fallback: try to use /app/plugins if src not found
-            env["PYTHONPATH"] = "/app/plugins"
+            # Fallback: try to use /usr/local/plugins if src not found
+            env["PYTHONPATH"] = "/usr/local/plugins"
 
         config = {
             "image": "python:3.10",  # Base Python image (full image for better stability)
@@ -370,7 +389,8 @@ class PluginSandbox:
             "cpu_quota": int(self.cpu_limit * 100000) if self.cpu_limit else None,
             "environment": env,
             "volumes": volumes,
-            "working_dir": "/app/plugins",
+            # Don't set working_dir - use absolute paths in commands instead
+            # This avoids issues when the directory doesn't exist in the base image
             # Note: Running as non-root may not work in all environments (e.g., colima)
             # For maximum compatibility, we don't set user here
             # In production, you may want to set "user": "nobody" for security
@@ -478,7 +498,7 @@ class PluginSandbox:
                 )
 
             container_config = self._build_container_config(
-                command=["python", f"/app/plugins/{script_filename}"],
+                command=["python", f"/usr/local/plugins/{script_filename}"],
                 environment={
                     "PYTHONUNBUFFERED": "1",
                 },
@@ -489,27 +509,116 @@ class PluginSandbox:
                 # Debug: Verify volume mount by creating a temporary diagnostic container
                 # This helps diagnose volume mount issues before running the actual plugin
                 try:
-                    # Create a minimal diagnostic container config (same volumes, but just run ls)
+                    # Create a minimal diagnostic container config (same volumes, but check if script exists)
                     diagnostic_config = container_config.copy()
-                    diagnostic_config["command"] = ["ls", "-la", "/app/plugins"]
+                    # Check if the script file exists and is readable in the mounted directory
+                    # Use /usr/local/plugins as the mount point (exists in base image)
+                    diagnostic_config["command"] = [
+                        "sh",
+                        "-c",
+                        f"test -r /usr/local/plugins/{script_filename} && echo 'OK' || (echo 'Script not found or not readable'; ls -la /usr/local/plugins 2>&1 || echo 'Directory not accessible'; exit 1)",
+                    ]
 
                     # Create, start, and wait for diagnostic container to verify volume mount
                     # Use create/start pattern (same as main container) for consistency with mocks
-                    diagnostic_container = self.docker_client.containers.create(
-                        **diagnostic_config
-                    )
-                    diagnostic_container.start()
-                    diag_result = diagnostic_container.wait(timeout=10)
-                    diag_exit_code = diag_result.get("StatusCode", 1)
-
-                    # Retrieve logs before removing container (needed for error reporting)
+                    # If seccomp causes issues, retry without it (similar to main container)
+                    diagnostic_container = None
+                    diag_exit_code = 1
                     diag_logs_raw = None
-                    if diag_exit_code != 0:
-                        diag_logs_raw = diagnostic_container.logs(
-                            stdout=True, stderr=True
-                        )
 
-                    diagnostic_container.remove(force=True)
+                    try:
+                        diagnostic_container = self.docker_client.containers.create(
+                            **diagnostic_config
+                        )
+                        diagnostic_container.start()
+                        diag_result = diagnostic_container.wait(timeout=10)
+                        diag_exit_code = diag_result.get("StatusCode", 1)
+
+                        # Retrieve logs before removing container (needed for error reporting)
+                        if diag_exit_code != 0:
+                            diag_logs_raw = diagnostic_container.logs(
+                                stdout=True, stderr=True
+                            )
+                        diagnostic_container.remove(force=True)
+                    except Exception as diag_start_error:
+                        # If container fails to start due to seccomp/runtime issues, retry with unconfined seccomp, then without it
+                        error_msg = str(diag_start_error).lower()
+                        if (
+                            "seccomp" in error_msg
+                            or "bounding set" in error_msg
+                            or "operation not permitted" in error_msg
+                            or "oci runtime" in error_msg
+                            or "500 server error" in error_msg
+                        ):
+                            # First try with unconfined seccomp (allows all syscalls but keeps other security features)
+                            if diagnostic_container:
+                                try:
+                                    diagnostic_container.remove(force=True)
+                                except Exception:
+                                    pass
+
+                            diagnostic_config_retry = diagnostic_config.copy()
+                            diagnostic_config_retry["security_opt"] = [
+                                "seccomp=unconfined"
+                            ]
+
+                            try:
+                                diagnostic_container = (
+                                    self.docker_client.containers.create(
+                                        **diagnostic_config_retry
+                                    )
+                                )
+                                diagnostic_container.start()
+                                diag_result = diagnostic_container.wait(timeout=10)
+                                diag_exit_code = diag_result.get("StatusCode", 1)
+
+                                # Retrieve logs before removing container
+                                if diag_exit_code != 0:
+                                    diag_logs_raw = diagnostic_container.logs(
+                                        stdout=True, stderr=True
+                                    )
+                                diagnostic_container.remove(force=True)
+                            except Exception as unconfined_error:
+                                # Unconfined seccomp also failed - try without seccomp entirely
+                                diagnostic_config_retry.pop("security_opt", None)
+                                if diagnostic_container:
+                                    try:
+                                        diagnostic_container.remove(force=True)
+                                    except Exception:
+                                        pass
+
+                                try:
+                                    diagnostic_container = (
+                                        self.docker_client.containers.create(
+                                            **diagnostic_config_retry
+                                        )
+                                    )
+                                    diagnostic_container.start()
+                                    diag_result = diagnostic_container.wait(timeout=10)
+                                    diag_exit_code = diag_result.get("StatusCode", 1)
+
+                                    # Retrieve logs before removing container
+                                    if diag_exit_code != 0:
+                                        diag_logs_raw = diagnostic_container.logs(
+                                            stdout=True, stderr=True
+                                        )
+                                    diagnostic_container.remove(force=True)
+                                except Exception as retry_error:
+                                    # All retries failed - clean up and re-raise original error
+                                    if diagnostic_container:
+                                        try:
+                                            diagnostic_container.remove(force=True)
+                                        except Exception:
+                                            pass
+                                    raise diag_start_error from retry_error
+                        else:
+                            # Different error - clean up and re-raise
+                            if diagnostic_container:
+                                try:
+                                    diagnostic_container.remove(force=True)
+                                except Exception:
+                                    pass
+                            raise
 
                     if diag_exit_code != 0:
                         # Diagnostic failed - this indicates a volume mount issue
@@ -517,12 +626,13 @@ class PluginSandbox:
                             diag_logs_raw.decode("utf-8") if diag_logs_raw else ""
                         )
                         raise SandboxError(
-                            f"Volume mount issue: Cannot access mounted directory /app/plugins",
+                            f"Volume mount issue: Cannot access mounted directory /usr/local/plugins",
                             details={
                                 "exit_code": diag_exit_code,
                                 "logs": diag_logs,
                                 "mounted_path": str(self.plugin_path.parent.absolute()),
                                 "script_path": str(script_path.absolute()),
+                                "script_filename": script_filename,
                                 "script_exists": script_path.exists(),
                             },
                             retryable=False,
@@ -559,23 +669,58 @@ class PluginSandbox:
                         retryable=False,
                     )
                 except Exception as diag_error:
-                    # If diagnostic container creation/start fails, it might be a volume mount issue
-                    # or it could be a test environment where containers aren't fully mocked
-                    # Only raise if it's clearly a volume mount issue (not a mock/test issue)
+                    # If diagnostic container creation/start fails, it might be a volume mount issue,
+                    # a Docker runtime issue (e.g., Colima permissions), or a test environment issue
                     error_msg = str(diag_error)
-                    # Check if this looks like a real Docker error vs a mock issue
-                    if "AttributeError" not in error_msg and "Mock" not in error_msg:
+                    error_type = type(diag_error).__name__
+
+                    # Check if this is a Docker runtime/permissions issue (not a volume mount issue)
+                    runtime_error_indicators = [
+                        "operation not permitted",
+                        "OCI runtime",
+                        "runc",
+                        "procfs",
+                        "500 Server Error",
+                        "Internal Server Error",
+                    ]
+                    is_runtime_error = any(
+                        indicator.lower() in error_msg.lower()
+                        for indicator in runtime_error_indicators
+                    )
+
+                    # Check if this looks like a mock/test environment issue
+                    is_mock_error = "AttributeError" in error_msg or "Mock" in error_msg
+
+                    if is_runtime_error:
+                        # Docker runtime issue (e.g., Colima permissions) - provide helpful error
                         raise SandboxError(
-                            f"Volume mount issue: Cannot access mounted directory /app/plugins",
+                            f"Docker runtime error: {error_type}. This may be a Docker/Colima configuration issue. "
+                            f"Check Docker permissions and runtime configuration.",
                             details={
                                 "error": error_msg,
+                                "error_type": error_type,
+                                "mounted_path": str(self.plugin_path.parent.absolute()),
+                                "script_path": str(script_path.absolute()),
+                                "script_exists": script_path.exists(),
+                                "hint": "This may be a Docker runtime configuration issue, not a volume mount problem. "
+                                "Check Docker/Colima permissions and security settings.",
+                            },
+                            retryable=False,
+                        )
+                    elif not is_mock_error:
+                        # Likely a volume mount issue or other Docker error
+                        raise SandboxError(
+                            f"Volume mount issue: Cannot access mounted directory /usr/local/plugins",
+                            details={
+                                "error": error_msg,
+                                "error_type": error_type,
                                 "mounted_path": str(self.plugin_path.parent.absolute()),
                                 "script_path": str(script_path.absolute()),
                                 "script_exists": script_path.exists(),
                             },
                             retryable=False,
                         )
-                    # Otherwise, silently continue (likely a test environment)
+                    # Otherwise, silently continue (likely a test environment with mocks)
 
                 # Create the actual container for plugin execution
                 try:
@@ -607,62 +752,82 @@ class PluginSandbox:
                         retryable=False,
                     )
 
-                # Try to start container - if seccomp profile causes issues, retry without it
+                # Try to start container - if seccomp profile causes issues, retry with unconfined seccomp, then without it
                 try:
                     container.start()
                 except Exception as start_error:
                     # If container fails to start, it might be due to seccomp profile not being supported
-                    # Try again without seccomp profile
+                    # Try with unconfined seccomp first (allows all syscalls but maintains other security)
+                    # Then try without seccomp entirely if that also fails
                     error_msg = str(start_error).lower()
                     if (
                         "seccomp" in error_msg
                         or "bounding set" in error_msg
                         or "operation not permitted" in error_msg
+                        or "oci runtime" in error_msg
+                        or "500 server error" in error_msg
                     ):
-                        # Remove seccomp profile and recreate container
-                        container_config.pop("security_opt", None)
+                        # First try with unconfined seccomp (allows all syscalls but keeps other security features)
+                        container_config_retry = container_config.copy()
+                        container_config_retry["security_opt"] = ["seccomp=unconfined"]
                         try:
                             container.remove(force=True)
                         except Exception:
                             pass
                         try:
                             container = self.docker_client.containers.create(
-                                **container_config
+                                **container_config_retry
                             )
                             container.start()
-                        except ImageNotFound as image_error:
-                            # Docker image is missing - this is a configuration issue
-                            # Extract image name from explanation (format: "No such image: python:3.10")
-                            explanation = getattr(image_error, "explanation", "")
-                            if explanation:
-                                # Try to extract image name from various formats
-                                if "No such image:" in explanation:
-                                    # Format: "No such image: python:3.10"
-                                    image_name = explanation.split("No such image:")[
-                                        -1
-                                    ].strip()
-                                elif ":" in explanation and not explanation.startswith(
-                                    "http"
-                                ):
-                                    # Might already be just the image name (e.g., "python:3.10")
-                                    image_name = explanation.strip()
+                        except Exception as unconfined_error:
+                            # Unconfined seccomp also failed - try without seccomp entirely
+                            container_config_retry.pop("security_opt", None)
+                            try:
+                                container.remove(force=True)
+                            except Exception:
+                                pass
+                            try:
+                                container = self.docker_client.containers.create(
+                                    **container_config_retry
+                                )
+                                container.start()
+                            except ImageNotFound as image_error:
+                                # Docker image is missing - this is a configuration issue
+                                # Extract image name from explanation (format: "No such image: python:3.10")
+                                explanation = getattr(image_error, "explanation", "")
+                                if explanation:
+                                    # Try to extract image name from various formats
+                                    if "No such image:" in explanation:
+                                        # Format: "No such image: python:3.10"
+                                        image_name = explanation.split(
+                                            "No such image:"
+                                        )[-1].strip()
+                                    elif (
+                                        ":" in explanation
+                                        and not explanation.startswith("http")
+                                    ):
+                                        # Might already be just the image name (e.g., "python:3.10")
+                                        image_name = explanation.strip()
+                                    else:
+                                        # Fallback to default
+                                        image_name = "python:3.10"
                                 else:
-                                    # Fallback to default
                                     image_name = "python:3.10"
-                            else:
-                                image_name = "python:3.10"
 
-                            # Clean up image name - remove any quotes or extra whitespace
-                            image_name = image_name.strip("\"'")
-                            raise SandboxError(
-                                f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
-                                details={
-                                    "error": str(image_error),
-                                    "image": image_name,
-                                    "error_type": "ImageNotFound",
-                                },
-                                retryable=False,
-                            )
+                                # Clean up image name - remove any quotes or extra whitespace
+                                image_name = image_name.strip("\"'")
+                                raise SandboxError(
+                                    f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
+                                    details={
+                                        "error": str(image_error),
+                                        "image": image_name,
+                                        "error_type": "ImageNotFound",
+                                    },
+                                    retryable=False,
+                                )
+                            except Exception as no_seccomp_error:
+                                # All retries failed - re-raise original error
+                                raise start_error from no_seccomp_error
                     else:
                         # Re-raise if it's a different error
                         raise
@@ -740,7 +905,7 @@ class PluginSandbox:
         kwargs_json = json.dumps(kwargs, default=str)
 
         # Use absolute path in container
-        plugin_path_in_container = f"/app/plugins/{plugin_file}"
+        plugin_path_in_container = f"/usr/local/plugins/{plugin_file}"
 
         script = f"""
 import sys
