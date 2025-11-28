@@ -500,6 +500,22 @@ class RetryConfig(BaseModel):
         return self
 
 
+class PluginSandboxConfig(BaseModel):
+    """Configuration for plugin sandboxing."""
+
+    enabled: bool = True
+    cpu_limit: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    memory_limit: Optional[str] = None  # e.g., "512m", "1g"
+    network_disabled: bool = True
+    timeout: int = Field(default=300, ge=1)  # seconds
+
+
+class PluginConfig(BaseModel):
+    """Plugin configuration."""
+
+    sandbox: Optional[PluginSandboxConfig] = None
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -537,6 +553,9 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+
+    # Plugin configuration
+    plugins: Optional[PluginConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":

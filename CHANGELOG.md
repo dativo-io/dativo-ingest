@@ -2,17 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Plugin sandboxing integration for Python and Rust plugins
+- Automatic sandboxing in cloud mode for all custom plugins
+- Configurable sandbox settings via `plugins.sandbox` in job configuration
+- Resource limits (CPU, memory) for sandboxed plugins
+- Network isolation for sandboxed plugins
+- Timeout enforcement for plugin execution
+- Rust plugin runner container for sandboxed Rust plugin execution
+- Comprehensive unit, integration, and performance tests for sandboxing
+- Documentation updates for plugin sandboxing configuration and usage
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
-- **Plugin Sandboxing**: Docker-based sandboxing for custom Python plugins
+- **Plugin Sandboxing**: Docker-based sandboxing for custom Python and Rust plugins
   - Resource limits (CPU, memory)
   - Network isolation
   - Seccomp profiles for security
   - Automatic sandboxing in cloud mode
+  - Configurable sandbox settings via `plugins.sandbox` in job configuration
+  - Rust plugin runner container for sandboxed Rust plugin execution
+  - Comprehensive unit, integration, and performance tests
   - Comprehensive documentation in `docs/PLUGIN_SANDBOXING.md`
 - **Connection Testing**: `check_connection()` method in BaseReader/BaseWriter
   - CLI command: `dativo check --config job.yaml [--json] [--verbose]`
