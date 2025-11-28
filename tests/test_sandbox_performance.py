@@ -50,6 +50,11 @@ from dativo_ingest.plugins import BaseReader, ConnectionTestResult
 class PerfReader(BaseReader):
     def check_connection(self):
         return ConnectionTestResult(success=True, message="OK")
+    
+    def extract(self, state_manager=None):
+        # Required abstract method - return empty generator for performance test
+        # Use a generator that yields nothing
+        return iter([])
 """
         )
 
