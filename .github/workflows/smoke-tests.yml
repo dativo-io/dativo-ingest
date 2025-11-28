@@ -372,6 +372,13 @@ jobs:
           # Use temp directory for CI/CD to avoid polluting repo
           mkdir -p /tmp/dativo-state/test_tenant
 
+      - name: Pull Docker images for sandbox tests
+        run: |
+          # Pull required Docker images for sandbox tests
+          echo "Pulling Docker images for sandbox tests..."
+          docker pull python:3.10-slim || echo "⚠️  Failed to pull python:3.10-slim (may use cached image)"
+          echo "✅ Docker images ready"
+
       - name: Check Docker configuration for sandbox tests
         run: |
           # Check Docker configuration for sandbox tests
