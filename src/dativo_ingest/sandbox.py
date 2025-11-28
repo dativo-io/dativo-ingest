@@ -1153,11 +1153,15 @@ try:
             abstract_methods = getattr(obj, '__abstractmethods__', None)
             if abstract_methods is not None:
                 # If __abstractmethods__ exists and is not empty, class is abstract
+                # If it's empty (even if class inherits from ABC), class is concrete
                 if isinstance(abstract_methods, (frozenset, set)) and len(abstract_methods) > 0:
                     is_abstract = True
-                # Also check if it's an ABC subclass
-                elif issubclass(obj, ABC):
-                    is_abstract = True
+                # If __abstractmethods__ exists and is empty, class is concrete (all methods implemented)
+                # Don't check issubclass(obj, ABC) here - concrete classes can inherit from ABC
+            elif issubclass(obj, ABC):
+                # Only check ABC inheritance if __abstractmethods__ doesn't exist
+                # This is a fallback for edge cases where the attribute might not be set
+                is_abstract = True
         except Exception:
             # If check fails, assume it's not abstract (safer to try concrete classes)
             pass
