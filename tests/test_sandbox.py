@@ -172,9 +172,9 @@ class TestContainerConfiguration:
         assert config["network_disabled"] is True
         assert config["read_only"] is True
         # Note: user is not set by default for compatibility (colima, etc.)
-        # Check that /app/plugins is in the volume bindings
+        # Check that /usr/local/plugins is in the volume bindings
         volumes = config["volumes"]
-        assert any(v.get("bind") == "/app/plugins" for v in volumes.values())
+        assert any(v.get("bind") == "/usr/local/plugins" for v in volumes.values())
 
     def test_build_container_config_mounts_source(self, tmp_path):
         """Test that container config mounts dativo_ingest source."""
@@ -194,9 +194,9 @@ class TestContainerConfiguration:
 
         # Verify source directory is mounted
         volumes = config["volumes"]
-        assert any("/app/src" in str(v.get("bind", "")) for v in volumes.values())
+        assert any("/usr/local/src" in str(v.get("bind", "")) for v in volumes.values())
         # Verify PYTHONPATH is set
-        assert config["environment"].get("PYTHONPATH") == "/app/src"
+        assert config["environment"].get("PYTHONPATH") == "/usr/local/src"
 
     def test_build_container_config_sets_pythonpath(self, tmp_path):
         """Test that PYTHONPATH is set correctly."""
@@ -206,9 +206,12 @@ class TestContainerConfiguration:
         sandbox = PluginSandbox(str(plugin_file))
         config = sandbox._build_container_config(["python", "script.py"])
 
-        # PYTHONPATH should be set (either /app/src or /app/plugins)
+        # PYTHONPATH should be set (either /usr/local/src or /usr/local/plugins)
         assert "PYTHONPATH" in config["environment"]
-        assert config["environment"]["PYTHONPATH"] in ["/app/src", "/app/plugins"]
+        assert config["environment"]["PYTHONPATH"] in [
+            "/usr/local/src",
+            "/usr/local/plugins",
+        ]
 
     def test_build_container_config_resource_limits(self, tmp_path):
         """Test resource limits in container config."""
@@ -775,7 +778,7 @@ class TestImageNotFoundErrorHandling:
                 super().__init__(msg)
                 self.explanation = msg
 
-        # Mock containers: diagnostic succeeds, main fails with seccomp error, retry fails with ImageNotFound
+        # Mock containers: diagnostic succeeds, main fails with seccomp error, unconfined retry fails with ImageNotFound
         mock_diagnostic_container = Mock()
         mock_diagnostic_container.wait.return_value = {"StatusCode": 0}
         mock_diagnostic_container.logs.return_value = b""
@@ -784,13 +787,19 @@ class TestImageNotFoundErrorHandling:
         mock_main_container = Mock()
         mock_main_container.start.side_effect = Exception("seccomp profile error")
 
+        mock_unconfined_container = Mock()
+        mock_unconfined_container.start.side_effect = Exception("unconfined seccomp also failed")
+
         mock_image_error = MockImageNotFound("No such image: python:3.10")
 
-        # Sequence: diagnostic succeeds, main created, main fails to start, retry creation fails
+        # Sequence: diagnostic succeeds, main created, main fails to start,
+        # unconfined retry created, unconfined retry fails to start,
+        # no-seccomp retry creation fails with ImageNotFound
         mock_client.containers.create.side_effect = [
             mock_diagnostic_container,  # Diagnostic
             mock_main_container,  # Main container (first attempt)
-            mock_image_error,  # Retry after seccomp error
+            mock_unconfined_container,  # Unconfined seccomp retry
+            mock_image_error,  # No-seccomp retry after unconfined fails
         ]
 
         # Patch ImageNotFound to be our mock exception
@@ -1033,18 +1042,15 @@ class TestSeccompRetry:
         mock_main_container_first = Mock()
         mock_main_container_first.start.side_effect = Exception("seccomp profile error")
 
+        mock_unconfined_container = Mock()
+        mock_unconfined_container.start.side_effect = Exception("unconfined seccomp also failed")
+
         mock_main_container_retry = Mock()
         mock_main_container_retry.wait.return_value = {"StatusCode": 0}
         mock_main_container_retry.logs.return_value = (
             b'{"status": "success", "result": {}}'
         )
         mock_main_container_retry.start.return_value = None
-
-        mock_client.containers.create.side_effect = [
-            mock_diagnostic_container,
-            mock_main_container_first,
-            mock_main_container_retry,
-        ]
 
         # Capture the config passed to the retry container creation
         configs_passed = []
@@ -1056,8 +1062,12 @@ class TestSeccompRetry:
                 return mock_diagnostic_container
             elif call_count[0] == 2:
                 return mock_main_container_first
+            elif call_count[0] == 3:
+                # First retry with unconfined seccomp - capture config
+                configs_passed.append(kwargs.copy())
+                return mock_unconfined_container
             else:
-                # This is the retry call - capture the config
+                # Second retry without seccomp - capture config
                 configs_passed.append(kwargs.copy())
                 return mock_main_container_retry
 
@@ -1066,7 +1076,9 @@ class TestSeccompRetry:
         sandbox = PluginSandbox(str(plugin_file))
         sandbox.execute("check_connection")
 
-        # Verify seccomp was removed from retry config
-        assert len(configs_passed) > 0
-        retry_config = configs_passed[0]
-        assert "security_opt" not in retry_config
+        # Verify retry configs: first should have unconfined seccomp, second should have no seccomp
+        assert len(configs_passed) >= 2
+        unconfined_config = configs_passed[0]
+        no_seccomp_config = configs_passed[1]
+        assert unconfined_config.get("security_opt") == ["seccomp=unconfined"]
+        assert "security_opt" not in no_seccomp_config

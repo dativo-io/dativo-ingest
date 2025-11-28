@@ -30,14 +30,15 @@ RUN apt-get update && apt-get install -y \
 # Copy runner binary from builder
 COPY --from=builder /build/target/release/rust-plugin-runner /usr/local/bin/rust-plugin-runner
 
-# Create non-root user
+# Create non-root user and plugin directory
+# Use /usr/local/plugins (FHS-compliant, matches Python sandbox)
 RUN useradd -m -u 1000 plugin && \
-    mkdir -p /app/plugins && \
-    chown -R plugin:plugin /app
+    mkdir -p /usr/local/plugins && \
+    chown -R plugin:plugin /usr/local/plugins
 
 USER plugin
 
-WORKDIR /app
+WORKDIR /usr/local/plugins
 
 ENTRYPOINT ["/usr/local/bin/rust-plugin-runner"]
 
