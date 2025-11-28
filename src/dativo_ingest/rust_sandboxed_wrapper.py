@@ -27,7 +27,12 @@ class SandboxedRustReaderWrapper(BaseReader):
         self.plugin_path = plugin_path
         self.mode = mode
         self.sandbox_config = sandbox_config or {}
-        self.sandbox = RustPluginSandbox(plugin_path, **self.sandbox_config)
+        # Filter out 'enabled' field - it's used to determine whether to sandbox,
+        # but not passed to RustPluginSandbox constructor
+        sandbox_kwargs = {
+            k: v for k, v in self.sandbox_config.items() if k != "enabled"
+        }
+        self.sandbox = RustPluginSandbox(plugin_path, **sandbox_kwargs)
 
     def check_connection(self) -> ConnectionTestResult:
         """Check connection via sandbox."""
@@ -77,7 +82,12 @@ class SandboxedRustWriterWrapper(BaseWriter):
         self.plugin_path = plugin_path
         self.mode = mode
         self.sandbox_config = sandbox_config or {}
-        self.sandbox = RustPluginSandbox(plugin_path, **self.sandbox_config)
+        # Filter out 'enabled' field - it's used to determine whether to sandbox,
+        # but not passed to RustPluginSandbox constructor
+        sandbox_kwargs = {
+            k: v for k, v in self.sandbox_config.items() if k != "enabled"
+        }
+        self.sandbox = RustPluginSandbox(plugin_path, **sandbox_kwargs)
 
     def check_connection(self) -> ConnectionTestResult:
         """Check connection via sandbox."""
