@@ -1130,12 +1130,14 @@ try:
     # Find plugin class - look for classes that have the requested method
     # Skip abstract base classes (BaseReader, BaseWriter) and prefer concrete implementations
     plugin_class = None
-    candidates = []
+    concrete_candidates = []
+    abstract_candidates = []
+    
     for name, obj in module.__dict__.items():
         if not isinstance(obj, type):
             continue
         
-        # Skip base classes by name
+        # Skip base classes by name (most reliable check)
         if name in ('BaseReader', 'BaseWriter'):
             continue
         
@@ -1147,25 +1149,33 @@ try:
         from abc import ABC
         is_abstract = False
         try:
-            if issubclass(obj, ABC):
-                # Check if class has any abstract methods
-                abstract_methods = getattr(obj, '__abstractmethods__', frozenset())
-                if abstract_methods and len(abstract_methods) > 0:
+            # Check for abstract methods - this is the most reliable way
+            abstract_methods = getattr(obj, '__abstractmethods__', None)
+            if abstract_methods is not None:
+                # If __abstractmethods__ exists and is not empty, class is abstract
+                if isinstance(abstract_methods, (frozenset, set)) and len(abstract_methods) > 0:
+                    is_abstract = True
+                # Also check if it's an ABC subclass
+                elif issubclass(obj, ABC):
                     is_abstract = True
         except Exception:
+            # If check fails, assume it's not abstract (safer to try concrete classes)
             pass
         
         if not is_abstract:
-            # Found a concrete class - use it
-            plugin_class = obj
-            break
+            # Found a concrete class - prefer these
+            concrete_candidates.append((name, obj))
         else:
-            # Keep abstract classes as fallback (shouldn't happen, but just in case)
-            candidates.append(obj)
+            # Keep abstract classes as last resort (shouldn't use these)
+            abstract_candidates.append((name, obj))
     
-    # If no concrete class found, use first candidate (shouldn't happen in practice)
-    if not plugin_class and candidates:
-        plugin_class = candidates[0]
+    # Prefer concrete classes
+    if concrete_candidates:
+        # Use first concrete class found
+        plugin_class = concrete_candidates[0][1]
+    elif abstract_candidates:
+        # Fallback to abstract (shouldn't happen, but better than nothing)
+        plugin_class = abstract_candidates[0][1]
 
     if not plugin_class:
         print(json.dumps({{
