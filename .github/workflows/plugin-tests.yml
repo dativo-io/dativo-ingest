@@ -253,6 +253,9 @@ jobs:
           cd examples/plugins/rust
           cargo build --release
       
+      - name: Pull Python 3.10 Docker image
+        run: docker pull python:3.10 || echo "⚠️  Failed to pull python:3.10 (may use cached image)"
+      
       - name: Check Docker configuration (for sandbox tests)
         run: |
           # Check Docker configuration for sandbox tests (if available)
