@@ -20,11 +20,13 @@ schema-odcs:
 	fi
 
 # Unit tests: Test internal functions (config loading, validation, etc.)
-test-unit:
+# Note: Some tests (sandbox integration) require Docker images to be built
+test-unit: build-plugin-images
 	@PYTHONPATH=src pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration
 
 # Integration tests: Test module integration, tag derivation, and ODCS compliance
-test-integration:
+# Note: Some tests may require Docker images to be built
+test-integration: build-plugin-images
 	@echo "🔍 Running integration tests..."
 	@if [ -f venv/bin/python ]; then \
 		PYTHONPATH=src venv/bin/python tests/integration/test_tag_derivation_integration.py; \
@@ -142,17 +144,19 @@ clean: clean-state clean-temp
 	@echo "✅ All cleanup complete"
 
 # Build Docker images for plugin sandboxes
+# This is a dependency for tests that use sandboxed plugin execution
 build-plugin-images:
 	@echo "🐳 Building plugin sandbox Docker images..."
 	@if command -v docker >/dev/null 2>&1; then \
 		echo "Building Python plugin runner image..."; \
-		docker build -t dativo/python-plugin-runner:latest -f docker/python-plugin-runner/Dockerfile .; \
+		docker build -t dativo/python-plugin-runner:latest -f docker/python-plugin-runner/Dockerfile . || exit 1; \
 		echo "Building Rust plugin runner image..."; \
-		docker build -t dativo/rust-plugin-runner:latest -f docker/rust-plugin-runner/Dockerfile docker/rust-plugin-runner/; \
+		docker build -t dativo/rust-plugin-runner:latest -f docker/rust-plugin-runner/Dockerfile docker/rust-plugin-runner/ || exit 1; \
 		echo "✅ Plugin images built successfully"; \
 	else \
-		echo "❌ Docker not found. Please install Docker to build plugin images."; \
-		exit 1; \
+		echo "⚠️  Docker not found. Skipping plugin image build."; \
+		echo "   Tests that require sandboxed execution may fail."; \
+		echo "   Install Docker and run 'make build-plugin-images' to build images."; \
 	fi
 
 
