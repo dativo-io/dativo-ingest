@@ -2,6 +2,23 @@
 
 A headless, config-driven ingestion engine. Extracts data from SaaS APIs (Stripe, HubSpot) and databases (PostgreSQL, MySQL) into object storage (S3, MinIO) as Iceberg-backed datasets. Supports Markdown-KV format for LLM-optimized data ingestion.
 
+## 🧪 Testing & Validation
+
+**NEW!** Comprehensive testing resources for all capabilities:
+- **[TESTING_GUIDE_INDEX.md](TESTING_GUIDE_INDEX.md)** - Complete testing documentation index
+- **[TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md)** - 20 detailed test cases with step-by-step instructions
+- **[TESTING_QUICK_REFERENCE.md](TESTING_QUICK_REFERENCE.md)** - Quick command reference and troubleshooting
+- **[scripts/preflight-check.sh](scripts/preflight-check.sh)** - Validate your environment is ready
+- **[scripts/generate-test-data.sh](scripts/generate-test-data.sh)** - Generate sample test datasets
+
+Quick start testing:
+```bash
+./scripts/preflight-check.sh  # Validate environment
+./scripts/generate-test-data.sh  # Generate test data
+source .env
+dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+```
+
 ## Architecture
 
 Config-driven ingestion engine. All behavior is controlled by YAML configs validated against a connector registry and asset schemas.
