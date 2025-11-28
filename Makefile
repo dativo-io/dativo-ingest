@@ -1,4 +1,4 @@
-.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test-workflows test-plugin test format format-check lint clean clean-state clean-temp
+.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test-workflows test-plugin test format format-check lint clean clean-state clean-temp build-plugin-images
 
 schema-validate: schema-connectors schema-odcs
 
@@ -140,5 +140,19 @@ clean-temp:
 # Clean up everything (state + temp files)
 clean: clean-state clean-temp
 	@echo "✅ All cleanup complete"
+
+# Build Docker images for plugin sandboxes
+build-plugin-images:
+	@echo "🐳 Building plugin sandbox Docker images..."
+	@if command -v docker >/dev/null 2>&1; then \
+		echo "Building Python plugin runner image..."; \
+		docker build -t dativo/python-plugin-runner:latest -f docker/python-plugin-runner/Dockerfile .; \
+		echo "Building Rust plugin runner image..."; \
+		docker build -t dativo/rust-plugin-runner:latest -f docker/rust-plugin-runner/Dockerfile docker/rust-plugin-runner/; \
+		echo "✅ Plugin images built successfully"; \
+	else \
+		echo "❌ Docker not found. Please install Docker to build plugin images."; \
+		exit 1; \
+	fi
 
 

@@ -54,6 +54,7 @@ class PluginSandbox:
         network_disabled: bool = True,
         seccomp_profile: Optional[str] = None,
         timeout: int = 300,
+        container_image: Optional[str] = None,
     ):
         """Initialize plugin sandbox.
 
@@ -64,6 +65,7 @@ class PluginSandbox:
             network_disabled: Disable network access (default: True)
             seccomp_profile: Path to seccomp profile JSON file (optional)
             timeout: Execution timeout in seconds (default: 300)
+            container_image: Docker image to use (default: "dativo/python-plugin-runner:latest" or "python:3.10" as fallback)
 
         Raises:
             SandboxError: If Docker is not available or initialization fails
@@ -76,6 +78,8 @@ class PluginSandbox:
         self.network_disabled = network_disabled
         self.seccomp_profile = seccomp_profile
         self.timeout = timeout
+        # Default to custom image with jsonschema, fallback to python:3.10
+        self.container_image = container_image or "dativo/python-plugin-runner:latest"
 
         # Initialize Docker client
         if docker is None:
@@ -409,8 +413,10 @@ class PluginSandbox:
             # Fallback: try to use /usr/local/plugins if src not found
             env["PYTHONPATH"] = "/usr/local/plugins"
 
+        # Use the configured image (defaults to custom image with jsonschema)
+        image_name = self.container_image
         config = {
-            "image": "python:3.10",  # Base Python image (full image for better stability)
+            "image": image_name,
             "command": command,
             "network_disabled": self.network_disabled,
             "mem_limit": self.memory_limit,
@@ -686,9 +692,9 @@ class PluginSandbox:
                             image_name = explanation.strip()
                         else:
                             # Fallback to default
-                            image_name = "python:3.10"
+                            image_name = self.container_image
                     else:
-                        image_name = "python:3.10"
+                        image_name = self.container_image
 
                     # Clean up image name - remove any quotes or extra whitespace
                     image_name = image_name.strip("\"'")
@@ -779,7 +785,7 @@ class PluginSandbox:
 
                 # Create the actual container for plugin execution
                 # First, ensure the Docker image is available (pull if needed)
-                image_name = container_config.get("image", "python:3.10")
+                image_name = container_config.get("image", self.container_image)
                 try:
                     self.docker_client.images.get(image_name)
                 except ImageNotFound:
@@ -787,17 +793,53 @@ class PluginSandbox:
                     try:
                         self.docker_client.images.pull(image_name)
                     except Exception as pull_error:
-                        # Pull failed - raise helpful error
-                        raise SandboxError(
-                            f"Failed to pull Docker image {image_name}: {pull_error}. "
-                            f"Please ensure the image is available or pull it manually with 'docker pull {image_name}'",
-                            details={
-                                "error": str(pull_error),
-                                "image": image_name,
-                                "error_type": "ImagePullError",
-                            },
-                            retryable=True,  # Network issues might be retryable
-                        ) from pull_error
+                        # Pull failed - if using custom image, try fallback to python:3.10
+                        if (
+                            image_name == self.container_image
+                            and self.container_image != "python:3.10"
+                        ):
+                            import warnings
+
+                            warnings.warn(
+                                f"Custom plugin image {image_name} not found and could not be pulled. "
+                                f"Falling back to python:3.10. Note: jsonschema may not be available. "
+                                f"To fix this, build the image with: make build-plugin-images",
+                                UserWarning,
+                            )
+                            # Try fallback image
+                            image_name = "python:3.10"
+                            try:
+                                self.docker_client.images.get(image_name)
+                            except ImageNotFound:
+                                # Try to pull fallback
+                                try:
+                                    self.docker_client.images.pull(image_name)
+                                except Exception as fallback_error:
+                                    raise SandboxError(
+                                        f"Failed to pull Docker image {image_name}: {fallback_error}. "
+                                        f"Please ensure Docker is configured correctly.",
+                                        details={
+                                            "error": str(fallback_error),
+                                            "image": image_name,
+                                            "error_type": "ImagePullError",
+                                        },
+                                        retryable=True,
+                                    ) from fallback_error
+                        else:
+                            # Not using custom image or already on fallback - raise error
+                            raise SandboxError(
+                                f"Failed to pull Docker image {image_name}: {pull_error}. "
+                                f"Please ensure the image is available or pull it manually with 'docker pull {image_name}'",
+                                details={
+                                    "error": str(pull_error),
+                                    "image": image_name,
+                                    "error_type": "ImagePullError",
+                                },
+                                retryable=True,  # Network issues might be retryable
+                            ) from pull_error
+
+                # Update container config with the actual image (may have changed due to fallback)
+                container_config["image"] = image_name
 
                 try:
                     container = self.docker_client.containers.create(**container_config)
@@ -815,9 +857,9 @@ class PluginSandbox:
                             image_name = explanation.strip()
                         else:
                             # Fallback to default
-                            image_name = "python:3.10"
+                            image_name = self.container_image
                     else:
-                        image_name = "python:3.10"
+                        image_name = self.container_image
                     raise SandboxError(
                         f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
                         details={
