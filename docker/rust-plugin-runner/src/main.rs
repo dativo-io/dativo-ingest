@@ -32,11 +32,13 @@ impl PluginRunner {
     }
 
     fn handle_request(&mut self, request: Value) -> Value {
-        let method = request
+        let method = match request
             .get("method")
             .and_then(|m| m.as_str())
-            .ok_or_else(|| json!({"error": "Missing method"}))
-            .unwrap();
+        {
+            Some(m) => m,
+            None => return json!({"error": "Missing method"}),
+        };
 
         match method {
             "create_reader" => self.create_reader(&request),
@@ -49,18 +51,22 @@ impl PluginRunner {
     }
 
     fn create_reader(&mut self, request: &Value) -> Value {
-        let config_json = request
+        let config_json = match request
             .get("config")
             .and_then(|c| c.as_str())
-            .ok_or_else(|| json!({"error": "Missing config"}))
-            .unwrap();
+        {
+            Some(c) => c,
+            None => return json!({"error": "Missing config"}),
+        };
 
         unsafe {
-            let create_reader: Symbol<CreateReaderFn> = self
+            let create_reader: Symbol<CreateReaderFn> = match self
                 .lib
                 .get(b"create_reader")
-                .map_err(|e| format!("Failed to get create_reader: {}", e))
-                .unwrap();
+            {
+                Ok(f) => f,
+                Err(e) => return json!({"error": format!("Failed to get create_reader: {}", e)}),
+            };
 
             let config_bytes = config_json.as_bytes();
             let reader_ptr = create_reader(config_bytes.as_ptr(), config_bytes.len());
@@ -71,18 +77,22 @@ impl PluginRunner {
     }
 
     fn create_writer(&mut self, request: &Value) -> Value {
-        let config_json = request
+        let config_json = match request
             .get("config")
             .and_then(|c| c.as_str())
-            .ok_or_else(|| json!({"error": "Missing config"}))
-            .unwrap();
+        {
+            Some(c) => c,
+            None => return json!({"error": "Missing config"}),
+        };
 
         unsafe {
-            let create_writer: Symbol<CreateWriterFn> = self
+            let create_writer: Symbol<CreateWriterFn> = match self
                 .lib
                 .get(b"create_writer")
-                .map_err(|e| format!("Failed to get create_writer: {}", e))
-                .unwrap();
+            {
+                Ok(f) => f,
+                Err(e) => return json!({"error": format!("Failed to get create_writer: {}", e)}),
+            };
 
             let config_bytes = config_json.as_bytes();
             let writer_ptr = create_writer(config_bytes.as_ptr(), config_bytes.len());
@@ -95,11 +105,13 @@ impl PluginRunner {
     fn extract_batch(&self) -> Value {
         if let Some(reader_ptr) = self.reader_ptr {
             unsafe {
-                let extract_batch: Symbol<ExtractBatchFn> = self
+                let extract_batch: Symbol<ExtractBatchFn> = match self
                     .lib
                     .get(b"extract_batch")
-                    .map_err(|e| format!("Failed to get extract_batch: {}", e))
-                    .unwrap();
+                {
+                    Ok(f) => f,
+                    Err(e) => return json!({"error": format!("Failed to get extract_batch: {}", e)}),
+                };
 
                 let result_ptr = extract_batch(reader_ptr);
                 if result_ptr.is_null() {
@@ -128,17 +140,19 @@ impl PluginRunner {
 
     fn write_batch(&self, request: &Value) -> Value {
         if let Some(writer_ptr) = self.writer_ptr {
-            let records_json = request
-                .get("records")
-                .ok_or_else(|| json!({"error": "Missing records"}))
-                .unwrap();
+            let records_json = match request.get("records") {
+                Some(r) => r,
+                None => return json!({"error": "Missing records"}),
+            };
 
             unsafe {
-                let write_batch: Symbol<WriteBatchFn> = self
+                let write_batch: Symbol<WriteBatchFn> = match self
                     .lib
                     .get(b"write_batch")
-                    .map_err(|e| format!("Failed to get write_batch: {}", e))
-                    .unwrap();
+                {
+                    Ok(f) => f,
+                    Err(e) => return json!({"error": format!("Failed to get write_batch: {}", e)}),
+                };
 
                 let records_str = serde_json::to_string(records_json).unwrap();
                 let records_bytes = records_str.as_bytes();

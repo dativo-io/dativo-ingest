@@ -99,7 +99,9 @@ if check_service "dativo-postgres" 5432; then
     POSTGRES_RUNNING=1
 fi
 
-if check_service "dativo-mysql" 3306; then
+# MySQL port can be overridden via MYSQL_PORT env var (default 3307 to avoid conflict with openmetadata_mysql)
+MYSQL_PORT=${MYSQL_PORT:-3307}
+if check_service "dativo-mysql" "$MYSQL_PORT"; then
     MYSQL_RUNNING=1
 fi
 
@@ -133,9 +135,9 @@ if ! check_port_conflict 5432 "dativo-postgres" >/tmp/port_check_5432 2>&1; then
     CONFLICT_MESSAGES+=("Postgres (5432)")
 fi
 
-if ! check_port_conflict 3306 "dativo-mysql" >/tmp/port_check_3306 2>&1; then
+if ! check_port_conflict "$MYSQL_PORT" "dativo-mysql" >/tmp/port_check_${MYSQL_PORT} 2>&1; then
     PORT_CONFLICTS=$((PORT_CONFLICTS + 1))
-    CONFLICT_MESSAGES+=("MySQL (3306)")
+    CONFLICT_MESSAGES+=("MySQL ($MYSQL_PORT)")
 fi
 
 if ! check_port_conflict 9000 "dativo-minio" >/tmp/port_check_9000 2>&1; then
@@ -180,7 +182,7 @@ else
     echo -e "${YELLOW}   ⚠️  Postgres is not accessible${NC}"
 fi
 
-if check_service "dativo-mysql" 3306; then
+if check_service "dativo-mysql" "$MYSQL_PORT"; then
     echo -e "${GREEN}   ✅ MySQL is running${NC}"
     RUNNING_COUNT=$((RUNNING_COUNT + 1))
 else
@@ -218,7 +220,7 @@ elif [ $RUNNING_COUNT -gt 0 ]; then
     echo "   - Container startup failures"
     echo ""
     echo "   To diagnose:"
-    echo "   - Check port conflicts: lsof -i :5432 -i :3306 -i :9000 -i :19120"
+    echo "   - Check port conflicts: lsof -i :5432 -i :${MYSQL_PORT} -i :9000 -i :19120"
     echo "   - Check Docker logs: docker-compose -f docker-compose.dev.yml logs"
     echo "   - Check running containers: docker ps"
     echo ""
@@ -230,7 +232,7 @@ else
     echo "   docker-compose -f docker-compose.dev.yml logs"
     echo ""
     echo "   Common issues:"
-    echo "   - Port conflicts: Stop other services using ports 5432, 3306, 9000, 19120"
+    echo "   - Port conflicts: Stop other services using ports 5432, ${MYSQL_PORT}, 9000, 19120"
     echo "   - Docker daemon issues: Restart Docker"
     echo ""
     exit 1
@@ -262,13 +264,13 @@ wait_for_service() {
 
 # Wait for each service
 wait_for_service "Postgres" "pg_isready -h localhost -p 5432 -U postgres" || true
-wait_for_service "MySQL" "mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot --silent" || true
+wait_for_service "MySQL" "mysqladmin ping -h 127.0.0.1 -P $MYSQL_PORT -u root -proot --silent" || true
 wait_for_service "MinIO" "curl -sf http://localhost:9000/minio/health/live" || true
 wait_for_service "Nessie" "curl -sf http://localhost:19120/api/v1/config" || true
 
 echo ""
 echo -e "${GREEN}✅ Infrastructure services started${NC}"
-echo "   Postgres: localhost:5432 | MySQL: localhost:3306"
+echo "   Postgres: localhost:5432 | MySQL: localhost:$MYSQL_PORT"
 echo "   MinIO: http://localhost:9000 | Nessie: http://localhost:19120/api/v1"
 
 # Register cleanup function if not disabled

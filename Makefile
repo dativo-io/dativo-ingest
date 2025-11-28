@@ -21,7 +21,7 @@ schema-odcs:
 
 # Unit tests: Test internal functions (config loading, validation, etc.)
 test-unit:
-	@pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration
+	@PYTHONPATH=src pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration
 
 # Integration tests: Test module integration, tag derivation, and ODCS compliance
 test-integration:
