@@ -168,7 +168,7 @@ class TestContainerConfiguration:
         sandbox = PluginSandbox(str(plugin_file))
         config = sandbox._build_container_config(["python", "script.py"])
 
-        assert config["image"] == "python:3.10-slim"
+        assert config["image"] == "python:3.10"
         assert config["network_disabled"] is True
         assert config["read_only"] is True
         # Note: user is not set by default for compatibility (colima, etc.)
@@ -701,7 +701,7 @@ class TestImageNotFoundErrorHandling:
                 super().__init__(msg)
                 self.explanation = msg
 
-        mock_image_error = MockImageNotFound("No such image: python:3.10-slim")
+        mock_image_error = MockImageNotFound("No such image: python:3.10")
         mock_client.containers.create.side_effect = mock_image_error
 
         # Patch ImageNotFound to be our mock exception
@@ -713,7 +713,7 @@ class TestImageNotFoundErrorHandling:
 
             # Verify error details
             assert "Docker image not found" in str(exc_info.value)
-            assert "python:3.10-slim" in str(exc_info.value)
+            assert "python:3.10" in str(exc_info.value)
             assert "docker pull" in str(exc_info.value)
             assert exc_info.value.details.get("error_type") == "ImageNotFound"
 
@@ -739,7 +739,7 @@ class TestImageNotFoundErrorHandling:
         mock_diagnostic_container.logs.return_value = b""
         mock_diagnostic_container.start.return_value = None
 
-        mock_image_error = MockImageNotFound("No such image: python:3.10-slim")
+        mock_image_error = MockImageNotFound("No such image: python:3.10")
 
         # First call succeeds (diagnostic), second call fails (main container)
         mock_client.containers.create.side_effect = [
@@ -755,7 +755,7 @@ class TestImageNotFoundErrorHandling:
                 sandbox.execute("check_connection")
 
             assert "Docker image not found" in str(exc_info.value)
-            assert "python:3.10-slim" in str(exc_info.value)
+            assert "python:3.10" in str(exc_info.value)
 
     @patch("dativo_ingest.sandbox.docker")
     def test_execute_image_not_found_after_seccomp_retry(
@@ -784,7 +784,7 @@ class TestImageNotFoundErrorHandling:
         mock_main_container = Mock()
         mock_main_container.start.side_effect = Exception("seccomp profile error")
 
-        mock_image_error = MockImageNotFound("No such image: python:3.10-slim")
+        mock_image_error = MockImageNotFound("No such image: python:3.10")
 
         # Sequence: diagnostic succeeds, main created, main fails to start, retry creation fails
         mock_client.containers.create.side_effect = [
@@ -801,7 +801,7 @@ class TestImageNotFoundErrorHandling:
                 sandbox.execute("check_connection")
 
             assert "Docker image not found" in str(exc_info.value)
-            assert "python:3.10-slim" in str(exc_info.value)
+            assert "python:3.10" in str(exc_info.value)
 
 
 class TestTimeoutHandling:
