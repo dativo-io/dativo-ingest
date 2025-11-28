@@ -7,6 +7,7 @@ enabling secure execution with resource limits and network isolation.
 import base64
 import json
 import os
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -414,6 +415,11 @@ class RustPluginSandbox:
             init_b64 = base64.b64encode(init_request.encode("utf-8")).decode("utf-8")
             method_b64 = base64.b64encode(method_request.encode("utf-8")).decode("utf-8")
             
+            # Use shlex.quote to properly escape base64 strings for shell safety
+            # This prevents shell interpretation issues with special characters
+            init_b64_quoted = shlex.quote(init_b64)
+            method_b64_quoted = shlex.quote(method_b64)
+            
             # Use a single exec_run that pipes both requests to rust-plugin-runner
             # This ensures both requests go to the same process, maintaining state
             # Pipe both decoded JSON lines to the same rust-plugin-runner process
@@ -421,7 +427,7 @@ class RustPluginSandbox:
                 [
                     "sh",
                     "-c",
-                    f'(echo "{init_b64}" | base64 -d; echo "{method_b64}" | base64 -d) | rust-plugin-runner',
+                    f'(echo {init_b64_quoted} | base64 -d; echo {method_b64_quoted} | base64 -d) | rust-plugin-runner',
                 ],
                 stdin=True,
             )
