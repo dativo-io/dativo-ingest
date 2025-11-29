@@ -4,6 +4,7 @@
 use libloading::{Library, Symbol};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use std::os::raw::c_char;
 
 type CreateReaderFn = unsafe extern "C" fn(*const u8, usize) -> *mut u8;
 type CreateWriterFn = unsafe extern "C" fn(*const u8, usize) -> *mut u8;
@@ -119,7 +120,7 @@ impl PluginRunner {
                 }
 
                 // Convert C string to Rust string
-                let result_str = std::ffi::CStr::from_ptr(result_ptr as *const u8)
+                let result_str = std::ffi::CStr::from_ptr(result_ptr as *const c_char)
                     .to_str()
                     .unwrap()
                     .to_string();
@@ -163,7 +164,7 @@ impl PluginRunner {
                 }
 
                 // Convert C string to Rust string
-                let result_str = std::ffi::CStr::from_ptr(result_ptr as *const u8)
+                let result_str = std::ffi::CStr::from_ptr(result_ptr as *const c_char)
                     .to_str()
                     .unwrap()
                     .to_string();
