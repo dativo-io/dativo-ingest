@@ -10,6 +10,8 @@ type CreateReaderFn = unsafe extern "C" fn(*const u8, usize) -> *mut u8;
 type CreateWriterFn = unsafe extern "C" fn(*const u8, usize) -> *mut u8;
 type ExtractBatchFn = unsafe extern "C" fn(*mut u8) -> *const u8;
 type WriteBatchFn = unsafe extern "C" fn(*mut u8, *const u8, usize) -> *const u8;
+type DiscoverFn = unsafe extern "C" fn(*const u8, usize) -> *const u8;
+type CommitFilesFn = unsafe extern "C" fn(*mut u8, *const u8, usize) -> *const u8;
 type FreeReaderFn = unsafe extern "C" fn(*mut u8);
 type FreeWriterFn = unsafe extern "C" fn(*mut u8);
 type FreeStringFn = unsafe extern "C" fn(*const u8);
@@ -47,6 +49,9 @@ impl PluginRunner {
             "extract_batch" => self.extract_batch(),
             "write_batch" => self.write_batch(&request),
             "check_connection" => self.check_connection(&request),
+            "discover" => self.discover(&request),
+            "extract" => self.extract(&request),
+            "commit_files" => self.commit_files(&request),
             _ => json!({"error": format!("Unknown method: {}", method)}),
         }
     }
@@ -139,7 +144,20 @@ impl PluginRunner {
         }
     }
 
-    fn write_batch(&self, request: &Value) -> Value {
+    fn write_batch(&mut self, request: &Value) -> Value {
+        // If writer is not initialized, try to create it from config
+        if self.writer_ptr.is_none() {
+            if let Some(config_json) = request.get("config").and_then(|c| c.as_str()) {
+                let create_request = json!({"method": "create_writer", "config": config_json});
+                let create_result = self.create_writer(&create_request);
+                if create_result.get("error").is_some() {
+                    return create_result;
+                }
+            } else {
+                return json!({"error": "Writer not initialized and no config provided"});
+            }
+        }
+
         if let Some(writer_ptr) = self.writer_ptr {
             let records_json = match request.get("records") {
                 Some(r) => r,
@@ -187,6 +205,148 @@ impl PluginRunner {
         // For now, return success
         // This would need to call a check_connection function from the plugin
         json!({"status": "success", "success": true, "message": "Connection OK"})
+    }
+
+    fn discover(&self, request: &Value) -> Value {
+        let config_json = match request
+            .get("config")
+            .and_then(|c| c.as_str())
+        {
+            Some(c) => c,
+            None => return json!({"error": "Missing config"}),
+        };
+
+        unsafe {
+            // Try to get discover function from plugin
+            let discover: Symbol<DiscoverFn> = match self.lib.get(b"discover") {
+                Ok(f) => f,
+                Err(_) => {
+                    // If discover function doesn't exist, return empty result
+                    return json!({"status": "success", "data": {"objects": [], "metadata": {}}});
+                }
+            };
+
+            let config_bytes = config_json.as_bytes();
+            let result_ptr = discover(config_bytes.as_ptr(), config_bytes.len());
+
+            if result_ptr.is_null() {
+                return json!({"status": "success", "data": {"objects": [], "metadata": {}}});
+            }
+
+            // Convert C string to Rust string
+            let result_str = std::ffi::CStr::from_ptr(result_ptr as *const c_char)
+                .to_str()
+                .unwrap()
+                .to_string();
+
+            // Free the string
+            let free_string: Symbol<FreeStringFn> = self
+                .lib
+                .get(b"free_string")
+                .unwrap();
+            free_string(result_ptr);
+
+            json!({"status": "success", "data": serde_json::from_str::<Value>(&result_str).unwrap()})
+        }
+    }
+
+    fn extract(&mut self, request: &Value) -> Value {
+        // Extract uses the stateful API: create_reader, then extract_batch in a loop
+        let config_json = match request
+            .get("config")
+            .and_then(|c| c.as_str())
+        {
+            Some(c) => c,
+            None => return json!({"error": "Missing config"}),
+        };
+
+        // First, create reader if not already created
+        if self.reader_ptr.is_none() {
+            let create_request = json!({"method": "create_reader", "config": config_json});
+            let create_result = self.create_reader(&create_request);
+            if create_result.get("error").is_some() {
+                return create_result;
+            }
+        }
+
+        // Now extract all batches
+        let mut batches = Vec::new();
+        loop {
+            let batch_result = self.extract_batch();
+            
+            // Check for errors first
+            if let Some(error) = batch_result.get("error") {
+                return json!({"error": error, "batches_extracted": batches.len()});
+            }
+
+            // Check if we're done
+            if let Some(status) = batch_result.get("status").and_then(|s| s.as_str()) {
+                if status == "done" {
+                    break;
+                }
+            }
+
+            // Extract data from batch result
+            if let Some(data) = batch_result.get("data") {
+                batches.push(data.clone());
+            } else if let Some(status) = batch_result.get("status").and_then(|s| s.as_str()) {
+                // If status is "success" but no data, skip this batch
+                if status != "success" {
+                    // Unexpected status, break to avoid infinite loop
+                    break;
+                }
+            } else {
+                // If no data field and no status, use the whole result
+                batches.push(batch_result.clone());
+            }
+        }
+
+        json!({"status": "success", "data": batches})
+    }
+
+    fn commit_files(&self, request: &Value) -> Value {
+        if let Some(writer_ptr) = self.writer_ptr {
+            let file_metadata_json = match request.get("file_metadata") {
+                Some(fm) => fm,
+                None => return json!({"error": "Missing file_metadata"}),
+            };
+
+            unsafe {
+                // Try to get commit_files function from plugin
+                let commit_files: Symbol<CommitFilesFn> = match self.lib.get(b"commit_files") {
+                    Ok(f) => f,
+                    Err(_) => {
+                        // If commit_files function doesn't exist, return success
+                        return json!({"status": "success", "data": {"status": "success", "files_committed": 0}});
+                    }
+                };
+
+                let file_metadata_str = serde_json::to_string(file_metadata_json).unwrap();
+                let file_metadata_bytes = file_metadata_str.as_bytes();
+                let result_ptr = commit_files(writer_ptr, file_metadata_bytes.as_ptr(), file_metadata_bytes.len());
+
+                if result_ptr.is_null() {
+                    return json!({"status": "success", "data": {"status": "success", "files_committed": 0}});
+                }
+
+                // Convert C string to Rust string
+                let result_str = std::ffi::CStr::from_ptr(result_ptr as *const c_char)
+                    .to_str()
+                    .unwrap()
+                    .to_string();
+
+                // Free the string
+                let free_string: Symbol<FreeStringFn> = self
+                    .lib
+                    .get(b"free_string")
+                    .unwrap();
+                free_string(result_ptr);
+
+                json!({"status": "success", "data": serde_json::from_str::<Value>(&result_str).unwrap()})
+            }
+        } else {
+            json!({"error": "Writer not initialized"})
+        }
     }
 }
 
