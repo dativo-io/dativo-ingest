@@ -1157,11 +1157,14 @@ try:
                 if isinstance(abstract_methods, (frozenset, set)) and len(abstract_methods) > 0:
                     is_abstract = True
                 # If __abstractmethods__ exists and is empty, class is concrete (all methods implemented)
+                # Explicitly keep is_abstract = False for concrete classes
                 # Don't check issubclass(obj, ABC) here - concrete classes can inherit from ABC
-            elif issubclass(obj, ABC):
+            else:
                 # Only check ABC inheritance if __abstractmethods__ doesn't exist
                 # This is a fallback for edge cases where the attribute might not be set
-                is_abstract = True
+                # (e.g., classes that don't use ABC but we want to be cautious about)
+                if issubclass(obj, ABC):
+                    is_abstract = True
         except Exception:
             # If check fails, assume it's not abstract (safer to try concrete classes)
             pass
