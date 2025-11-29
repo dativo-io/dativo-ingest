@@ -451,6 +451,7 @@ src/dativo_ingest/   # Source code
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
+**Data Flow Architecture:** [DATA_FLOW_ARCHITECTURE.md](DATA_FLOW_ARCHITECTURE.md) - How data moves from readers to writers  
 **Testing:** [tests/README.md](tests/README.md)
 
 
