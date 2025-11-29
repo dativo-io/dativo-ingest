@@ -57,8 +57,22 @@ if check_command python3; then
         echo -e "     Version: ${GREEN}$PYTHON_VERSION (OK)${NC}"
     else
         echo -e "     Version: ${RED}$PYTHON_VERSION (Need 3.10+)${NC}"
+        echo -e "     ${YELLOW}Fix: Upgrade Python to 3.10 or higher${NC}"
+        echo -e "     ${YELLOW}• Using Conda: conda create -n dativo python=3.10 && conda activate dativo${NC}"
+        echo -e "     ${YELLOW}• Using Homebrew: brew install python@3.10${NC}"
+        echo -e "     ${YELLOW}• Using pyenv: pyenv install 3.10.13 && pyenv local 3.10.13${NC}"
         ISSUES=$((ISSUES+1))
     fi
+    
+    # Check for alternative Python versions
+    for version in python3.10 python3.11 python3.12; do
+        if command -v $version &> /dev/null; then
+            ALT_VERSION=$($version --version | cut -d' ' -f2)
+            echo -e "  ${GREEN}✓${NC} $version is available (v$ALT_VERSION)"
+            echo -e "     Use: $version -m venv venv && source venv/bin/activate"
+            break
+        fi
+    done
 fi
 
 # Check pip
@@ -294,11 +308,21 @@ else
     echo ""
     echo "Please fix the issues above before testing."
     echo ""
-    echo "Quick fixes:"
-    echo "  • Install dativo: ${YELLOW}pip install -e .${NC}"
-    echo "  • Start services: ${YELLOW}docker-compose -f docker-compose.dev.yml up -d${NC}"
-    echo "  • Run full setup: ${YELLOW}./scripts/setup-dev.sh${NC}"
+    echo "Common fixes:"
+    echo ""
+    echo "  ${BOLD}Python Version Issue:${NC}"
+    echo "  • Using Conda: ${YELLOW}conda create -n dativo python=3.10 && conda activate dativo${NC}"
+    echo "  • Using venv: ${YELLOW}python3.10 -m venv venv && source venv/bin/activate${NC}"
+    echo "  • Then install: ${YELLOW}pip install -e .${NC}"
+    echo ""
+    echo "  ${BOLD}Docker Services:${NC}"
+    echo "  • Start all services: ${YELLOW}docker-compose -f docker-compose.dev.yml up -d${NC}"
+    echo "  • Or run full setup: ${YELLOW}./scripts/setup-dev.sh${NC}"
+    echo ""
+    echo "  ${BOLD}Environment Variables:${NC}"
     echo "  • Source variables: ${YELLOW}source .env${NC}"
+    echo ""
+    echo "For detailed setup instructions, see: ${YELLOW}QUICKSTART.md${NC}"
     echo ""
     exit 1
 fi

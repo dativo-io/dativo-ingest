@@ -96,10 +96,34 @@ Generates sample datasets for all test cases.
 
 ## 🚀 Quick Start Sequence
 
+### Step 0: Verify Python Version (CRITICAL)
+
+**Dativo-ingest requires Python 3.10+**
+
+```bash
+python3 --version  # Must be 3.10.0 or higher
+```
+
+**If you see Python 3.9 or below:**
+```bash
+# Using Conda (recommended)
+conda create -n dativo python=3.10 -y
+conda activate dativo
+
+# Using Homebrew (macOS)
+brew install python@3.10
+python3.10 -m venv venv
+source venv/bin/activate
+```
+
+**See [PYTHON_SETUP_GUIDE.md](PYTHON_SETUP_GUIDE.md) for detailed upgrade instructions**
+
 ### Step 1: Validate Environment
 ```bash
 ./scripts/preflight-check.sh
 ```
+
+If preflight check fails with Python version issue, upgrade Python first (Step 0).
 
 ### Step 2: Generate Test Data
 ```bash
@@ -261,6 +285,7 @@ Use this checklist to track your testing progress:
 
 | Issue | Solution | Quick Fix |
 |-------|----------|-----------|
+| **Python version 3.9 or below** | Upgrade to Python 3.10+ | `conda create -n dativo python=3.10` |
 | `dativo: command not found` | Install package | `pip install -e .` |
 | Services not running | Start containers | `docker-compose -f docker-compose.dev.yml up -d` |
 | Connection refused to MinIO | Check service | `docker ps \| grep minio` |

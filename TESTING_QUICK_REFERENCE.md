@@ -215,11 +215,36 @@ EOF
 
 ## Troubleshooting
 
+### "Package requires a different Python: 3.9.x not in '>=3.10'"
+
+**Problem:** You have Python 3.9 or below  
+**Solution:** Upgrade to Python 3.10+
+
+```bash
+# Quick fix using Conda
+conda create -n dativo python=3.10 -y
+conda activate dativo
+pip install -e .
+
+# Or using Homebrew (macOS)
+brew install python@3.10
+python3.10 -m venv venv
+source venv/bin/activate
+pip install -e .
+```
+
+**See:** [PYTHON_SETUP_GUIDE.md](PYTHON_SETUP_GUIDE.md) for detailed instructions
+
 ### "Command not found: dativo"
 
 ```bash
+# Ensure virtual environment is activated
+source venv/bin/activate  # or conda activate dativo
+
+# Reinstall
 pip install -e .
-# Or use:
+
+# Or use full path:
 python -m dativo_ingest.cli run --config ...
 ```
 
