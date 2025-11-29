@@ -8,6 +8,7 @@ import json
 from typing import Any, Dict, Iterator, List, Optional
 
 from .config import SourceConfig, TargetConfig
+from .exceptions import SandboxError
 from .plugins import BaseReader, BaseWriter, ConnectionTestResult, DiscoveryResult
 from .rust_sandbox import RustPluginSandbox
 from .validator import IncrementalStateManager
@@ -79,12 +80,36 @@ class SandboxedRustReaderWrapper(BaseReader):
 
         Returns:
             DiscoveryResult with available objects
+
+        Raises:
+            SandboxError: If execution fails
         """
         source_config_dict = _serialize_config(self.source_config)
         result = self.sandbox.execute("discover", config=json.dumps(source_config_dict))
 
+        # Check for errors
+        if isinstance(result, dict) and "error" in result:
+            raise SandboxError(
+                f"Discover failed: {result.get('error', 'Unknown error')}",
+                details=result,
+                retryable=True,
+            )
+
         # Convert result to DiscoveryResult if needed
         if isinstance(result, dict):
+            # Handle response wrapped in "data" field (from plugin runner)
+            if "data" in result:
+                data = result["data"]
+                if isinstance(data, dict):
+                    return DiscoveryResult(
+                        objects=data.get("objects", []),
+                        metadata=data.get("metadata", {}),
+                    )
+                else:
+                    return DiscoveryResult(
+                        objects=[],
+                        metadata={"raw_result": data},
+                    )
             return DiscoveryResult(
                 objects=result.get("objects", []),
                 metadata=result.get("metadata", {}),
@@ -103,11 +128,10 @@ class SandboxedRustReaderWrapper(BaseReader):
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data via sandbox.
 
-        Note: The current implementation calls extract as a single operation.
-        For stateful extraction (create_reader + multiple extract_batch calls),
-        the RustPluginSandbox would need to maintain container state, which
-        is not currently supported. This implementation assumes the plugin
-        handles extraction as a single call or returns all batches at once.
+        The extract method uses the stateful API internally:
+        - Creates a reader with the source config
+        - Loops calling extract_batch until all data is extracted
+        - Returns all batches as a list
 
         Args:
             state_manager: Optional state manager for incremental syncs
@@ -133,6 +157,14 @@ class SandboxedRustReaderWrapper(BaseReader):
             request_kwargs["state_manager"] = state_manager_dict
 
         result = self.sandbox.execute("extract", **request_kwargs)
+
+        # Check for errors
+        if isinstance(result, dict) and "error" in result:
+            raise SandboxError(
+                f"Extract failed: {result.get('error', 'Unknown error')}",
+                details=result,
+                retryable=True,
+            )
 
         # Result should be a list of batches
         if isinstance(result, list):
@@ -251,22 +283,29 @@ class SandboxedRustWriterWrapper(BaseWriter):
                     serializable_record[key] = value
             serializable_records.append(serializable_record)
 
-        # First, ensure writer is created (if not already)
-        # Try to create writer, but if it fails, assume it's already created
+        # Prepare config for writer creation (if needed)
         config_dict = {
             "asset_definition": asset_dict,
             "target_config": target_config_dict,
             "output_base": self.output_base,
         }
         config_json = json.dumps(config_dict)
-        create_result = self.sandbox.execute("create_writer", config=config_json)
 
-        # Now write the batch
+        # Write batch - the plugin runner will create writer if needed
         result = self.sandbox.execute(
             "write_batch",
+            config=config_json,  # Pass config so writer can be created if needed
             records=serializable_records,
             file_counter=file_counter,
         )
+
+        # Check for errors
+        if isinstance(result, dict) and "error" in result:
+            raise SandboxError(
+                f"Write batch failed: {result.get('error', 'Unknown error')}",
+                details=result,
+                retryable=True,
+            )
 
         # Result should be a list of file metadata
         if isinstance(result, list):
@@ -305,8 +344,19 @@ class SandboxedRustWriterWrapper(BaseWriter):
             file_metadata=file_metadata,
         )
 
+        # Check for errors
+        if isinstance(result, dict) and "error" in result:
+            raise SandboxError(
+                f"Commit files failed: {result.get('error', 'Unknown error')}",
+                details=result,
+                retryable=True,
+            )
+
         # Result should be a dictionary
         if isinstance(result, dict):
+            # Handle response wrapped in "data" field (from plugin runner)
+            if "data" in result:
+                return result["data"]
             return result
         else:
             # Fallback
