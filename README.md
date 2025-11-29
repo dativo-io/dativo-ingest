@@ -36,9 +36,19 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 
 ### Prerequisites
 
-- Python 3.10+
+- **Python 3.10+** (Required - Python 3.9 and below are not supported)
 - Docker and Docker Compose (for local infrastructure)
 - Node.js 18+ (optional, for schema validation)
+
+**Python Version Check:**
+```bash
+python3 --version  # Should show 3.10.0 or higher
+
+# If you have Python 3.9 or below, upgrade using:
+# • Conda: conda create -n dativo python=3.10 && conda activate dativo
+# • Homebrew (macOS): brew install python@3.10
+# • pyenv: pyenv install 3.10.13 && pyenv local 3.10.13
+```
 
 ### Setup and Run
 
@@ -452,6 +462,7 @@ src/dativo_ingest/   # Source code
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
 **Data Flow Architecture:** [DATA_FLOW_ARCHITECTURE.md](DATA_FLOW_ARCHITECTURE.md) - How data moves from readers to writers  
+**Python Setup:** [PYTHON_SETUP_GUIDE.md](PYTHON_SETUP_GUIDE.md) - Python 3.10+ installation guide  
 **Testing:** [tests/README.md](tests/README.md)
 
 
