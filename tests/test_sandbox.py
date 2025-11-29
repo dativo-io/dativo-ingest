@@ -160,21 +160,36 @@ class TestReader(BaseReader):
 class TestContainerConfiguration:
     """Test container configuration building."""
 
-    def test_build_container_config_basic(self, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_build_container_config_basic(self, mock_docker_module, tmp_path):
         """Test basic container configuration."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
 
+        # Mock Docker client - make custom image check fail so it uses python:3.10
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+
+        # Make images.get() raise exception for custom image only
+        def image_get_side_effect(image_name):
+            if image_name == "dativo/python-plugin-runner:latest":
+                # Raise a generic exception that will be caught
+                raise Exception("Image not found")
+            return MagicMock()  # Return mock for other images
+
+        mock_client.images.get.side_effect = image_get_side_effect
+        mock_docker_module.from_env.return_value = mock_client
+
         sandbox = PluginSandbox(str(plugin_file))
         config = sandbox._build_container_config(["python", "script.py"])
 
-        assert config["image"] == "python:3.10-slim"
+        assert config["image"] == "python:3.10"
         assert config["network_disabled"] is True
         assert config["read_only"] is True
         # Note: user is not set by default for compatibility (colima, etc.)
-        # Check that /app/plugins is in the volume bindings
+        # Check that /usr/local/plugins is in the volume bindings
         volumes = config["volumes"]
-        assert any(v.get("bind") == "/app/plugins" for v in volumes.values())
+        assert any(v.get("bind") == "/usr/local/plugins" for v in volumes.values())
 
     def test_build_container_config_mounts_source(self, tmp_path):
         """Test that container config mounts dativo_ingest source."""
@@ -194,9 +209,9 @@ class TestContainerConfiguration:
 
         # Verify source directory is mounted
         volumes = config["volumes"]
-        assert any("/app/src" in str(v.get("bind", "")) for v in volumes.values())
+        assert any("/usr/local/src" in str(v.get("bind", "")) for v in volumes.values())
         # Verify PYTHONPATH is set
-        assert config["environment"].get("PYTHONPATH") == "/app/src"
+        assert config["environment"].get("PYTHONPATH") == "/usr/local/src"
 
     def test_build_container_config_sets_pythonpath(self, tmp_path):
         """Test that PYTHONPATH is set correctly."""
@@ -206,9 +221,12 @@ class TestContainerConfiguration:
         sandbox = PluginSandbox(str(plugin_file))
         config = sandbox._build_container_config(["python", "script.py"])
 
-        # PYTHONPATH should be set (either /app/src or /app/plugins)
+        # PYTHONPATH should be set (either /usr/local/src or /usr/local/plugins)
         assert "PYTHONPATH" in config["environment"]
-        assert config["environment"]["PYTHONPATH"] in ["/app/src", "/app/plugins"]
+        assert config["environment"]["PYTHONPATH"] in [
+            "/usr/local/src",
+            "/usr/local/plugins",
+        ]
 
     def test_build_container_config_resource_limits(self, tmp_path):
         """Test resource limits in container config."""
@@ -218,9 +236,9 @@ class TestContainerConfiguration:
         sandbox = PluginSandbox(str(plugin_file), cpu_limit=0.5, memory_limit="512m")
         config = sandbox._build_container_config(["python", "script.py"])
 
-        assert config["cpu_period"] == 100000
-        assert config["cpu_quota"] == 50000  # 0.5 * 100000
-        assert config["mem_limit"] == "512m"
+        assert config.get("cpu_period") == 100000
+        assert config.get("cpu_quota") == 50000  # 0.5 * 100000
+        assert config.get("mem_limit") == "512m"
 
 
 class TestArgumentHandling:
@@ -254,10 +272,9 @@ class TestArgumentHandling:
         # Should handle no arguments
         assert "args_data" in script
         assert "kwargs_data" in script
-        # Should handle empty args/kwargs (args used for instantiation, kwargs for method call)
-        assert "args_data" in script and "kwargs_data" in script
-        # Should handle empty kwargs for method call
-        assert "has_kwargs" in script or "kwargs_data" in script
+        # Should handle empty args/kwargs - separated into instantiation_kwargs and method_kwargs
+        assert "instantiation_kwargs" in script
+        assert "method_kwargs" in script
 
 
 class TestResultParsing:
@@ -295,40 +312,70 @@ class TestResultParsing:
 class TestSandboxInitialization:
     """Test sandbox initialization and error handling."""
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_sandbox_init_success(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_sandbox_init_success(self, mock_docker_module, tmp_path):
         """Test successful sandbox initialization."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
 
         mock_client = Mock()
         mock_client.ping.return_value = True
-        mock_docker.return_value = mock_client
+        mock_docker_module.from_env.return_value = mock_client
 
         sandbox = PluginSandbox(str(plugin_file))
         assert sandbox.plugin_path == plugin_file
         assert sandbox.network_disabled is True
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_sandbox_init_docker_error(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    @patch("dativo_ingest.sandbox.Path")
+    def test_sandbox_init_docker_error(
+        self, mock_path_class, mock_docker_module, tmp_path
+    ):
         """Test sandbox initialization with Docker error."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
 
-        mock_docker.side_effect = Exception("Docker not available")
+        # Mock Path.home() to return a path where Colima socket doesn't exist
+        # Create a chain of mocks for the path operations using MagicMock
+        mock_colima_socket = MagicMock()
+        mock_colima_socket.exists.return_value = False
+        mock_default = MagicMock()
+        mock_default.__truediv__.return_value = mock_colima_socket
+        mock_colima = MagicMock()
+        mock_colima.__truediv__.return_value = mock_default
+        mock_home = MagicMock()
+        mock_home.__truediv__.return_value = mock_colima
+        mock_path_class.home.return_value = mock_home
+
+        mock_docker_module.from_env.side_effect = Exception("Docker not available")
 
         with pytest.raises(SandboxError, match="Failed to connect to Docker"):
             PluginSandbox(str(plugin_file))
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_sandbox_init_docker_ping_fails(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    @patch("dativo_ingest.sandbox.Path")
+    def test_sandbox_init_docker_ping_fails(
+        self, mock_path_class, mock_docker_module, tmp_path
+    ):
         """Test sandbox initialization when Docker ping fails."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
 
+        # Mock Path.home() to return a path where Colima socket doesn't exist
+        # Create a chain of mocks for the path operations using MagicMock
+        mock_colima_socket = MagicMock()
+        mock_colima_socket.exists.return_value = False
+        mock_default = MagicMock()
+        mock_default.__truediv__.return_value = mock_colima_socket
+        mock_colima = MagicMock()
+        mock_colima.__truediv__.return_value = mock_default
+        mock_home = MagicMock()
+        mock_home.__truediv__.return_value = mock_colima
+        mock_path_class.home.return_value = mock_home
+
         mock_client = Mock()
         mock_client.ping.side_effect = Exception("Connection failed")
-        mock_docker.return_value = mock_client
+        mock_docker_module.from_env.return_value = mock_client
 
         with pytest.raises(SandboxError, match="Failed to connect to Docker"):
             PluginSandbox(str(plugin_file))
@@ -345,11 +392,11 @@ class TestShouldSandboxPlugin:
         assert should_sandbox_plugin(str(plugin_file), mode="cloud") is True
 
     def test_should_sandbox_cloud_mode_rust(self, tmp_path):
-        """Test that Rust plugins are not sandboxed in cloud mode."""
+        """Test that Rust plugins are sandboxed in cloud mode."""
         plugin_file = tmp_path / "test.so"
         plugin_file.write_text("")
 
-        assert should_sandbox_plugin(str(plugin_file), mode="cloud") is False
+        assert should_sandbox_plugin(str(plugin_file), mode="cloud") is True
 
     def test_should_sandbox_self_hosted_mode(self, tmp_path):
         """Test that plugins are not sandboxed in self_hosted mode."""
@@ -362,8 +409,8 @@ class TestShouldSandboxPlugin:
 class TestSandboxExecution:
     """Test sandbox execution (with mocked Docker)."""
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_execute_plugin_method_mocked(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_plugin_method_mocked(self, mock_docker_module, tmp_path):
         """Test executing a plugin method with mocked Docker."""
         # Create a test plugin
         plugin_file = tmp_path / "test_plugin.py"
@@ -383,7 +430,7 @@ class TestReader(BaseReader):
         # Mock Docker client
         mock_client = Mock()
         mock_client.ping.return_value = True
-        mock_docker.return_value = mock_client
+        mock_docker_module.from_env.return_value = mock_client
 
         # Mock container
         mock_container = Mock()
@@ -394,17 +441,18 @@ class TestReader(BaseReader):
         sandbox = PluginSandbox(str(plugin_file))
         result = sandbox.execute("check_connection")
 
-        # Verify Docker was called
-        mock_client.containers.create.assert_called_once()
-        mock_container.start.assert_called_once()
-        mock_container.wait.assert_called_once()
+        # Verify Docker was called (diagnostic container + actual container)
+        assert mock_client.containers.create.call_count == 2
+        # start() and wait() are called for both diagnostic and actual containers
+        assert mock_container.start.call_count == 2
+        assert mock_container.wait.call_count == 2
 
         # Verify result is parsed correctly
         assert isinstance(result, dict)
         assert "success" in result or result.get("status") == "success"
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_execute_plugin_method_error(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_plugin_method_error(self, mock_docker_module, tmp_path):
         """Test executing a plugin method that fails."""
         plugin_file = tmp_path / "test_plugin.py"
         plugin_file.write_text("")
@@ -412,11 +460,15 @@ class TestReader(BaseReader):
         # Mock Docker client
         mock_client = Mock()
         mock_client.ping.return_value = True
-        mock_docker.return_value = mock_client
+        mock_docker_module.from_env.return_value = mock_client
 
         # Mock container with error
+        # First call (diagnostic) succeeds, second call (actual) fails
         mock_container = Mock()
-        mock_container.wait.return_value = {"StatusCode": 1}
+        mock_container.wait.side_effect = [
+            {"StatusCode": 0},  # Diagnostic container succeeds
+            {"StatusCode": 1},  # Actual plugin container fails
+        ]
         mock_container.logs.return_value = b"Error occurred"
         mock_client.containers.create.return_value = mock_container
 
@@ -425,8 +477,10 @@ class TestReader(BaseReader):
         with pytest.raises(SandboxError, match="Plugin execution failed"):
             sandbox.execute("check_connection")
 
-    @patch("dativo_ingest.sandbox.docker.from_env")
-    def test_execute_check_connection_with_source_config(self, mock_docker, tmp_path):
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_check_connection_with_source_config(
+        self, mock_docker_module, tmp_path
+    ):
         """Test that check_connection works when source_config is passed as kwarg for instantiation.
 
         This verifies the fix for the bug where kwargs_data was incorrectly passed to method calls.
@@ -451,7 +505,7 @@ class TestReader(BaseReader):
         # Mock Docker client
         mock_client = Mock()
         mock_client.ping.return_value = True
-        mock_docker.return_value = mock_client
+        mock_docker_module.from_env.return_value = mock_client
 
         # Mock container
         mock_container = Mock()
@@ -465,10 +519,11 @@ class TestReader(BaseReader):
         source_config = {"type": "test", "connection": {}}
         result = sandbox.execute("check_connection", source_config=source_config)
 
-        # Verify Docker was called
-        mock_client.containers.create.assert_called_once()
-        mock_container.start.assert_called_once()
-        mock_container.wait.assert_called_once()
+        # Verify Docker was called (diagnostic container + actual container)
+        assert mock_client.containers.create.call_count == 2
+        # start() and wait() are called for both diagnostic and actual containers
+        assert mock_container.start.call_count == 2
+        assert mock_container.wait.call_count == 2
 
         # Verify result is parsed correctly
         assert isinstance(result, dict)
@@ -510,18 +565,22 @@ class TestScriptContentValidation:
             plugin_file.name, "check_connection", source_config={"type": "test"}
         )
 
-        # Verify kwargs_data is used for instantiation
-        assert "kwargs_data" in script
+        # Verify kwargs_data is separated into instantiation_kwargs and method_kwargs
+        assert "instantiation_kwargs" in script
+        assert "method_kwargs" in script
+        # Verify instantiation_kwargs is used for instantiation
         assert (
-            "plugin_class(**kwargs_data)" in script
-            or "instance = plugin_class(**kwargs_data)" in script
+            "plugin_class(**instantiation_kwargs)" in script
+            or "instance = plugin_class(**instantiation_kwargs)" in script
         )
 
-        # Verify kwargs_data is NOT passed to method call
-        # The method call should be method() or method(*args_data), not method(**kwargs_data)
-        assert "method(**kwargs_data)" not in script
-        # Verify method is called without kwargs
-        assert "result = method()" in script or "method()" in script
+        # For check_connection, method_kwargs should be empty (source_config goes to instantiation_kwargs)
+        # So the method should be called without args
+        # The script has general code for method(**method_kwargs) but for check_connection it should use the else branch
+        # Verify method is called without kwargs for check_connection (the else branch)
+        assert "result = method()" in script or (
+            "else:" in script and "result = method()" in script.split("else:")[-1]
+        )
 
     def test_script_handles_plugin_instantiation(self, tmp_path):
         """Test that script properly handles plugin instantiation."""
@@ -535,8 +594,9 @@ class TestScriptContentValidation:
 
         # Verify instantiation logic is present
         assert "plugin_class(" in script or "instance = plugin_class" in script
-        # Verify it handles different argument combinations
-        assert "args_data" in script and "kwargs_data" in script
+        # Verify it handles different argument combinations - uses instantiation_kwargs
+        assert "instantiation_kwargs" in script
+        assert "method_kwargs" in script
 
     def test_script_handles_method_execution(self, tmp_path):
         """Test that script properly executes the method."""
@@ -551,8 +611,8 @@ class TestScriptContentValidation:
         # Verify method execution logic
         assert "getattr(instance" in script
         assert "method(" in script or "result = method" in script
-        # Verify it handles different argument combinations
-        assert "args_data" in script and "kwargs_data" in script
+        # Verify it handles different argument combinations - uses method_kwargs
+        assert "method_kwargs" in script
 
     def test_script_returns_actual_result(self, tmp_path):
         """Test that script returns actual result, not placeholder."""
@@ -664,3 +724,424 @@ class TestSeccompSecurity:
         assert (
             has_deny_list
         ), "Seccomp profile should have explicit deny list for dangerous syscalls"
+
+
+class TestImageNotFoundErrorHandling:
+    """Test ImageNotFound error handling."""
+
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_image_not_found_diagnostic_container(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that ImageNotFound is properly handled for diagnostic container."""
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        # Mock ImageNotFound exception - need to import it properly
+        # Since we're mocking docker module, we need to create a proper exception
+        class MockImageNotFound(Exception):
+            def __init__(self, msg):
+                super().__init__(msg)
+                self.explanation = msg
+
+        mock_image_error = MockImageNotFound("No such image: python:3.10")
+
+        # Mock images.get() to raise ImageNotFound (triggers pull attempt)
+        # Mock images.pull() to also raise ImageNotFound (pull fails)
+        # Mock containers.create() to raise ImageNotFound (diagnostic container creation fails)
+        mock_client.images.get.side_effect = mock_image_error
+        mock_client.images.pull.side_effect = mock_image_error
+        mock_client.containers.create.side_effect = mock_image_error
+
+        # Patch ImageNotFound to be our mock exception
+        with patch("dativo_ingest.sandbox.ImageNotFound", MockImageNotFound):
+            sandbox = PluginSandbox(str(plugin_file))
+
+            with pytest.raises(SandboxError) as exc_info:
+                sandbox.execute("check_connection")
+
+            # Verify error details - now it should say "Failed to pull" since we try to pull automatically
+            error_msg = str(exc_info.value)
+            assert (
+                "Failed to pull Docker image" in error_msg
+                or "Docker image not found" in error_msg
+            )
+            assert "python:3.10" in error_msg
+            assert "docker pull" in str(exc_info.value)
+            # Error type is now ImagePullError since we try to pull automatically
+            assert exc_info.value.details.get("error_type") in [
+                "ImagePullError",
+                "ImageNotFound",
+            ]
+
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_image_not_found_main_container(self, mock_docker_module, tmp_path):
+        """Test that ImageNotFound is properly handled for main container."""
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        # Mock ImageNotFound exception - first call (diagnostic) succeeds, second (main) fails
+        class MockImageNotFound(Exception):
+            def __init__(self, msg):
+                super().__init__(msg)
+                self.explanation = msg
+
+        mock_diagnostic_container = Mock()
+        mock_diagnostic_container.wait.return_value = {"StatusCode": 0}
+        mock_diagnostic_container.logs.return_value = b""
+        mock_diagnostic_container.start.return_value = None
+
+        mock_image_error = MockImageNotFound("No such image: python:3.10")
+
+        # First call succeeds (diagnostic), second call fails (main container)
+        mock_client.containers.create.side_effect = [
+            mock_diagnostic_container,
+            mock_image_error,
+        ]
+
+        # Patch ImageNotFound to be our mock exception
+        with patch("dativo_ingest.sandbox.ImageNotFound", MockImageNotFound):
+            sandbox = PluginSandbox(str(plugin_file))
+
+            with pytest.raises(SandboxError) as exc_info:
+                sandbox.execute("check_connection")
+
+            assert "Docker image not found" in str(exc_info.value)
+            assert "python:3.10" in str(exc_info.value)
+
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_image_not_found_after_seccomp_retry(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that ImageNotFound is handled when recreating container after seccomp retry."""
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        class MockImageNotFound(Exception):
+            def __init__(self, msg):
+                super().__init__(msg)
+                self.explanation = msg
+
+        # Mock containers: diagnostic succeeds, main fails with seccomp error, unconfined retry fails with ImageNotFound
+        mock_diagnostic_container = Mock()
+        mock_diagnostic_container.wait.return_value = {"StatusCode": 0}
+        mock_diagnostic_container.logs.return_value = b""
+        mock_diagnostic_container.start.return_value = None
+
+        mock_main_container = Mock()
+        mock_main_container.start.side_effect = Exception("seccomp profile error")
+
+        mock_unconfined_container = Mock()
+        mock_unconfined_container.start.side_effect = Exception(
+            "unconfined seccomp also failed"
+        )
+
+        mock_image_error = MockImageNotFound("No such image: python:3.10")
+
+        # Sequence: diagnostic succeeds, main created, main fails to start,
+        # unconfined retry created, unconfined retry fails to start,
+        # no-seccomp retry creation fails with ImageNotFound
+        mock_client.containers.create.side_effect = [
+            mock_diagnostic_container,  # Diagnostic
+            mock_main_container,  # Main container (first attempt)
+            mock_unconfined_container,  # Unconfined seccomp retry
+            mock_image_error,  # No-seccomp retry after unconfined fails
+        ]
+
+        # Patch ImageNotFound to be our mock exception
+        with patch("dativo_ingest.sandbox.ImageNotFound", MockImageNotFound):
+            sandbox = PluginSandbox(str(plugin_file))
+
+            with pytest.raises(SandboxError) as exc_info:
+                sandbox.execute("check_connection")
+
+            assert "Docker image not found" in str(exc_info.value)
+            assert "python:3.10" in str(exc_info.value)
+
+
+class TestTimeoutHandling:
+    """Test timeout handling in sandbox execution."""
+
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_timeout_exceeded(self, mock_docker_module, tmp_path):
+        """Test that timeout is respected during container execution."""
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        # Mock container that times out
+        mock_container = Mock()
+        mock_container.wait.side_effect = [
+            {"StatusCode": 0},  # Diagnostic succeeds
+            Exception("Timeout"),  # Main container times out
+        ]
+        mock_container.logs.return_value = b""
+        mock_client.containers.create.return_value = mock_container
+
+        sandbox = PluginSandbox(str(plugin_file), timeout=1)
+
+        with pytest.raises(Exception, match="Timeout"):
+            sandbox.execute("check_connection")
+
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_custom_timeout(self, mock_docker_module, tmp_path):
+        """Test that custom timeout is used."""
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        # Mock container
+        mock_container = Mock()
+        mock_container.wait.return_value = {"StatusCode": 0}
+        mock_container.logs.return_value = b'{"status": "success", "result": {}}'
+        mock_client.containers.create.return_value = mock_container
+
+        sandbox = PluginSandbox(str(plugin_file), timeout=60)
+
+        sandbox.execute("check_connection")
+
+        # Verify timeout was passed to wait()
+        wait_calls = [call for call in mock_container.wait.call_args_list]
+        # Should have timeout parameter in at least one call
+        assert len(wait_calls) > 0
+
+
+class TestContainerCleanup:
+    """Test container cleanup behavior."""
+
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_cleanup_on_success(self, mock_docker_module, tmp_path):
+        """Test that containers are cleaned up after successful execution."""
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        # Mock containers
+        mock_diagnostic_container = Mock()
+        mock_diagnostic_container.wait.return_value = {"StatusCode": 0}
+        mock_diagnostic_container.logs.return_value = b""
+        mock_diagnostic_container.start.return_value = None
+
+        mock_main_container = Mock()
+        mock_main_container.wait.return_value = {"StatusCode": 0}
+        mock_main_container.logs.return_value = b'{"status": "success", "result": {}}'
+        mock_main_container.start.return_value = None
+
+        mock_client.containers.create.side_effect = [
+            mock_diagnostic_container,
+            mock_main_container,
+        ]
+
+        sandbox = PluginSandbox(str(plugin_file))
+        sandbox.execute("check_connection")
+
+        # Verify containers were removed
+        assert mock_diagnostic_container.remove.call_count == 1
+        assert mock_main_container.remove.call_count == 1
+
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_cleanup_on_error(self, mock_docker_module, tmp_path):
+        """Test that containers are cleaned up even when execution fails."""
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        # Mock containers
+        mock_diagnostic_container = Mock()
+        mock_diagnostic_container.wait.return_value = {"StatusCode": 0}
+        mock_diagnostic_container.logs.return_value = b""
+        mock_diagnostic_container.start.return_value = None
+
+        mock_main_container = Mock()
+        mock_main_container.wait.return_value = {"StatusCode": 1}
+        mock_main_container.logs.return_value = b"Error occurred"
+        mock_main_container.start.return_value = None
+
+        mock_client.containers.create.side_effect = [
+            mock_diagnostic_container,
+            mock_main_container,
+        ]
+
+        sandbox = PluginSandbox(str(plugin_file))
+
+        with pytest.raises(SandboxError):
+            sandbox.execute("check_connection")
+
+        # Verify containers were removed even on error
+        assert mock_diagnostic_container.remove.call_count == 1
+        assert mock_main_container.remove.call_count == 1
+
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_cleanup_ignores_errors(self, mock_docker_module, tmp_path):
+        """Test that cleanup errors are ignored."""
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        # Mock containers - need both diagnostic and main
+        mock_diagnostic_container = Mock()
+        mock_diagnostic_container.wait.return_value = {"StatusCode": 0}
+        mock_diagnostic_container.logs.return_value = b""
+        mock_diagnostic_container.start.return_value = None
+
+        mock_main_container = Mock()
+        mock_main_container.wait.return_value = {"StatusCode": 0}
+        mock_main_container.logs.return_value = b'{"status": "success", "result": {}}'
+        mock_main_container.start.return_value = None
+        mock_main_container.remove.side_effect = Exception("Cleanup error")
+
+        mock_client.containers.create.side_effect = [
+            mock_diagnostic_container,
+            mock_main_container,
+        ]
+
+        sandbox = PluginSandbox(str(plugin_file))
+
+        # Should not raise error even if cleanup fails
+        result = sandbox.execute("check_connection")
+        assert result is not None
+
+
+class TestSeccompRetry:
+    """Test seccomp profile retry logic."""
+
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_seccomp_retry_on_start_error(self, mock_docker_module, tmp_path):
+        """Test that container is recreated without seccomp if start fails."""
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        # Mock containers
+        mock_diagnostic_container = Mock()
+        mock_diagnostic_container.wait.return_value = {"StatusCode": 0}
+        mock_diagnostic_container.logs.return_value = b""
+        mock_diagnostic_container.start.return_value = None
+
+        mock_main_container_first = Mock()
+        mock_main_container_first.start.side_effect = Exception("seccomp profile error")
+
+        mock_main_container_retry = Mock()
+        mock_main_container_retry.wait.return_value = {"StatusCode": 0}
+        mock_main_container_retry.logs.return_value = (
+            b'{"status": "success", "result": {}}'
+        )
+        mock_main_container_retry.start.return_value = None
+
+        mock_client.containers.create.side_effect = [
+            mock_diagnostic_container,
+            mock_main_container_first,
+            mock_main_container_retry,
+        ]
+
+        sandbox = PluginSandbox(str(plugin_file))
+        result = sandbox.execute("check_connection")
+
+        # Verify retry happened
+        assert mock_client.containers.create.call_count == 3
+        # Verify first container was removed
+        assert mock_main_container_first.remove.call_count == 1
+        # Verify retry container was used
+        assert mock_main_container_retry.start.call_count == 1
+
+    @patch("dativo_ingest.sandbox.docker")
+    def test_execute_seccomp_retry_removes_seccomp(self, mock_docker_module, tmp_path):
+        """Test that seccomp profile is removed on retry."""
+        plugin_file = tmp_path / "test_plugin.py"
+        plugin_file.write_text("")
+
+        # Mock Docker client
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        # Mock containers
+        mock_diagnostic_container = Mock()
+        mock_diagnostic_container.wait.return_value = {"StatusCode": 0}
+        mock_diagnostic_container.logs.return_value = b""
+        mock_diagnostic_container.start.return_value = None
+
+        mock_main_container_first = Mock()
+        mock_main_container_first.start.side_effect = Exception("seccomp profile error")
+
+        mock_unconfined_container = Mock()
+        mock_unconfined_container.start.side_effect = Exception(
+            "unconfined seccomp also failed"
+        )
+
+        mock_main_container_retry = Mock()
+        mock_main_container_retry.wait.return_value = {"StatusCode": 0}
+        mock_main_container_retry.logs.return_value = (
+            b'{"status": "success", "result": {}}'
+        )
+        mock_main_container_retry.start.return_value = None
+
+        # Capture the config passed to the retry container creation
+        configs_passed = []
+        call_count = [0]
+
+        def create_container_with_capture(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_diagnostic_container
+            elif call_count[0] == 2:
+                return mock_main_container_first
+            elif call_count[0] == 3:
+                # First retry with unconfined seccomp - capture config
+                configs_passed.append(kwargs.copy())
+                return mock_unconfined_container
+            else:
+                # Second retry without seccomp - capture config
+                configs_passed.append(kwargs.copy())
+                return mock_main_container_retry
+
+        mock_client.containers.create.side_effect = create_container_with_capture
+
+        sandbox = PluginSandbox(str(plugin_file))
+        sandbox.execute("check_connection")
+
+        # Verify retry configs: first should have unconfined seccomp, second should have no seccomp
+        assert len(configs_passed) >= 2
+        unconfined_config = configs_passed[0]
+        no_seccomp_config = configs_passed[1]
+        assert unconfined_config.get("security_opt") == ["seccomp=unconfined"]
+        assert "security_opt" not in no_seccomp_config

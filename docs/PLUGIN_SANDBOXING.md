@@ -2,9 +2,40 @@
 
 This document outlines security considerations and sandboxing strategies for custom plugins in the Dativo platform.
 
+## ✅ Current Implementation Status
+
+**Plugin sandboxing is now implemented and enabled by default in cloud mode.**
+
+### Features Implemented
+
+- ✅ **Docker-based sandboxing** for Python plugins
+- ✅ **Docker-based sandboxing** for Rust plugins (via Rust plugin runner)
+- ✅ **Automatic sandboxing** in cloud mode
+- ✅ **Configurable sandboxing** via job configuration
+- ✅ **Resource limits** (CPU, memory)
+- ✅ **Network isolation** (disabled by default)
+- ✅ **Timeout enforcement**
+- ✅ **Seccomp profiles** for syscall restrictions
+
+### Usage
+
+Sandboxing is automatically enabled in `cloud` mode and can be configured per-job:
+
+```yaml
+plugins:
+  sandbox:
+    enabled: true  # Explicitly enable (default in cloud mode)
+    cpu_limit: 0.5  # Limit to 50% of one CPU core
+    memory_limit: "512m"  # Limit to 512MB
+    network_disabled: true  # Disable network access
+    timeout: 300  # 5 minute timeout
+```
+
+In `self_hosted` mode, sandboxing is disabled by default but can be enabled via configuration.
+
 ## ⚠️ Security Warning
 
-**Custom plugins run with the same privileges as the Dativo process.** Before enabling custom plugins in production, especially in multi-tenant environments, implement appropriate sandboxing and security measures.
+**Custom plugins run with the same privileges as the Dativo process in self_hosted mode without sandboxing.** Before enabling custom plugins in production, especially in multi-tenant environments, implement appropriate sandboxing and security measures.
 
 ## Threat Model
 
@@ -58,11 +89,11 @@ plugins:
 - Same filesystem access
 - Same network access
 
-### Level 2: Container Isolation (Recommended for Self-Hosted)
+### Level 2: Container Isolation (✅ Implemented)
 
-**Status:** Recommended approach (implementation guide below)
+**Status:** ✅ **Implemented and enabled by default in cloud mode**
 
-Run plugins in Docker containers with restricted capabilities.
+Run plugins in Docker containers with restricted capabilities. This is the default behavior for all plugins in cloud mode.
 
 ```yaml
 plugins:
@@ -340,12 +371,12 @@ fi
 - [ ] Plugin signatures
 - [ ] Audit logging
 
-### Phase 3: Container Sandbox (Q2)
-- [ ] Docker-based sandboxing
-- [ ] Seccomp profiles
-- [ ] Network policies
-- [ ] Read-only filesystems
-- [ ] Capability dropping
+### Phase 3: Container Sandbox (✅ Completed)
+- [x] Docker-based sandboxing
+- [x] Seccomp profiles
+- [x] Network policies (network_disabled option)
+- [x] Read-only filesystems
+- [x] Capability dropping
 
 ### Phase 4: VM Isolation (Q3-Q4)
 - [ ] Firecracker integration

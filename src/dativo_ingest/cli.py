@@ -42,6 +42,47 @@ def initialize_state_directory(job_config: JobConfig) -> None:
                 )
 
 
+def _extract_sandbox_config(
+    job_config: Optional[Any],
+) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Extract sandbox config and plugin config from job_config.
+
+    Args:
+        job_config: JobConfig instance or None
+
+    Returns:
+        Tuple of (sandbox_config, plugin_config) dicts
+    """
+    sandbox_config = None
+    plugin_config = None
+
+    if job_config and job_config.plugins:
+        if hasattr(job_config.plugins, "model_dump"):
+            plugin_config = job_config.plugins.model_dump()
+        elif hasattr(job_config.plugins, "dict"):
+            plugin_config = job_config.plugins.dict()
+        else:
+            plugin_config = (
+                job_config.plugins.__dict__
+                if hasattr(job_config.plugins, "__dict__")
+                else None
+            )
+
+        if job_config.plugins.sandbox:
+            if hasattr(job_config.plugins.sandbox, "model_dump"):
+                sandbox_config = job_config.plugins.sandbox.model_dump()
+            elif hasattr(job_config.plugins.sandbox, "dict"):
+                sandbox_config = job_config.plugins.sandbox.dict()
+            else:
+                sandbox_config = (
+                    job_config.plugins.sandbox.__dict__
+                    if hasattr(job_config.plugins.sandbox, "__dict__")
+                    else None
+                )
+
+    return sandbox_config, plugin_config
+
+
 def _load_secret_manager_config_arg(
     config_arg: Optional[str],
 ) -> Optional[Dict[str, Any]]:
@@ -425,7 +466,15 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 },
             )
 
-            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            # Extract sandbox config from job_config if available
+            sandbox_config, plugin_config = _extract_sandbox_config(job_config)
+
+            reader_class = PluginLoader.load_reader(
+                source_config.custom_reader,
+                mode=mode,
+                sandbox_config=sandbox_config,
+                plugin_config=plugin_config,
+            )
             extractor = reader_class(source_config)
 
             logger.info(
@@ -685,7 +734,15 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 },
             )
 
-            writer_class = PluginLoader.load_writer(target_config.custom_writer)
+            # Extract sandbox config from job_config if available
+            sandbox_config, plugin_config = _extract_sandbox_config(job_config)
+
+            writer_class = PluginLoader.load_writer(
+                target_config.custom_writer,
+                mode=mode,
+                sandbox_config=sandbox_config,
+                plugin_config=plugin_config,
+            )
             writer = writer_class(asset_definition, target_config, output_base)
 
             logger.info(
@@ -1198,7 +1255,15 @@ def check_command(args: argparse.Namespace) -> int:
             # Load custom reader
             from .plugins import PluginLoader
 
-            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            # Extract sandbox config from job_config if available
+            sandbox_config, plugin_config = _extract_sandbox_config(job_config)
+
+            reader_class = PluginLoader.load_reader(
+                source_config.custom_reader,
+                mode=args.mode,
+                sandbox_config=sandbox_config,
+                plugin_config=plugin_config,
+            )
             reader = reader_class(source_config)
 
             # Check connection
@@ -1293,7 +1358,15 @@ def check_command(args: argparse.Namespace) -> int:
             asset_definition = job_config._resolve_asset()
             output_base = "s3://test"  # Dummy output base for check
 
-            writer_class = PluginLoader.load_writer(target_config.custom_writer)
+            # Extract sandbox config from job_config if available
+            sandbox_config, plugin_config = _extract_sandbox_config(job_config)
+
+            writer_class = PluginLoader.load_writer(
+                target_config.custom_writer,
+                mode=args.mode,
+                sandbox_config=sandbox_config,
+                plugin_config=plugin_config,
+            )
             writer = writer_class(asset_definition, target_config, output_base)
 
             # Check connection
@@ -1480,6 +1553,7 @@ def discover_command(args: argparse.Namespace) -> int:
     # Load configuration
     source_config = None
     tenant_id = None
+    job_config = None
 
     if args.config:
         # Load from job config
@@ -1551,7 +1625,15 @@ def discover_command(args: argparse.Namespace) -> int:
             # Load custom reader
             from .plugins import PluginLoader
 
-            reader_class = PluginLoader.load_reader(source_config.custom_reader)
+            # Extract sandbox config from job_config if available
+            sandbox_config, plugin_config = _extract_sandbox_config(job_config)
+
+            reader_class = PluginLoader.load_reader(
+                source_config.custom_reader,
+                mode=args.mode,
+                sandbox_config=sandbox_config,
+                plugin_config=plugin_config,
+            )
             reader = reader_class(source_config)
 
             # Call discover method
