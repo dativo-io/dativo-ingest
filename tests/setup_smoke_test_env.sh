@@ -16,8 +16,9 @@ export PGUSER="${PGUSER:-postgres}"
 export PGPASSWORD="${PGPASSWORD:-postgres}"
 
 # MySQL configuration
+# Default to 3307 to avoid conflict with openmetadata_mysql on 3306
 export MYSQL_HOST="${MYSQL_HOST:-localhost}"
-export MYSQL_PORT="${MYSQL_PORT:-3306}"
+export MYSQL_PORT="${MYSQL_PORT:-3307}"
 export MYSQL_DATABASE="${MYSQL_DATABASE:-employees}"
 export MYSQL_DB="${MYSQL_DB:-employees}"
 export MYSQL_USER="${MYSQL_USER:-test}"

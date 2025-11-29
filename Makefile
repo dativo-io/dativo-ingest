@@ -1,4 +1,4 @@
-.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test-workflows test-plugin test format format-check lint clean clean-state clean-temp
+.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test-workflows test-plugin test format format-check lint clean clean-state clean-temp build-plugin-images
 
 schema-validate: schema-connectors schema-odcs
 
@@ -20,11 +20,13 @@ schema-odcs:
 	fi
 
 # Unit tests: Test internal functions (config loading, validation, etc.)
-test-unit:
-	@pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration
+# Note: Some tests (sandbox integration) require Docker images to be built
+test-unit: build-plugin-images
+	@PYTHONPATH=src pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration
 
 # Integration tests: Test module integration, tag derivation, and ODCS compliance
-test-integration:
+# Note: Some tests may require Docker images to be built
+test-integration: build-plugin-images
 	@echo "🔍 Running integration tests..."
 	@if [ -f venv/bin/python ]; then \
 		PYTHONPATH=src venv/bin/python tests/integration/test_tag_derivation_integration.py; \
@@ -37,9 +39,11 @@ test-integration:
 
 # Smoke tests: Run actual CLI commands with test fixtures (true E2E)
 # Includes tag propagation verification
-# Automatically sets up infrastructure services (Postgres, MySQL, MinIO, Nessie) if needed
+# REQUIRES: Infrastructure services (Postgres, MySQL, MinIO, Nessie) - automatically set up and torn down
 # Note: Infrastructure services are dependencies for testing, NOT the dativo-ingest service
 # The dativo-ingest CLI runs locally and connects to these services
+# Docker configuration is checked before tests run
+# Infrastructure is automatically stopped after tests complete
 # Uses run_all_smoke_tests.sh which runs both original and custom plugin smoke tests
 # Users can also run: dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 test-smoke:
@@ -138,5 +142,21 @@ clean-temp:
 # Clean up everything (state + temp files)
 clean: clean-state clean-temp
 	@echo "✅ All cleanup complete"
+
+# Build Docker images for plugin sandboxes
+# This is a dependency for tests that use sandboxed plugin execution
+build-plugin-images:
+	@echo "🐳 Building plugin sandbox Docker images..."
+	@if command -v docker >/dev/null 2>&1; then \
+		echo "Building Python plugin runner image..."; \
+		docker build --pull -t dativo/python-plugin-runner:latest -f docker/python-plugin-runner/Dockerfile . || exit 1; \
+		echo "Building Rust plugin runner image..."; \
+		docker build --pull -t dativo/rust-plugin-runner:latest -f docker/rust-plugin-runner/Dockerfile docker/rust-plugin-runner/ || exit 1; \
+		echo "✅ Plugin images built successfully"; \
+	else \
+		echo "⚠️  Docker not found. Skipping plugin image build."; \
+		echo "   Tests that require sandboxed execution may fail."; \
+		echo "   Install Docker and run 'make build-plugin-images' to build images."; \
+	fi
 
 

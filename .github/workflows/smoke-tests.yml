@@ -58,6 +58,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl
           
+      - name: Pull required Docker images
+        run: |
+          docker pull python:3.10
+          docker pull minio/minio:latest
+          
       - name: Start MinIO
         run: |
           # Start MinIO in background using Docker (GitHub Actions runners have Docker pre-installed)
@@ -372,6 +377,19 @@ jobs:
           # Use temp directory for CI/CD to avoid polluting repo
           mkdir -p /tmp/dativo-state/test_tenant
 
+      - name: Pull Docker images for sandbox tests
+        run: |
+          # Pull required Docker images for sandbox tests
+          echo "Pulling Docker images for sandbox tests..."
+          docker pull python:3.10 || echo "⚠️  Failed to pull python:3.10 (may use cached image)"
+          echo "✅ Docker images ready"
+
+      - name: Check Docker configuration for sandbox tests
+        run: |
+          # Check Docker configuration for sandbox tests
+          chmod +x tests/check_docker_config.sh
+          bash tests/check_docker_config.sh || echo "⚠️  Docker configuration check had warnings (non-critical)"
+
       - name: Build Rust plugins (if needed)
         run: |
           # Install Rust if not already available
@@ -417,9 +435,11 @@ jobs:
           chmod +x tests/smoke_tests_custom_plugins.sh
           
           # Run smoke tests using the consolidated script
-          # --skip-infrastructure-setup: Services are set up by workflow steps
+          # --skip-infrastructure-setup: Services are set up by workflow steps (Postgres, MySQL, MinIO, Nessie)
           # --skip-env-setup: Environment variables are set in workflow
-          # --skip-rust-build: Rust plugins built in previous step
+          # --skip-rust-build: Rust plugins built in previous step (if needed)
+          # Note: Infrastructure teardown is handled automatically by run_all_smoke_tests.sh
+          # but since we're using --skip-infrastructure-setup, it won't try to tear down
           bash tests/run_all_smoke_tests.sh --skip-infrastructure-setup --skip-env-setup --skip-rust-build
 
       - name: Verify files in MinIO
