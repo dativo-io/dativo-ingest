@@ -114,6 +114,14 @@ class SchemaValidator:
                 # In warn mode, include original value
                 coerced_record[field_name] = value
 
+        # In warn mode, include all fields from the original record (even if not in schema)
+        # This allows records with different column names to be written
+        if self.validation_mode == "warn":
+            # Merge original record with coerced fields (coerced takes precedence)
+            for key, value in record.items():
+                if key not in coerced_record:
+                    coerced_record[key] = value
+
         # Check for extra fields (fields in record but not in schema)
         # We'll allow extra fields but could log them if needed
 
@@ -121,10 +129,16 @@ class SchemaValidator:
         self.errors.extend(errors)
 
         # Determine if record is valid
+        # In warn mode, always consider record valid (even with errors)
+        # In strict mode, record is valid only if no errors
         is_valid = len(errors) == 0 or self.validation_mode == "warn"
 
         if not is_valid:
             return False, None
+
+        # In warn mode, if coerced_record is empty but record has data, use original record
+        if self.validation_mode == "warn" and not coerced_record and record:
+            return True, record
 
         return True, coerced_record
 
@@ -148,9 +162,11 @@ class SchemaValidator:
             is_valid, coerced_record = self.validate_record(record, idx)
 
             if is_valid and coerced_record is not None:
-                valid_records.append(coerced_record)
+                # Use coerced_record if available, otherwise use original record
+                valid_records.append(coerced_record if coerced_record else record)
             elif self.validation_mode == "warn":
                 # In warn mode, include record even with errors (with original values)
+                # This ensures records with mismatched schemas are still written
                 valid_records.append(record)
 
         return valid_records, self.errors

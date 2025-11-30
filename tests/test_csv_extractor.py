@@ -175,3 +175,79 @@ def test_csv_extractor_source_tags_multiple_files(sample_csv_file):
         assert "address" in result["tags"]  # From second file
     finally:
         Path(second_csv).unlink(missing_ok=True)
+
+
+def test_extract_with_incremental_disabled_by_default(source_config):
+    """Test that incremental state is disabled by default - files are always processed."""
+    # Source config without incremental should process files
+    assert source_config.incremental is None or not source_config.incremental
+
+    extractor = CSVExtractor(source_config)
+
+    # Extract records - should process file even if it was processed before
+    all_records = []
+    for batch in extractor.extract():
+        all_records.extend(batch)
+
+    # Should extract all records
+    assert len(all_records) == 3
+
+    # Run again - should still process (incremental disabled)
+    all_records2 = []
+    for batch in extractor.extract():
+        all_records2.extend(batch)
+
+    # Should extract all records again
+    assert len(all_records2) == 3
+    assert len(all_records) == len(all_records2)
+
+
+def test_extract_with_incremental_enabled(sample_csv_file):
+    """Test that incremental state works when explicitly enabled."""
+    import shutil
+    import tempfile as tf
+
+    from dativo_ingest.validator import IncrementalStateManager
+
+    # Create state directory
+    state_dir = tf.mkdtemp()
+    state_path = Path(state_dir) / "test.state.json"
+
+    config = SourceConfig(
+        type="csv",
+        files=[{"path": sample_csv_file, "object": "test_object"}],
+        incremental={
+            "strategy": "file_modified_time",
+            "lookback_days": 0,
+            "state_path": str(state_path),
+        },
+        engine={
+            "type": "native",
+            "options": {
+                "native": {
+                    "chunk_size": 1000,
+                    "encoding": "utf-8",
+                }
+            },
+        },
+    )
+
+    extractor = CSVExtractor(config)
+
+    # First run - should process file
+    all_records = []
+    for batch in extractor.extract():
+        all_records.extend(batch)
+
+    assert len(all_records) == 3
+
+    # Second run - should skip file (already processed)
+    all_records2 = []
+    for batch in extractor.extract():
+        all_records2.extend(batch)
+
+    # Should be empty (file skipped)
+    assert len(all_records2) == 0
+
+    # Cleanup
+    shutil.rmtree(state_dir, ignore_errors=True)
