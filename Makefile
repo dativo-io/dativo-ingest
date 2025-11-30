@@ -145,18 +145,41 @@ clean: clean-state clean-temp
 
 # Build Docker images for plugin sandboxes
 # This is a dependency for tests that use sandboxed plugin execution
+# Fails fast if Docker is required but unavailable to prevent confusing test failures
 build-plugin-images:
 	@echo "🐳 Building plugin sandbox Docker images..."
 	@if command -v docker >/dev/null 2>&1; then \
+		if ! docker info >/dev/null 2>&1; then \
+			echo "❌ Docker is installed but daemon is not running."; \
+			echo ""; \
+			echo "   Please start Docker Desktop or Docker daemon:"; \
+			echo "   - On macOS: Open Docker Desktop application"; \
+			echo "   - On Linux: sudo systemctl start docker"; \
+			echo "   - With Colima: colima start"; \
+			echo ""; \
+			echo "   Tests that require Docker images will fail without a running daemon."; \
+			exit 1; \
+		fi; \
 		echo "Building Python plugin runner image..."; \
 		docker build --pull -t dativo/python-plugin-runner:latest -f docker/python-plugin-runner/Dockerfile . || exit 1; \
 		echo "Building Rust plugin runner image..."; \
 		docker build --pull -t dativo/rust-plugin-runner:latest -f docker/rust-plugin-runner/Dockerfile docker/rust-plugin-runner/ || exit 1; \
 		echo "✅ Plugin images built successfully"; \
 	else \
-		echo "⚠️  Docker not found. Skipping plugin image build."; \
-		echo "   Tests that require sandboxed execution may fail."; \
-		echo "   Install Docker and run 'make build-plugin-images' to build images."; \
+		echo "❌ Docker is not installed or not in PATH."; \
+		echo ""; \
+		echo "   Docker is required to build plugin sandbox images used by some tests."; \
+		echo "   Without Docker, tests that require sandboxed execution may fail with"; \
+		echo "   confusing errors about missing images rather than a clear message."; \
+		echo ""; \
+		echo "   To fix:"; \
+		echo "   1. Install Docker: https://www.docker.com/products/docker-desktop"; \
+		echo "   2. Start Docker Desktop or Docker daemon"; \
+		echo "   3. Run 'make build-plugin-images' to build required images"; \
+		echo ""; \
+		echo "   To run tests without Docker (will skip Docker-requiring tests):"; \
+		echo "   PYTHONPATH=src pytest tests/test_*.py -v -m 'not integration and not requires_docker'"; \
+		exit 1; \
 	fi
 
 
