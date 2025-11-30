@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from . import __version__
 from .config import JobConfig, RunnerConfig
 from .exceptions import (
     AuthenticationError,
@@ -1836,6 +1837,12 @@ Examples:
   # Start orchestrated mode
   dativo start orchestrated --runner-config /app/configs/runner.yaml
         """,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show version number and exit",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
