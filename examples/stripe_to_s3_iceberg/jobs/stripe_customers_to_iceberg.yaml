@@ -1,0 +1,46 @@
+tenant_id: quickstart_stripe
+environment: demo
+
+source_connector: stripe
+source_connector_path: connectors/stripe.yaml
+
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+asset: stripe_customers
+asset_path: assets/stripe/v1.0/customers.yaml
+
+source:
+  custom_reader: "examples/plugins/json_api_reader.py:JSONAPIReader"
+  connection:
+    base_url: "${STRIPE_API_BASE:-http://localhost:12111/v1}"
+    timeout: 30
+  credentials:
+    token: "${STRIPE_API_KEY}"
+  objects: ["customers"]
+  engine:
+    options:
+      page_size: 25
+      max_pages: 2
+  incremental:
+    strategy: created
+    cursor_field: created
+    lookback_days: 1
+
+target:
+  file_format: parquet
+  connection:
+    s3:
+      endpoint: "${MINIO_ENDPOINT:-http://localhost:9000}"
+      bucket: "${MINIO_BUCKET:-dativo-demo}"
+      access_key_id: "${MINIO_ACCESS_KEY}"
+      secret_access_key: "${MINIO_SECRET_KEY}"
+      region: "${AWS_REGION:-us-east-1}"
+      path_style_access: true
+      prefix: "examples/stripe/customers"
+  markdown_kv_storage:
+    mode: string
+
+logging:
+  level: INFO
+  redaction: true

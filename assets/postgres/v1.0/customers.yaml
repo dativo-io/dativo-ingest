@@ -1,0 +1,44 @@
+asset:
+  name: postgres_customers
+  source_type: postgres
+  object: customers
+  version: "1.0"
+
+  schema:
+    - name: customer_id
+      type: bigint
+      required: true
+    - name: email
+      type: string
+      required: false
+      classification: PII
+    - name: full_name
+      type: string
+      required: true
+    - name: status
+      type: string
+      enum: [active, churned, trial]
+      required: true
+    - name: updated_at
+      type: timestamp
+      required: true
+
+  governance:
+    owner: data-team@company.com
+    tags: [postgres, customers, ingestion]
+
+  compliance:
+    classification: [PII]
+    retention_days: 90
+    regulations: [GDPR, CCPA]
+
+  finops:
+    cost_center: DATA-CORE
+    business_tags: [customer-360]
+    project: dativo-demo
+    environment: demo
+
+  target:
+    file_format: parquet
+    partitioning: [ingest_date]
+    mode: strict

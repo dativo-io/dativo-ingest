@@ -1,6 +1,36 @@
 # Dativo Ingestion Platform
 
-A headless, config-driven ingestion engine. Extracts data from SaaS APIs (Stripe, HubSpot) and databases (PostgreSQL, MySQL) into object storage (S3, MinIO) as Iceberg-backed datasets. Supports Markdown-KV format for LLM-optimized data ingestion.
+[![Tests](https://github.com/dativo-io/dativo-ingest/actions/workflows/tests.yml/badge.svg)](https://github.com/dativo-io/dativo-ingest/actions/workflows/tests.yml)
+[![Release](https://img.shields.io/github/v/release/dativo-io/dativo-ingest?display_name=tag)](https://github.com/dativo-io/dativo-ingest/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+Config-driven ingestion engine for teams that need SaaS + DB data delivered to S3/MinIO (Iceberg-backed) with strong schema validation and LLM-friendly Markdown-KV support. Fully headless—no heavy UI or control plane required.
+
+## Use cases
+
+- Ingest Stripe, HubSpot, Google Workspace, Postgres, or MySQL data into Iceberg/Parquet on S3 or MinIO.
+- Roll out config-driven ingestion jobs without running a full Airbyte/Fivetran deployment.
+- Enforce ODCS v3.0.2 contracts, Markdown-KV storage, and connector governance with CI-grade tooling.
+
+## At a glance
+
+| Feature | Status |
+| --- | --- |
+| Sources | Stripe, HubSpot, Google Sheets/Drive CSV, CSV, Markdown-KV, Postgres, MySQL |
+| Targets | Iceberg-backed Parquet on S3 or MinIO (raw S3 supported too) |
+| Orchestration | Optional Dagster runner (`dativo start orchestrated`) |
+| Config style | YAML validated against registry + schemas |
+| Secret management | Env, filesystem, Vault, AWS Secrets Manager, GCP Secret Manager |
+| Formats | Parquet + Markdown-KV (string/structured/raw) |
+
+## Getting started quickly
+
+Use these docs as your first stop:
+
+- [`docs/README.md`](docs/README.md) – documentation index with prerequisites per persona.
+- [`QUICKSTART.md`](QUICKSTART.md) – command reference for the dev loop.
+- [`docs/SETUP_AND_TESTING.md`](docs/SETUP_AND_TESTING.md) – detailed environment + smoke tests.
+- [`ROADMAP.md`](ROADMAP.md) – upcoming connectors, governance, and platform milestones.
 
 ## Architecture
 
@@ -20,49 +50,71 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 ### Prerequisites
 
 - Python 3.10+
-- Docker and Docker Compose (for local infrastructure)
-- Node.js 18+ (optional, for schema validation)
+- Docker + Docker Compose (for local infrastructure and optional Dagster runner)
+- Node.js 18+ (optional, for schema validation helpers)
+- AWS/GCP CLIs or `mc` (optional, to inspect landing zones)
 
-### Setup and Run
+### Copy-paste runbook (3 minutes)
 
 ```bash
-# 1. Run automated setup
-./scripts/setup-dev.sh
+git clone https://github.com/dativo-io/dativo-ingest.git
+cd dativo-ingest
 
-# 2. Source environment variables
+./scripts/setup-dev.sh
 source .env
 
-# 3. Run end-to-end test (filesystem secret manager)
 dativo run --job-dir tests/fixtures/jobs \
   --secret-manager filesystem \
   --secrets-dir tests/fixtures/secrets \
   --mode self_hosted
 ```
 
-**For detailed instructions, see:**
-- [QUICKSTART.md](QUICKSTART.md) - Quick reference guide
-- [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Comprehensive setup guide
+> Swap `--secret-manager filesystem` for `env`, `vault`, `aws`, or `gcp` once you wire up real secrets. The sample jobs land data under `./state`.
+
+### What you should see
+
+```
+[INFO] Tenant ID 'test_tenant' inferred from job configurations | event_type=tenant_inferred
+[INFO] Starting job execution | connector_type=stripe event_type=job_started
+[INFO] Wrote batch: 1200 records, 2 files | event_type=batch_written
+[INFO] Job execution completed | records=1200 valid_records=1200 files_written=2 exit_code=0 event_type=job_finished
+```
+
+### Need more?
+
+- [QUICKSTART.md](QUICKSTART.md) – copy-paste snippets for every secret backend.
+- [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) – smoke tests + troubleshooting.
+- [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md) – production recommendations per backend.
+- [`examples/stripe_to_s3_iceberg/README.md`](examples/stripe_to_s3_iceberg/README.md) – end-to-end walkthrough.
 
 ### Docker Deployment
 
-1. Build the image:
+1. Build (or pull) the image:
 ```bash
 docker build -t dativo:1.1.0 .
+# Matches release v1.1.0. Use dativo:latest for tip-of-main experiments.
 ```
 
-2. Run a single job (oneshot mode):
+2. Run a single job (oneshot mode) with explicit bind mounts so you know where data lives:
 ```bash
 docker run --rm \
   -v $(pwd)/connectors:/app/connectors:ro \
   -v $(pwd)/assets:/app/assets:ro \
   -v $(pwd)/jobs:/app/jobs \
-  -v $(pwd)/configs:/app/configs \
+  -v $(pwd)/configs:/app/configs:ro \
   -v $(pwd)/secrets:/app/secrets \
   -v $(pwd)/state:/app/state \
-  dativo:1.1.0 run --config /app/jobs/acme/stripe_customers_to_iceberg.yaml --mode self_hosted
+  dativo:1.1.0 run --config /app/jobs/acme/stripe_customers_to_iceberg.yaml \
+  --secret-manager filesystem \
+  --secrets-dir /app/secrets \
+  --mode self_hosted
 ```
 
-3. Start orchestrated mode:
+   - Logs: stream to STDOUT (can be scraped by Docker/Kubernetes).
+   - Data landing zone: `/app/state` (mounted to `./state` locally).
+   - Configuration + registry: `/app/{connectors,assets,jobs,configs}` (read-only in prod).
+
+3. Start orchestrated mode (Dagster UI exposed on `:3000`):
 ```bash
 docker run --rm -p 3000:3000 \
   -v $(pwd)/connectors:/app/connectors:ro \
@@ -74,7 +126,46 @@ docker run --rm -p 3000:3000 \
   dativo:1.1.0 start orchestrated --runner-config /app/configs/runner.yaml
 ```
 
-> Omit the `/app/secrets` volume and `--secrets-dir` flag when using non-filesystem secret managers.
+> Prefer the curated Docker quickstart in [`examples/stripe_to_s3_iceberg`](examples/stripe_to_s3_iceberg/README.md) for a local MinIO + Stripe mock environment. Use the `latest` tag only when you are comfortable with tip-of-main behavior.
+
+## Common recipes
+
+- **Validate a job config only**  
+  `dativo check --config jobs/acme/stripe_customers.yaml --mode self_hosted`
+
+- **List all available streams for Postgres**  
+  `dativo discover --connector postgres --verbose`
+
+- **Run every job in a directory using filesystem secrets**  
+  `dativo run --job-dir jobs/acme --secret-manager filesystem --secrets-dir secrets`
+
+- **Dry-run Markdown-KV transformations with warnings only**  
+  `dativo run --config jobs/acme/markdown_kv.yaml --mode self_hosted --schema-validation-mode warn`
+
+## CLI in one screen
+
+```
+$ dativo --help
+usage: dativo [-h] {run,start,check,discover} ...
+
+Commands:
+  run        Execute one job or every job in a directory
+  start      Launch Dagster orchestrator (dativo start orchestrated)
+  check      Validate credentials + connectivity without writing data
+  discover   List available tables/streams to seed asset definitions
+
+Global flags:
+  --secret-manager {env,filesystem,vault,aws,gcp}
+  --secret-manager-config <path-or-json>
+  --mode {self_hosted,cloud}
+  --version
+```
+
+## Examples
+
+- [`examples/stripe_to_s3_iceberg/`](examples/stripe_to_s3_iceberg/README.md) – Stripe + MinIO "hello world" with Docker Compose, filesystem secrets, and Markdown-KV output.
+- [`examples/postgres_incremental_sync/`](examples/postgres_incremental_sync/README.md) – local Postgres container with incremental state tracking and Iceberg commits.
+- [`examples/plugins/`](examples/plugins/README.md) – JSON API reader/writer plus Rust CSV/Parquet plugins.
 
 ## CLI Usage
 
@@ -412,6 +503,36 @@ make schema-validate
 
 See [tests/README.md](tests/README.md) for detailed testing documentation.
 
+## Quality
+
+| Check | Status |
+| --- | --- |
+| Tests | ✅ `pytest` via [`tests.yml`](.github/workflows/tests.yml) and targeted smoke/integration suites |
+| Lint & formatting | ✅ `ruff` + `black` enforced in [`ci.yml`](.github/workflows/ci.yml) |
+| Schema validation | ✅ `jsonschema` + ODCS helpers (`make schema-validate`) |
+| Type checking | ⚪️ `mypy` planned (tracked in [ROADMAP.md](ROADMAP.md)) |
+
+## Security considerations
+
+- **Secrets** – sample configs rely on filesystem secrets, but production runs should use Vault, AWS Secrets Manager, or GCP Secret Manager (`--secret-manager` flag). See [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md) for end-to-end guidance.
+- **Least privilege** – target connectors expect IAM policies scoped to the landing bucket/prefix. See `connectors/*.yaml` for the exact structure and copy/pasteable examples.
+- **Retries and backoff** – the built-in retry policy (`src/dativo_ingest/retry_policy.py`) avoids hammering APIs and respects rate limits by default.
+- **No committed secrets** – this repo ships with `.env.example` files only; `scripts/setup-dev.sh` creates a local `.env` ignored by git.
+
+## How is this different from Airbyte / Singer / Fivetran?
+
+- **Headless + config-driven** – no heavy server or UI to babysit; GitOps-friendly YAML.
+- **Iceberg-first** – Parquet layout, commit semantics, and catalog integration are first-class features instead of afterthoughts.
+- **LLM-friendly** – Markdown-KV transforms, ODCS validation, and metadata tagging ship out of the box.
+- **Pluggable engines** – mix native connectors, Airbyte/Singer engines, and custom Python/Rust plugins within the same run.
+
+## Roadmap & contributing
+
+- [ROADMAP.md](ROADMAP.md) lists near-term connectors, governance upgrades, and observability work.
+- Contribution guide lives in [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) and links to dev environment steps plus coding standards.
+- New contributors should start with [`docs/CONNECTOR_DEVELOPMENT.md`](docs/CONNECTOR_DEVELOPMENT.md) (how to add connectors/assets) and [`docs/README.md`](docs/README.md) for persona-based indexes.
+- Issues tagged with `good first issue` and the new issue templates (bug + connector request) make triage approachable—open one if you need a scenario documented.
+
 ## Project Structure
 
 ```
@@ -431,9 +552,14 @@ src/dativo_ingest/   # Source code
 
 **Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
 **Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
+**Documentation index:** [docs/README.md](docs/README.md)  
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
 **Testing:** [tests/README.md](tests/README.md)
+
+## License
+
+Released under the [MIT License](LICENSE). Mention the license when you redistribute binaries or container images so downstream teams know they can adopt it safely.
 
 

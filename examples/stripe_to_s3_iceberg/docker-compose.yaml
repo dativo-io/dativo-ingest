@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-06-13T22-53-53Z
+    container_name: dativo-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: dativo
+      MINIO_ROOT_PASSWORD: dativo123
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    container_name: dativo-stripe-mock
+    command: ["--http-port", "12111", "--https-port", "12112"]
+    ports:
+      - "12111:12111"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:12111/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5

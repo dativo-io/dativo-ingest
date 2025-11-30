@@ -1,0 +1,47 @@
+tenant_id: quickstart_postgres
+environment: demo
+
+source_connector: postgres
+source_connector_path: connectors/postgres.yaml
+
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+
+asset: postgres_customers
+asset_path: assets/postgres/v1.0/customers.yaml
+
+source:
+  tables:
+    - schema: public
+      name: customers
+      cursor_field: updated_at
+  connection:
+    host: "${POSTGRES_HOST:-localhost}"
+    port: "${POSTGRES_PORT:-5432}"
+    database: "${POSTGRES_DB:-dativo}"
+    user: "${POSTGRES_USER:-dativo}"
+    password: "${POSTGRES_PASSWORD:-dativo}"
+    sslmode: disable
+  incremental:
+    cursor_field: updated_at
+    lookback_days: 1
+  engine:
+    options:
+      native:
+        batch_size: 5000
+
+target:
+  file_format: parquet
+  connection:
+    s3:
+      endpoint: "${MINIO_ENDPOINT:-http://localhost:9000}"
+      bucket: "${MINIO_BUCKET:-dativo-demo}"
+      access_key_id: "${MINIO_ACCESS_KEY}"
+      secret_access_key: "${MINIO_SECRET_KEY}"
+      region: "${AWS_REGION:-us-east-1}"
+      path_style_access: true
+      prefix: "examples/postgres/customers"
+
+logging:
+  level: INFO
+  redaction: true
