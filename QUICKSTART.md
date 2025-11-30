@@ -4,8 +4,39 @@ Get up and running with Dativo Ingestion Platform in 5 minutes.
 
 ## Prerequisites
 
-- Python 3.10+
+- **Python 3.10+** (REQUIRED - Python 3.9 and below will not work)
 - Docker and Docker Compose
+
+### Python Version Requirement
+
+Dativo-ingest requires **Python 3.10 or higher**. Check your version:
+
+```bash
+python3 --version
+```
+
+If you see Python 3.9 or below, you must upgrade:
+
+#### Using Conda (Recommended)
+```bash
+conda create -n dativo python=3.10 -y
+conda activate dativo
+```
+
+#### Using Homebrew (macOS)
+```bash
+brew install python@3.10
+python3.10 -m venv venv
+source venv/bin/activate
+```
+
+#### Using pyenv
+```bash
+pyenv install 3.10.13
+pyenv local 3.10.13
+python -m venv venv
+source venv/bin/activate
+```
 
 ## Setup Steps
 

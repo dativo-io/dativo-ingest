@@ -2,6 +2,24 @@
 
 A headless, config-driven ingestion engine. Extracts data from SaaS APIs (Stripe, HubSpot) and databases (PostgreSQL, MySQL) into object storage (S3, MinIO) as Iceberg-backed datasets. Supports Markdown-KV format for LLM-optimized data ingestion.
 
+## 🧪 Testing & Validation
+
+**NEW!** Comprehensive testing resources for all capabilities:
+- **[TESTING_GUIDE_INDEX.md](TESTING_GUIDE_INDEX.md)** - Complete testing documentation index
+- **[TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md)** - 20 detailed test cases with step-by-step instructions
+- **[TESTING_QUICK_REFERENCE.md](TESTING_QUICK_REFERENCE.md)** - Quick command reference and troubleshooting
+- **[ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md)** - Environment variables reference
+- **[scripts/preflight-check.sh](scripts/preflight-check.sh)** - Validate your environment is ready
+- **[scripts/generate-test-data.sh](scripts/generate-test-data.sh)** - Generate sample test datasets
+
+Quick start testing:
+```bash
+./scripts/preflight-check.sh    # Validate environment
+./scripts/generate-test-data.sh  # Generate test data
+source .env                      # Load environment variables
+dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+```
+
 ## Architecture
 
 Config-driven ingestion engine. All behavior is controlled by YAML configs validated against a connector registry and asset schemas.
@@ -19,9 +37,19 @@ Config-driven ingestion engine. All behavior is controlled by YAML configs valid
 
 ### Prerequisites
 
-- Python 3.10+
+- **Python 3.10+** (Required - Python 3.9 and below are not supported)
 - Docker and Docker Compose (for local infrastructure)
 - Node.js 18+ (optional, for schema validation)
+
+**Python Version Check:**
+```bash
+python3 --version  # Should show 3.10.0 or higher
+
+# If you have Python 3.9 or below, upgrade using:
+# • Conda: conda create -n dativo python=3.10 && conda activate dativo
+# • Homebrew (macOS): brew install python@3.10
+# • pyenv: pyenv install 3.10.13 && pyenv local 3.10.13
+```
 
 ### Setup and Run
 
@@ -41,6 +69,7 @@ dativo run --job-dir tests/fixtures/jobs \
 
 **For detailed instructions, see:**
 - [QUICKSTART.md](QUICKSTART.md) - Quick reference guide
+- [ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md) - Environment variables reference
 - [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Comprehensive setup guide
 
 ### Docker Deployment
@@ -434,6 +463,8 @@ src/dativo_ingest/   # Source code
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
+**Data Flow Architecture:** [DATA_FLOW_ARCHITECTURE.md](DATA_FLOW_ARCHITECTURE.md) - How data moves from readers to writers  
+**Python Setup:** [PYTHON_SETUP_GUIDE.md](PYTHON_SETUP_GUIDE.md) - Python 3.10+ installation guide  
 **Testing:** [tests/README.md](tests/README.md)
 
 
