@@ -1,9 +1,47 @@
 """Base catalog interface for lineage and metadata push."""
 
+import os
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from ..config import AssetDefinition, CatalogConfig, JobConfig
+
+
+def _expand_env_variable(value: Optional[str]) -> Optional[str]:
+    """Expand environment variable references in a string value.
+
+    Supports both ${VAR} and ${VAR:-default} syntax.
+
+    Args:
+        value: String value that may contain environment variable references
+
+    Returns:
+        Expanded string value, or None if value is None
+    """
+    if not isinstance(value, str):
+        return value
+
+    # Handle bash-style ${VAR:-default} syntax
+    bash_default_pattern = r"\$\{([^:}]+):-([^}]+)\}"
+    match = re.search(bash_default_pattern, value)
+    if match:
+        env_var = match.group(1)
+        default_value = match.group(2)
+        return os.getenv(env_var, default_value)
+
+    # Handle simple ${VAR} syntax
+    if "${" in value:
+        expanded = os.path.expandvars(value)
+        if "${" in expanded:
+            # Variable not set, extract var name and try to get from env
+            var_match = re.search(r"\$\{([^}]+)\}", expanded)
+            if var_match:
+                var_name = var_match.group(1)
+                return os.getenv(var_name, None)
+        return expanded
+
+    return value
 
 
 class BaseCatalog(ABC):
@@ -164,7 +202,13 @@ class BaseCatalog(ABC):
         s3_config = connection.get("s3") or connection.get("minio", {})
 
         # Build S3 path
-        bucket = s3_config.get("bucket") or "default-bucket"
+        bucket_raw = s3_config.get("bucket")
+        bucket = (
+            _expand_env_variable(bucket_raw)
+            or os.getenv("S3_BUCKET")
+            or os.getenv("MINIO_BUCKET")
+            or "default-bucket"
+        )
         domain = self.asset_definition.domain or "default"
         data_product = getattr(self.asset_definition, "dataProduct", None) or "default"
         table_name = (

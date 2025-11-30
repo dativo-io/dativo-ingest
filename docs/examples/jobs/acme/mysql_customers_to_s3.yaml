@@ -26,7 +26,6 @@ source:
 target:
   connection:
     bucket: "acme-data-lake"
-    prefix: "raw/mysql/customers"
 
 logging:
   redaction: true

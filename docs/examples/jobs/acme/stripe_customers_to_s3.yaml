@@ -19,7 +19,6 @@ source:
 target:
   connection:
     bucket: "acme-data-lake"
-    prefix: "raw/stripe/customers"
 
 logging:
   redaction: true
