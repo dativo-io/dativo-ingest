@@ -18,7 +18,7 @@ asset_path: assets/hubspot/v1.0/contacts.yaml
 source:
   objects: [contacts]
   incremental:
-    strategy: updated_after
+    strategy: updated_at
     cursor_field: updatedAt
     lookback_days: 1
 

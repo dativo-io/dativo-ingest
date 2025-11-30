@@ -210,6 +210,16 @@ def startup_sequence(
             f"Secrets loaded for tenant {tenant_id}",
             extra={"event_type": "secrets_loaded", "secret_count": len(secrets)},
         )
+
+        # For filesystem manager, set environment variables from loaded secrets
+        # This allows config values like ${VAR} to be expanded
+        if secret_manager == "filesystem":
+            for secret_name, secret_value in secrets.items():
+                if isinstance(secret_value, dict):
+                    # For .env files, secret_value is a dict of KEY=VALUE pairs
+                    for key, value in secret_value.items():
+                        if isinstance(value, str) and key not in os.environ:
+                            os.environ[key] = value
     except ValueError as e:
         logger.warning(
             f"Secrets loading failed (may be optional): {e}",
@@ -696,13 +706,20 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         # Always build standard path regardless of warehouse config to ensure consistency
 
         # Extract bucket from connection config
+        # Support both nested (connection.s3.bucket) and flat (connection.bucket) structures
         connection = target_config.connection or {}
         s3_config = connection.get("s3") or connection.get("minio", {})
-        bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET")
+        bucket = (
+            s3_config.get("bucket")
+            or connection.get("bucket")  # Fallback to flat structure
+            or os.getenv("S3_BUCKET")
+            or os.getenv("MINIO_BUCKET")
+        )
         if not bucket:
             raise ValueError(
-                "S3 bucket must be specified in target.connection.s3.bucket "
-                "or S3_BUCKET environment variable"
+                "S3 bucket must be specified in target.connection.s3.bucket, "
+                "target.connection.minio.bucket, target.connection.bucket, "
+                "or S3_BUCKET/MINIO_BUCKET environment variable"
             )
 
         # Build path following industry standards:
@@ -1462,7 +1479,12 @@ def check_command(args: argparse.Namespace) -> int:
             # For built-in writers (Parquet/Iceberg), check S3 connection
             connection = target_config.connection or {}
             s3_config = connection.get("s3") or connection.get("minio", {})
-            bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET")
+            bucket = (
+                s3_config.get("bucket")
+                or connection.get("bucket")  # Fallback to flat structure
+                or os.getenv("S3_BUCKET")
+                or os.getenv("MINIO_BUCKET")
+            )
 
             if bucket:
                 # Try to access bucket (basic check)
