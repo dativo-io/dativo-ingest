@@ -637,12 +637,13 @@ class JobConfig(BaseModel):
             rate_limits = recipe.rate_limits
 
         # Start with recipe defaults
+        # Incremental is disabled by default - only enable if explicitly configured in job
         source_data = {
             "type": recipe.type,
             "description": recipe.description,
             "engine": recipe.default_engine,
             "credentials": credentials,
-            "incremental": incremental,
+            "incremental": None,  # Disabled by default - only enable if job explicitly configures it
             "rate_limits": rate_limits,
         }
 
@@ -650,7 +651,26 @@ class JobConfig(BaseModel):
         if self.source:
             # Deep merge for nested dicts
             for key, value in self.source.items():
-                if (
+                if key == "incremental":
+                    # Handle incremental specially:
+                    # - If job sets incremental to None or empty dict {}, disable it (explicit disable)
+                    # - If job sets incremental to a dict with values, enable it (merge with recipe defaults)
+                    # - If job doesn't specify incremental at all, keep it disabled (None)
+                    if value is None:
+                        source_data[key] = None
+                    elif isinstance(value, dict) and not value:
+                        # Empty dict {} means explicitly disable incremental
+                        source_data[key] = None
+                    elif isinstance(value, dict):
+                        # Non-empty dict means enable incremental
+                        # Merge with recipe incremental defaults if they exist
+                        if incremental and isinstance(incremental, dict):
+                            source_data[key] = {**incremental, **value}
+                        else:
+                            source_data[key] = value
+                    else:
+                        source_data[key] = value
+                elif (
                     isinstance(value, dict)
                     and key in source_data
                     and isinstance(source_data[key], dict)
@@ -659,9 +679,12 @@ class JobConfig(BaseModel):
                 else:
                     source_data[key] = value
 
-        # Add tenant-specific state_path if incremental is present
-        if source_data.get("incremental") and "state_path" not in source_data.get(
-            "incremental", {}
+        # Add tenant-specific state_path if incremental is enabled (not None and not empty)
+        incremental_config = source_data.get("incremental")
+        if (
+            incremental_config
+            and isinstance(incremental_config, dict)
+            and "state_path" not in incremental_config
         ):
             if self.tenant_id:
                 # Determine object name from source config
