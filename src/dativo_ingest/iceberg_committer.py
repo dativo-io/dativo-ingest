@@ -88,17 +88,26 @@ class IcebergCommitter:
         """
         # Check for S3 or MinIO config
         s3_config = connection.get("s3") or connection.get("minio", {})
+        # If no nested config, check if credentials are in flat structure
         if not s3_config:
-            # Try environment variables
-            return {
-                "endpoint": os.getenv("S3_ENDPOINT") or os.getenv("MINIO_ENDPOINT"),
-                "bucket": os.getenv("S3_BUCKET") or os.getenv("MINIO_BUCKET"),
-                "access_key_id": os.getenv("AWS_ACCESS_KEY_ID")
-                or os.getenv("MINIO_ACCESS_KEY"),
-                "secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY")
-                or os.getenv("MINIO_SECRET_KEY"),
-                "region": os.getenv("AWS_REGION", "us-east-1"),
-            }
+            # Check for flat structure (credentials directly under connection)
+            if any(
+                key in connection
+                for key in ["bucket", "access_key_id", "secret_access_key", "endpoint"]
+            ):
+                # Use flat structure - credentials are directly under connection
+                s3_config = connection
+            else:
+                # Try environment variables
+                return {
+                    "endpoint": os.getenv("S3_ENDPOINT") or os.getenv("MINIO_ENDPOINT"),
+                    "bucket": os.getenv("S3_BUCKET") or os.getenv("MINIO_BUCKET"),
+                    "access_key_id": os.getenv("AWS_ACCESS_KEY_ID")
+                    or os.getenv("MINIO_ACCESS_KEY"),
+                    "secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY")
+                    or os.getenv("MINIO_SECRET_KEY"),
+                    "region": os.getenv("AWS_REGION", "us-east-1"),
+                }
 
         # Expand environment variables in config values
         import re
@@ -126,24 +135,30 @@ class IcebergCommitter:
 
         endpoint = (
             expand_env(s3_config.get("endpoint"))
+            or expand_env(connection.get("endpoint"))  # Fallback to flat structure
             or os.getenv("S3_ENDPOINT")
             or os.getenv("MINIO_ENDPOINT")
             or "http://localhost:9000"
         )
         bucket = (
             expand_env(s3_config.get("bucket"))
+            or expand_env(connection.get("bucket"))  # Fallback to flat structure
             or os.getenv("S3_BUCKET")
             or os.getenv("MINIO_BUCKET")
             or "test-bucket"
         )
         access_key_id = (
             expand_env(s3_config.get("access_key_id"))
+            or expand_env(connection.get("access_key_id"))  # Fallback to flat structure
             or os.getenv("AWS_ACCESS_KEY_ID")
             or os.getenv("MINIO_ACCESS_KEY")
             or "minioadmin"
         )
         secret_access_key = (
             expand_env(s3_config.get("secret_access_key"))
+            or expand_env(
+                connection.get("secret_access_key")
+            )  # Fallback to flat structure
             or os.getenv("AWS_SECRET_ACCESS_KEY")
             or os.getenv("MINIO_SECRET_KEY")
             or "minioadmin"

@@ -164,7 +164,11 @@ class BaseCatalog(ABC):
         s3_config = connection.get("s3") or connection.get("minio", {})
 
         # Build S3 path
-        bucket = s3_config.get("bucket") or "default-bucket"
+        bucket = (
+            s3_config.get("bucket")
+            or connection.get("bucket")  # Fallback to flat structure
+            or "default-bucket"
+        )
         domain = self.asset_definition.domain or "default"
         data_product = getattr(self.asset_definition, "dataProduct", None) or "default"
         table_name = (
