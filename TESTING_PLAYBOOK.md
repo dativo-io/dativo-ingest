@@ -264,7 +264,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase1/employees"
 EOF
 
 # 4. Create secrets
@@ -365,7 +364,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase2/orders"
 EOF
 
 # 4. Copy initial data
@@ -452,7 +450,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase3/stripe/customers"
 EOF
 
 # 4. Test connection first
@@ -519,7 +516,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase4/hubspot/contacts"
 EOF
 
 # 3. Create job for companies
@@ -537,7 +533,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase4/hubspot/companies"
 EOF
 
 # 4. Create job for deals
@@ -555,7 +550,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase4/hubspot/deals"
 EOF
 
 # 5. Test connection
@@ -651,7 +645,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase5/products"
 EOF
 
 cp secrets/testcase1/iceberg.env secrets/testcase5/
@@ -754,7 +747,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase6/products"
 EOF
 
 cp secrets/testcase1/iceberg.env secrets/testcase6/
@@ -872,7 +864,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase7/postgres/employees"
 EOF
 
 # 6. Run job
@@ -965,7 +956,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase8/postgres/employees"
 EOF
 
 cp secrets/testcase7/postgres.env secrets/testcase8/
@@ -1036,7 +1026,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase9/markdown_kv/employees"
 EOF
 
 cp secrets/testcase7/postgres.env secrets/testcase9/
@@ -1176,7 +1165,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase10/api_products"
 EOF
 
 cp secrets/testcase1/iceberg.env secrets/testcase10/
@@ -1287,7 +1275,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase11/large_dataset"
 EOF
 
 cp secrets/testcase1/iceberg.env secrets/testcase11/
@@ -1403,7 +1390,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase12/google_sheets/test_data"
 EOF
 
 # 6. Run job
@@ -1469,7 +1455,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase13/gdrive/products"
 EOF
 
 # 4. Run job
@@ -1525,7 +1510,6 @@ target:
   connection:
     s3:
       bucket: "\${S3_BUCKET}"
-      prefix: "$tenant/data"
 EOF
 
   # Create secrets
@@ -1600,7 +1584,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase15/employees"
 EOF
 
 # 3. Run job with env secret manager (default)
@@ -1765,7 +1748,6 @@ target:
   connection:
     s3:
       bucket: "\${S3_BUCKET}"
-      prefix: "testcase16/sales_${strategy}"
 EOF
 done
 
@@ -1829,7 +1811,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase17/employees"
 
 # Catalog integration
 catalog:
@@ -1977,7 +1958,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase19/employees"
 EOF
 
 # Run and expect immediate failure (non-retryable)
@@ -2021,7 +2001,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase19/success"
 EOF
 
 # Job 2: Failure (missing file)
@@ -2041,7 +2020,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase19/failure"
 EOF
 
 # Run both jobs
@@ -2096,7 +2074,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "production/stripe/customers"
 catalog:
   type: openmetadata
   connection:
@@ -2124,7 +2101,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "production/hubspot/contacts"
 catalog:
   type: openmetadata
   connection:
@@ -2155,7 +2131,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "production/postgres/orders"
 catalog:
   type: openmetadata
   connection:

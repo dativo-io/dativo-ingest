@@ -725,7 +725,6 @@ target:
     azure_blob:
       account_name: "${AZURE_STORAGE_ACCOUNT_NAME}"
       container: "${AZURE_STORAGE_CONTAINER}"
-      prefix: "raw/stripe/customers"
 ```
 
 ---

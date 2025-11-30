@@ -189,7 +189,6 @@ target:
   connection:
     s3:
       bucket: acme-data-lake
-      prefix: raw/acme/employees
 
 catalog:
   type: openmetadata

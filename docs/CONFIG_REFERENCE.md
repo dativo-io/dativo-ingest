@@ -52,7 +52,6 @@ target:
       uri: "http://nessie.acme.internal:19120/api/v1"
     s3:
       bucket: "acme-data-lake"
-      prefix: "raw/hubspot/contacts"
 
 logging:
   redaction: true

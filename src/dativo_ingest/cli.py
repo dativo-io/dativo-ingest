@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -20,6 +21,42 @@ from .infrastructure import validate_infrastructure
 from .logging import get_logger, setup_logging, update_logging_settings
 from .secrets import load_secrets
 from .validator import ConnectorValidator, IncrementalStateManager
+
+
+def _expand_env_variable(value: Optional[str]) -> Optional[str]:
+    """Expand environment variable references in a string value.
+
+    Supports both ${VAR} and ${VAR:-default} syntax.
+
+    Args:
+        value: String value that may contain environment variable references
+
+    Returns:
+        Expanded string value, or None if value is None
+    """
+    if not isinstance(value, str):
+        return value
+
+    # Handle bash-style ${VAR:-default} syntax
+    bash_default_pattern = r"\$\{([^:}]+):-([^}]+)\}"
+    match = re.search(bash_default_pattern, value)
+    if match:
+        env_var = match.group(1)
+        default_value = match.group(2)
+        return os.getenv(env_var, default_value)
+
+    # Handle simple ${VAR} syntax
+    if "${" in value:
+        expanded = os.path.expandvars(value)
+        if "${" in expanded:
+            # Variable not set, extract var name and try to get from env
+            var_match = re.search(r"\$\{([^}]+)\}", expanded)
+            if var_match:
+                var_name = var_match.group(1)
+                return os.getenv(var_name, None)
+        return expanded
+
+    return value
 
 
 def initialize_state_directory(job_config: JobConfig) -> None:
@@ -199,6 +236,7 @@ def startup_sequence(
     )
 
     # 3. Load secrets using inferred/validated tenant_id
+    secrets = {}
     try:
         secrets = load_secrets(
             tenant_id,
@@ -206,6 +244,18 @@ def startup_sequence(
             manager_type=secret_manager,
             manager_config=secret_manager_config,
         )
+        # Set environment variables from loaded secrets
+        # Secrets from .env files are parsed as dictionaries, so we need to flatten them
+        for secret_name, secret_value in secrets.items():
+            if isinstance(secret_value, dict):
+                # For .env files, secret_value is a dict of KEY=VALUE pairs
+                for key, value in secret_value.items():
+                    if key not in os.environ:
+                        os.environ[key] = str(value)
+            elif isinstance(secret_value, (str, int, float, bool)):
+                # For simple values, use the secret name as the env var name
+                if secret_name.upper() not in os.environ:
+                    os.environ[secret_name.upper()] = str(secret_value)
         logger.info(
             f"Secrets loaded for tenant {tenant_id}",
             extra={"event_type": "secrets_loaded", "secret_count": len(secrets)},
@@ -331,9 +381,40 @@ def run_command(args: argparse.Namespace) -> int:
         # Set up logging for single job execution (no startup_sequence was called)
         log_level = job_config.logging.level if job_config.logging else "INFO"
         redact = job_config.logging.redaction if job_config.logging else False
-        setup_logging(
+        logger = setup_logging(
             level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id
         )
+
+        # Load secrets for single job execution
+        secrets = {}
+        try:
+            secrets = load_secrets(
+                job_config.tenant_id,
+                Path(args.secrets_dir),
+                manager_type=args.secret_manager,
+                manager_config=manager_config,
+            )
+            # Set environment variables from loaded secrets
+            # Secrets from .env files are parsed as dictionaries, so we need to flatten them
+            for secret_name, secret_value in secrets.items():
+                if isinstance(secret_value, dict):
+                    # For .env files, secret_value is a dict of KEY=VALUE pairs
+                    for key, value in secret_value.items():
+                        if key not in os.environ:
+                            os.environ[key] = str(value)
+                elif isinstance(secret_value, (str, int, float, bool)):
+                    # For simple values, use the secret name as the env var name
+                    if secret_name.upper() not in os.environ:
+                        os.environ[secret_name.upper()] = str(secret_value)
+            logger.info(
+                f"Secrets loaded for tenant {job_config.tenant_id}",
+                extra={"event_type": "secrets_loaded"},
+            )
+        except ValueError as e:
+            logger.warning(
+                f"Secrets loading failed (may be optional): {e}",
+                extra={"event_type": "secrets_warning"},
+            )
 
         return _execute_single_job(job_config, args.mode)
 
@@ -698,11 +779,17 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         # Extract bucket from connection config
         connection = target_config.connection or {}
         s3_config = connection.get("s3") or connection.get("minio", {})
-        bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET")
+        # Expand environment variables in bucket name
+        bucket_raw = s3_config.get("bucket")
+        bucket = (
+            _expand_env_variable(bucket_raw)
+            or os.getenv("S3_BUCKET")
+            or os.getenv("MINIO_BUCKET")
+        )
         if not bucket:
             raise ValueError(
                 "S3 bucket must be specified in target.connection.s3.bucket "
-                "or S3_BUCKET environment variable"
+                "or S3_BUCKET/MINIO_BUCKET environment variable"
             )
 
         # Build path following industry standards:
@@ -1277,6 +1364,7 @@ def check_command(args: argparse.Namespace) -> int:
     )
 
     # Load secrets
+    secrets = {}
     try:
         secrets = load_secrets(
             job_config.tenant_id,
@@ -1284,6 +1372,18 @@ def check_command(args: argparse.Namespace) -> int:
             manager_type=args.secret_manager,
             manager_config=manager_config,
         )
+        # Set environment variables from loaded secrets
+        # Secrets from .env files are parsed as dictionaries, so we need to flatten them
+        for secret_name, secret_value in secrets.items():
+            if isinstance(secret_value, dict):
+                # For .env files, secret_value is a dict of KEY=VALUE pairs
+                for key, value in secret_value.items():
+                    if key not in os.environ:
+                        os.environ[key] = str(value)
+            elif isinstance(secret_value, (str, int, float, bool)):
+                # For simple values, use the secret name as the env var name
+                if secret_name.upper() not in os.environ:
+                    os.environ[secret_name.upper()] = str(secret_value)
         logger.info(
             f"Secrets loaded for tenant {job_config.tenant_id}",
             extra={"event_type": "secrets_loaded"},
@@ -1462,7 +1562,12 @@ def check_command(args: argparse.Namespace) -> int:
             # For built-in writers (Parquet/Iceberg), check S3 connection
             connection = target_config.connection or {}
             s3_config = connection.get("s3") or connection.get("minio", {})
-            bucket = s3_config.get("bucket") or os.getenv("S3_BUCKET")
+            bucket_raw = s3_config.get("bucket")
+            bucket = (
+                _expand_env_variable(bucket_raw)
+                or os.getenv("S3_BUCKET")
+                or os.getenv("MINIO_BUCKET")
+            )
 
             if bucket:
                 # Try to access bucket (basic check)
