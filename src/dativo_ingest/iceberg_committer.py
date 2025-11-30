@@ -165,6 +165,7 @@ class IcebergCommitter:
         )
         region = (
             expand_env(s3_config.get("region"))
+            or expand_env(connection.get("region"))  # Fallback to flat structure
             or os.getenv("AWS_REGION")
             or "us-east-1"
         )
