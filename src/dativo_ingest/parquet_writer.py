@@ -197,72 +197,160 @@ class ParquetWriter:
 
         # Write each partition separately
         for partition_path, partition_records in partitioned_records.items():
-            # Create PyArrow schema
-            schema = self._create_pyarrow_schema()
+            # In warn mode, collect all columns from actual records, not just schema
+            # This allows writing records with different column names
+            if self.validation_mode == "warn" and partition_records:
+                # Get all unique column names from records
+                all_columns = set()
+                for record in partition_records:
+                    all_columns.update(record.keys())
 
-            # Convert records to PyArrow table
-            # Build arrays for each field
-            arrays = {}
-            for field_def in self.asset_definition.schema:
-                field_name = field_def["name"]
-                field_type = field_def.get("type", "string")
+                # Create schema that includes both schema fields and actual record columns
+                schema_fields = {
+                    field["name"]: field for field in self.asset_definition.schema
+                }
 
-                values = [record.get(field_name) for record in partition_records]
+                # Build arrays for all columns
+                arrays = {}
+                for field_name in all_columns:
+                    # Check if field is in schema definition
+                    if field_name in schema_fields:
+                        field_def = schema_fields[field_name]
+                        field_type = field_def.get("type", "string")
+                    else:
+                        # Field not in schema - infer type from values
+                        field_type = "string"  # Default to string for unknown fields
 
-                # Convert to appropriate PyArrow array
-                if field_type == "string":
-                    arrays[field_name] = pa.array(values, type=pa.string())
-                elif field_type == "integer":
-                    arrays[field_name] = pa.array(
-                        [int(v) if v is not None else None for v in values],
-                        type=pa.int64(),
-                    )
-                elif field_type in ["float", "double"]:
-                    arrays[field_name] = pa.array(
-                        [float(v) if v is not None else None for v in values],
-                        type=pa.float64(),
-                    )
-                elif field_type == "boolean":
-                    arrays[field_name] = pa.array(
-                        [bool(v) if v is not None else None for v in values],
-                        type=pa.bool_(),
-                    )
-                elif field_type in ["timestamp", "datetime", "date"]:
-                    # Convert datetime objects to timestamps
-                    timestamp_values = []
-                    for v in values:
-                        if v is None:
-                            timestamp_values.append(None)
-                        elif isinstance(v, datetime.datetime):
-                            timestamp_values.append(v)
-                        elif isinstance(v, datetime.date):
-                            timestamp_values.append(
-                                datetime.datetime.combine(v, datetime.time.min)
-                            )
-                        elif isinstance(v, str):
-                            # Try to parse
-                            try:
-                                timestamp_values.append(
-                                    datetime.datetime.fromisoformat(
-                                        v.replace("Z", "+00:00")
-                                    )
-                                )
-                            except ValueError:
+                    values = [record.get(field_name) for record in partition_records]
+
+                    # Convert to appropriate PyArrow array
+                    if field_type == "string":
+                        arrays[field_name] = pa.array(values, type=pa.string())
+                    elif field_type == "integer":
+                        arrays[field_name] = pa.array(
+                            [int(v) if v is not None else None for v in values],
+                            type=pa.int64(),
+                        )
+                    elif field_type in ["float", "double"]:
+                        arrays[field_name] = pa.array(
+                            [float(v) if v is not None else None for v in values],
+                            type=pa.float64(),
+                        )
+                    elif field_type == "boolean":
+                        arrays[field_name] = pa.array(
+                            [bool(v) if v is not None else None for v in values],
+                            type=pa.bool_(),
+                        )
+                    elif field_type in ["timestamp", "datetime", "date"]:
+                        # Convert datetime objects to timestamps
+                        timestamp_values = []
+                        for v in values:
+                            if v is None:
                                 timestamp_values.append(None)
-                        else:
-                            timestamp_values.append(None)
-                    arrays[field_name] = pa.array(
-                        timestamp_values, type=pa.timestamp("us")
-                    )
-                else:
-                    # Default to string
-                    arrays[field_name] = pa.array(
-                        [str(v) if v is not None else None for v in values],
-                        type=pa.string(),
-                    )
+                            elif isinstance(v, datetime.datetime):
+                                timestamp_values.append(v)
+                            elif isinstance(v, datetime.date):
+                                timestamp_values.append(
+                                    datetime.datetime.combine(v, datetime.time.min)
+                                )
+                            elif isinstance(v, str):
+                                # Try to parse
+                                try:
+                                    timestamp_values.append(
+                                        datetime.datetime.fromisoformat(
+                                            v.replace("Z", "+00:00")
+                                        )
+                                    )
+                                except ValueError:
+                                    timestamp_values.append(None)
+                            else:
+                                timestamp_values.append(None)
+                        arrays[field_name] = pa.array(
+                            timestamp_values, type=pa.timestamp("us")
+                        )
+                    else:
+                        # Default to string
+                        arrays[field_name] = pa.array(
+                            [str(v) if v is not None else None for v in values],
+                            type=pa.string(),
+                        )
 
-            # Create table
-            table = pa.table(arrays, schema=schema)
+                # Create schema from arrays
+                schema = pa.schema(
+                    [
+                        pa.field(name, arr.type, nullable=True)
+                        for name, arr in arrays.items()
+                    ]
+                )
+                table = pa.table(arrays, schema=schema)
+            else:
+                # Strict mode - only use schema fields
+                # Create PyArrow schema
+                schema = self._create_pyarrow_schema()
+
+                # Convert records to PyArrow table
+                # Build arrays for each field
+                arrays = {}
+                for field_def in self.asset_definition.schema:
+                    field_name = field_def["name"]
+                    field_type = field_def.get("type", "string")
+
+                    values = [record.get(field_name) for record in partition_records]
+
+                    # Convert to appropriate PyArrow array
+                    if field_type == "string":
+                        arrays[field_name] = pa.array(values, type=pa.string())
+                    elif field_type == "integer":
+                        arrays[field_name] = pa.array(
+                            [int(v) if v is not None else None for v in values],
+                            type=pa.int64(),
+                        )
+                    elif field_type in ["float", "double"]:
+                        arrays[field_name] = pa.array(
+                            [float(v) if v is not None else None for v in values],
+                            type=pa.float64(),
+                        )
+                    elif field_type == "boolean":
+                        arrays[field_name] = pa.array(
+                            [bool(v) if v is not None else None for v in values],
+                            type=pa.bool_(),
+                        )
+                    elif field_type in ["timestamp", "datetime", "date"]:
+                        # Convert datetime objects to timestamps
+                        timestamp_values = []
+                        for v in values:
+                            if v is None:
+                                timestamp_values.append(None)
+                            elif isinstance(v, datetime.datetime):
+                                timestamp_values.append(v)
+                            elif isinstance(v, datetime.date):
+                                timestamp_values.append(
+                                    datetime.datetime.combine(v, datetime.time.min)
+                                )
+                            elif isinstance(v, str):
+                                # Try to parse
+                                try:
+                                    timestamp_values.append(
+                                        datetime.datetime.fromisoformat(
+                                            v.replace("Z", "+00:00")
+                                        )
+                                    )
+                                except ValueError:
+                                    timestamp_values.append(None)
+                            else:
+                                timestamp_values.append(None)
+                        arrays[field_name] = pa.array(
+                            timestamp_values, type=pa.timestamp("us")
+                        )
+                    else:
+                        # Default to string
+                        arrays[field_name] = pa.array(
+                            [str(v) if v is not None else None for v in values],
+                            type=pa.string(),
+                        )
+
+                # Create table
+                table = pa.table(arrays, schema=schema)
 
             # Write in chunks if table is too large
             current_size = 0
