@@ -21,13 +21,25 @@ EOF
 
 # 2. Generate sample orders CSV with timestamps for incremental testing
 echo "📝 Generating orders.csv..."
+
+# Detect OS for date command compatibility
+if date --version >/dev/null 2>&1; then
+    # GNU date (Linux)
+    YESTERDAY=$(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%SZ)
+    TODAY=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+else
+    # BSD date (macOS)
+    YESTERDAY=$(date -u -v-1d +%Y-%m-%dT%H:%M:%SZ)
+    TODAY=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+fi
+
 cat > data/test_data/orders.csv << EOF
 order_id,customer_id,order_date,amount,updated_at,status
-1001,501,2025-01-01,150.50,$(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%SZ),completed
-1002,502,2025-01-02,275.00,$(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%SZ),completed
-1003,503,2025-01-03,89.99,$(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%SZ),pending
-1004,504,2025-01-04,199.99,$(date -u +%Y-%m-%dT%H:%M:%SZ),completed
-1005,505,2025-01-05,325.50,$(date -u +%Y-%m-%dT%H:%M:%SZ),pending
+1001,501,2025-01-01,150.50,${YESTERDAY},completed
+1002,502,2025-01-02,275.00,${YESTERDAY},completed
+1003,503,2025-01-03,89.99,${YESTERDAY},pending
+1004,504,2025-01-04,199.99,${TODAY},completed
+1005,505,2025-01-05,325.50,${TODAY},pending
 EOF
 
 # 3. Generate sample products CSV
@@ -111,10 +123,13 @@ EOF
 # 9. Set up PostgreSQL test data
 if command -v docker &> /dev/null; then
     echo "📝 Loading PostgreSQL test data..."
-    POSTGRES_CONTAINER=$(docker ps -q -f name=postgres 2>/dev/null)
+    
+    # Find PostgreSQL container by name (more reliable than ID)
+    POSTGRES_CONTAINER=$(docker ps --filter "name=postgres" --format "{{.Names}}" 2>/dev/null | head -1)
     
     if [ -n "$POSTGRES_CONTAINER" ]; then
-        docker exec -i $POSTGRES_CONTAINER psql -U postgres << 'EOF' 2>/dev/null || echo "⚠️  PostgreSQL not ready, skipping DB setup"
+        echo "   Using PostgreSQL container: $POSTGRES_CONTAINER"
+        docker exec -i "$POSTGRES_CONTAINER" psql -U postgres << 'EOF' 2>/dev/null || echo "⚠️  PostgreSQL not ready, skipping DB setup"
 -- Create test table
 CREATE TABLE IF NOT EXISTS test_employees (
   emp_id SERIAL PRIMARY KEY,
@@ -151,8 +166,14 @@ INSERT INTO test_orders (customer_id, order_date, amount) VALUES
 (503, '2025-01-03', 89.99)
 ON CONFLICT DO NOTHING;
 EOF
+        
+        # Verify data was loaded
+        if docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -c "SELECT COUNT(*) FROM test_employees;" 2>/dev/null | grep -q "5"; then
+            echo "   ✓ PostgreSQL test data loaded successfully"
+        fi
     else
-        echo "⚠️  PostgreSQL container not running, skipping DB setup"
+        echo "⚠️  PostgreSQL container not found, skipping DB setup"
+        echo "   Run: docker-compose -f docker-compose.dev.yml up -d"
     fi
 fi
 
