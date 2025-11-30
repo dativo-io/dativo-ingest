@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/dativo-io/dativo-ingest/blob/main/docs/INDEX.md
+    about: Check our comprehensive documentation
+  - name: Discussions
+    url: https://github.com/dativo-io/dativo-ingest/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: Contributing Guide
+    url: https://github.com/dativo-io/dativo-ingest/blob/main/.github/CONTRIBUTING.md
+    about: Learn how to contribute to the project
