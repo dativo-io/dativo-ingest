@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
 from ..config import SourceConfig
+from ..logging import get_logger
 from ..validator import IncrementalStateManager
 
 
@@ -20,6 +21,7 @@ class CSVExtractor:
         """
         self.source_config = source_config
         self.engine_options = self._get_engine_options()
+        self.logger = get_logger()
 
     def _get_engine_options(self) -> Dict[str, Any]:
         """Get engine options from source config.
@@ -92,12 +94,18 @@ class CSVExtractor:
         quote_char = self.engine_options.get("quote_char", '"')
 
         # Get incremental configuration
-        incremental = self.source_config.incremental or {}
-        strategy = incremental.get("strategy", "file_modified_time")
-        lookback_days = incremental.get("lookback_days", 0)
-        state_path_str = incremental.get("state_path", "")
-
-        state_path = Path(state_path_str) if state_path_str else None
+        # Only enable incremental if explicitly configured (not None and not empty)
+        incremental = self.source_config.incremental
+        if incremental and isinstance(incremental, dict):
+            strategy = incremental.get("strategy", "file_modified_time")
+            lookback_days = incremental.get("lookback_days", 0)
+            state_path_str = incremental.get("state_path", "")
+            state_path = Path(state_path_str) if state_path_str else None
+        else:
+            # Incremental is disabled - process all files
+            strategy = None
+            lookback_days = 0
+            state_path = None
 
         # Process each file
         for file_config in self.source_config.files:
@@ -111,8 +119,16 @@ class CSVExtractor:
             if not file_path.exists():
                 raise FileNotFoundError(f"CSV file not found: {file_path}")
 
+            self.logger.info(
+                f"Processing CSV file: {file_path}",
+                extra={
+                    "file_path": str(file_path),
+                    "event_type": "csv_file_processing",
+                },
+            )
+
             # Check incremental state if enabled
-            if strategy == "file_modified_time" and state_path:
+            if incremental and strategy == "file_modified_time" and state_path:
                 file_id = file_config.get("id") or str(file_path)
                 file_stat = file_path.stat()
                 modified_time = datetime.fromtimestamp(file_stat.st_mtime).isoformat()
@@ -123,6 +139,14 @@ class CSVExtractor:
                     state_path=state_path,
                     lookback_days=lookback_days,
                 ):
+                    self.logger.info(
+                        f"Skipping file (already processed): {file_path}",
+                        extra={
+                            "file_path": str(file_path),
+                            "file_id": file_id,
+                            "event_type": "csv_file_skipped",
+                        },
+                    )
                     continue  # Skip this file
 
             # Read CSV file in chunks
@@ -135,6 +159,8 @@ class CSVExtractor:
 
             # Read CSV with specified options
             try:
+                chunk_count = 0
+                total_records_read = 0
                 for chunk_df in pd.read_csv(
                     file_path,
                     chunksize=chunk_size,
@@ -147,6 +173,8 @@ class CSVExtractor:
                 ):
                     # Convert DataFrame to list of dictionaries
                     records = chunk_df.to_dict("records")
+                    chunk_count += 1
+                    total_records_read += len(records)
 
                     # Replace NaN with None for JSON serialization
                     for record in records:
@@ -154,10 +182,29 @@ class CSVExtractor:
                             if pd.isna(value):
                                 record[key] = None
 
+                    self.logger.info(
+                        f"Read CSV chunk: {len(records)} records (chunk {chunk_count})",
+                        extra={
+                            "file_path": str(file_path),
+                            "chunk_number": chunk_count,
+                            "records_in_chunk": len(records),
+                            "event_type": "csv_chunk_read",
+                        },
+                    )
                     yield records
 
+                self.logger.info(
+                    f"Finished reading CSV file: {file_path} ({total_records_read} total records, {chunk_count} chunks)",
+                    extra={
+                        "file_path": str(file_path),
+                        "total_records": total_records_read,
+                        "total_chunks": chunk_count,
+                        "event_type": "csv_file_read_complete",
+                    },
+                )
+
                 # Update state after successful processing
-                if strategy == "file_modified_time" and state_path:
+                if incremental and strategy == "file_modified_time" and state_path:
                     file_id = file_config.get("id") or str(file_path)
                     file_stat = file_path.stat()
                     modified_time = datetime.fromtimestamp(

@@ -10,7 +10,7 @@ import yaml
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dativo_ingest.config import JobConfig
+from dativo_ingest.config import ConnectorRecipe, JobConfig, SourceConnectorRecipe
 
 
 @pytest.fixture
@@ -161,3 +161,157 @@ class TestAssetDefinitionValidation:
         config.asset_path = str(valid_asset_file)
         # Should not raise
         config.validate_schema_presence()
+
+
+class TestIncrementalStateConfig:
+    """Test incremental state configuration merging."""
+
+    def test_incremental_disabled_by_default(self, temp_dir):
+        """Test that incremental is disabled by default when not specified in job."""
+        # Create a connector recipe with incremental config
+        recipe_path = temp_dir / "connector.yaml"
+        recipe_data = {
+            "name": "test_connector",
+            "type": "csv",
+            "roles": ["source"],
+            "default_engine": {"type": "native", "options": {}},
+            "incremental": {
+                "strategy": "file_modified_time",
+                "lookback_days_default": 0,
+            },
+        }
+        with open(recipe_path, "w") as f:
+            yaml.dump(recipe_data, f)
+
+        # Create job config without incremental
+        job_config = JobConfig(
+            tenant_id="test_tenant",
+            source_connector_path=str(recipe_path),
+            target_connector_path="connectors/iceberg.yaml",
+            asset_path="tests/fixtures/assets/csv/v1.0/employee.yaml",
+            source={"files": [{"path": "test.csv"}]},
+        )
+
+        # Merge source config
+        source_config = job_config.get_source()
+
+        # Incremental should be None (disabled) even though recipe has it
+        assert source_config.incremental is None
+
+    def test_incremental_enabled_when_explicitly_configured(self, temp_dir):
+        """Test that incremental is enabled when explicitly configured in job."""
+        # Create a connector recipe with incremental config
+        recipe_path = temp_dir / "connector.yaml"
+        recipe_data = {
+            "name": "test_connector",
+            "type": "csv",
+            "roles": ["source"],
+            "default_engine": {"type": "native", "options": {}},
+            "incremental": {
+                "strategy": "file_modified_time",
+                "lookback_days_default": 0,
+            },
+        }
+        with open(recipe_path, "w") as f:
+            yaml.dump(recipe_data, f)
+
+        # Create job config with incremental explicitly enabled
+        job_config = JobConfig(
+            tenant_id="test_tenant",
+            source_connector_path=str(recipe_path),
+            target_connector_path="connectors/iceberg.yaml",
+            asset_path="tests/fixtures/assets/csv/v1.0/employee.yaml",
+            source={
+                "files": [{"path": "test.csv"}],
+                "incremental": {
+                    "strategy": "file_modified_time",
+                    "lookback_days": 0,
+                },
+            },
+        )
+
+        # Merge source config
+        source_config = job_config.get_source()
+
+        # Incremental should be enabled
+        assert source_config.incremental is not None
+        assert isinstance(source_config.incremental, dict)
+        assert source_config.incremental["strategy"] == "file_modified_time"
+        assert source_config.incremental["lookback_days"] == 0
+
+    def test_incremental_disabled_with_empty_dict(self, temp_dir):
+        """Test that incremental is disabled when set to empty dict in job."""
+        # Create a connector recipe with incremental config
+        recipe_path = temp_dir / "connector.yaml"
+        recipe_data = {
+            "name": "test_connector",
+            "type": "csv",
+            "roles": ["source"],
+            "default_engine": {"type": "native", "options": {}},
+            "incremental": {
+                "strategy": "file_modified_time",
+                "lookback_days_default": 0,
+            },
+        }
+        with open(recipe_path, "w") as f:
+            yaml.dump(recipe_data, f)
+
+        # Create job config with incremental set to empty dict
+        job_config = JobConfig(
+            tenant_id="test_tenant",
+            source_connector_path=str(recipe_path),
+            target_connector_path="connectors/iceberg.yaml",
+            asset_path="tests/fixtures/assets/csv/v1.0/employee.yaml",
+            source={
+                "files": [{"path": "test.csv"}],
+                "incremental": {},  # Empty dict should disable incremental
+            },
+        )
+
+        # Merge source config
+        source_config = job_config.get_source()
+
+        # Incremental should be None (disabled) even though recipe has it
+        assert source_config.incremental is None
+
+    def test_incremental_merges_with_recipe_defaults(self, temp_dir):
+        """Test that job incremental config merges with recipe defaults."""
+        # Create a connector recipe with incremental config
+        recipe_path = temp_dir / "connector.yaml"
+        recipe_data = {
+            "name": "test_connector",
+            "type": "csv",
+            "roles": ["source"],
+            "default_engine": {"type": "native", "options": {}},
+            "incremental": {
+                "strategy": "file_modified_time",
+                "lookback_days_default": 7,  # Recipe default
+            },
+        }
+        with open(recipe_path, "w") as f:
+            yaml.dump(recipe_data, f)
+
+        # Create job config with incremental enabled but only strategy specified
+        job_config = JobConfig(
+            tenant_id="test_tenant",
+            source_connector_path=str(recipe_path),
+            target_connector_path="connectors/iceberg.yaml",
+            asset_path="tests/fixtures/assets/csv/v1.0/employee.yaml",
+            source={
+                "files": [{"path": "test.csv"}],
+                "incremental": {
+                    "strategy": "file_modified_time",
+                    # lookback_days not specified - should use recipe default
+                },
+            },
+        )
+
+        # Merge source config
+        source_config = job_config.get_source()
+
+        # Incremental should be enabled and merged with recipe defaults
+        assert source_config.incremental is not None
+        assert isinstance(source_config.incremental, dict)
+        assert source_config.incremental["strategy"] == "file_modified_time"
+        # Should have state_path added automatically
+        assert "state_path" in source_config.incremental
