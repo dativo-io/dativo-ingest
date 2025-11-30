@@ -125,15 +125,30 @@ source venv/bin/activate
 
 If preflight check fails with Python version issue, upgrade Python first (Step 0).
 
-### Step 2: Generate Test Data
+### Step 2: Set Up Environment Variables
+
+**Important:** A `.env` file has been created with all necessary variables.
+
+```bash
+source .env
+```
+
+**Verify variables are set:**
+```bash
+echo $S3_ENDPOINT        # Should show: http://localhost:9000
+echo $AWS_ACCESS_KEY_ID  # Should show: minioadmin
+echo $NESSIE_URI         # Should show: http://localhost:19120/api/v1
+```
+
+**See [ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md) for complete variable reference**
+
+### Step 3: Generate Test Data
 ```bash
 ./scripts/generate-test-data.sh
 ```
 
-### Step 3: Run Basic Smoke Test
+### Step 4: Run Basic Smoke Test
 ```bash
-source .env
-
 dativo run \
   --job-dir tests/fixtures/jobs \
   --secret-manager filesystem \
@@ -141,7 +156,7 @@ dativo run \
   --mode self_hosted
 ```
 
-### Step 4: Verify Results
+### Step 5: Verify Results
 ```bash
 # Check data in MinIO
 mc ls local/test-bucket --recursive
@@ -156,7 +171,7 @@ open http://localhost:9001  # minioadmin/minioadmin
 open http://localhost:3000
 ```
 
-### Step 5: Follow Test Cases
+### Step 6: Follow Test Cases
 Open [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md) and work through test cases 1-20.
 
 ---
@@ -303,6 +318,11 @@ Use this checklist to track your testing progress:
 - [README.md](README.md) - Platform overview and architecture
 - [QUICKSTART.md](QUICKSTART.md) - Quick start guide
 - [ROADMAP.md](ROADMAP.md) - Feature roadmap and version history
+
+### Setup Guides
+- **[ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md)** - Environment variables reference (NEW!)
+- [PYTHON_SETUP_GUIDE.md](PYTHON_SETUP_GUIDE.md) - Python 3.10+ installation guide
+- [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Complete setup and testing guide
 
 ### Configuration Guides
 - [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) - Complete configuration reference

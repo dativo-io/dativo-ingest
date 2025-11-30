@@ -17,7 +17,8 @@ asset_path: assets/gdrive_csv/v1.0/file.yaml
 # Source configuration
 source:
   files:
-    - id: "test_file_id"
+    - file_id: "test_file_id"
+      path: "test_file.csv"
       object: file
   incremental:
     strategy: file_modified_time
