@@ -843,7 +843,15 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
             )
 
         # Extract, validate, and write in batches
+        batch_count = 0
+        logger.info(
+            "Starting data extraction",
+            extra={
+                "event_type": "extraction_started",
+            },
+        )
         for batch_records in extractor.extract(state_manager=state_manager):
+            batch_count += 1
             total_records += len(batch_records)
 
             # Transform to Markdown-KV format if configured
@@ -922,9 +930,31 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
 
                 batch_records = transformed_records
 
+            logger.info(
+                f"Processing batch {batch_count}: {len(batch_records)} records extracted",
+                extra={
+                    "batch_number": batch_count,
+                    "records_in_batch": len(batch_records),
+                    "event_type": "batch_extracted",
+                },
+            )
+
             # Validate batch
             valid_records, validation_errors = validator.validate_batch(batch_records)
             total_valid_records += len(valid_records)
+
+            # Log validation results
+            if len(valid_records) < len(batch_records):
+                logger.warning(
+                    f"Validation filtered records: {len(valid_records)}/{len(batch_records)} passed validation",
+                    extra={
+                        "batch_number": batch_count,
+                        "total_records": len(batch_records),
+                        "valid_records": len(valid_records),
+                        "filtered_records": len(batch_records) - len(valid_records),
+                        "event_type": "validation_filtered",
+                    },
+                )
 
             # Log validation errors if any
             if validation_errors:
@@ -967,6 +997,36 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                         "event_type": "batch_written",
                     },
                 )
+            else:
+                logger.warning(
+                    f"Batch {batch_count} had no valid records to write",
+                    extra={
+                        "batch_number": batch_count,
+                        "total_records_in_batch": len(batch_records),
+                        "valid_records": len(valid_records),
+                        "event_type": "batch_no_valid_records",
+                    },
+                )
+
+        # Log extraction summary
+        if batch_count == 0:
+            logger.warning(
+                "No batches extracted from source - check file paths, incremental state, or source configuration",
+                extra={
+                    "event_type": "no_batches_extracted",
+                    "total_records": total_records,
+                },
+            )
+        else:
+            logger.info(
+                f"Extraction complete: {batch_count} batches, {total_records} total records extracted",
+                extra={
+                    "total_batches": batch_count,
+                    "total_records": total_records,
+                    "total_valid_records": total_valid_records,
+                    "event_type": "extraction_complete",
+                },
+            )
 
         # Commit all files to Iceberg (if catalog is configured) or upload to S3 (if no catalog)
         if all_file_metadata:
@@ -1053,6 +1113,10 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
                 "No files to commit",
                 extra={
                     "event_type": "no_files",
+                    "total_records_extracted": total_records,
+                    "total_valid_records": total_valid_records,
+                    "total_batches": batch_count,
+                    "total_files_written": total_files_written,
                 },
             )
 
