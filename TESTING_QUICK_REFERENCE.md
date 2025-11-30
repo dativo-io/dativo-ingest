@@ -2,20 +2,63 @@
 
 Quick commands and shortcuts for testing dativo-ingest capabilities.
 
-## Setup Commands (Run Once)
+## 🚀 Quick Start (2 Minutes)
+
+### 1. Set Up Environment Variables
 
 ```bash
-# Complete setup
-./scripts/setup-dev.sh && source .env
+# Source the .env file (contains all required variables)
+source .env
 
-# Verify services
+# Verify variables are set
+echo $S3_ENDPOINT        # Should show: http://localhost:9000
+echo $AWS_ACCESS_KEY_ID  # Should show: minioadmin
+echo $NESSIE_URI         # Should show: http://localhost:19120/api/v1
+```
+
+**For detailed variable reference, see [ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md)**
+
+### 2. Verify Services
+
+```bash
+# Check Docker services are running
 docker ps | grep -E '(nessie|minio|postgres)'
+
+# Test endpoints
 curl http://localhost:19120/api/v1/config  # Nessie
 curl http://localhost:9000/minio/health/live  # MinIO
 
 # Check MinIO data
 mc ls local/test-bucket --recursive
 # Or visit: http://localhost:9001 (minioadmin/minioadmin)
+```
+
+### 3. Run First Test
+
+```bash
+# Generate test data
+./scripts/generate-test-data.sh
+
+# Run smoke test
+dativo run \
+  --job-dir tests/fixtures/jobs \
+  --secret-manager filesystem \
+  --secrets-dir tests/fixtures/secrets \
+  --mode self_hosted
+```
+
+---
+
+## Setup Commands (Run Once)
+
+```bash
+# Complete setup
+./scripts/setup-dev.sh && source .env
+
+# Or minimal setup
+pip install -e .
+docker-compose -f docker-compose.dev.yml up -d
+source .env
 ```
 
 ## CLI Commands Cheat Sheet
@@ -214,6 +257,38 @@ EOF
 ```
 
 ## Troubleshooting
+
+### "Missing required environment variables" Warnings
+
+**Problem:** Environment variables not set after running jobs  
+**Symptoms:**
+```
+WARNING: Missing required environment variables: AWS_ACCESS_KEY_ID, AWS_REGION, S3_ENDPOINT
+```
+
+**Solution:**
+
+```bash
+# 1. Source the .env file
+source .env
+
+# 2. Verify variables are set
+env | grep -E "(S3_|AWS_|MINIO_|NESSIE|PG)"
+
+# 3. Check .env file exists
+ls -la .env
+
+# 4. If missing, the file should exist in the repository root
+# It contains all required variables for local testing
+```
+
+**Common Issues:**
+- ⚠️ **Not sourcing .env:** Must run `source .env` in your terminal session
+- ⚠️ **Missing .env file:** The `.env` file should be in the repository root
+- ⚠️ **Wrong format:** Variables must be `KEY=value` (no spaces around `=`)
+- ⚠️ **New terminal:** Need to re-run `source .env` in each new terminal
+
+**See:** [ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md) for complete reference
 
 ### "Package requires a different Python: 3.9.x not in '>=3.10'"
 

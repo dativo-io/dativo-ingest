@@ -8,14 +8,15 @@ A headless, config-driven ingestion engine. Extracts data from SaaS APIs (Stripe
 - **[TESTING_GUIDE_INDEX.md](TESTING_GUIDE_INDEX.md)** - Complete testing documentation index
 - **[TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md)** - 20 detailed test cases with step-by-step instructions
 - **[TESTING_QUICK_REFERENCE.md](TESTING_QUICK_REFERENCE.md)** - Quick command reference and troubleshooting
+- **[ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md)** - Environment variables reference
 - **[scripts/preflight-check.sh](scripts/preflight-check.sh)** - Validate your environment is ready
 - **[scripts/generate-test-data.sh](scripts/generate-test-data.sh)** - Generate sample test datasets
 
 Quick start testing:
 ```bash
-./scripts/preflight-check.sh  # Validate environment
+./scripts/preflight-check.sh    # Validate environment
 ./scripts/generate-test-data.sh  # Generate test data
-source .env
+source .env                      # Load environment variables
 dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
@@ -68,6 +69,7 @@ dativo run --job-dir tests/fixtures/jobs \
 
 **For detailed instructions, see:**
 - [QUICKSTART.md](QUICKSTART.md) - Quick reference guide
+- [ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md) - Environment variables reference
 - [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Comprehensive setup guide
 
 ### Docker Deployment
