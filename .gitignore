@@ -214,19 +214,20 @@ s3:/
 /tmp/dativo_ingest*
 /tmp/dativo-state
 
-# Runtime/test directories - structure preserved with .gitkeep, but content ignored
-# These directories are populated during tests or in production
-# Examples subdirectories are tracked for reference
+# Runtime/test directories - structure preserved with .gitkeep
+# Example files are tracked, but test cases are ignored
 assets/**/*
 !assets/**/.gitkeep
-!assets/examples/
+!assets/**/*.yaml
+!assets/**/*.yml
 data/**/*
 !data/**/.gitkeep
-!data/examples/
+!data/**/*.csv
 !data/test_case_*
 jobs/**/*
 !jobs/**/.gitkeep
-!jobs/examples/
+!jobs/**/*.yaml
+!jobs/**/*.yml
 !jobs/test_tenant/
 !jobs/testcase*/
 
