@@ -22,7 +22,7 @@ connection_template:
   port: "${PGPORT}"
   database: "${PGDATABASE}"
 incremental:
-  strategy: updated_at
+  strategy: cursor_field
   cursor_field_default: updated_at
   lookback_days_default: 1
 

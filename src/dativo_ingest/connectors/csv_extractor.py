@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
 from ..config import SourceConfig
+from ..incremental import create_incremental_strategy
+from ..incremental.base import IncrementalStrategy
 from ..logging import get_logger
 from ..validator import IncrementalStateManager
 
@@ -80,7 +82,7 @@ class CSVExtractor:
         """Extract data from CSV files.
 
         Args:
-            state_manager: Optional incremental state manager for tracking file state
+            state_manager: Optional incremental state manager (deprecated, use incremental strategy)
 
         Yields:
             Batches of records as dictionaries
@@ -93,19 +95,15 @@ class CSVExtractor:
         delimiter = self.engine_options.get("delimiter", ",")
         quote_char = self.engine_options.get("quote_char", '"')
 
-        # Get incremental configuration
-        # Only enable incremental if explicitly configured (not None and not empty)
-        incremental = self.source_config.incremental
-        if incremental and isinstance(incremental, dict):
-            strategy = incremental.get("strategy", "file_modified_time")
-            lookback_days = incremental.get("lookback_days", 0)
-            state_path_str = incremental.get("state_path", "")
-            state_path = Path(state_path_str) if state_path_str else None
-        else:
-            # Incremental is disabled - process all files
-            strategy = None
-            lookback_days = 0
-            state_path = None
+        # Create incremental strategy if configured
+        incremental_strategy: Optional[IncrementalStrategy] = None
+        if self.source_config.incremental:
+            # State path should already be set in config by JobConfig._merge_source_with_recipe
+            # But we'll use it if provided, otherwise create strategy without state path
+            incremental_strategy = create_incremental_strategy(
+                self.source_config.incremental,
+                default_state_path=None,  # State path should be in config
+            )
 
         # Process each file
         for file_config in self.source_config.files:
@@ -127,27 +125,34 @@ class CSVExtractor:
                 },
             )
 
-            # Check incremental state if enabled
-            if incremental and strategy == "file_modified_time" and state_path:
-                file_id = file_config.get("id") or str(file_path)
-                file_stat = file_path.stat()
-                modified_time = datetime.fromtimestamp(file_stat.st_mtime).isoformat()
+            # Prepare entity metadata for incremental strategy
+            file_id = file_config.get("id") or str(file_path)
+            file_stat = file_path.stat()
+            modified_time = datetime.fromtimestamp(file_stat.st_mtime).isoformat()
+            object_name = file_config.get("object", "default")
 
-                if IncrementalStateManager.should_skip_file(
-                    file_id=file_id,
-                    current_modified_time=modified_time,
-                    state_path=state_path,
-                    lookback_days=lookback_days,
-                ):
-                    self.logger.info(
-                        f"Skipping file (already processed): {file_path}",
-                        extra={
-                            "file_path": str(file_path),
-                            "file_id": file_id,
-                            "event_type": "csv_file_skipped",
-                        },
-                    )
-                    continue  # Skip this file
+            entity_metadata = {
+                "file_id": file_id,
+                "file_path": str(file_path),
+                "path": str(file_path),
+                "modified_time": modified_time,
+                "object_name": object_name,
+                "name": object_name,
+            }
+
+            # Check if entity should be processed (for file_modified_time strategy)
+            if incremental_strategy and not incremental_strategy.should_process_entity(
+                entity_metadata
+            ):
+                self.logger.info(
+                    f"Skipping file (already processed): {file_path}",
+                    extra={
+                        "file_path": str(file_path),
+                        "file_id": file_id,
+                        "event_type": "csv_file_skipped",
+                    },
+                )
+                continue  # Skip this file
 
             # Read CSV file in chunks
             try:
@@ -161,6 +166,8 @@ class CSVExtractor:
             try:
                 chunk_count = 0
                 total_records_read = 0
+                all_processed_records = []  # Track all records for state update
+
                 for chunk_df in pd.read_csv(
                     file_path,
                     chunksize=chunk_size,
@@ -182,16 +189,36 @@ class CSVExtractor:
                             if pd.isna(value):
                                 record[key] = None
 
-                    self.logger.info(
-                        f"Read CSV chunk: {len(records)} records (chunk {chunk_count})",
-                        extra={
-                            "file_path": str(file_path),
-                            "chunk_number": chunk_count,
-                            "records_in_chunk": len(records),
-                            "event_type": "csv_chunk_read",
-                        },
-                    )
-                    yield records
+                    # Filter records using incremental strategy
+                    if incremental_strategy:
+                        original_count = len(records)
+                        records = incremental_strategy.filter_records(
+                            records, entity_metadata
+                        )
+                        if len(records) < original_count:
+                            self.logger.info(
+                                f"Filtered CSV chunk: {len(records)}/{original_count} records after incremental filtering (chunk {chunk_count})",
+                                extra={
+                                    "file_path": str(file_path),
+                                    "chunk_number": chunk_count,
+                                    "records_before": original_count,
+                                    "records_after": len(records),
+                                    "event_type": "csv_chunk_filtered",
+                                },
+                            )
+
+                    if records:
+                        all_processed_records.extend(records)
+                        self.logger.info(
+                            f"Read CSV chunk: {len(records)} records (chunk {chunk_count})",
+                            extra={
+                                "file_path": str(file_path),
+                                "chunk_number": chunk_count,
+                                "records_in_chunk": len(records),
+                                "event_type": "csv_chunk_read",
+                            },
+                        )
+                        yield records
 
                 self.logger.info(
                     f"Finished reading CSV file: {file_path} ({total_records_read} total records, {chunk_count} chunks)",
@@ -204,16 +231,18 @@ class CSVExtractor:
                 )
 
                 # Update state after successful processing
-                if incremental and strategy == "file_modified_time" and state_path:
-                    file_id = file_config.get("id") or str(file_path)
-                    file_stat = file_path.stat()
-                    modified_time = datetime.fromtimestamp(
-                        file_stat.st_mtime
-                    ).isoformat()
-                    IncrementalStateManager.update_file_state(
-                        file_id=file_id,
-                        modified_time=modified_time,
-                        state_path=state_path,
+                if incremental_strategy and all_processed_records:
+                    incremental_strategy.update_state(
+                        entity_metadata, all_processed_records
+                    )
+                    self.logger.info(
+                        f"Updated incremental state for file: {file_path}",
+                        extra={
+                            "file_path": str(file_path),
+                            "strategy": incremental_strategy.strategy_name,
+                            "records_processed": len(all_processed_records),
+                            "event_type": "incremental_state_updated",
+                        },
                     )
 
             except Exception as e:
