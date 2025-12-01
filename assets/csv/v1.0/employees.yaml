@@ -3,8 +3,6 @@ apiVersion: v3.0.2
 kind: DataContract
 name: employees
 version: "1.0"
-domain: hr  # Optional: organizational domain (e.g., hr, finance, sales)
-dataProduct: employee_management  # Optional: logical data product grouping
 source_type: csv
 object: employees
 schema:
