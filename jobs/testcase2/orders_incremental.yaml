@@ -11,7 +11,7 @@ source:
       object: orders
   incremental:
     enabled: true
-    strategy: file_modified_time
+    strategy: file_modified_time  # CSV incremental sync tracks file modification time, not cursor field values
     lookback_days: 1
 target:
   connection:
