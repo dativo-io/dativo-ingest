@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterator, List, Optional
 from ..config import ConnectorRecipe, SourceConfig
 from ..incremental import create_incremental_strategy
 from ..incremental.base import IncrementalStrategy
+from ..incremental.strategies import FileModifiedTimeStrategy
 from ..validator import IncrementalStateManager
 from .engine_framework import AirbyteExtractor, BaseEngineExtractor
 
@@ -324,14 +325,15 @@ class GDriveCSVExtractor:
             modified_time = self._get_file_modified_time(file_metadata)
             modified_time_iso = modified_time.isoformat() if modified_time else None
 
-            if incremental_strategy:
-                entity_metadata = {
-                    "file_id": str(file_id),
-                    "file_path": str(file_id),
-                    "path": str(file_id),
-                    "modified_time": modified_time_iso,
-                }
+            # Create entity_metadata once for use throughout file processing
+            entity_metadata = {
+                "file_id": str(file_id),
+                "file_path": str(file_id),
+                "path": str(file_id),
+                "modified_time": modified_time_iso,
+            }
 
+            if incremental_strategy:
                 if not incremental_strategy.should_process_entity(entity_metadata):
                     self.logger.info(
                         f"Skipping file (already processed): {file_id}",
@@ -381,12 +383,6 @@ class GDriveCSVExtractor:
 
                         # Filter records using incremental strategy (if needed)
                         if incremental_strategy and records:
-                            entity_metadata = {
-                                "file_id": str(file_id),
-                                "file_path": str(file_id),
-                                "path": str(file_id),
-                                "modified_time": modified_time_iso,
-                            }
                             records = incremental_strategy.filter_records(
                                 records, entity_metadata
                             )
@@ -396,16 +392,22 @@ class GDriveCSVExtractor:
                             yield records
 
                     # Update state after successful processing
-                    if incremental_strategy and all_processed_records:
-                        entity_metadata = {
-                            "file_id": str(file_id),
-                            "file_path": str(file_id),
-                            "path": str(file_id),
-                            "modified_time": modified_time_iso,
-                        }
-                        incremental_strategy.update_state(
-                            entity_metadata, all_processed_records
+                    # For file-based strategies (FileModifiedTimeStrategy), update state even if
+                    # there are no processed records, as they only need the modification time.
+                    # For cursor-based strategies, only update if there are processed records.
+                    if incremental_strategy:
+                        is_file_based_strategy = isinstance(
+                            incremental_strategy, FileModifiedTimeStrategy
                         )
+                        # File-based strategies need state update even for empty files to prevent infinite reprocessing
+                        # Cursor-based strategies only update when there are processed records
+                        should_update_state = (
+                            is_file_based_strategy or len(all_processed_records) > 0
+                        )
+                        if should_update_state:
+                            incremental_strategy.update_state(
+                                entity_metadata, all_processed_records
+                            )
 
                 finally:
                     # Clean up temporary file
