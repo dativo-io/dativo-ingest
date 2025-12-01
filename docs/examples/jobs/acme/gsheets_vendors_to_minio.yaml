@@ -23,7 +23,6 @@ target:
   connection:
     endpoint: "minio.acme.internal:9000"
     bucket: "acme-data-lake"
-    prefix: "raw/gsheets/vendors_master"
 
 logging:
   redaction: true

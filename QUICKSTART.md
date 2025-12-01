@@ -123,7 +123,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "raw/mytenant"
 ```
 
 2. **Create an asset definition** (`assets/csv/v1.0/my_asset.yaml`):

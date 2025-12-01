@@ -1,9 +1,50 @@
 """Base catalog interface for lineage and metadata push."""
 
+import os
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from ..config import AssetDefinition, CatalogConfig, JobConfig
+
+
+def _expand_env_variable(value: Optional[str]) -> Optional[str]:
+    """Expand environment variable references in a string value.
+
+    Supports both ${VAR} and ${VAR:-default} syntax.
+
+    Args:
+        value: String value that may contain environment variable references
+
+    Returns:
+        Expanded string value, or None if value is None
+    """
+    if not isinstance(value, str):
+        return value
+
+    # Handle bash-style ${VAR:-default} syntax
+    # Replace all occurrences of ${VAR:-default} with the resolved value
+    bash_default_pattern = r"\$\{([^:}]+):-([^}]+)\}"
+
+    def replace_with_default(match):
+        env_var = match.group(1)
+        default_value = match.group(2)
+        return os.getenv(env_var, default_value)
+
+    value = re.sub(bash_default_pattern, replace_with_default, value)
+
+    # Handle simple ${VAR} syntax
+    if "${" in value:
+        expanded = os.path.expandvars(value)
+        if "${" in expanded:
+            # Variable not set, extract var name and try to get from env
+            var_match = re.search(r"\$\{([^}]+)\}", expanded)
+            if var_match:
+                var_name = var_match.group(1)
+                return os.getenv(var_name, None)
+        return expanded
+
+    return value
 
 
 class BaseCatalog(ABC):
@@ -164,18 +205,31 @@ class BaseCatalog(ABC):
         s3_config = connection.get("s3") or connection.get("minio", {})
 
         # Build S3 path
+        # Supports both nested (connection.s3.bucket) and flat (connection.bucket) structures
+        bucket_raw = s3_config.get("bucket") or connection.get("bucket")
         bucket = (
-            s3_config.get("bucket")
-            or connection.get("bucket")  # Fallback to flat structure
+            _expand_env_variable(bucket_raw)
+            or os.getenv("S3_BUCKET")
+            or os.getenv("MINIO_BUCKET")
             or "default-bucket"
         )
-        domain = self.asset_definition.domain or "default"
+        tenant_id = self.job_config.tenant_id
+        domain = self.asset_definition.domain or tenant_id or "default"
         data_product = getattr(self.asset_definition, "dataProduct", None) or "default"
         table_name = (
             self.asset_definition.name.lower().replace("-", "_").replace(" ", "_")
         )
 
-        s3_path = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
+        # Build path structure:
+        # - When domain is specified: s3://bucket/domain/data_product/table/
+        # - When domain is not specified (using tenant_id): s3://bucket/tenant_id/table/
+        #   (skip data_product when it's "default" to avoid redundant path segments)
+        if domain == tenant_id and data_product == "default":
+            # Simplified path when using tenant_id as domain: tenant_id/table
+            s3_path = f"s3://{bucket}/{domain}/{table_name}"
+        else:
+            # Standard path structure: domain/data_product/table
+            s3_path = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
 
         table_name_override = (
             self.catalog_config.table_name or self.asset_definition.name

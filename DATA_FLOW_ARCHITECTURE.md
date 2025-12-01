@@ -698,7 +698,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "customers"
   engine:
     options:
       batch_size: 50000  # Larger batches for Rust

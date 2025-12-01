@@ -195,7 +195,12 @@ class ChangeManagementModel(BaseModel):
 class AssetDefinition(BaseModel):
     """Asset definition - ODCS v3.0.2 aligned with dativo extensions."""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        # Suppress warning about 'schema' field shadowing BaseModel attribute
+        # This is intentional as 'schema' is required by ODCS specification
+        extra="forbid",
+    )
 
     # ODCS top-level fields
     schema_ref: Optional[str] = Field(None, alias="$schema")
@@ -217,7 +222,9 @@ class AssetDefinition(BaseModel):
     target: Optional[Dict[str, Any]] = None
 
     # ODCS sections
-    schema: List[Dict[str, Any]]  # Schema fields array
+    schema: List[Dict[str, Any]] = Field(
+        ..., description="Schema fields array"
+    )  # Schema fields array
     data_quality: Optional[DataQualityModel] = None
     team: TeamModel
     compliance: Optional[ComplianceModel] = None

@@ -1,0 +1,19 @@
+tenant_id: testcase2
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: orders
+asset_path: assets/csv/v1.0/orders.yaml
+source:
+  files:
+    - path: data/test_case_2/orders.csv
+      object: orders
+  incremental:
+    enabled: true
+    strategy: file_modified_time  # CSV incremental sync tracks file modification time, not cursor field values
+    lookback_days: 1
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"

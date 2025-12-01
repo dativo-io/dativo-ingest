@@ -264,7 +264,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase1/employees"
 EOF
 
 # 4. Create secrets
@@ -305,7 +304,8 @@ mc ls local/test-bucket/testcase1/employees/ --recursive
 
 **Steps:**
 ```bash
-# 1. Create initial dataset
+# 1. Create directory and initial dataset
+mkdir -p data/test_case_2
 cat > data/test_case_2/orders_initial.csv << 'EOF'
 order_id,customer_id,order_date,amount,updated_at
 1001,501,2025-01-01,150.50,2025-01-01T10:00:00Z
@@ -345,6 +345,7 @@ compliance:
 EOF
 
 # 3. Create job with incremental config
+mkdir -p jobs/testcase2
 cat > jobs/testcase2/orders_incremental.yaml << 'EOF'
 tenant_id: testcase2
 source_connector: csv
@@ -359,13 +360,12 @@ source:
       object: orders
   incremental:
     enabled: true
-    cursor_field: updated_at
+    strategy: file_modified_time
     lookback_days: 1
 target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase2/orders"
 EOF
 
 # 4. Copy initial data
@@ -382,31 +382,32 @@ dativo run \
   --mode self_hosted
 
 # 6. Check state file
-cat .local/state/testcase2/orders_state.json
-# Should show last cursor value: 2025-01-03T12:00:00Z
+cat .local/state/testcase2/csv.orders.state.json
+# Should show file modification time tracking (e.g., "file_data/test_case_2/orders.csv": {"last_modified": "...", "file_id": "..."})
 
-# 7. Add new records
+# 7. Touch the file to simulate modification (or add new records)
 cat >> data/test_case_2/orders.csv << 'EOF'
 1004,504,2025-01-04,199.99,2025-01-04T13:00:00Z
 1005,505,2025-01-05,325.50,2025-01-05T14:00:00Z
 EOF
 
-# 8. Second run (incremental sync)
+# 8. Second run (incremental sync - will process file again since it was modified)
 dativo run \
   --config jobs/testcase2/orders_incremental.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
-# 9. Verify only new records were processed
+# 9. Verify file was processed again (all 5 records should be in S3)
 # Check logs for "Processing incremental sync" message
 ```
 
 **Success Criteria:**
 - ✅ First run processes all 3 records
-- ✅ State file created with last cursor value
-- ✅ Second run processes only 2 new records
-- ✅ State file updated with new cursor value
+- ✅ State file created with file modification time tracking
+- ✅ Second run processes file again (since file was modified) - all 5 records in S3
+- ✅ Note: CSV incremental sync tracks file modification time, not cursor field values
+- ✅ State file updated with new file modification time
 
 ---
 
@@ -452,7 +453,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase3/stripe/customers"
 EOF
 
 # 4. Test connection first
@@ -519,7 +519,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase4/hubspot/contacts"
 EOF
 
 # 3. Create job for companies
@@ -537,7 +536,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase4/hubspot/companies"
 EOF
 
 # 4. Create job for deals
@@ -555,7 +553,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase4/hubspot/deals"
 EOF
 
 # 5. Test connection
@@ -589,7 +586,8 @@ mc ls local/test-bucket/testcase4/hubspot/ --recursive
 
 **Steps:**
 ```bash
-# 1. Create data with schema violations
+# 1. Create directory and data with schema violations
+mkdir -p data/test_case_5
 cat > data/test_case_5/products_invalid.csv << 'EOF'
 product_id,product_name,price,category,in_stock
 1,Widget A,29.99,Electronics,true
@@ -651,7 +649,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase5/products"
 EOF
 
 cp secrets/testcase1/iceberg.env secrets/testcase5/
@@ -754,7 +751,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase6/products"
 EOF
 
 cp secrets/testcase1/iceberg.env secrets/testcase6/
@@ -872,7 +868,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase7/postgres/employees"
 EOF
 
 # 6. Run job
@@ -965,7 +960,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase8/postgres/employees"
 EOF
 
 cp secrets/testcase7/postgres.env secrets/testcase8/
@@ -1036,7 +1030,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase9/markdown_kv/employees"
 EOF
 
 cp secrets/testcase7/postgres.env secrets/testcase9/
@@ -1176,7 +1169,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase10/api_products"
 EOF
 
 cp secrets/testcase1/iceberg.env secrets/testcase10/
@@ -1213,7 +1205,8 @@ cd examples/plugins/rust
 make build-release
 cd /workspace
 
-# 2. Create large CSV file for performance test
+# 2. Create directory and large CSV file for performance test
+mkdir -p data/test_case_11
 cat > data/test_case_11/generate_large_csv.py << 'EOF'
 import csv
 import random
@@ -1287,7 +1280,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase11/large_dataset"
 EOF
 
 cp secrets/testcase1/iceberg.env secrets/testcase11/
@@ -1403,7 +1395,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase12/google_sheets/test_data"
 EOF
 
 # 6. Run job
@@ -1469,7 +1460,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase13/gdrive/products"
 EOF
 
 # 4. Run job
@@ -1498,7 +1488,7 @@ dativo run \
 ```bash
 # 1. Create jobs for multiple tenants
 for tenant in tenant_a tenant_b tenant_c; do
-  mkdir -p jobs/$tenant secrets/$tenant
+  mkdir -p jobs/$tenant secrets/$tenant data/test_case_14
   
   # Create tenant-specific CSV
   cat > data/test_case_14/${tenant}_data.csv << EOF
@@ -1525,7 +1515,6 @@ target:
   connection:
     s3:
       bucket: "\${S3_BUCKET}"
-      prefix: "$tenant/data"
 EOF
 
   # Create secrets
@@ -1600,7 +1589,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase15/employees"
 EOF
 
 # 3. Run job with env secret manager (default)
@@ -1635,7 +1623,8 @@ mc ls local/test-bucket/testcase15/employees/ --recursive
 
 **Steps:**
 ```bash
-# 1. Create dataset with multiple partition candidates
+# 1. Create directory and dataset with multiple partition candidates
+mkdir -p data/test_case_16
 cat > data/test_case_16/sales_data.csv << 'EOF'
 order_id,customer_id,order_date,region,product_category,amount
 1001,5001,2025-01-01,US-West,Electronics,299.99
@@ -1765,7 +1754,6 @@ target:
   connection:
     s3:
       bucket: "\${S3_BUCKET}"
-      prefix: "testcase16/sales_${strategy}"
 EOF
 done
 
@@ -1829,7 +1817,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase17/employees"
 
 # Catalog integration
 catalog:
@@ -1977,7 +1964,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase19/employees"
 EOF
 
 # Run and expect immediate failure (non-retryable)
@@ -2021,7 +2007,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase19/success"
 EOF
 
 # Job 2: Failure (missing file)
@@ -2041,7 +2026,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "testcase19/failure"
 EOF
 
 # Run both jobs
@@ -2096,7 +2080,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "production/stripe/customers"
 catalog:
   type: openmetadata
   connection:
@@ -2124,7 +2107,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "production/hubspot/contacts"
 catalog:
   type: openmetadata
   connection:
@@ -2155,7 +2137,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "production/postgres/orders"
 catalog:
   type: openmetadata
   connection:
