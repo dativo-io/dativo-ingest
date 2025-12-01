@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
 from ..config import ConnectorRecipe, SourceConfig
+from ..incremental import create_incremental_strategy
+from ..incremental.base import IncrementalStrategy
 from ..validator import IncrementalStateManager
 from .engine_framework import AirbyteExtractor, BaseEngineExtractor
 
@@ -311,12 +313,17 @@ class GoogleSheetsExtractor:
                 "Google Sheets source requires 'spreadsheets' or 'spreadsheet_id' configuration"
             )
 
-        # Get incremental configuration
-        incremental = self.source_config.incremental or {}
-        strategy = incremental.get("strategy", "spreadsheet_modified_time")
-        lookback_days = incremental.get("lookback_days", 0)
-        state_path_str = incremental.get("state_path", "")
-        state_path = Path(state_path_str) if state_path_str else None
+        # Create incremental strategy if configured
+        incremental_strategy: Optional[IncrementalStrategy] = None
+        if self.source_config.incremental:
+            # Default to spreadsheet_modified_time for Google Sheets
+            incremental_config = self.source_config.incremental.copy()
+            if not incremental_config.get("strategy"):
+                incremental_config["strategy"] = "spreadsheet_modified_time"
+            incremental_strategy = create_incremental_strategy(
+                incremental_config,
+                default_state_path=None,
+            )
 
         # Process each spreadsheet
         for spreadsheet_config in spreadsheets:
@@ -335,21 +342,26 @@ class GoogleSheetsExtractor:
             else:
                 full_range = range_name
 
+            # Get spreadsheet modification time for incremental sync
+            modified_time = self._get_spreadsheet_modified_time(spreadsheet_id)
+            modified_time_iso = modified_time.isoformat() if modified_time else None
+
             # Check incremental state if enabled
-            if strategy == "spreadsheet_modified_time" and state_path:
-                modified_time = self._get_spreadsheet_modified_time(spreadsheet_id)
+            if incremental_strategy:
+                entity_metadata = {
+                    "spreadsheet_id": str(spreadsheet_id),
+                    "modified_time": modified_time_iso,
+                }
 
-                if modified_time:
-                    spreadsheet_id_str = str(spreadsheet_id)
-                    modified_time_iso = modified_time.isoformat()
-
-                    if IncrementalStateManager.should_skip_file(
-                        file_id=spreadsheet_id_str,
-                        current_modified_time=modified_time_iso,
-                        state_path=state_path,
-                        lookback_days=lookback_days,
-                    ):
-                        continue  # Skip this spreadsheet
+                if not incremental_strategy.should_process_entity(entity_metadata):
+                    self.logger.info(
+                        f"Skipping spreadsheet (already processed): {spreadsheet_id}",
+                        extra={
+                            "spreadsheet_id": str(spreadsheet_id),
+                            "event_type": "spreadsheet_skipped",
+                        },
+                    )
+                    continue  # Skip this spreadsheet
 
             # Read data from spreadsheet
             rows = self._read_range(spreadsheet_id, full_range)
@@ -361,20 +373,24 @@ class GoogleSheetsExtractor:
             has_header = spreadsheet_config.get("has_header", True)
             records = self._rows_to_records(rows, has_header=has_header)
 
+            # Filter records using incremental strategy (if needed)
+            if incremental_strategy and records:
+                entity_metadata = {
+                    "spreadsheet_id": str(spreadsheet_id),
+                    "modified_time": modified_time_iso,
+                }
+                records = incremental_strategy.filter_records(records, entity_metadata)
+
             if records:
                 yield records
 
             # Update state after successful processing
-            if state_path:
-                modified_time = self._get_spreadsheet_modified_time(spreadsheet_id)
-                if modified_time:
-                    spreadsheet_id_str = str(spreadsheet_id)
-                    modified_time_iso = modified_time.isoformat()
-                    IncrementalStateManager.update_file_state(
-                        file_id=spreadsheet_id_str,
-                        modified_time=modified_time_iso,
-                        state_path=state_path,
-                    )
+            if incremental_strategy and records:
+                entity_metadata = {
+                    "spreadsheet_id": str(spreadsheet_id),
+                    "modified_time": modified_time_iso,
+                }
+                incremental_strategy.update_state(entity_metadata, records)
 
     def extract_metadata(self) -> Dict[str, Any]:
         """Extract naturally available metadata from Google Sheets.

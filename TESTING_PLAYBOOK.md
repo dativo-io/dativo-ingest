@@ -304,7 +304,8 @@ mc ls local/test-bucket/testcase1/employees/ --recursive
 
 **Steps:**
 ```bash
-# 1. Create initial dataset
+# 1. Create directory and initial dataset
+mkdir -p data/test_case_2
 cat > data/test_case_2/orders_initial.csv << 'EOF'
 order_id,customer_id,order_date,amount,updated_at
 1001,501,2025-01-01,150.50,2025-01-01T10:00:00Z
@@ -344,6 +345,7 @@ compliance:
 EOF
 
 # 3. Create job with incremental config
+mkdir -p jobs/testcase2
 cat > jobs/testcase2/orders_incremental.yaml << 'EOF'
 tenant_id: testcase2
 source_connector: csv
@@ -358,7 +360,7 @@ source:
       object: orders
   incremental:
     enabled: true
-    cursor_field: updated_at
+    strategy: file_modified_time
     lookback_days: 1
 target:
   connection:
@@ -380,30 +382,31 @@ dativo run \
   --mode self_hosted
 
 # 6. Check state file
-cat .local/state/testcase2/orders_state.json
-# Should show last cursor value: 2025-01-03T12:00:00Z
+cat .local/state/testcase2/csv.orders.state.json
+# Should show file modification time tracking (e.g., "file_data/test_case_2/orders.csv": {"last_modified": "...", "file_id": "..."})
 
-# 7. Add new records
+# 7. Touch the file to simulate modification (or add new records)
 cat >> data/test_case_2/orders.csv << 'EOF'
 1004,504,2025-01-04,199.99,2025-01-04T13:00:00Z
 1005,505,2025-01-05,325.50,2025-01-05T14:00:00Z
 EOF
 
-# 8. Second run (incremental sync)
+# 8. Second run (incremental sync - will process file again since it was modified)
 dativo run \
   --config jobs/testcase2/orders_incremental.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
-# 9. Verify only new records were processed
+# 9. Verify file was processed again (all 5 records should be in S3)
 # Check logs for "Processing incremental sync" message
 ```
 
 **Success Criteria:**
 - ✅ First run processes all 3 records
-- ✅ State file created with last cursor value
-- ✅ Second run processes only 2 new records
+- ✅ State file created with file modification time tracking
+- ✅ Second run processes file again (since file was modified) - all 5 records in S3
+- ✅ Note: CSV incremental sync tracks file modification time, not cursor field values
 - ✅ State file updated with new cursor value
 
 ---
@@ -583,7 +586,8 @@ mc ls local/test-bucket/testcase4/hubspot/ --recursive
 
 **Steps:**
 ```bash
-# 1. Create data with schema violations
+# 1. Create directory and data with schema violations
+mkdir -p data/test_case_5
 cat > data/test_case_5/products_invalid.csv << 'EOF'
 product_id,product_name,price,category,in_stock
 1,Widget A,29.99,Electronics,true
@@ -1201,7 +1205,8 @@ cd examples/plugins/rust
 make build-release
 cd /workspace
 
-# 2. Create large CSV file for performance test
+# 2. Create directory and large CSV file for performance test
+mkdir -p data/test_case_11
 cat > data/test_case_11/generate_large_csv.py << 'EOF'
 import csv
 import random
@@ -1483,7 +1488,7 @@ dativo run \
 ```bash
 # 1. Create jobs for multiple tenants
 for tenant in tenant_a tenant_b tenant_c; do
-  mkdir -p jobs/$tenant secrets/$tenant
+  mkdir -p jobs/$tenant secrets/$tenant data/test_case_14
   
   # Create tenant-specific CSV
   cat > data/test_case_14/${tenant}_data.csv << EOF
@@ -1618,7 +1623,8 @@ mc ls local/test-bucket/testcase15/employees/ --recursive
 
 **Steps:**
 ```bash
-# 1. Create dataset with multiple partition candidates
+# 1. Create directory and dataset with multiple partition candidates
+mkdir -p data/test_case_16
 cat > data/test_case_16/sales_data.csv << 'EOF'
 order_id,customer_id,order_date,region,product_category,amount
 1001,5001,2025-01-01,US-West,Electronics,299.99
