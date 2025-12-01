@@ -251,3 +251,73 @@ def test_extract_with_incremental_enabled(sample_csv_file):
 
     # Cleanup
     shutil.rmtree(state_dir, ignore_errors=True)
+
+
+def test_extract_with_incremental_empty_file():
+    """Test that incremental state is updated even for empty files to prevent infinite reprocessing."""
+    import shutil
+    import tempfile as tf
+    from datetime import datetime
+
+    from dativo_ingest.validator import IncrementalStateManager
+
+    # Create an empty CSV file (only header, no data rows)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        writer = csv.writer(f)
+        writer.writerow(["id", "name", "email"])  # Header only
+        empty_csv = f.name
+
+    try:
+        # Create state directory
+        state_dir = tf.mkdtemp()
+        state_path = Path(state_dir) / "test.state.json"
+
+        config = SourceConfig(
+            type="csv",
+            files=[{"path": empty_csv, "object": "test_object"}],
+            incremental={
+                "strategy": "file_modified_time",
+                "lookback_days": 0,
+                "state_path": str(state_path),
+            },
+            engine={
+                "type": "native",
+                "options": {
+                    "native": {
+                        "chunk_size": 1000,
+                        "encoding": "utf-8",
+                    }
+                },
+            },
+        )
+
+        extractor = CSVExtractor(config)
+
+        # First run - should process file (even though it's empty)
+        all_records = []
+        for batch in extractor.extract():
+            all_records.extend(batch)
+
+        # File is empty, so no records
+        assert len(all_records) == 0
+
+        # Verify state was updated (this is the key fix - state should be updated even for empty files)
+        state = IncrementalStateManager.read_state(state_path)
+        file_id = str(empty_csv)
+        file_key = f"file_{file_id}"
+        assert file_key in state, "State should be updated even for empty files"
+        assert "last_modified" in state[file_key]
+        assert state[file_key]["file_id"] == file_id
+
+        # Second run - should skip file (already processed)
+        all_records2 = []
+        for batch in extractor.extract():
+            all_records2.extend(batch)
+
+        # Should be empty (file skipped)
+        assert len(all_records2) == 0
+
+    finally:
+        # Cleanup
+        Path(empty_csv).unlink(missing_ok=True)
+        shutil.rmtree(state_dir, ignore_errors=True)

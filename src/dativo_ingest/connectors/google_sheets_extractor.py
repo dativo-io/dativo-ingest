@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterator, List, Optional
 from ..config import ConnectorRecipe, SourceConfig
 from ..incremental import create_incremental_strategy
 from ..incremental.base import IncrementalStrategy
+from ..incremental.strategies import SpreadsheetModifiedTimeStrategy
 from ..validator import IncrementalStateManager
 from .engine_framework import AirbyteExtractor, BaseEngineExtractor
 
@@ -346,13 +347,14 @@ class GoogleSheetsExtractor:
             modified_time = self._get_spreadsheet_modified_time(spreadsheet_id)
             modified_time_iso = modified_time.isoformat() if modified_time else None
 
+            # Create entity_metadata once for use throughout spreadsheet processing
+            entity_metadata = {
+                "spreadsheet_id": str(spreadsheet_id),
+                "modified_time": modified_time_iso,
+            }
+
             # Check incremental state if enabled
             if incremental_strategy:
-                entity_metadata = {
-                    "spreadsheet_id": str(spreadsheet_id),
-                    "modified_time": modified_time_iso,
-                }
-
                 if not incremental_strategy.should_process_entity(entity_metadata):
                     self.logger.info(
                         f"Skipping spreadsheet (already processed): {spreadsheet_id}",
@@ -367,6 +369,14 @@ class GoogleSheetsExtractor:
             rows = self._read_range(spreadsheet_id, full_range)
 
             if not rows:
+                # Even if spreadsheet is empty, update state for file-based strategies
+                # to prevent infinite reprocessing
+                if incremental_strategy:
+                    is_file_based_strategy = isinstance(
+                        incremental_strategy, SpreadsheetModifiedTimeStrategy
+                    )
+                    if is_file_based_strategy:
+                        incremental_strategy.update_state(entity_metadata, [])
                 continue
 
             # Convert rows to records
@@ -375,22 +385,24 @@ class GoogleSheetsExtractor:
 
             # Filter records using incremental strategy (if needed)
             if incremental_strategy and records:
-                entity_metadata = {
-                    "spreadsheet_id": str(spreadsheet_id),
-                    "modified_time": modified_time_iso,
-                }
                 records = incremental_strategy.filter_records(records, entity_metadata)
 
             if records:
                 yield records
 
             # Update state after successful processing
-            if incremental_strategy and records:
-                entity_metadata = {
-                    "spreadsheet_id": str(spreadsheet_id),
-                    "modified_time": modified_time_iso,
-                }
-                incremental_strategy.update_state(entity_metadata, records)
+            # For file-based strategies (SpreadsheetModifiedTimeStrategy), update state even if
+            # there are no processed records, as they only need the modification time.
+            # For cursor-based strategies, only update if there are processed records.
+            if incremental_strategy:
+                is_file_based_strategy = isinstance(
+                    incremental_strategy, SpreadsheetModifiedTimeStrategy
+                )
+                # File-based strategies need state update even for empty spreadsheets to prevent infinite reprocessing
+                # Cursor-based strategies only update when there are processed records
+                should_update_state = is_file_based_strategy or len(records) > 0
+                if should_update_state:
+                    incremental_strategy.update_state(entity_metadata, records or [])
 
     def extract_metadata(self) -> Dict[str, Any]:
         """Extract naturally available metadata from Google Sheets.

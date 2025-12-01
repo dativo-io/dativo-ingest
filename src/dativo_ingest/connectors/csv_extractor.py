@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterator, List, Optional
 from ..config import SourceConfig
 from ..incremental import create_incremental_strategy
 from ..incremental.base import IncrementalStrategy
+from ..incremental.strategies import FileModifiedTimeStrategy
 from ..logging import get_logger
 from ..validator import IncrementalStateManager
 
@@ -231,19 +232,31 @@ class CSVExtractor:
                 )
 
                 # Update state after successful processing
-                if incremental_strategy and all_processed_records:
-                    incremental_strategy.update_state(
-                        entity_metadata, all_processed_records
+                # For file-based strategies (FileModifiedTimeStrategy), update state even if
+                # there are no processed records, as they only need the modification time.
+                # For cursor-based strategies, only update if there are processed records.
+                if incremental_strategy:
+                    is_file_based_strategy = isinstance(
+                        incremental_strategy, FileModifiedTimeStrategy
                     )
-                    self.logger.info(
-                        f"Updated incremental state for file: {file_path}",
-                        extra={
-                            "file_path": str(file_path),
-                            "strategy": incremental_strategy.strategy_name,
-                            "records_processed": len(all_processed_records),
-                            "event_type": "incremental_state_updated",
-                        },
+                    # File-based strategies need state update even for empty files to prevent infinite reprocessing
+                    # Cursor-based strategies only update when there are processed records
+                    should_update_state = (
+                        is_file_based_strategy or len(all_processed_records) > 0
                     )
+                    if should_update_state:
+                        incremental_strategy.update_state(
+                            entity_metadata, all_processed_records
+                        )
+                        self.logger.info(
+                            f"Updated incremental state for file: {file_path}",
+                            extra={
+                                "file_path": str(file_path),
+                                "strategy": incremental_strategy.strategy_name,
+                                "records_processed": len(all_processed_records),
+                                "event_type": "incremental_state_updated",
+                            },
+                        )
 
             except Exception as e:
                 raise RuntimeError(
