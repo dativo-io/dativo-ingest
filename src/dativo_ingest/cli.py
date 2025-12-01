@@ -791,7 +791,7 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         connection = target_config.connection or {}
         s3_config = connection.get("s3") or connection.get("minio", {})
         # Expand environment variables in bucket name
-        bucket_raw = s3_config.get("bucket")
+        bucket_raw = s3_config.get("bucket") or connection.get("bucket")
         bucket = (
             _expand_env_variable(bucket_raw)
             or os.getenv("S3_BUCKET")
@@ -799,8 +799,8 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         )
         if not bucket:
             raise ValueError(
-                "S3 bucket must be specified in target.connection.s3.bucket "
-                "or S3_BUCKET/MINIO_BUCKET environment variable"
+                "S3 bucket must be specified in target.connection.s3.bucket, "
+                "target.connection.bucket, or S3_BUCKET/MINIO_BUCKET environment variable"
             )
 
         # Build path following industry standards:
@@ -1571,9 +1571,10 @@ def check_command(args: argparse.Namespace) -> int:
             )
         else:
             # For built-in writers (Parquet/Iceberg), check S3 connection
+            # Supports both nested (connection.s3.bucket) and flat (connection.bucket) structures
             connection = target_config.connection or {}
             s3_config = connection.get("s3") or connection.get("minio", {})
-            bucket_raw = s3_config.get("bucket")
+            bucket_raw = s3_config.get("bucket") or connection.get("bucket")
             bucket = (
                 _expand_env_variable(bucket_raw)
                 or os.getenv("S3_BUCKET")
