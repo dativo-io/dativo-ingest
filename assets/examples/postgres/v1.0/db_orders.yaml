@@ -1,8 +1,10 @@
-asset:
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
   name: postgres_orders
+version: "1.0"
   source_type: postgres
   object: db_orders
-  version: "1.0"
   
   schema:
     - name: id
@@ -15,8 +17,9 @@ asset:
       type: double
       required: false
   
-  governance:
+team:
     owner: data-team@company.com
+
     tags: [orders, transactions]
   
   compliance:
