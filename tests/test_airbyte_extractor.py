@@ -111,17 +111,60 @@ def test_airbyte_extract_records(
     # Mock image exists
     mock_client.images.get.return_value = MagicMock()
 
-    # Mock subprocess for container execution
-    mock_process = MagicMock()
-    mock_process.communicate.return_value = (
-        json.dumps({"type": "RECORD", "record": {"id": "1", "name": "Test"}})
-        + "\n"
-        + json.dumps({"type": "RECORD", "record": {"id": "2", "name": "Test2"}})
+    # Mock discover call (needed for catalog generation)
+    mock_discover_process = MagicMock()
+    mock_discover_process.communicate.return_value = (
+        json.dumps(
+            {
+                "type": "CATALOG",
+                "catalog": {
+                    "streams": [
+                        {
+                            "name": "contacts",
+                            "json_schema": {"properties": {"id": {}, "name": {}}},
+                        }
+                    ]
+                },
+            }
+        )
         + "\n",
         "",
     )
-    mock_process.returncode = 0
-    mock_subprocess.Popen.return_value = mock_process
+    mock_discover_process.returncode = 0
+
+    # Mock read call
+    mock_read_process = MagicMock()
+    mock_read_process.stdout.readline.side_effect = [
+        json.dumps(
+            {
+                "type": "RECORD",
+                "record": {"stream": "contacts", "data": {"id": "1", "name": "Test"}},
+            }
+        )
+        + "\n",
+        json.dumps(
+            {
+                "type": "RECORD",
+                "record": {"stream": "contacts", "data": {"id": "2", "name": "Test2"}},
+            }
+        )
+        + "\n",
+        "",  # Empty line to stop iteration
+    ]
+    mock_read_process.stderr = MagicMock()
+    mock_read_process.stderr.readline.return_value = ""
+    mock_read_process.returncode = 0
+    mock_read_process.wait.return_value = 0
+
+    # Return different mocks for discover vs read
+    def popen_side_effect(*args, **kwargs):
+        cmd = args[0] if args else kwargs.get("args", [])
+        if "discover" in cmd:
+            return mock_discover_process
+        else:
+            return mock_read_process
+
+    mock_subprocess.Popen.side_effect = popen_side_effect
 
     extractor = AirbyteExtractor(source_config, mock_connector_recipe)
 
@@ -150,19 +193,54 @@ def test_airbyte_extract_with_state(
     mock_docker.from_env.return_value = mock_client
     mock_client.images.get.return_value = MagicMock()
 
-    # Mock subprocess with state message
-    mock_process = MagicMock()
-    mock_process.communicate.return_value = (
-        json.dumps({"type": "RECORD", "record": {"id": "1"}})
-        + "\n"
-        + json.dumps(
-            {"type": "STATE", "state": {"contacts": {"updatedAt": "2024-01-01"}}}
+    # Mock discover call (needed for catalog generation)
+    mock_discover_process = MagicMock()
+    mock_discover_process.communicate.return_value = (
+        json.dumps(
+            {
+                "type": "CATALOG",
+                "catalog": {
+                    "streams": [
+                        {
+                            "name": "contacts",
+                            "json_schema": {"properties": {"id": {}, "updatedAt": {}}},
+                        }
+                    ]
+                },
+            }
         )
         + "\n",
         "",
     )
-    mock_process.returncode = 0
-    mock_subprocess.Popen.return_value = mock_process
+    mock_discover_process.returncode = 0
+
+    # Mock read call with state message
+    mock_read_process = MagicMock()
+    mock_read_process.stdout.readline.side_effect = [
+        json.dumps(
+            {"type": "RECORD", "record": {"stream": "contacts", "data": {"id": "1"}}}
+        )
+        + "\n",
+        json.dumps(
+            {"type": "STATE", "state": {"contacts": {"updatedAt": "2024-01-01"}}}
+        )
+        + "\n",
+        "",  # Empty line to stop iteration
+    ]
+    mock_read_process.stderr = MagicMock()
+    mock_read_process.stderr.readline.return_value = ""
+    mock_read_process.returncode = 0
+    mock_read_process.wait.return_value = 0
+
+    # Return different mocks for discover vs read
+    def popen_side_effect(*args, **kwargs):
+        cmd = args[0] if args else kwargs.get("args", [])
+        if "discover" in cmd:
+            return mock_discover_process
+        else:
+            return mock_read_process
+
+    mock_subprocess.Popen.side_effect = popen_side_effect
 
     extractor = AirbyteExtractor(source_config, mock_connector_recipe)
 
