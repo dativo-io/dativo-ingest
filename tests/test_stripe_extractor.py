@@ -80,7 +80,16 @@ def test_stripe_extract(
     # Mock discover call (needed for catalog generation)
     mock_discover_process = MagicMock()
     mock_discover_process.communicate.return_value = (
-        json.dumps({"type": "CATALOG", "catalog": {"streams": [{"name": "customers", "json_schema": {"properties": {}}}]}})
+        json.dumps(
+            {
+                "type": "CATALOG",
+                "catalog": {
+                    "streams": [
+                        {"name": "customers", "json_schema": {"properties": {}}}
+                    ]
+                },
+            }
+        )
         + "\n",
         "",
     )
@@ -92,7 +101,10 @@ def test_stripe_extract(
         json.dumps(
             {
                 "type": "RECORD",
-                "record": {"stream": "customers", "data": {"id": "cus_123", "email": "customer@example.com"}},
+                "record": {
+                    "stream": "customers",
+                    "data": {"id": "cus_123", "email": "customer@example.com"},
+                },
             }
         )
         + "\n",
@@ -196,6 +208,7 @@ def test_stripe_config_parser_account_id_auto_fetch(
     mock_requests, mock_getenv, stripe_connector_recipe
 ):
     """Test StripeConfigParser auto-fetches account_id from Stripe API."""
+
     def getenv_side_effect(key):
         if key == "STRIPE_API_KEY":
             return "sk_test_12345"
