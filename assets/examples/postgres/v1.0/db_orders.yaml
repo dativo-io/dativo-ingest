@@ -1,0 +1,36 @@
+asset:
+  name: postgres_orders
+  source_type: postgres
+  object: db_orders
+  version: "1.0"
+  
+  schema:
+    - name: id
+      type: bigint
+      required: true
+    - name: updated_at
+      type: timestamp
+      required: true
+    - name: total_amount
+      type: double
+      required: false
+  
+  governance:
+    owner: data-team@company.com
+    tags: [orders, transactions]
+  
+  compliance:
+    classification: [SENSITIVE]
+    retention_days: 30
+    regulations: [SOX, PCI-DSS]
+  
+  finops:
+    cost_center: FIN-002
+    business_tags: [revenue, orders]
+    project: order-management
+    environment: production
+  
+  target:
+    file_format: parquet
+    partitioning: [ingest_date]
+    mode: strict

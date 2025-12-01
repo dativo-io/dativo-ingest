@@ -1,0 +1,27 @@
+$schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: orders
+version: "1.0"
+source_type: csv
+object: orders
+schema:
+  - name: order_id
+    type: integer
+    required: true
+  - name: customer_id
+    type: integer
+  - name: order_date
+    type: date
+  - name: amount
+    type: decimal
+  - name: updated_at
+    type: timestamp
+    required: true
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+team:
+  owner: test@example.com
+compliance:
+  classification: []
