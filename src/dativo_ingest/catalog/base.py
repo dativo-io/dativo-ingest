@@ -202,7 +202,8 @@ class BaseCatalog(ABC):
         s3_config = connection.get("s3") or connection.get("minio", {})
 
         # Build S3 path
-        bucket_raw = s3_config.get("bucket")
+        # Supports both nested (connection.s3.bucket) and flat (connection.bucket) structures
+        bucket_raw = s3_config.get("bucket") or connection.get("bucket")
         bucket = (
             _expand_env_variable(bucket_raw)
             or os.getenv("S3_BUCKET")
