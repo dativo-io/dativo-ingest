@@ -73,10 +73,10 @@ def test_asset_structure():
     import yaml
 
     assets_to_check = [
-        "assets/csv/v1.0/employee.yaml",
-        "assets/stripe/v1.0/customers.yaml",
-        "assets/postgres/v1.0/db_orders.yaml",
-        "assets/mysql/v1.0/db_customers.yaml",
+        "tests/fixtures/assets/csv/v1.0/employee.yaml",
+        "tests/fixtures/assets/stripe/v1.0/customers.yaml",
+        "tests/fixtures/assets/postgres/v1.0/db_orders.yaml",
+        "tests/fixtures/assets/mysql/v1.0/db_customers.yaml",
     ]
 
     for asset_path in assets_to_check:
