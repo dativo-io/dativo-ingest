@@ -214,8 +214,8 @@ id,name,email,department,salary
 EOF
 
 # 2. Create asset definition
-mkdir -p assets/csv/v1.0
-cat > assets/csv/v1.0/employees.yaml << 'EOF'
+mkdir -p assets/examples/csv/v1.0
+cat > assets/examples/csv/v1.0/employees.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -314,7 +314,7 @@ order_id,customer_id,order_date,amount,updated_at
 EOF
 
 # 2. Create asset
-cat > assets/csv/v1.0/orders.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/orders.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -432,7 +432,7 @@ NESSIE_URI=http://localhost:19120/api/v1
 EOF
 
 # 2. Use existing Stripe asset
-# assets/stripe/v1.0/customers.yaml already exists
+# assets/examples/stripe/v1.0/customers.yaml already exists
 
 # 3. Create job
 mkdir -p jobs/testcase3
@@ -597,7 +597,7 @@ product_id,product_name,price,category,in_stock
 EOF
 
 # 2. Create asset with strict validation
-cat > assets/csv/v1.0/products.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/products.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -699,7 +699,7 @@ dativo run \
 **Steps:**
 ```bash
 # 1. Create same asset with warn mode
-cat > assets/csv/v1.0/products_warn.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/products_warn.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -805,7 +805,7 @@ INSERT INTO employees (first_name, last_name, email, hire_date, salary, departme
 EOF
 
 # 3. Create asset
-cat > assets/postgres/v1.0/db_employees.yaml << 'EOF'
+cat > assets/examples/postgres/v1.0/db_employees.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -902,7 +902,7 @@ UPDATE employees SET updated_at = CURRENT_TIMESTAMP;
 EOF
 
 # 2. Update asset to include updated_at
-cat > assets/postgres/v1.0/db_employees_incremental.yaml << 'EOF'
+cat > assets/examples/postgres/v1.0/db_employees_incremental.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -1230,7 +1230,7 @@ mkdir -p data/test_case_11
 python data/test_case_11/generate_large_csv.py
 
 # 3. Create asset
-cat > assets/csv/v1.0/large_dataset.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/large_dataset.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -1352,7 +1352,7 @@ EOF
 cp secrets/testcase1/iceberg.env secrets/testcase12/
 
 # 4. Create asset
-cat > assets/google_sheets/v1.0/test_data.yaml << 'EOF'
+cat > assets/examples/google_sheets/v1.0/test_data.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -1638,7 +1638,7 @@ EOF
 # Test different partitioning strategies
 
 # Strategy A: Single column partitioning (region)
-cat > assets/csv/v1.0/sales_by_region.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/sales_by_region.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -1670,7 +1670,7 @@ compliance:
 EOF
 
 # Strategy B: Multi-level partitioning (region → product_category)
-cat > assets/csv/v1.0/sales_multi_partition.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/sales_multi_partition.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -1702,7 +1702,7 @@ compliance:
 EOF
 
 # Strategy C: Date partitioning (ingest_date - automatic)
-cat > assets/csv/v1.0/sales_date_partition.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/sales_date_partition.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -2307,7 +2307,7 @@ cat >> data/test_case_1/employees.csv << 'EOF'
 EOF
 
 # 3. Update asset schema to include new column
-# Edit assets/csv/v1.0/employees.yaml - add "title" field
+# Edit assets/examples/csv/v1.0/employees.yaml - add "title" field
 
 # 4. Re-run job
 dativo run --config jobs/testcase1/employees_to_iceberg.yaml ...
