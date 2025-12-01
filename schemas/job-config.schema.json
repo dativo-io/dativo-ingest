@@ -97,7 +97,7 @@
           "properties": {
             "strategy": {
               "type": "string",
-              "enum": ["full_refresh", "incremental", "updated_at", "file_modified_time", "spreadsheet_modified_time"]
+              "enum": ["full_refresh", "incremental", "updated_at", "updated_after", "created", "file_modified_time", "spreadsheet_modified_time"]
             },
             "cursor_field": {
               "type": ["string", "null"],

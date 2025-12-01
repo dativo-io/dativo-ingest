@@ -240,6 +240,31 @@ class SchemaValidator:
                 return value
             if isinstance(value, datetime.date):
                 return datetime.datetime.combine(value, datetime.time.min)
+            # Medium-term: Handle Unix timestamps (integers) - common in Airbyte outputs
+            if isinstance(value, int):
+                # Handle Unix timestamp (seconds since epoch)
+                try:
+                    # Check if it's in seconds (typical range: 2000-2100)
+                    if (
+                        946684800 <= value <= 4102444800
+                    ):  # 2000-01-01 to 2100-01-01 in seconds
+                        return datetime.datetime.fromtimestamp(
+                            value, tz=datetime.timezone.utc
+                        )
+                    # Check if it's in milliseconds (typical range: 2000-2100)
+                    elif 946684800000 <= value <= 4102444800000:
+                        return datetime.datetime.fromtimestamp(
+                            value / 1000, tz=datetime.timezone.utc
+                        )
+                    else:
+                        # Try seconds anyway
+                        return datetime.datetime.fromtimestamp(
+                            value, tz=datetime.timezone.utc
+                        )
+                except (ValueError, OSError) as e:
+                    raise ValueError(
+                        f"Cannot convert integer {value} to timestamp: {e}"
+                    ) from None
             if isinstance(value, str):
                 # Try common timestamp formats
                 formats = [

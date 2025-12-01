@@ -1,6 +1,7 @@
 """Parquet file writer with target file size and partitioning support."""
 
 import datetime
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -225,7 +226,23 @@ class ParquetWriter:
 
                     # Convert to appropriate PyArrow array
                     if field_type == "string":
-                        arrays[field_name] = pa.array(values, type=pa.string())
+                        # Serialize complex objects (dicts, lists) to JSON strings
+                        string_values = []
+                        for v in values:
+                            if v is None:
+                                string_values.append(None)
+                            elif isinstance(v, (dict, list)):
+                                # Serialize complex objects to JSON
+                                import json
+
+                                try:
+                                    string_values.append(json.dumps(v))
+                                except (TypeError, ValueError):
+                                    # Fallback to str() if JSON serialization fails
+                                    string_values.append(str(v))
+                            else:
+                                string_values.append(str(v))
+                        arrays[field_name] = pa.array(string_values, type=pa.string())
                     elif field_type == "integer":
                         arrays[field_name] = pa.array(
                             [int(v) if v is not None else None for v in values],
@@ -299,7 +316,23 @@ class ParquetWriter:
 
                     # Convert to appropriate PyArrow array
                     if field_type == "string":
-                        arrays[field_name] = pa.array(values, type=pa.string())
+                        # Serialize complex objects (dicts, lists) to JSON strings
+                        string_values = []
+                        for v in values:
+                            if v is None:
+                                string_values.append(None)
+                            elif isinstance(v, (dict, list)):
+                                # Serialize complex objects to JSON
+                                import json
+
+                                try:
+                                    string_values.append(json.dumps(v))
+                                except (TypeError, ValueError):
+                                    # Fallback to str() if JSON serialization fails
+                                    string_values.append(str(v))
+                            else:
+                                string_values.append(str(v))
+                        arrays[field_name] = pa.array(string_values, type=pa.string())
                     elif field_type == "integer":
                         arrays[field_name] = pa.array(
                             [int(v) if v is not None else None for v in values],
