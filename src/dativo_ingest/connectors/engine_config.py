@@ -93,6 +93,11 @@ class EngineConfigParser:
         if hasattr(self.source_config, "connection") and self.source_config.connection:
             config.update(self.source_config.connection)
 
+        # Filter out metadata fields that shouldn't be in the final config
+        metadata_fields = ["type", "from_env", "file_template"]
+        for field in metadata_fields:
+            config.pop(field, None)
+
         return config
 
     def build_meltano_config(self) -> Dict[str, Any]:
@@ -151,7 +156,7 @@ class EngineConfigParser:
         """Extract and map credentials from connector recipe and source config.
 
         Returns:
-            Dictionary of credentials in engine format
+            Dictionary of credentials in engine format (only actual credential values, no metadata)
         """
         credentials = {}
 
@@ -167,6 +172,8 @@ class EngineConfigParser:
                 if api_key:
                     # Map to engine-specific credential format
                     if self.engine_type == "airbyte":
+                        # Default Airbyte format uses "api_key"
+                        # Connector-specific extractors can override this (e.g., Stripe uses "client_secret")
                         credentials["api_key"] = api_key
                     elif self.engine_type in ["meltano", "singer"]:
                         credentials["api_key"] = api_key

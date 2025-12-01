@@ -254,47 +254,6 @@ class AssetDefinition(BaseModel):
         return self
 
     @classmethod
-    def _migrate_old_format(cls, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Migrate old nested format to new ODCS flat format."""
-        if "asset" in data:
-            asset_data = data["asset"].copy()
-
-            # Generate ID if not present
-            if "id" not in asset_data:
-                asset_data["id"] = str(uuid.uuid4())
-
-            # Set ODCS fields
-            asset_data.setdefault("apiVersion", "v3.0.2")
-            asset_data.setdefault("kind", "DataContract")
-            asset_data.setdefault("status", "active")
-
-            # Migrate governance to team
-            if "governance" in asset_data:
-                governance = asset_data.pop("governance")
-                if "owner" in governance:
-                    asset_data["team"] = {"owner": governance["owner"]}
-                    if "tags" in governance:
-                        asset_data.setdefault("tags", governance.get("tags", []))
-
-                # Migrate classification and retention_days to compliance
-                if "classification" in governance or "retention_days" in governance:
-                    compliance = {}
-                    if "classification" in governance:
-                        compliance["classification"] = governance["classification"]
-                    if "retention_days" in governance:
-                        compliance["retention_days"] = governance["retention_days"]
-                    if compliance:
-                        asset_data["compliance"] = compliance
-
-            # Set schema reference
-            asset_data.setdefault(
-                "$schema", "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json"
-            )
-
-            return asset_data
-        return data
-
-    @classmethod
     def validate_against_schema(
         cls, data: Dict[str, Any], schema_path: Optional[Path] = None
     ) -> None:
@@ -356,16 +315,11 @@ class AssetDefinition(BaseModel):
         if data is None:
             raise ValueError(f"Asset definition file is empty: {path}")
 
-        # Support both old nested format and new flat ODCS format
-        if "asset" in data:
-            # Old format - migrate to new format
-            data = cls._migrate_old_format(data)
-        else:
-            # New format - ensure required fields
-            if "id" not in data:
-                data["id"] = str(uuid.uuid4())
-            if "$schema" not in data:
-                data["$schema"] = "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json"
+        # Ensure required ODCS fields
+        if "id" not in data:
+            data["id"] = str(uuid.uuid4())
+        if "$schema" not in data:
+            data["$schema"] = "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json"
 
         # Map $schema to schema_ref for Pydantic (since $schema is not a valid Python identifier)
         if "$schema" in data:
@@ -672,7 +626,33 @@ class JobConfig(BaseModel):
                         # Non-empty dict means enable incremental
                         # Merge with recipe incremental defaults if they exist
                         if incremental and isinstance(incremental, dict):
-                            source_data[key] = {**incremental, **value}
+                            merged_incremental = {**incremental, **value}
+                            # Convert recipe defaults to actual field names if not overridden by job config
+                            # Pattern: Recipes use *_default suffixes for defaults, but validators/executors
+                            # expect the actual field names (cursor_field, strategy, lookback_days)
+                            # This conversion ensures consistency with API documentation and best practices
+                            if (
+                                "cursor_field_default" in merged_incremental
+                                and "cursor_field" not in merged_incremental
+                            ):
+                                merged_incremental["cursor_field"] = (
+                                    merged_incremental.pop("cursor_field_default")
+                                )
+                            if (
+                                "strategy_default" in merged_incremental
+                                and "strategy" not in merged_incremental
+                            ):
+                                merged_incremental["strategy"] = merged_incremental.pop(
+                                    "strategy_default"
+                                )
+                            if (
+                                "lookback_days_default" in merged_incremental
+                                and "lookback_days" not in merged_incremental
+                            ):
+                                merged_incremental["lookback_days"] = (
+                                    merged_incremental.pop("lookback_days_default")
+                                )
+                            source_data[key] = merged_incremental
                         else:
                             source_data[key] = value
                     else:
@@ -811,6 +791,7 @@ class JobConfig(BaseModel):
             )
             sys.exit(2)
 
+        # Check schema at top level (ODCS v3.0.2 format)
         if not asset_data or "schema" not in asset_data:
             print(
                 f"ERROR: Asset definition missing 'schema' field: {asset_path}\n"
