@@ -352,8 +352,13 @@ class AirbyteExtractor(BaseEngineExtractor):
                     f"Failed to pull Docker image {self.docker_image}: {e}"
                 ) from e
 
-        # Get requested streams from config
-        requested_streams = config.get("streams", [])
+        # Get requested streams from source_config or engine options (not from config)
+        # Streams should not be in the config passed to Airbyte (they belong in the catalog)
+        if self.source_config.objects:
+            requested_streams = self.source_config.objects
+        else:
+            airbyte_opts = self.config_parser.engine_options.get("airbyte", {})
+            requested_streams = airbyte_opts.get("streams_default", [])
 
         # Get catalog for requested streams
         self.logger.info(

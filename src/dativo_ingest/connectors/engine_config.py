@@ -94,7 +94,9 @@ class EngineConfigParser:
             config.update(self.source_config.connection)
 
         # Filter out metadata fields that shouldn't be in the final config
-        metadata_fields = ["type", "from_env", "file_template"]
+        # Note: 'streams' is used internally for catalog generation but should not
+        # be passed to Airbyte connectors (stream selection belongs in the catalog)
+        metadata_fields = ["type", "from_env", "file_template", "streams"]
         for field in metadata_fields:
             config.pop(field, None)
 
