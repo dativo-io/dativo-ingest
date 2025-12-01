@@ -210,13 +210,23 @@ class BaseCatalog(ABC):
             or os.getenv("MINIO_BUCKET")
             or "default-bucket"
         )
-        domain = self.asset_definition.domain or "default"
+        tenant_id = self.job_config.tenant_id
+        domain = self.asset_definition.domain or tenant_id or "default"
         data_product = getattr(self.asset_definition, "dataProduct", None) or "default"
         table_name = (
             self.asset_definition.name.lower().replace("-", "_").replace(" ", "_")
         )
 
-        s3_path = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
+        # Build path structure:
+        # - When domain is specified: s3://bucket/domain/data_product/table/
+        # - When domain is not specified (using tenant_id): s3://bucket/tenant_id/table/
+        #   (skip data_product when it's "default" to avoid redundant path segments)
+        if domain == tenant_id and data_product == "default":
+            # Simplified path when using tenant_id as domain: tenant_id/table
+            s3_path = f"s3://{bucket}/{domain}/{table_name}"
+        else:
+            # Standard path structure: domain/data_product/table
+            s3_path = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
 
         table_name_override = (
             self.catalog_config.table_name or self.asset_definition.name

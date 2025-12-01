@@ -808,17 +808,21 @@ def _execute_single_job(job_config: JobConfig, mode: str) -> int:
         # - Use domain from asset definition (required for organization)
         # - Use dataProduct from asset definition (logical grouping)
         # - Use table name (asset name, normalized)
-        domain = asset_definition.domain or "default"
+        # - Fallback to tenant_id if domain is not specified
+        domain = asset_definition.domain or tenant_id or "default"
         data_product = getattr(asset_definition, "dataProduct", None) or "default"
         table_name = asset_definition.name.lower().replace("-", "_").replace(" ", "_")
 
-        # Always build standard path structure (industry best practice)
-        # This ensures consistent organization and makes it easy to:
-        # - Find data by domain
-        # - Find data by data product
-        # - Find data by table
-        # - Apply access policies at domain/data_product level
-        output_base = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
+        # Build path structure:
+        # - When domain is specified: s3://bucket/domain/data_product/table/
+        # - When domain is not specified (using tenant_id): s3://bucket/tenant_id/table/
+        #   (skip data_product when it's "default" to avoid redundant path segments)
+        if domain == tenant_id and data_product == "default":
+            # Simplified path when using tenant_id as domain: tenant_id/table
+            output_base = f"s3://{bucket}/{domain}/{table_name}"
+        else:
+            # Standard path structure: domain/data_product/table
+            output_base = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
 
         if target_config.custom_writer:
             # Use custom writer plugin
