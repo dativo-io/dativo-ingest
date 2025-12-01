@@ -23,12 +23,15 @@ def _expand_env_variable(value: Optional[str]) -> Optional[str]:
         return value
 
     # Handle bash-style ${VAR:-default} syntax
+    # Replace all occurrences of ${VAR:-default} with the resolved value
     bash_default_pattern = r"\$\{([^:}]+):-([^}]+)\}"
-    match = re.search(bash_default_pattern, value)
-    if match:
+
+    def replace_with_default(match):
         env_var = match.group(1)
         default_value = match.group(2)
         return os.getenv(env_var, default_value)
+
+    value = re.sub(bash_default_pattern, replace_with_default, value)
 
     # Handle simple ${VAR} syntax
     if "${" in value:
