@@ -1,6 +1,8 @@
 """Unit tests for Airbyte extractor."""
 
 import json
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -503,3 +505,87 @@ def test_airbyte_config_json_does_not_contain_streams(
     # Verify the serialized config also doesn't contain streams
     assert "streams" not in config_dict
     assert "api_key" in config_dict  # But other fields should be present
+
+
+@patch("dativo_ingest.connectors.engine_framework.docker")
+@patch("dativo_ingest.connectors.engine_framework.subprocess")
+@patch("dativo_ingest.connectors.engine_framework.DOCKER_AVAILABLE", True)
+@patch("os.getenv")
+def test_airbyte_temp_file_cleanup_on_second_file_failure(
+    mock_getenv, mock_subprocess, mock_docker, source_config, mock_connector_recipe
+):
+    """Test that temp files are cleaned up even if second file creation fails."""
+    mock_getenv.return_value = "test-api-key"
+
+    # Mock Docker client
+    mock_client = MagicMock()
+    mock_docker.from_env.return_value = mock_client
+    mock_client.images.get.return_value = MagicMock()
+
+    # Track created temp files
+    created_files = []
+    call_count = [0]  # Use list to allow modification in nested function
+    original_named_temporary_file = tempfile.NamedTemporaryFile
+
+    def mock_named_temporary_file(*args, **kwargs):
+        """Mock NamedTemporaryFile to fail on second call."""
+        call_count[0] += 1
+        # First call succeeds (for config file)
+        if call_count[0] == 1:
+            file_obj = original_named_temporary_file(*args, **kwargs)
+            created_files.append(Path(file_obj.name))
+            return file_obj
+        else:
+            # Second call fails (for catalog file)
+            raise OSError("Disk full or permission denied")
+
+    # Mock discover call (needed for catalog generation)
+    mock_discover_process = MagicMock()
+    mock_discover_process.communicate.return_value = (
+        json.dumps(
+            {
+                "type": "CATALOG",
+                "catalog": {
+                    "streams": [
+                        {
+                            "name": "contacts",
+                            "json_schema": {"properties": {"id": {}, "name": {}}},
+                        }
+                    ]
+                },
+            }
+        )
+        + "\n",
+        "",
+    )
+    mock_discover_process.returncode = 0
+
+    # Return discover process for discover call, but we'll fail before read call
+    def popen_side_effect(*args, **kwargs):
+        cmd = args[0] if args else kwargs.get("args", [])
+        if "discover" in cmd:
+            return mock_discover_process
+        # Should not reach read call due to temp file failure
+        return MagicMock()
+
+    mock_subprocess.Popen.side_effect = popen_side_effect
+
+    extractor = AirbyteExtractor(source_config, mock_connector_recipe)
+
+    # Patch tempfile.NamedTemporaryFile to fail on second call
+    # Note: tempfile is imported inside _run_airbyte_container, so we patch the builtin module
+    with patch("tempfile.NamedTemporaryFile", side_effect=mock_named_temporary_file):
+        # Extract should fail when second temp file creation fails
+        with pytest.raises(OSError, match="Disk full or permission denied"):
+            list(extractor.extract())
+
+    # Verify that the first temp file was cleaned up
+    # (it should not exist after the finally block executes)
+    assert (
+        len(created_files) == 1
+    ), "Should have created exactly one temp file before failure"
+    assert not created_files[
+        0
+    ].exists(), (
+        "First temp file should be cleaned up even if second file creation fails"
+    )
