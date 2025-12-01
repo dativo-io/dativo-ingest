@@ -1,6 +1,7 @@
 """Engine framework for Airbyte/Meltano/Singer connectors."""
 
 import json
+import os
 import subprocess
 import sys
 from abc import ABC, abstractmethod
@@ -19,6 +20,22 @@ from ..config import ConnectorRecipe, SourceConfig
 from ..logging import get_logger
 from ..validator import IncrementalStateManager
 from .engine_config import EngineConfigParser
+
+
+def _get_temp_dir() -> Path:
+    """Get temporary directory for Airbyte config files.
+
+    Uses .local/tmp in the project root (consistent with .local/state pattern).
+    This keeps temp files out of the project root and ensures they're gitignored.
+
+    Returns:
+        Path to temporary directory (created if it doesn't exist)
+    """
+    # Use .local/tmp in the current working directory (project root)
+    # Can be overridden with TEMP_DIR env var for custom locations
+    temp_dir = Path(os.getenv("TEMP_DIR", ".local/tmp"))
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return temp_dir
 
 
 class BaseEngineExtractor(ABC):
@@ -154,6 +171,128 @@ class AirbyteExtractor(BaseEngineExtractor):
             )
             raise
 
+    def _get_airbyte_catalog(
+        self,
+        config: Dict[str, Any],
+        requested_streams: List[str],
+        incremental_config: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Get Airbyte catalog for specified streams.
+
+        Args:
+            config: Airbyte configuration
+            requested_streams: List of stream names to include in catalog
+            incremental_config: Incremental sync configuration
+
+        Returns:
+            Airbyte catalog dictionary
+        """
+        # Call discover to get full catalog
+        discover_result = self.discover()
+        if discover_result.get("error"):
+            raise RuntimeError(
+                f"Failed to discover streams: {discover_result.get('error')}"
+            )
+
+        # We need the full catalog structure, not just stream names
+        # Re-run discover to get the full catalog JSON
+        import tempfile
+
+        config_json = json.dumps(config)
+        temp_dir = _get_temp_dir()
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, dir=str(temp_dir)
+        ) as tmp_file:
+            tmp_file.write(config_json)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+            tmp_config_path = Path(tmp_file.name).absolute()
+
+        try:
+            process = subprocess.Popen(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "-v",
+                    f"{tmp_config_path}:/airbyte_config.json:ro",
+                    self.docker_image,
+                    "discover",
+                    "--config",
+                    "/airbyte_config.json",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            stdout, stderr = process.communicate(timeout=60)
+
+            if process.returncode != 0:
+                raise RuntimeError(f"Discover failed: {stderr or stdout}")
+
+            # Parse catalog from discover output
+            catalog = None
+            for line in stdout.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                    if msg.get("type") == "CATALOG":
+                        catalog = msg.get("catalog", {})
+                        break
+                except json.JSONDecodeError:
+                    continue
+
+            if not catalog:
+                raise RuntimeError("No catalog found in discover output")
+
+            # Filter catalog to only include requested streams
+            streams = catalog.get("streams", [])
+            if requested_streams:
+                streams = [
+                    stream
+                    for stream in streams
+                    if stream.get("name") in requested_streams
+                ]
+
+            # Convert to ConfiguredAirbyteCatalog format
+            # Each stream needs to be wrapped with sync mode configuration
+            configured_streams = []
+            for stream in streams:
+                configured_stream = {
+                    "stream": stream,  # The stream definition from discover
+                    "sync_mode": (
+                        "incremental"
+                        if incremental_config.get("enabled")
+                        else "full_refresh"
+                    ),
+                    "destination_sync_mode": "append",
+                }
+
+                # Add cursor field for incremental sync
+                if incremental_config.get("enabled"):
+                    cursor_field = incremental_config.get("cursor_field")
+                    if cursor_field:
+                        # Check if cursor field exists in stream schema
+                        stream_schema = stream.get("json_schema", {}).get(
+                            "properties", {}
+                        )
+                        if cursor_field in stream_schema:
+                            configured_stream["cursor_field"] = [cursor_field]
+
+                configured_streams.append(configured_stream)
+
+            # Return ConfiguredAirbyteCatalog format
+            return {"streams": configured_streams}
+        finally:
+            try:
+                tmp_config_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
     def _run_airbyte_container(
         self,
         config: Dict[str, Any],
@@ -177,11 +316,22 @@ class AirbyteExtractor(BaseEngineExtractor):
             )
 
         try:
+            # Try to auto-detect Colima socket if DOCKER_HOST is not set
+            import os
+
+            docker_host = os.getenv("DOCKER_HOST")
+            if not docker_host:
+                # Check for Colima socket (common on macOS)
+                colima_socket = Path.home() / ".colima" / "default" / "docker.sock"
+                if colima_socket.exists():
+                    os.environ["DOCKER_HOST"] = f"unix://{colima_socket}"
+
             client = docker.from_env()
         except Exception as e:
             raise RuntimeError(
                 f"Failed to connect to Docker daemon: {e}. "
-                "Ensure Docker is running and accessible."
+                "Ensure Docker is running and accessible. "
+                "If using Colima, set DOCKER_HOST=unix://$HOME/.colima/default/docker.sock"
             ) from e
 
         # Check if image exists, pull if needed
@@ -202,63 +352,117 @@ class AirbyteExtractor(BaseEngineExtractor):
                     f"Failed to pull Docker image {self.docker_image}: {e}"
                 ) from e
 
-        # Prepare Airbyte commands
-        # Airbyte uses: spec, check, discover, read
-        # We'll use 'read' command to extract data
+        # Get requested streams from config
+        requested_streams = config.get("streams", [])
+
+        # Get catalog for requested streams
+        self.logger.info(
+            f"Generating Airbyte catalog for streams: {requested_streams}",
+            extra={"event_type": "catalog_generation", "streams": requested_streams},
+        )
+        catalog = self._get_airbyte_catalog(
+            config, requested_streams, incremental_config
+        )
+        catalog_json = json.dumps(catalog)
 
         # Build config JSON
         config_json = json.dumps(config)
 
         # Run container with read command
-        # Airbyte protocol: stdin receives config JSON, stdout emits messages
+        # Airbyte protocol: requires both config and catalog
         try:
-            # Use subprocess for better control over stdin/stdout
-            process = subprocess.Popen(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "-i",  # Interactive mode for stdin
-                    self.docker_image,
-                    "read",
-                    "--config",
-                    "/dev/stdin",
-                ],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
+            # Use temporary files for config and catalog
+            import tempfile
 
-            # Send config and close stdin
-            stdout, stderr = process.communicate(input=config_json)
+            temp_dir = _get_temp_dir()
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False, dir=str(temp_dir)
+            ) as tmp_config_file:
+                tmp_config_file.write(config_json)
+                tmp_config_file.flush()
+                os.fsync(tmp_config_file.fileno())
+                tmp_config_path = Path(tmp_config_file.name).absolute()
 
-            if process.returncode != 0:
-                raise RuntimeError(
-                    f"Airbyte container failed with exit code {process.returncode}: {stderr}"
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False, dir=str(temp_dir)
+            ) as tmp_catalog_file:
+                tmp_catalog_file.write(catalog_json)
+                tmp_catalog_file.flush()
+                os.fsync(tmp_catalog_file.fileno())
+                tmp_catalog_path = Path(tmp_catalog_file.name).absolute()
+
+            try:
+                # Use subprocess with mounted files
+                process = subprocess.Popen(
+                    [
+                        "docker",
+                        "run",
+                        "--rm",
+                        "-v",
+                        f"{tmp_config_path}:/airbyte_config.json:ro",
+                        "-v",
+                        f"{tmp_catalog_path}:/airbyte_catalog.json:ro",
+                        self.docker_image,
+                        "read",
+                        "--config",
+                        "/airbyte_config.json",
+                        "--catalog",
+                        "/airbyte_catalog.json",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,  # Line buffered
                 )
 
-            # Parse output (Airbyte outputs JSONL format)
-            output_lines = stdout.split("\n")
+                stderr_lines = []
 
-            for line in output_lines:
-                line = line.strip()
-                if not line:
-                    continue
-
+                # Read output line by line
                 try:
-                    record = json.loads(line)
-                    # Airbyte format: {"type": "RECORD", "record": {...}}
-                    if record.get("type") == "RECORD":
-                        yield record.get("record", {})
-                    elif record.get("type") == "STATE":
-                        # Handle state updates
-                        state = record.get("state", {})
-                        if state_manager and state:
-                            self._update_state(state_manager, state)
-                except json.JSONDecodeError:
-                    # Skip invalid JSON lines (may be logs)
-                    continue
+                    for line in iter(process.stdout.readline, ""):
+                        line = line.strip()
+                        if not line:
+                            continue
+
+                        try:
+                            record = json.loads(line)
+                            # Airbyte format: {"type": "RECORD", "record": {"stream": "...", "data": {...}, "emitted_at": ...}}
+                            if record.get("type") == "RECORD":
+                                record_obj = record.get("record", {})
+                                # Extract the actual data from the 'data' field
+                                # Airbyte wraps the actual record in a 'data' field along with metadata
+                                actual_data = record_obj.get("data", record_obj)
+                                yield actual_data
+                            elif record.get("type") == "STATE":
+                                # Handle state updates
+                                state = record.get("state", {})
+                                if state_manager and state:
+                                    self._update_state(state_manager, state)
+                        except json.JSONDecodeError:
+                            # Skip invalid JSON lines (may be logs)
+                            continue
+                finally:
+                    # Read any remaining stderr
+                    if process.stderr:
+                        for line in iter(process.stderr.readline, ""):
+                            stderr_lines.append(line)
+
+                process.wait()
+
+                if process.returncode != 0:
+                    stderr_output = (
+                        "".join(stderr_lines) if stderr_lines else "Unknown error"
+                    )
+                    raise RuntimeError(
+                        f"Airbyte container failed with exit code {process.returncode}: {stderr_output}"
+                    )
+            finally:
+                # Clean up temp files
+                try:
+                    tmp_config_path.unlink(missing_ok=True)
+                    tmp_catalog_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
         except Exception as e:
             # Check if it's a docker error (only if docker is available and errors module exists)
@@ -301,6 +505,377 @@ class AirbyteExtractor(BaseEngineExtractor):
             current_state = IncrementalStateManager.read_state(state_path)
             current_state.update(state)
             IncrementalStateManager.write_state(state_path, current_state)
+
+    def check_connection(self) -> Dict[str, Any]:
+        """Check connection using Airbyte's check command.
+
+        Returns:
+            Dictionary with status, message, and error_code if failed
+        """
+        if not DOCKER_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Docker Python library is not installed",
+                "error_code": "MISSING_DEPENDENCY",
+            }
+
+        try:
+            # Try to auto-detect Colima socket if DOCKER_HOST is not set
+            import os
+
+            docker_host = os.getenv("DOCKER_HOST")
+            if not docker_host:
+                colima_socket = Path.home() / ".colima" / "default" / "docker.sock"
+                if colima_socket.exists():
+                    os.environ["DOCKER_HOST"] = f"unix://{colima_socket}"
+
+            # Build Airbyte configuration
+            config = self.config_parser.build_airbyte_config()
+            config_json = json.dumps(config)
+
+            # Ensure config_json is not empty
+            if not config_json or config_json.strip() == "{}":
+                return {
+                    "status": "error",
+                    "message": "Airbyte configuration is empty",
+                    "error_code": "INVALID_CONFIG",
+                }
+
+            # Use temporary file (stdin doesn't work reliably with docker run)
+            import tempfile
+
+            temp_dir = _get_temp_dir()
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False, dir=str(temp_dir)
+            ) as tmp_file:
+                tmp_file.write(config_json)
+                tmp_config_path = Path(tmp_file.name).absolute()
+
+            try:
+                # Mount file into container
+                process = subprocess.Popen(
+                    [
+                        "docker",
+                        "run",
+                        "--rm",
+                        "-v",
+                        f"{tmp_config_path}:/airbyte_config.json:ro",
+                        self.docker_image,
+                        "check",
+                        "--config",
+                        "/airbyte_config.json",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+
+                stdout, stderr = process.communicate(timeout=30)
+            finally:
+                # Clean up temp file
+                try:
+                    tmp_config_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+            if process.returncode == 0:
+                # Parse Airbyte check response (JSONL format)
+                # Look for CONNECTION_STATUS message
+                for line in stdout.split("\n"):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                        if msg.get("type") == "CONNECTION_STATUS":
+                            status = msg.get("connectionStatus", {}).get("status")
+                            if status == "SUCCEEDED":
+                                return {
+                                    "status": "success",
+                                    "message": "Airbyte connection check successful",
+                                }
+                            else:
+                                return {
+                                    "status": "failed",
+                                    "message": f"Connection check failed: {status}",
+                                    "error_code": "AUTH_FAILED",
+                                }
+                    except json.JSONDecodeError:
+                        continue
+
+                # If no CONNECTION_STATUS found but exit code is 0, assume success
+                return {
+                    "status": "success",
+                    "message": "Airbyte connection check successful",
+                }
+            else:
+                # Parse error from stderr or stdout
+                # Airbyte outputs JSONL format, so we need to parse line by line
+                error_messages = []
+                for line in stdout.split("\n"):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                        if msg.get("type") == "LOG" and msg.get("log", {}).get(
+                            "level"
+                        ) in ["ERROR", "FATAL"]:
+                            error_messages.append(msg.get("log", {}).get("message", ""))
+                        elif (
+                            msg.get("type") == "TRACE"
+                            and msg.get("trace", {}).get("type") == "ERROR"
+                        ):
+                            error_info = msg.get("trace", {}).get("error", {})
+                            error_messages.append(
+                                error_info.get("message", "")
+                                or error_info.get("internal_message", "")
+                            )
+                    except json.JSONDecodeError:
+                        continue
+
+                # Also check stderr
+                if stderr.strip():
+                    error_messages.append(stderr.strip())
+
+                error_msg = (
+                    " | ".join(error_messages)
+                    if error_messages
+                    else "Connection check failed"
+                )
+
+                # Determine error code based on error message
+                error_code = "AUTH_FAILED"
+                if "account_id" in error_msg.lower() or "required" in error_msg.lower():
+                    error_code = "MISSING_CONFIG"
+                elif "timeout" in error_msg.lower():
+                    error_code = "TIMEOUT_ERROR"
+                elif (
+                    "connection" in error_msg.lower() or "network" in error_msg.lower()
+                ):
+                    error_code = "CONNECTION_ERROR"
+
+                return {
+                    "status": "failed",
+                    "message": error_msg,
+                    "error_code": error_code,
+                }
+
+        except subprocess.TimeoutExpired:
+            return {
+                "status": "failed",
+                "message": "Airbyte connection check timeout",
+                "error_code": "TIMEOUT_ERROR",
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Airbyte connection check error: {e}",
+                "error_code": "CHECK_ERROR",
+            }
+
+    def discover(self) -> Dict[str, Any]:
+        """Discover available streams using Airbyte's discover command.
+
+        Returns:
+            Dictionary with streams list and metadata
+        """
+        if not DOCKER_AVAILABLE:
+            return {
+                "streams": [],
+                "metadata": {},
+                "error": "Docker Python library is not installed",
+            }
+
+        try:
+            # Try to auto-detect Colima socket if DOCKER_HOST is not set
+            import os
+
+            docker_host = os.getenv("DOCKER_HOST")
+            if not docker_host:
+                colima_socket = Path.home() / ".colima" / "default" / "docker.sock"
+                if colima_socket.exists():
+                    os.environ["DOCKER_HOST"] = f"unix://{colima_socket}"
+
+            # Build Airbyte configuration
+            config = self.config_parser.build_airbyte_config()
+            config_json = json.dumps(config)
+
+            # Log config for debugging (without secrets)
+            config_debug = {
+                k: "***" if "secret" in k.lower() or "key" in k.lower() else v
+                for k, v in config.items()
+            }
+            self.logger.debug(
+                f"Airbyte discover config: {json.dumps(config_debug, indent=2)}",
+                extra={"event_type": "discover_config_debug"},
+            )
+
+            # Use temporary file (stdin doesn't work reliably with docker run)
+            import tempfile
+
+            temp_dir = _get_temp_dir()
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False, dir=str(temp_dir)
+            ) as tmp_file:
+                tmp_file.write(config_json)
+                tmp_file.flush()  # Ensure data is written
+                os.fsync(tmp_file.fileno())  # Force write to disk
+                tmp_config_path = Path(tmp_file.name).absolute()
+
+                # Verify file was written correctly
+                if not tmp_config_path.exists() or tmp_config_path.stat().st_size == 0:
+                    return {
+                        "streams": [],
+                        "metadata": {},
+                        "error": "Failed to write config file",
+                    }
+
+            try:
+                # Mount file into container
+                process = subprocess.Popen(
+                    [
+                        "docker",
+                        "run",
+                        "--rm",
+                        "-v",
+                        f"{tmp_config_path}:/airbyte_config.json:ro",
+                        self.docker_image,
+                        "discover",
+                        "--config",
+                        "/airbyte_config.json",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+
+                stdout, stderr = process.communicate(timeout=60)
+            finally:
+                # Clean up temp file
+                try:
+                    tmp_config_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+            if process.returncode == 0:
+                # Parse Airbyte discover response (JSONL format)
+                # Look for CATALOG message
+                catalog = None
+                for line in stdout.split("\n"):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                        if msg.get("type") == "CATALOG":
+                            catalog = msg.get("catalog", {})
+                            break
+                    except json.JSONDecodeError:
+                        continue
+
+                if catalog:
+                    streams = []
+                    if "streams" in catalog:
+                        for stream in catalog["streams"]:
+                            streams.append(
+                                {
+                                    "name": stream.get("name"),
+                                    "type": "stream",
+                                    "schema": stream.get("json_schema", {}).get(
+                                        "properties", {}
+                                    ),
+                                }
+                            )
+                    return {"streams": streams, "metadata": {}}
+                else:
+                    # Check for errors in output even if returncode is 0
+                    error_messages = []
+                    for line in stdout.split("\n"):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            msg = json.loads(line)
+                            if msg.get("type") == "LOG" and msg.get("log", {}).get(
+                                "level"
+                            ) in ["ERROR", "FATAL"]:
+                                error_messages.append(
+                                    msg.get("log", {}).get("message", "")
+                                )
+                            elif (
+                                msg.get("type") == "TRACE"
+                                and msg.get("trace", {}).get("type") == "ERROR"
+                            ):
+                                error_info = msg.get("trace", {}).get("error", {})
+                                error_messages.append(
+                                    error_info.get("message", "")
+                                    or error_info.get("internal_message", "")
+                                )
+                        except json.JSONDecodeError:
+                            continue
+
+                    error_msg = (
+                        " | ".join(error_messages)
+                        if error_messages
+                        else "No CATALOG message found in discover output"
+                    )
+                    return {
+                        "streams": [],
+                        "metadata": {},
+                        "error": error_msg,
+                    }
+            else:
+                # Parse error from stderr or stdout
+                error_messages = []
+                for line in stdout.split("\n"):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                        if msg.get("type") == "LOG" and msg.get("log", {}).get(
+                            "level"
+                        ) in ["ERROR", "FATAL"]:
+                            error_messages.append(msg.get("log", {}).get("message", ""))
+                        elif (
+                            msg.get("type") == "TRACE"
+                            and msg.get("trace", {}).get("type") == "ERROR"
+                        ):
+                            error_info = msg.get("trace", {}).get("error", {})
+                            error_messages.append(
+                                error_info.get("message", "")
+                                or error_info.get("internal_message", "")
+                            )
+                    except json.JSONDecodeError:
+                        continue
+
+                if stderr.strip():
+                    error_messages.append(stderr.strip())
+
+                error_msg = (
+                    " | ".join(error_messages)
+                    if error_messages
+                    else (stderr.strip() or stdout.strip() or "Discover failed")
+                )
+                return {
+                    "streams": [],
+                    "metadata": {},
+                    "error": error_msg,
+                }
+
+        except subprocess.TimeoutExpired:
+            return {
+                "streams": [],
+                "metadata": {},
+                "error": "Airbyte discover command timeout",
+            }
+        except Exception as e:
+            return {
+                "streams": [],
+                "metadata": {},
+                "error": f"Airbyte discover error: {e}",
+            }
 
 
 class MeltanoExtractor(BaseEngineExtractor):
