@@ -407,7 +407,7 @@ dativo run \
 - ✅ State file created with file modification time tracking
 - ✅ Second run processes file again (since file was modified) - all 5 records in S3
 - ✅ Note: CSV incremental sync tracks file modification time, not cursor field values
-- ✅ State file updated with new cursor value
+- ✅ State file updated with new file modification time
 
 ---
 

@@ -103,6 +103,19 @@ def create_incremental_strategy(
             # Default to file_modified_time for file-based sources
             strategy_name = "file_modified_time"
 
+    # Validate configuration: file_modified_time strategy doesn't use cursor_field
+    if strategy_name == "file_modified_time" and incremental_config.get("cursor_field"):
+        import warnings
+
+        warnings.warn(
+            f"Configuration error: 'cursor_field' is specified but strategy is '{strategy_name}'. "
+            f"CSV incremental sync with 'file_modified_time' strategy tracks file modification time, "
+            f"not cursor field values. The 'cursor_field' setting will be ignored. "
+            f"If you want cursor-based incremental sync, use 'strategy: cursor_field' instead.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     # Get state path
     state_path_str = incremental_config.get("state_path")
     if state_path_str:
