@@ -29,13 +29,13 @@ def load_schema():
 
 
 def convert_asset_to_odcs_format(asset_data):
-    """Convert asset definition to ODCS v3.0.2 format."""
-    if "asset" in asset_data:
-        # Old format with nested 'asset' key
-        odcs_data = asset_data["asset"].copy()
-    else:
-        # Already in new format
-        odcs_data = asset_data.copy()
+    """Ensure required ODCS v3.0.2 fields are present in asset definition.
+
+    Note: This function only adds missing required fields. All assets must
+    already be in flat ODCS format (no nested 'asset:' wrapper).
+    """
+    # Copy to avoid modifying original
+    odcs_data = asset_data.copy()
 
     # Ensure required ODCS fields
     if "$schema" not in odcs_data:
@@ -54,17 +54,6 @@ def convert_asset_to_odcs_format(asset_data):
         import uuid
 
         odcs_data["id"] = str(uuid.uuid4())
-
-    # Migrate governance to team if needed
-    if "governance" in odcs_data:
-        governance = odcs_data.get("governance", {})
-        if "owner" in governance:
-            # Convert to ODCS team format (simplified)
-            odcs_data["team"] = {"owner": governance["owner"]}
-
-        # Move tags to top level if present
-        if "tags" in governance and "tags" not in odcs_data:
-            odcs_data["tags"] = governance["tags"]
 
     return odcs_data
 
