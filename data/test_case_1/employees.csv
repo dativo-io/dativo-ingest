@@ -1,0 +1,4 @@
+id,name,email,department,salary
+1,John Doe,john@example.com,Engineering,120000
+2,Jane Smith,jane@example.com,Marketing,95000
+3,Bob Johnson,bob@example.com,Sales,85000

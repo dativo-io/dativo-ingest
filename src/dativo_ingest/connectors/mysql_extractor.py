@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from ..config import SourceConfig
+from ..incremental import create_incremental_strategy
+from ..incremental.base import IncrementalStrategy
+from ..incremental.strategies import CursorFieldStrategy
 from ..validator import IncrementalStateManager
 
 
@@ -237,13 +240,23 @@ class MySQLExtractor:
                 "mysql-connector-python is required for MySQL extraction. Install with: pip install mysql-connector-python"
             )
 
-        # Get incremental configuration
-        incremental = self.source_config.incremental or {}
-        strategy = incremental.get("strategy", "updated_at")
-        cursor_field_default = incremental.get("cursor_field")
-        lookback_days = incremental.get("lookback_days", 0)
-        state_path_str = incremental.get("state_path", "")
-        state_path = Path(state_path_str) if state_path_str else None
+        # Create incremental strategy if configured
+        incremental_strategy: Optional[IncrementalStrategy] = None
+        if self.source_config.incremental:
+            incremental_strategy = create_incremental_strategy(
+                self.source_config.incremental,
+                default_state_path=None,
+            )
+
+        # Get cursor field default for backward compatibility
+        cursor_field_default = None
+        if self.source_config.incremental:
+            cursor_field_default = self.source_config.incremental.get("cursor_field")
+
+        # For databases, we use SQL WHERE clauses, so lookback_days is handled in query
+        lookback_days = 0
+        if self.source_config.incremental:
+            lookback_days = self.source_config.incremental.get("lookback_days", 0)
 
         batch_size = self.engine_options.get("batch_size", 10000)
 
@@ -293,13 +306,26 @@ class MySQLExtractor:
                     self._get_cursor_field(table_config) or cursor_field_default
                 )
 
-                # Get cursor value from state if available
+                # If using incremental strategy, get cursor field from strategy
+                if incremental_strategy and isinstance(
+                    incremental_strategy, CursorFieldStrategy
+                ):
+                    cursor_field = incremental_strategy.cursor_field or cursor_field
+
+                # Get cursor value from strategy if available
                 cursor_value = None
-                if state_path and cursor_field:
-                    state_data = IncrementalStateManager.read_state(state_path)
+                if incremental_strategy and isinstance(
+                    incremental_strategy, CursorFieldStrategy
+                ):
+                    cursor_value = incremental_strategy.get_last_cursor_value(
+                        object_name
+                    )
+                elif cursor_field and incremental_strategy:
+                    # Fallback: try to get from state directly
+                    state = incremental_strategy.read_state()
                     state_key = f"{object_name}.{cursor_field}"
-                    if state_key in state_data:
-                        cursor_value = state_data[state_key].get("last_value")
+                    if state_key in state:
+                        cursor_value = state[state_key].get("last_value")
 
                 # Build query
                 query, params = self._build_query(
@@ -309,8 +335,8 @@ class MySQLExtractor:
                     lookback_days=lookback_days,
                 )
 
-                # Track last cursor value for state update
-                last_cursor_value = None
+                # Track all processed records for state update
+                all_processed_records = []
                 records_processed = 0
 
                 # Execute query with dictionary cursor (returns dicts directly)
@@ -346,27 +372,20 @@ class MySQLExtractor:
                                             "ascii"
                                         )
 
-                        # Track last cursor value
-                        if cursor_field and batch:
-                            last_record = batch[-1]
-                            if cursor_field in last_record:
-                                last_cursor_value = last_record[cursor_field]
-
+                        all_processed_records.extend(batch)
                         records_processed += len(batch)
                         yield batch
 
-                    # Update state after successful processing
-                    if state_path and cursor_field and last_cursor_value is not None:
-                        state_key = f"{object_name}.{cursor_field}"
-                        # Read current state
-                        state_data = IncrementalStateManager.read_state(state_path)
-                        # Update cursor value
-                        if state_key not in state_data:
-                            state_data[state_key] = {}
-                        state_data[state_key]["last_value"] = last_cursor_value
-                        state_data[state_key]["updated_at"] = datetime.now().isoformat()
-                        # Write updated state
-                        IncrementalStateManager.write_state(state_path, state_data)
+                    # Update state after successful processing using strategy
+                    if incremental_strategy and all_processed_records:
+                        entity_metadata = {
+                            "object_name": object_name,
+                            "name": object_name,
+                            "table_name": table_name,
+                        }
+                        incremental_strategy.update_state(
+                            entity_metadata, all_processed_records
+                        )
                 finally:
                     cursor.close()
 

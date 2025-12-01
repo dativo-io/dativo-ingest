@@ -535,3 +535,139 @@ catalog:
         assert job_config.catalog.database == "test_db"
         assert job_config.catalog.push_lineage is True
         assert job_config.catalog.push_metadata is True
+
+
+class TestExpandEnvVariable:
+    """Test environment variable expansion function."""
+
+    def test_expand_simple_var(self, monkeypatch):
+        """Test expanding simple ${VAR} syntax."""
+        monkeypatch.setenv("BUCKET", "test-bucket")
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        result = _expand_env_variable("${BUCKET}")
+        assert result == "test-bucket"
+
+    def test_expand_var_with_default_not_set(self):
+        """Test expanding ${VAR:-default} when variable is not set."""
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        # Ensure ENV is not set
+        if "ENV" in os.environ:
+            del os.environ["ENV"]
+
+        result = _expand_env_variable("${ENV:-prod}")
+        assert result == "prod"
+
+    def test_expand_var_with_default_when_set(self, monkeypatch):
+        """Test expanding ${VAR:-default} when variable is set."""
+        monkeypatch.setenv("ENV", "dev")
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        result = _expand_env_variable("${ENV:-prod}")
+        assert result == "dev"
+
+    def test_expand_embedded_var_with_default(self):
+        """Test expanding embedded ${VAR:-default} in larger string."""
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        # Ensure ENV is not set
+        if "ENV" in os.environ:
+            del os.environ["ENV"]
+
+        result = _expand_env_variable("my-bucket-${ENV:-prod}")
+        assert result == "my-bucket-prod"
+
+    def test_expand_embedded_var_with_default_when_set(self, monkeypatch):
+        """Test expanding embedded ${VAR:-default} when variable is set."""
+        monkeypatch.setenv("ENV", "dev")
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        result = _expand_env_variable("my-bucket-${ENV:-prod}")
+        assert result == "my-bucket-dev"
+
+    def test_expand_multiple_embedded_vars(self, monkeypatch):
+        """Test expanding multiple embedded variables in one string."""
+        monkeypatch.setenv("ENV", "dev")
+        monkeypatch.setenv("REGION", "us-east-1")
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        result = _expand_env_variable(
+            "prefix-${ENV:-prod}-middle-${REGION:-us-west-2}-suffix"
+        )
+        assert result == "prefix-dev-middle-us-east-1-suffix"
+
+    def test_expand_multiple_embedded_vars_with_defaults(self):
+        """Test expanding multiple embedded variables with defaults when not set."""
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        # Ensure vars are not set
+        for var in ["ENV", "REGION"]:
+            if var in os.environ:
+                del os.environ[var]
+
+        result = _expand_env_variable(
+            "prefix-${ENV:-prod}-middle-${REGION:-us-west-2}-suffix"
+        )
+        assert result == "prefix-prod-middle-us-west-2-suffix"
+
+    def test_expand_mixed_var_types(self, monkeypatch):
+        """Test expanding mix of ${VAR} and ${VAR:-default} syntax."""
+        monkeypatch.setenv("BUCKET", "test-bucket")
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        # Ensure ENV is not set
+        if "ENV" in os.environ:
+            del os.environ["ENV"]
+
+        result = _expand_env_variable("${BUCKET}-${ENV:-prod}")
+        assert result == "test-bucket-prod"
+
+    def test_expand_none_value(self):
+        """Test that None values are returned as-is."""
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        result = _expand_env_variable(None)
+        assert result is None
+
+    def test_expand_non_string_value(self):
+        """Test that non-string values are returned as-is."""
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        result = _expand_env_variable(123)
+        assert result == 123
+
+        result = _expand_env_variable({"key": "value"})
+        assert result == {"key": "value"}
+
+    def test_expand_unset_var_without_default(self, monkeypatch):
+        """Test expanding ${VAR} when variable is not set."""
+        from dativo_ingest.catalog.base import _expand_env_variable
+
+        # Ensure VAR is not set
+        if "UNSET_VAR" in os.environ:
+            del os.environ["UNSET_VAR"]
+
+        result = _expand_env_variable("${UNSET_VAR}")
+        # Should return None or empty string depending on os.path.expandvars behavior
+        assert result is None or result == ""
+
+    def test_cli_expand_env_variable_same_behavior(self, monkeypatch):
+        """Test that CLI version has the same behavior as catalog version."""
+        monkeypatch.setenv("ENV", "dev")
+        from dativo_ingest.catalog.base import _expand_env_variable as catalog_expand
+        from dativo_ingest.cli import _expand_env_variable as cli_expand
+
+        test_cases = [
+            "my-bucket-${ENV:-prod}",
+            "${ENV:-prod}",
+            "prefix-${ENV:-prod}-suffix",
+        ]
+
+        for test_case in test_cases:
+            catalog_result = catalog_expand(test_case)
+            cli_result = cli_expand(test_case)
+            assert catalog_result == cli_result, (
+                f"Results differ for '{test_case}': "
+                f"catalog={catalog_result}, cli={cli_result}"
+            )

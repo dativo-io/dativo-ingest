@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
 from ..config import ConnectorRecipe, SourceConfig
+from ..incremental import create_incremental_strategy
+from ..incremental.base import IncrementalStrategy
+from ..incremental.strategies import FileModifiedTimeStrategy
 from ..validator import IncrementalStateManager
 from .engine_framework import AirbyteExtractor, BaseEngineExtractor
 
@@ -299,12 +302,17 @@ class GDriveCSVExtractor:
         delimiter = self.engine_options.get("delimiter", ",")
         quote_char = self.engine_options.get("quote_char", '"')
 
-        # Get incremental configuration
-        incremental = self.source_config.incremental or {}
-        strategy = incremental.get("strategy", "file_modified_time")
-        lookback_days = incremental.get("lookback_days", 0)
-        state_path_str = incremental.get("state_path", "")
-        state_path = Path(state_path_str) if state_path_str else None
+        # Create incremental strategy if configured
+        incremental_strategy: Optional[IncrementalStrategy] = None
+        if self.source_config.incremental:
+            # Default to file_modified_time for GDrive CSV files
+            incremental_config = self.source_config.incremental.copy()
+            if not incremental_config.get("strategy"):
+                incremental_config["strategy"] = "file_modified_time"
+            incremental_strategy = create_incremental_strategy(
+                incremental_config,
+                default_state_path=None,
+            )
 
         # Process each file
         for file_config in files:
@@ -313,23 +321,31 @@ class GDriveCSVExtractor:
                 continue
 
             # Check incremental state if enabled
-            if strategy == "file_modified_time" and state_path:
-                file_metadata = file_config
-                modified_time = self._get_file_modified_time(file_metadata)
+            file_metadata = file_config
+            modified_time = self._get_file_modified_time(file_metadata)
+            modified_time_iso = modified_time.isoformat() if modified_time else None
 
-                if modified_time:
-                    file_id_str = str(file_id)
-                    modified_time_iso = modified_time.isoformat()
+            # Create entity_metadata once for use throughout file processing
+            entity_metadata = {
+                "file_id": str(file_id),
+                "file_path": str(file_id),
+                "path": str(file_id),
+                "modified_time": modified_time_iso,
+            }
 
-                    if IncrementalStateManager.should_skip_file(
-                        file_id=file_id_str,
-                        current_modified_time=modified_time_iso,
-                        state_path=state_path,
-                        lookback_days=lookback_days,
-                    ):
-                        continue  # Skip this file
+            if incremental_strategy:
+                if not incremental_strategy.should_process_entity(entity_metadata):
+                    self.logger.info(
+                        f"Skipping file (already processed): {file_id}",
+                        extra={
+                            "file_id": str(file_id),
+                            "event_type": "gdrive_file_skipped",
+                        },
+                    )
+                    continue  # Skip this file
 
             # Download file to temporary location
+            all_processed_records = []
             with tempfile.NamedTemporaryFile(
                 mode="w+b", suffix=".csv", delete=False
             ) as tmp_file:
@@ -358,18 +374,40 @@ class GDriveCSVExtractor:
                     ):
                         # Convert DataFrame to list of dictionaries
                         records = chunk_df.to_dict("records")
+
+                        # Replace NaN with None for JSON serialization
+                        for record in records:
+                            for key, value in record.items():
+                                if pd.isna(value):
+                                    record[key] = None
+
+                        # Filter records using incremental strategy (if needed)
+                        if incremental_strategy and records:
+                            records = incremental_strategy.filter_records(
+                                records, entity_metadata
+                            )
+
                         if records:
+                            all_processed_records.extend(records)
                             yield records
 
                     # Update state after successful processing
-                    if state_path and modified_time:
-                        file_id_str = str(file_id)
-                        modified_time_iso = modified_time.isoformat()
-                        IncrementalStateManager.update_file_state(
-                            file_id=file_id_str,
-                            modified_time=modified_time_iso,
-                            state_path=state_path,
+                    # For file-based strategies (FileModifiedTimeStrategy), update state even if
+                    # there are no processed records, as they only need the modification time.
+                    # For cursor-based strategies, only update if there are processed records.
+                    if incremental_strategy:
+                        is_file_based_strategy = isinstance(
+                            incremental_strategy, FileModifiedTimeStrategy
                         )
+                        # File-based strategies need state update even for empty files to prevent infinite reprocessing
+                        # Cursor-based strategies only update when there are processed records
+                        should_update_state = (
+                            is_file_based_strategy or len(all_processed_records) > 0
+                        )
+                        if should_update_state:
+                            incremental_strategy.update_state(
+                                entity_metadata, all_processed_records
+                            )
 
                 finally:
                     # Clean up temporary file

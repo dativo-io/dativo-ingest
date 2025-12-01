@@ -30,7 +30,6 @@ target:
       uri: "http://nessie.acme.internal:19120/api/v1"
     s3:
       bucket: "acme-data-lake"
-      prefix: "raw/hr/employees"
 
 # Tag overrides - propagated to Iceberg table properties
 # These override or extend the tags defined in the asset definition

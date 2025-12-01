@@ -246,7 +246,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "raw/stripe/customers"
 ```
 
 **Asset Definition** - ODCS v3.0.2 schema with governance:

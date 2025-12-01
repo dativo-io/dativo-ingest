@@ -130,7 +130,6 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-      prefix: "mycompany/mydata"
 ```
 
 ### Incremental Sync
