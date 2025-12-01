@@ -88,8 +88,7 @@ def test_asset_structure():
             asset_data = yaml.safe_load(f)
 
         # ODCS v3.0.2 uses flat structure (no nested 'asset:' wrapper)
-        # Check both flat structure and legacy nested structure for compatibility
-        asset_dict = asset_data.get("asset", asset_data)
+        asset_dict = asset_data
 
         # Check for compliance section
         if "compliance" not in asset_dict:

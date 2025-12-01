@@ -169,7 +169,7 @@ source_connector_path: connectors/sources/stripe.yaml
 target_connector: iceberg
 target_connector_path: connectors/targets/iceberg.yaml
 asset: stripe_customers
-asset_path: assets/stripe/v1.0/customers.yaml
+asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
   objects: [customers]
 target:
@@ -719,7 +719,7 @@ source_connector_path: connectors/sources/stripe.yaml
 target_connector: azure_blob
 target_connector_path: connectors/targets/azure_blob.yaml
 asset: stripe_customers
-asset_path: assets/stripe/v1.0/customers.yaml
+asset_path: assets/examples/stripe/v1.0/customers.yaml
 target:
   connection:
     azure_blob:

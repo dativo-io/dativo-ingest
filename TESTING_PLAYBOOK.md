@@ -255,7 +255,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: employees
-asset_path: assets/csv/v1.0/employees.yaml
+asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
   files:
     - path: data/test_case_1/employees.csv
@@ -353,7 +353,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: orders
-asset_path: assets/csv/v1.0/orders.yaml
+asset_path: assets/examples/csv/v1.0/orders.yaml
 source:
   files:
     - path: data/test_case_2/orders.csv
@@ -443,7 +443,7 @@ source_connector_path: connectors/stripe.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
-asset_path: assets/stripe/v1.0/customers.yaml
+asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
   objects: [customers]
   incremental:
@@ -509,7 +509,7 @@ source_connector_path: connectors/hubspot.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: hubspot_contacts
-asset_path: assets/hubspot/v1.0/contacts.yaml
+asset_path: assets/examples/hubspot/v1.0/contacts.yaml
 source:
   objects: [contacts]
   incremental:
@@ -529,7 +529,7 @@ source_connector_path: connectors/hubspot.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: hubspot_companies
-asset_path: assets/hubspot/v1.0/companies.yaml
+asset_path: assets/examples/hubspot/v1.0/companies.yaml
 source:
   objects: [companies]
 target:
@@ -546,7 +546,7 @@ source_connector_path: connectors/hubspot.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: hubspot_deals
-asset_path: assets/hubspot/v1.0/deals.yaml
+asset_path: assets/examples/hubspot/v1.0/deals.yaml
 source:
   objects: [deals]
 target:
@@ -640,7 +640,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products
-asset_path: assets/csv/v1.0/products.yaml
+asset_path: assets/examples/csv/v1.0/products.yaml
 source:
   files:
     - path: data/test_case_5/products_invalid.csv
@@ -742,7 +742,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products_warn
-asset_path: assets/csv/v1.0/products_warn.yaml
+asset_path: assets/examples/csv/v1.0/products_warn.yaml
 source:
   files:
     - path: data/test_case_5/products_invalid.csv
@@ -859,7 +859,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: db_employees
-asset_path: assets/postgres/v1.0/db_employees.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees.yaml
 source:
   tables:
     - name: employees
@@ -947,7 +947,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: db_employees_incremental
-asset_path: assets/postgres/v1.0/db_employees_incremental.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
 source:
   tables:
     - name: employees
@@ -1020,7 +1020,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: markdown_kv
 target_connector_path: connectors/markdown_kv.yaml
 asset: db_employees_incremental
-asset_path: assets/postgres/v1.0/db_employees_incremental.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
 source:
   tables:
     - name: employees
@@ -1159,7 +1159,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products
-asset_path: assets/csv/v1.0/products.yaml
+asset_path: assets/examples/csv/v1.0/products.yaml
 source:
   custom_reader: "plugins/testcase10/json_api_reader.py:JSONAPIReader"
   connection:
@@ -1268,7 +1268,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: large_dataset
-asset_path: assets/csv/v1.0/large_dataset.yaml
+asset_path: assets/examples/csv/v1.0/large_dataset.yaml
 source:
   custom_reader: "examples/plugins/rust/target/release/libcsv_reader_plugin.so:create_reader"
   files:
@@ -1386,7 +1386,7 @@ source_connector_path: connectors/google_sheets.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: test_data
-asset_path: assets/google_sheets/v1.0/test_data.yaml
+asset_path: assets/examples/google_sheets/v1.0/test_data.yaml
 source:
   spreadsheet_id: "YOUR_SPREADSHEET_ID_HERE"  # From spreadsheet URL
   sheet_name: "Sheet1"
@@ -1448,7 +1448,7 @@ source_connector_path: connectors/gdrive_csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products
-asset_path: assets/csv/v1.0/products.yaml
+asset_path: assets/examples/csv/v1.0/products.yaml
 source:
   files:
     - file_id: "YOUR_GDRIVE_FILE_ID_HERE"
@@ -1506,7 +1506,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: employees
-asset_path: assets/csv/v1.0/employees.yaml
+asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
   files:
     - path: data/test_case_14/${tenant}_data.csv
@@ -1580,7 +1580,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: db_employees
-asset_path: assets/postgres/v1.0/db_employees.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees.yaml
 source:
   tables:
     - name: employees
@@ -1745,7 +1745,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: sales_${strategy}
-asset_path: assets/csv/v1.0/sales_${strategy}.yaml
+asset_path: assets/examples/csv/v1.0/sales_${strategy}.yaml
 source:
   files:
     - path: data/test_case_16/sales_data.csv
@@ -1808,7 +1808,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: employees
-asset_path: assets/csv/v1.0/employees.yaml
+asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
   files:
     - path: data/test_case_1/employees.csv
@@ -1956,7 +1956,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: db_employees
-asset_path: assets/postgres/v1.0/db_employees.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees.yaml
 source:
   tables:
     - name: employees
@@ -1998,7 +1998,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: employees
-asset_path: assets/csv/v1.0/employees.yaml
+asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
   files:
     - path: data/test_case_1/employees.csv
@@ -2017,7 +2017,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: employees
-asset_path: assets/csv/v1.0/employees.yaml
+asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
   files:
     - path: data/nonexistent.csv
@@ -2070,7 +2070,7 @@ source_connector_path: connectors/stripe.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
-asset_path: assets/stripe/v1.0/customers.yaml
+asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
   objects: [customers]
   incremental:
@@ -2097,7 +2097,7 @@ source_connector_path: connectors/hubspot.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: hubspot_contacts
-asset_path: assets/hubspot/v1.0/contacts.yaml
+asset_path: assets/examples/hubspot/v1.0/contacts.yaml
 source:
   objects: [contacts]
   incremental:
@@ -2124,7 +2124,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: db_employees_incremental
-asset_path: assets/postgres/v1.0/db_employees_incremental.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
 source:
   tables:
     - name: employees
