@@ -11,8 +11,12 @@ The main entry point is the `load_secrets()` function, which automatically
 instantiates and uses the appropriate secret manager based on configuration.
 """
 
+import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+import yaml
 
 from .base import SecretManager
 from .managers import (
@@ -26,6 +30,8 @@ from .managers import (
 # Public API
 __all__ = [
     "load_secrets",
+    "load_secrets_and_set_env",
+    "load_secret_manager_config",
     "create_secret_manager",
     "SecretManager",
     "EnvironmentSecretManager",
@@ -115,6 +121,114 @@ def load_secrets(
         config=manager_config,
     )
     return manager.load_secrets(tenant_id)
+
+
+def load_secret_manager_config(
+    config_arg: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """Load secret manager configuration from path or inline JSON.
+
+    Args:
+        config_arg: Path to YAML/JSON file, inline JSON string, or None.
+                    Falls back to DATIVO_SECRET_MANAGER_CONFIG env var if None.
+
+    Returns:
+        Configuration dictionary or None if not provided
+
+    Raises:
+        ValueError: If config file format is invalid or JSON is malformed
+    """
+    candidate = config_arg or os.getenv("DATIVO_SECRET_MANAGER_CONFIG")
+    if not candidate:
+        return None
+
+    candidate_path = Path(candidate)
+    if candidate_path.exists():
+        with open(candidate_path, "r", encoding="utf-8") as handle:
+            content = handle.read()
+        suffix = candidate_path.suffix.lower()
+        if suffix in {".yaml", ".yml"}:
+            return yaml.safe_load(content) or {}
+        if suffix == ".json":
+            return json.loads(content or "{}")
+        # Fall back to JSON parsing for arbitrary extensions
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Secret manager config file '{candidate_path}' must be YAML or JSON."
+            ) from exc
+
+    # Treat argument as inline JSON
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "Secret manager config must be a path to a YAML/JSON file or a JSON string."
+        ) from exc
+
+
+def load_secrets_and_set_env(
+    tenant_id: str,
+    secrets_dir: Path,
+    manager_type: str = "env",
+    manager_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Load secrets and set them as environment variables.
+
+    This function loads secrets using the configured secret manager and
+    automatically sets them as environment variables for use by connectors.
+    Secrets from .env files are flattened into individual environment variables.
+
+    Args:
+        tenant_id: Tenant identifier
+        secrets_dir: Base directory for filesystem manager
+        manager_type: Secret manager identifier (env, filesystem, vault, aws, gcp)
+        manager_config: Optional configuration dictionary passed to the manager
+
+    Returns:
+        Dictionary of loaded secrets (may be empty if loading fails)
+
+    Note:
+        Existing environment variables are not overwritten.
+    """
+    secrets = {}
+    try:
+        secrets = load_secrets(
+            tenant_id=tenant_id,
+            secrets_dir=secrets_dir,
+            manager_type=manager_type,
+            manager_config=manager_config,
+        )
+
+        # Set environment variables from loaded secrets
+        # Secrets from .env files are parsed as dictionaries, so we need to flatten them
+        for secret_name, secret_value in secrets.items():
+            if isinstance(secret_value, dict):
+                # For .env files, secret_value is a dict of KEY=VALUE pairs
+                for key, value in secret_value.items():
+                    if key not in os.environ:
+                        os.environ[key] = str(value)
+            elif isinstance(secret_value, (str, int, float, bool)):
+                # For simple values, use the secret name as the env var name
+                if secret_name.upper() not in os.environ:
+                    os.environ[secret_name.upper()] = str(secret_value)
+
+        # For filesystem manager, set environment variables from loaded secrets
+        # This allows config values like ${VAR} to be expanded
+        if manager_type == "filesystem":
+            for secret_name, secret_value in secrets.items():
+                if isinstance(secret_value, dict):
+                    # For .env files, secret_value is a dict of KEY=VALUE pairs
+                    for key, value in secret_value.items():
+                        if isinstance(value, str) and key not in os.environ:
+                            os.environ[key] = value
+    except ValueError:
+        # Secret loading failures are handled gracefully
+        # Return empty dict to allow execution to continue
+        pass
+
+    return secrets
 
 
 # Re-export for backwards compatibility
