@@ -187,111 +187,52 @@ class AirbyteExtractor(BaseEngineExtractor):
         Returns:
             Airbyte catalog dictionary
         """
-        # Call discover to get full catalog
+        # Call discover to get full catalog (reused to avoid duplicate API calls)
         discover_result = self.discover()
         if discover_result.get("error"):
             raise RuntimeError(
                 f"Failed to discover streams: {discover_result.get('error')}"
             )
 
-        # We need the full catalog structure, not just stream names
-        # Re-run discover to get the full catalog JSON
-        import tempfile
+        # Reuse the full catalog from discover() instead of running it again
+        catalog = discover_result.get("catalog")
+        if not catalog:
+            raise RuntimeError("No catalog found in discover output")
 
-        config_json = json.dumps(config)
-        temp_dir = _get_temp_dir()
+        # Filter catalog to only include requested streams
+        streams = catalog.get("streams", [])
+        if requested_streams:
+            streams = [
+                stream for stream in streams if stream.get("name") in requested_streams
+            ]
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, dir=str(temp_dir)
-        ) as tmp_file:
-            tmp_file.write(config_json)
-            tmp_file.flush()
-            os.fsync(tmp_file.fileno())
-            tmp_config_path = Path(tmp_file.name).absolute()
+        # Convert to ConfiguredAirbyteCatalog format
+        # Each stream needs to be wrapped with sync mode configuration
+        configured_streams = []
+        for stream in streams:
+            configured_stream = {
+                "stream": stream,  # The stream definition from discover
+                "sync_mode": (
+                    "incremental"
+                    if incremental_config.get("enabled")
+                    else "full_refresh"
+                ),
+                "destination_sync_mode": "append",
+            }
 
-        try:
-            process = subprocess.Popen(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "-v",
-                    f"{tmp_config_path}:/airbyte_config.json:ro",
-                    self.docker_image,
-                    "discover",
-                    "--config",
-                    "/airbyte_config.json",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
+            # Add cursor field for incremental sync
+            if incremental_config.get("enabled"):
+                cursor_field = incremental_config.get("cursor_field")
+                if cursor_field:
+                    # Check if cursor field exists in stream schema
+                    stream_schema = stream.get("json_schema", {}).get("properties", {})
+                    if cursor_field in stream_schema:
+                        configured_stream["cursor_field"] = [cursor_field]
 
-            stdout, stderr = process.communicate(timeout=60)
+            configured_streams.append(configured_stream)
 
-            if process.returncode != 0:
-                raise RuntimeError(f"Discover failed: {stderr or stdout}")
-
-            # Parse catalog from discover output
-            catalog = None
-            for line in stdout.split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    msg = json.loads(line)
-                    if msg.get("type") == "CATALOG":
-                        catalog = msg.get("catalog", {})
-                        break
-                except json.JSONDecodeError:
-                    continue
-
-            if not catalog:
-                raise RuntimeError("No catalog found in discover output")
-
-            # Filter catalog to only include requested streams
-            streams = catalog.get("streams", [])
-            if requested_streams:
-                streams = [
-                    stream
-                    for stream in streams
-                    if stream.get("name") in requested_streams
-                ]
-
-            # Convert to ConfiguredAirbyteCatalog format
-            # Each stream needs to be wrapped with sync mode configuration
-            configured_streams = []
-            for stream in streams:
-                configured_stream = {
-                    "stream": stream,  # The stream definition from discover
-                    "sync_mode": (
-                        "incremental"
-                        if incremental_config.get("enabled")
-                        else "full_refresh"
-                    ),
-                    "destination_sync_mode": "append",
-                }
-
-                # Add cursor field for incremental sync
-                if incremental_config.get("enabled"):
-                    cursor_field = incremental_config.get("cursor_field")
-                    if cursor_field:
-                        # Check if cursor field exists in stream schema
-                        stream_schema = stream.get("json_schema", {}).get(
-                            "properties", {}
-                        )
-                        if cursor_field in stream_schema:
-                            configured_stream["cursor_field"] = [cursor_field]
-
-                configured_streams.append(configured_stream)
-
-            # Return ConfiguredAirbyteCatalog format
-            return {"streams": configured_streams}
-        finally:
-            try:
-                tmp_config_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+        # Return ConfiguredAirbyteCatalog format
+        return {"streams": configured_streams}
 
     def _run_airbyte_container(
         self,
@@ -807,7 +748,11 @@ class AirbyteExtractor(BaseEngineExtractor):
                                     ),
                                 }
                             )
-                    return {"streams": streams, "metadata": {}}
+                    return {
+                        "streams": streams,
+                        "metadata": {},
+                        "catalog": catalog,  # Include full catalog for reuse
+                    }
                 else:
                     # Check for errors in output even if returncode is 0
                     error_messages = []

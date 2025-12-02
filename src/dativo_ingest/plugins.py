@@ -4,7 +4,7 @@ import importlib.util
 import inspect
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Type
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Type
 
 from .config import SourceConfig, TargetConfig
 from .exceptions import PluginError, PluginVersionError
@@ -721,3 +721,48 @@ class PluginLoader:
             )
         else:
             raise ValueError(f"Unsupported plugin type: {plugin_type}")
+
+
+def extract_sandbox_config(
+    job_config: Optional[Any],
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Extract sandbox config and plugin config from job_config.
+
+    This utility function extracts sandbox and plugin configuration from a JobConfig
+    instance, handling different object types (Pydantic models, dicts, etc.).
+
+    Args:
+        job_config: JobConfig instance or None
+
+    Returns:
+        Tuple of (sandbox_config, plugin_config) dicts. Both may be None if
+        job_config is None or has no plugins configured.
+    """
+    sandbox_config = None
+    plugin_config = None
+
+    if job_config and job_config.plugins:
+        if hasattr(job_config.plugins, "model_dump"):
+            plugin_config = job_config.plugins.model_dump()
+        elif hasattr(job_config.plugins, "dict"):
+            plugin_config = job_config.plugins.dict()
+        else:
+            plugin_config = (
+                job_config.plugins.__dict__
+                if hasattr(job_config.plugins, "__dict__")
+                else None
+            )
+
+        if job_config.plugins.sandbox:
+            if hasattr(job_config.plugins.sandbox, "model_dump"):
+                sandbox_config = job_config.plugins.sandbox.model_dump()
+            elif hasattr(job_config.plugins.sandbox, "dict"):
+                sandbox_config = job_config.plugins.sandbox.dict()
+            else:
+                sandbox_config = (
+                    job_config.plugins.sandbox.__dict__
+                    if hasattr(job_config.plugins.sandbox, "__dict__")
+                    else None
+                )
+
+    return sandbox_config, plugin_config
