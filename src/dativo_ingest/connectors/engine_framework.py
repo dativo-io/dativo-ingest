@@ -384,21 +384,21 @@ class AirbyteExtractor(BaseEngineExtractor):
             tmp_catalog_path = None
 
             try:
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".json", delete=False, dir=str(temp_dir)
-                ) as tmp_config_file:
-                    tmp_config_file.write(config_json)
-                    tmp_config_file.flush()
-                    os.fsync(tmp_config_file.fileno())
-                    tmp_config_path = Path(tmp_config_file.name).absolute()
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False, dir=str(temp_dir)
+            ) as tmp_config_file:
+                tmp_config_file.write(config_json)
+                tmp_config_file.flush()
+                os.fsync(tmp_config_file.fileno())
+                tmp_config_path = Path(tmp_config_file.name).absolute()
 
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".json", delete=False, dir=str(temp_dir)
-                ) as tmp_catalog_file:
-                    tmp_catalog_file.write(catalog_json)
-                    tmp_catalog_file.flush()
-                    os.fsync(tmp_catalog_file.fileno())
-                    tmp_catalog_path = Path(tmp_catalog_file.name).absolute()
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False, dir=str(temp_dir)
+            ) as tmp_catalog_file:
+                tmp_catalog_file.write(catalog_json)
+                tmp_catalog_file.flush()
+                os.fsync(tmp_catalog_file.fileno())
+                tmp_catalog_path = Path(tmp_catalog_file.name).absolute()
 
                 # Use subprocess with mounted files
                 process = subprocess.Popen(
@@ -468,12 +468,12 @@ class AirbyteExtractor(BaseEngineExtractor):
                 # Clean up temp files - ensure cleanup even if file creation fails
                 try:
                     if tmp_config_path is not None:
-                        tmp_config_path.unlink(missing_ok=True)
+                    tmp_config_path.unlink(missing_ok=True)
                 except Exception:
                     pass
                 try:
                     if tmp_catalog_path is not None:
-                        tmp_catalog_path.unlink(missing_ok=True)
+                    tmp_catalog_path.unlink(missing_ok=True)
                 except Exception:
                     pass
 
