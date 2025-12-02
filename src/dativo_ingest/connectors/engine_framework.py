@@ -562,6 +562,8 @@ class AirbyteExtractor(BaseEngineExtractor):
                 mode="w", suffix=".json", delete=False, dir=str(temp_dir)
             ) as tmp_file:
                 tmp_file.write(config_json)
+                tmp_file.flush()
+                os.fsync(tmp_file.fileno())
                 tmp_config_path = Path(tmp_file.name).absolute()
 
             try:
