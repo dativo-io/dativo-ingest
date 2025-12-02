@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-12-02
+
 ### Changed
 - **Major CLI Refactoring**: Extracted CLI functionality into focused modules for better maintainability
   - `cli.py` reduced from 2,472 lines to 561 lines (77% reduction)
