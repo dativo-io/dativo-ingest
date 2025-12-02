@@ -53,18 +53,20 @@ def startup_sequence(
 
     # 2. Infer tenant_id from jobs if not provided
     if tenant_id is None:
-        tenant_ids = {job.tenant_id for job in jobs if job.tenant_id}
+        # Include None values to detect mixed tenant_id scenarios
+        tenant_ids = {job.tenant_id for job in jobs}
         if len(tenant_ids) > 1:
             raise ValueError(
                 f"Multiple tenant IDs found in jobs: {tenant_ids}. "
                 "All jobs must belong to the same tenant, or provide --tenant-id."
             )
-        tenant_id = tenant_ids.pop() if tenant_ids else None
+        tenant_id = jobs[0].tenant_id if jobs else None
         tenant_source = "inferred from job configurations"
     else:
         # Validate all jobs belong to the provided tenant
+        # Check all jobs, including those with None tenant_id
         for job in jobs:
-            if job.tenant_id and job.tenant_id != tenant_id:
+            if job.tenant_id != tenant_id:
                 raise ValueError(
                     f"Job '{job.asset}' belongs to tenant '{job.tenant_id}', "
                     f"but --tenant-id '{tenant_id}' was provided. "
