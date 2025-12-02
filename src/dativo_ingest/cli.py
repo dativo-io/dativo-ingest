@@ -1748,40 +1748,44 @@ def check_command(args: argparse.Namespace) -> int:
                     from botocore.exceptions import ClientError
 
                     # Get S3 endpoint and credentials from environment or config
+                    # Only use explicit values - let boto3 handle default credential chain for AWS S3
                     endpoint = (
                         s3_config.get("endpoint")
                         or connection.get("endpoint")
                         or os.getenv("S3_ENDPOINT")
                         or os.getenv("MINIO_ENDPOINT")
-                        or "http://localhost:9000"
+                        or None
                     )
                     access_key_id = (
                         s3_config.get("access_key_id")
                         or connection.get("access_key_id")
                         or os.getenv("AWS_ACCESS_KEY_ID")
                         or os.getenv("MINIO_ACCESS_KEY")
-                        or "minioadmin"
+                        or None
                     )
                     secret_access_key = (
                         s3_config.get("secret_access_key")
                         or connection.get("secret_access_key")
                         or os.getenv("AWS_SECRET_ACCESS_KEY")
                         or os.getenv("MINIO_SECRET_KEY")
-                        or "minioadmin"
+                        or None
                     )
                     region = (
                         s3_config.get("region")
                         or connection.get("region")
                         or os.getenv("AWS_REGION")
-                        or "us-east-1"
+                        or None
                     )
 
-                    # Create S3 client with MinIO endpoint if specified
-                    s3_client_kwargs = {
-                        "region_name": region,
-                        "aws_access_key_id": access_key_id,
-                        "aws_secret_access_key": secret_access_key,
-                    }
+                    # Create S3 client - only include explicitly provided values
+                    # For AWS S3, boto3 will use default credential chain if credentials not provided
+                    s3_client_kwargs = {}
+                    if region:
+                        s3_client_kwargs["region_name"] = region
+                    if access_key_id:
+                        s3_client_kwargs["aws_access_key_id"] = access_key_id
+                    if secret_access_key:
+                        s3_client_kwargs["aws_secret_access_key"] = secret_access_key
                     if endpoint and endpoint != "s3.amazonaws.com":
                         s3_client_kwargs["endpoint_url"] = endpoint
 
