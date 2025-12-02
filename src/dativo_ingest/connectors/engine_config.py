@@ -93,6 +93,13 @@ class EngineConfigParser:
         if hasattr(self.source_config, "connection") and self.source_config.connection:
             config.update(self.source_config.connection)
 
+        # Filter out metadata fields that shouldn't be in the final config
+        # Note: 'streams' is used internally for catalog generation but should not
+        # be passed to Airbyte connectors (stream selection belongs in the catalog)
+        metadata_fields = ["type", "from_env", "file_template", "streams"]
+        for field in metadata_fields:
+            config.pop(field, None)
+
         return config
 
     def build_meltano_config(self) -> Dict[str, Any]:
@@ -151,7 +158,7 @@ class EngineConfigParser:
         """Extract and map credentials from connector recipe and source config.
 
         Returns:
-            Dictionary of credentials in engine format
+            Dictionary of credentials in engine format (only actual credential values, no metadata)
         """
         credentials = {}
 
@@ -167,6 +174,8 @@ class EngineConfigParser:
                 if api_key:
                     # Map to engine-specific credential format
                     if self.engine_type == "airbyte":
+                        # Default Airbyte format uses "api_key"
+                        # Connector-specific extractors can override this (e.g., Stripe uses "client_secret")
                         credentials["api_key"] = api_key
                     elif self.engine_type in ["meltano", "singer"]:
                         credentials["api_key"] = api_key
@@ -207,13 +216,24 @@ class EngineConfigParser:
         """Get incremental sync configuration.
 
         Returns:
-            Incremental configuration dictionary
+            Incremental configuration dictionary with 'enabled' field set based on
+            whether incremental is configured in source_config.
         """
         incremental = self.source_config.incremental or {}
         recipe_incremental = self.connector_recipe.incremental or {}
 
+        # Check if incremental is enabled
+        # If incremental dict exists but 'enabled' is not specified, default to True (backward compatibility)
+        # If incremental dict doesn't exist, default to False
+        if self.source_config.incremental is None:
+            incremental_enabled = False
+        else:
+            # Check explicit 'enabled' field, defaulting to True if incremental dict exists
+            incremental_enabled = incremental.get("enabled", True)
+
         # Merge recipe defaults with source config
         config = {
+            "enabled": incremental_enabled,
             "strategy": incremental.get(
                 "strategy", recipe_incremental.get("strategy_default", "updated_after")
             ),

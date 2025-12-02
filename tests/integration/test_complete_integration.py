@@ -73,10 +73,10 @@ def test_asset_structure():
     import yaml
 
     assets_to_check = [
-        "assets/csv/v1.0/employee.yaml",
-        "assets/stripe/v1.0/customers.yaml",
-        "assets/postgres/v1.0/db_orders.yaml",
-        "assets/mysql/v1.0/db_customers.yaml",
+        "tests/fixtures/assets/csv/v1.0/employee.yaml",
+        "tests/fixtures/assets/stripe/v1.0/customers.yaml",
+        "tests/fixtures/assets/postgres/v1.0/db_orders.yaml",
+        "tests/fixtures/assets/mysql/v1.0/db_customers.yaml",
     ]
 
     for asset_path in assets_to_check:
@@ -87,7 +87,8 @@ def test_asset_structure():
         with open(asset_path, "r") as f:
             asset_data = yaml.safe_load(f)
 
-        asset_dict = asset_data.get("asset", {})
+        # ODCS v3.0.2 uses flat structure (no nested 'asset:' wrapper)
+        asset_dict = asset_data
 
         # Check for compliance section
         if "compliance" not in asset_dict:

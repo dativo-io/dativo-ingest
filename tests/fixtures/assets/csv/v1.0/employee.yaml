@@ -90,6 +90,11 @@ compliance:
     access_control: role_based
     encryption_required: true
   user_consent_required: false
+finops:
+  cost_center: HR-001
+  business_tags: [hr, payroll]
+  project: employee-data-platform
+  environment: production
 change_management:
   policy: non-breaking
   approval_required: true

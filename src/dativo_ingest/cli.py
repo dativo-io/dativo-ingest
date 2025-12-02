@@ -1474,19 +1474,172 @@ def check_command(args: argparse.Namespace) -> int:
                 },
             )
         else:
-            # For built-in connectors, we can't easily check without full initialization
-            # Log that check is not available for built-in connectors
-            logger.info(
-                "Source connection check not available for built-in connectors",
-                extra={
-                    "event_type": "source_check_skipped",
-                    "connector_type": source_config.type,
-                },
-            )
-            source_status = {
-                "status": "skipped",
-                "message": f"Connection check not implemented for built-in connector: {source_config.type}",
-            }
+            # For built-in connectors, use Airbyte if available
+            # Route to connector-specific extractors first (same as extract command)
+            # to ensure proper credential mapping and configuration
+            if source_config.type == "stripe":
+                # Stripe uses Airbyte but has custom extractor with StripeConfigParser
+                try:
+                    # Load connector recipe to get Airbyte configuration
+                    from .config import ConnectorRecipe
+
+                    connector_recipe = None
+                    if (
+                        hasattr(job_config, "source_connector_path")
+                        and job_config.source_connector_path
+                    ):
+                        try:
+                            connector_recipe = ConnectorRecipe.from_yaml(
+                                job_config.source_connector_path
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to load connector recipe: {e}",
+                                extra={"event_type": "connector_recipe_warning"},
+                            )
+
+                    if connector_recipe:
+                        from .connectors.stripe_extractor import StripeExtractor
+
+                        # Use StripeExtractor (not AirbyteExtractor) to get proper config parsing
+                        extractor = StripeExtractor(
+                            source_config, connector_recipe, job_config.tenant_id
+                        )
+
+                        # Use Airbyte's check command
+                        check_result = extractor.check_connection()
+                        source_status = check_result
+
+                        logger.info(
+                            f"Source connection check: {check_result.get('status')}",
+                            extra={
+                                "event_type": "source_check_complete",
+                                "status": check_result.get("status"),
+                                "check_message": check_result.get("message"),
+                            },
+                        )
+                    else:
+                        # Fallback if connector recipe not available
+                        source_status = {
+                            "status": "error",
+                            "message": "Connector recipe not available for Airbyte check",
+                        }
+                except Exception as e:
+                    source_status = {
+                        "status": "error",
+                        "message": f"Stripe Airbyte connection check error: {e}",
+                    }
+            elif source_config.type == "hubspot":
+                # HubSpot uses Airbyte but has custom extractor
+                try:
+                    from .config import ConnectorRecipe
+
+                    connector_recipe = None
+                    if (
+                        hasattr(job_config, "source_connector_path")
+                        and job_config.source_connector_path
+                    ):
+                        try:
+                            connector_recipe = ConnectorRecipe.from_yaml(
+                                job_config.source_connector_path
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to load connector recipe: {e}",
+                                extra={"event_type": "connector_recipe_warning"},
+                            )
+
+                    if connector_recipe:
+                        from .connectors.hubspot_extractor import HubSpotExtractor
+
+                        extractor = HubSpotExtractor(
+                            source_config, connector_recipe, job_config.tenant_id
+                        )
+
+                        check_result = extractor.check_connection()
+                        source_status = check_result
+
+                        logger.info(
+                            f"Source connection check: {check_result.get('status')}",
+                            extra={
+                                "event_type": "source_check_complete",
+                                "status": check_result.get("status"),
+                                "check_message": check_result.get("message"),
+                            },
+                        )
+                    else:
+                        source_status = {
+                            "status": "error",
+                            "message": "Connector recipe not available for Airbyte check",
+                        }
+                except Exception as e:
+                    source_status = {
+                        "status": "error",
+                        "message": f"HubSpot Airbyte connection check error: {e}",
+                    }
+            else:
+                # For other connectors, try to determine engine type
+                engine_type = None
+                connector_recipe = None
+                if (
+                    hasattr(job_config, "source_connector_path")
+                    and job_config.source_connector_path
+                ):
+                    try:
+                        from .config import ConnectorRecipe
+
+                        connector_recipe = ConnectorRecipe.from_yaml(
+                            job_config.source_connector_path
+                        )
+                        default_engine = connector_recipe.default_engine
+                        if isinstance(default_engine, dict):
+                            engine_type = default_engine.get("type")
+                        elif default_engine:
+                            engine_type = str(default_engine)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to load connector recipe: {e}",
+                            extra={"event_type": "connector_recipe_warning"},
+                        )
+
+                if engine_type == "airbyte" and connector_recipe:
+                    # Generic Airbyte connector
+                    try:
+                        from .connectors.engine_framework import AirbyteExtractor
+
+                        extractor = AirbyteExtractor(
+                            source_config, connector_recipe, job_config.tenant_id
+                        )
+
+                        check_result = extractor.check_connection()
+                        source_status = check_result
+
+                        logger.info(
+                            f"Source connection check: {check_result.get('status')}",
+                            extra={
+                                "event_type": "source_check_complete",
+                                "status": check_result.get("status"),
+                                "check_message": check_result.get("message"),
+                            },
+                        )
+                    except Exception as e:
+                        source_status = {
+                            "status": "error",
+                            "message": f"Airbyte connection check error: {e}",
+                        }
+                else:
+                    # For other built-in connectors, skip check
+                    logger.info(
+                        "Source connection check not available for built-in connectors",
+                        extra={
+                            "event_type": "source_check_skipped",
+                            "connector_type": source_config.type,
+                        },
+                    )
+                    source_status = {
+                        "status": "skipped",
+                        "message": f"Connection check not implemented for built-in connector: {source_config.type}",
+                    }
     except AuthenticationError as e:
         logger.error(
             f"Source authentication failed: {e}",
@@ -1594,7 +1747,49 @@ def check_command(args: argparse.Namespace) -> int:
                     import boto3
                     from botocore.exceptions import ClientError
 
-                    s3_client = boto3.client("s3")
+                    # Get S3 endpoint and credentials from environment or config
+                    # Only use explicit values - let boto3 handle default credential chain for AWS S3
+                    endpoint = (
+                        s3_config.get("endpoint")
+                        or connection.get("endpoint")
+                        or os.getenv("S3_ENDPOINT")
+                        or os.getenv("MINIO_ENDPOINT")
+                        or None
+                    )
+                    access_key_id = (
+                        s3_config.get("access_key_id")
+                        or connection.get("access_key_id")
+                        or os.getenv("AWS_ACCESS_KEY_ID")
+                        or os.getenv("MINIO_ACCESS_KEY")
+                        or None
+                    )
+                    secret_access_key = (
+                        s3_config.get("secret_access_key")
+                        or connection.get("secret_access_key")
+                        or os.getenv("AWS_SECRET_ACCESS_KEY")
+                        or os.getenv("MINIO_SECRET_KEY")
+                        or None
+                    )
+                    region = (
+                        s3_config.get("region")
+                        or connection.get("region")
+                        or os.getenv("AWS_REGION")
+                        or None
+                    )
+
+                    # Create S3 client - only include explicitly provided values
+                    # For AWS S3, boto3 will use default credential chain if credentials not provided
+                    s3_client_kwargs = {}
+                    if region:
+                        s3_client_kwargs["region_name"] = region
+                    if access_key_id:
+                        s3_client_kwargs["aws_access_key_id"] = access_key_id
+                    if secret_access_key:
+                        s3_client_kwargs["aws_secret_access_key"] = secret_access_key
+                    if endpoint and endpoint != "s3.amazonaws.com":
+                        s3_client_kwargs["endpoint_url"] = endpoint
+
+                    s3_client = boto3.client("s3", **s3_client_kwargs)
                     s3_client.head_bucket(Bucket=bucket)
                     target_status = {
                         "status": "success",
@@ -1794,6 +1989,17 @@ def discover_command(args: argparse.Namespace) -> int:
                 manager_type=args.secret_manager,
                 manager_config=manager_config,
             )
+            # Set secrets into environment variables for connectors to use
+            for secret_name, secret_value in secrets.items():
+                if isinstance(secret_value, dict):
+                    # For .env files, secret_value is a dict of KEY=VALUE pairs
+                    for key, value in secret_value.items():
+                        if key not in os.environ:
+                            os.environ[key] = str(value)
+                elif isinstance(secret_value, (str, int, float, bool)):
+                    # For simple values, use the secret name as the env var name
+                    if secret_name.upper() not in os.environ:
+                        os.environ[secret_name.upper()] = str(secret_value)
             logger.info(
                 f"Secrets loaded for tenant {tenant_id}",
                 extra={"event_type": "secrets_loaded"},
@@ -1877,13 +2083,70 @@ def discover_command(args: argparse.Namespace) -> int:
                     }
                 ]
             elif connector_type == "stripe":
-                # Stripe objects
-                streams = [
-                    {"name": "customers", "type": "object"},
-                    {"name": "charges", "type": "object"},
-                    {"name": "invoices", "type": "object"},
-                    {"name": "subscriptions", "type": "object"},
-                ]
+                # Use StripeExtractor (not AirbyteExtractor) to get proper config parsing
+                try:
+                    # Load connector recipe to get Airbyte configuration
+                    from .config import ConnectorRecipe
+
+                    connector_recipe = None
+                    if (
+                        job_config
+                        and hasattr(job_config, "source_connector_path")
+                        and job_config.source_connector_path
+                    ):
+                        try:
+                            connector_recipe = ConnectorRecipe.from_yaml(
+                                job_config.source_connector_path
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to load connector recipe: {e}",
+                                extra={"event_type": "connector_recipe_warning"},
+                            )
+
+                    if connector_recipe:
+                        from .connectors.stripe_extractor import StripeExtractor
+
+                        # Use StripeExtractor to get proper credential mapping via StripeConfigParser
+                        extractor = StripeExtractor(
+                            source_config, connector_recipe, tenant_id
+                        )
+
+                        # Use Airbyte's discover command
+                        discover_result = extractor.discover()
+                        streams = discover_result.get("streams", [])
+                        discovery_metadata = discover_result.get("metadata", {})
+
+                        if discover_result.get("error"):
+                            logger.warning(
+                                f"Airbyte discover had issues: {discover_result.get('error')}",
+                                extra={"event_type": "discover_warning"},
+                            )
+                    else:
+                        # Fallback to hardcoded list if connector recipe not available
+                        logger.warning(
+                            "Connector recipe not available, using hardcoded Stripe streams",
+                            extra={"event_type": "discover_fallback"},
+                        )
+                        streams = [
+                            {"name": "customers", "type": "stream"},
+                            {"name": "charges", "type": "stream"},
+                            {"name": "invoices", "type": "stream"},
+                            {"name": "subscriptions", "type": "stream"},
+                        ]
+                except Exception as e:
+                    logger.error(
+                        f"Stripe Airbyte discover failed: {e}",
+                        extra={"event_type": "discover_error"},
+                        exc_info=True,
+                    )
+                    # Fallback to hardcoded list
+                    streams = [
+                        {"name": "customers", "type": "stream"},
+                        {"name": "charges", "type": "stream"},
+                        {"name": "invoices", "type": "stream"},
+                        {"name": "subscriptions", "type": "stream"},
+                    ]
             elif connector_type == "hubspot":
                 # HubSpot objects
                 streams = [

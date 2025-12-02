@@ -228,7 +228,7 @@ Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/r
 **Path Conventions:**
 - **Local Development**: Use relative paths (e.g., `connectors/stripe.yaml`)
 - **Docker**: Use absolute paths (e.g., `/app/connectors/stripe.yaml`)
-- **Assets**: Always use versioned paths (e.g., `assets/stripe/v1.0/customers.yaml`)
+- **Assets**: Always use versioned paths (e.g., `assets/examples/stripe/v1.0/customers.yaml`)
 
 ```yaml
 tenant_id: acme
@@ -237,7 +237,7 @@ source_connector_path: connectors/stripe.yaml  # Local: relative, Docker: /app/c
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
-asset_path: assets/stripe/v1.0/customers.yaml  # Always versioned
+asset_path: assets/examples/stripe/v1.0/customers.yaml  # Always versioned
 source:
   objects: [customers]
   incremental:

@@ -1,0 +1,33 @@
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: gsheets_vendors_master
+version: "1.0"
+source_type: google_sheets
+object: vendors_master
+
+schema:
+  - name: vendor_id
+    type: string
+    required: true
+  - name: name
+    type: string
+    required: false
+  - name: email
+    type: string
+    required: false
+    classification: PII
+
+team:
+  owner: data-team@company.com
+
+tags: [vendors, master-data]
+
+compliance:
+  classification: [PII]
+  retention_days: 30
+
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+  mode: strict

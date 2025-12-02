@@ -214,6 +214,46 @@ s3:/
 /tmp/dativo_ingest*
 /tmp/dativo-state
 
+# Runtime/test directories - structure preserved with .gitkeep
+# Example files are tracked, but test cases are ignored
+
+# Assets: track examples, ignore everything else
+assets/*
+!assets/.gitkeep
+!assets/examples/
+!assets/examples/**/*.yaml
+!assets/examples/**/*.yml
+!assets/**/.gitkeep
+
+# Data: track examples, ignore test cases
+data/*
+!data/.gitkeep
+!data/examples/
+data/examples/*
+!data/examples/**
+!data/**/.gitkeep
+# Test cases are explicitly ignored (must come after un-ignore patterns)
+data/test_case_*
+data/test_case_*/**
+
+# Jobs: track examples, ignore test cases
+jobs/*
+!jobs/.gitkeep
+!jobs/examples/
+jobs/examples/*
+!jobs/examples/**/*.yaml
+!jobs/examples/**/*.yml
+!jobs/**/.gitkeep
+# Test cases are explicitly ignored (must come after un-ignore patterns)
+jobs/testcase*
+jobs/testcase*/**
+jobs/test_tenant
+jobs/test_tenant/**
+
+# Secrets: folder structure preserved with .gitkeep, but all contents ignored
+secrets/*
+!secrets/.gitkeep
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

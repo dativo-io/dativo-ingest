@@ -74,16 +74,56 @@ def test_hubspot_extract(
 
     import json
 
-    mock_process = MagicMock()
-    mock_process.communicate.return_value = (
+    # Mock discover call (needed for catalog generation)
+    mock_discover_process = MagicMock()
+    mock_discover_process.communicate.return_value = (
         json.dumps(
-            {"type": "RECORD", "record": {"id": "123", "email": "test@example.com"}}
+            {
+                "type": "CATALOG",
+                "catalog": {
+                    "streams": [
+                        {
+                            "name": "contacts",
+                            "json_schema": {"properties": {"id": {}, "email": {}}},
+                        }
+                    ]
+                },
+            }
         )
         + "\n",
         "",
     )
-    mock_process.returncode = 0
-    mock_subprocess.Popen.return_value = mock_process
+    mock_discover_process.returncode = 0
+
+    # Mock read call
+    mock_read_process = MagicMock()
+    mock_read_process.stdout.readline.side_effect = [
+        json.dumps(
+            {
+                "type": "RECORD",
+                "record": {
+                    "stream": "contacts",
+                    "data": {"id": "123", "email": "test@example.com"},
+                },
+            }
+        )
+        + "\n",
+        "",  # Empty line to stop iteration
+    ]
+    mock_read_process.stderr = MagicMock()
+    mock_read_process.stderr.readline.return_value = ""
+    mock_read_process.returncode = 0
+    mock_read_process.wait.return_value = 0
+
+    # Return different mocks for discover vs read
+    def popen_side_effect(*args, **kwargs):
+        cmd = args[0] if args else kwargs.get("args", [])
+        if "discover" in cmd:
+            return mock_discover_process
+        else:
+            return mock_read_process
+
+    mock_subprocess.Popen.side_effect = popen_side_effect
 
     extractor = HubSpotExtractor(
         hubspot_source_config, hubspot_connector_recipe, tenant_id="test_tenant"

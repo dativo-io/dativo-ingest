@@ -17,7 +17,7 @@ Add an optional `catalog` block to your job configuration:
 tenant_id: acme
 source_connector_path: connectors/csv.yaml
 target_connector_path: connectors/iceberg.yaml
-asset_path: assets/csv/v1.0/employee.yaml
+asset_path: assets/examples/csv/v1.0/employee.yaml
 
 source:
   files:
@@ -178,7 +178,7 @@ Metadata includes governance and operational information:
 tenant_id: acme
 source_connector_path: connectors/csv.yaml
 target_connector_path: connectors/iceberg.yaml
-asset_path: assets/csv/v1.0/employee.yaml
+asset_path: assets/examples/csv/v1.0/employee.yaml
 
 source:
   files:

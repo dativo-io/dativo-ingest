@@ -114,7 +114,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: my_asset
-asset_path: assets/csv/v1.0/my_asset.yaml
+asset_path: assets/examples/csv/v1.0/my_asset.yaml
 source:
   files:
     - path: data/myfile.csv

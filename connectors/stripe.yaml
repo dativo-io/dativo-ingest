@@ -7,14 +7,19 @@ default_engine:
   type: airbyte
   options:
     airbyte:
-      docker_image: "airbyte/source-stripe:2.1.5"
+      docker_image: "airbyte/source-stripe:latest"
       streams_default: ["customers", "charges", "invoices"]
       start_date_default: "2024-01-01"
 credentials:
   type: api_key
   from_env: STRIPE_API_KEY
 incremental:
+  # Strategy: semantic name indicating type of incremental sync (created, updated_after, updated_at)
+  # These strategies require a cursor_field to be specified
   strategy: created
+  # cursor_field_default: actual API field name from Stripe API (see https://docs.stripe.com/api)
+  # For Stripe, the 'created' field is a Unix timestamp used for incremental sync
+  # This default is automatically converted to 'cursor_field' when merging with job config
   cursor_field_default: created
   lookback_days_default: 1
 rate_limits:
