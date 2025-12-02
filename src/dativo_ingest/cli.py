@@ -2145,6 +2145,7 @@ def discover_command(args: argparse.Namespace) -> int:
                         {"name": "customers", "type": "stream"},
                         {"name": "charges", "type": "stream"},
                         {"name": "invoices", "type": "stream"},
+                        {"name": "subscriptions", "type": "stream"},
                     ]
             elif connector_type == "hubspot":
                 # HubSpot objects
