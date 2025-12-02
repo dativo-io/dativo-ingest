@@ -219,10 +219,17 @@ class EngineConfigParser:
             Incremental configuration dictionary with 'enabled' field set based on
             whether incremental is configured in source_config.
         """
-        # Check if incremental is enabled (not None)
-        incremental_enabled = self.source_config.incremental is not None
         incremental = self.source_config.incremental or {}
         recipe_incremental = self.connector_recipe.incremental or {}
+
+        # Check if incremental is enabled
+        # If incremental dict exists but 'enabled' is not specified, default to True (backward compatibility)
+        # If incremental dict doesn't exist, default to False
+        if self.source_config.incremental is None:
+            incremental_enabled = False
+        else:
+            # Check explicit 'enabled' field, defaulting to True if incremental dict exists
+            incremental_enabled = incremental.get("enabled", True)
 
         # Merge recipe defaults with source config
         config = {
