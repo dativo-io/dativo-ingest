@@ -740,6 +740,11 @@ class AirbyteExtractor(BaseEngineExtractor):
 
                 # Verify file was written correctly
                 if not tmp_config_path.exists() or tmp_config_path.stat().st_size == 0:
+                    # Clean up temp file before early return
+                    try:
+                        tmp_config_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
                     return {
                         "streams": [],
                         "metadata": {},
