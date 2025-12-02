@@ -170,16 +170,17 @@ def test_cli_integration():
     print("\n6. Verifying CLI integration...")
 
     try:
-        with open("src/dativo_ingest/cli.py", "r") as f:
-            cli_content = f.read()
+        # Check if JobExecutor (which CLI uses) passes overrides to committer
+        with open("src/dativo_ingest/job_executor.py", "r") as f:
+            executor_content = f.read()
 
-        # Check if CLI passes overrides to committer
-        if "classification_overrides" not in cli_content:
-            print("   ✗ CLI missing classification_overrides support")
+        # Check if JobExecutor passes overrides to committer
+        if "classification_overrides" not in executor_content:
+            print("   ✗ JobExecutor missing classification_overrides support")
             return False
 
-        if "job_config.classification_overrides" not in cli_content:
-            print("   ✗ CLI not passing classification_overrides to committer")
+        if "self.job_config.classification_overrides" not in executor_content:
+            print("   ✗ JobExecutor not passing classification_overrides to committer")
             return False
 
         print("   ✓ CLI integration correct")

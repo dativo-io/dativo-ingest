@@ -1,6 +1,7 @@
 """Connector validation and incremental strategy implementation."""
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -423,3 +424,29 @@ class IncrementalStateManager:
             "spreadsheet_id": spreadsheet_id,
         }
         IncrementalStateManager.write_state(state_path, state)
+
+
+def initialize_state_directory(job_config: JobConfig) -> None:
+    """Initialize state directory for incremental sync tracking.
+
+    Creates the parent directory for the state file if it doesn't exist
+    and validates that it's writable.
+
+    Args:
+        job_config: Job configuration
+
+    Raises:
+        PermissionError: If the state directory is not writable
+    """
+    source_config = job_config.get_source()
+    if source_config.incremental:
+        state_path_str = source_config.incremental.get("state_path", "")
+        if state_path_str:
+            state_path = Path(state_path_str)
+            # Create parent directories if they don't exist
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            # Validate directory is writable
+            if not os.access(state_path.parent, os.W_OK):
+                raise PermissionError(
+                    f"State directory is not writable: {state_path.parent}"
+                )
