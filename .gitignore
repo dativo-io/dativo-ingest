@@ -250,6 +250,10 @@ jobs/testcase*/**
 jobs/test_tenant
 jobs/test_tenant/**
 
+# Secrets: folder structure preserved with .gitkeep, but all contents ignored
+secrets/*
+!secrets/.gitkeep
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
