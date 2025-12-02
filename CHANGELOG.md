@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Major CLI Refactoring**: Extracted CLI functionality into focused modules for better maintainability
+  - `cli.py` reduced from 2,472 lines to 561 lines (77% reduction)
+  - Created `job_executor.py` - JobExecutor class encapsulating complete ETL pipeline
+  - Created `cli_commands.py` - ConnectionChecker & DiscoveryService classes
+  - Created `startup.py` - Startup sequence for batch job execution
+  - Created `connectors/factory.py` - ExtractorFactory following existing factory pattern
+  - Created `utils.py` - Environment variable expansion utilities
+  - Extended existing modules: `secrets/__init__.py`, `plugins.py`, `validator.py`
+  - Improved testability and separation of concerns
+  - All functionality preserved with backward compatibility maintained
+
 ### Added
 - Plugin sandboxing integration for Python and Rust plugins
 - Automatic sandboxing in cloud mode for all custom plugins
