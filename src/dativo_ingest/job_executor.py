@@ -498,6 +498,7 @@ class JobExecutor:
                 total_files_written,
                 has_errors,
                 validation_mode,
+                batch_count,
             )
             return exit_code
 
@@ -599,6 +600,7 @@ class JobExecutor:
         total_files_written: int,
         has_errors: bool,
         validation_mode: str,
+        batch_count: int,
     ) -> int:
         """Commit files to catalog or upload to S3.
 
@@ -609,6 +611,7 @@ class JobExecutor:
             total_files_written: Total files written
             has_errors: Whether validation errors occurred
             validation_mode: Validation mode
+            batch_count: Total number of batches processed
 
         Returns:
             Exit code (0=success, 1=partial, 2=failure)
@@ -699,7 +702,7 @@ class JobExecutor:
                     "event_type": "no_files",
                     "total_records_extracted": total_records,
                     "total_valid_records": total_valid_records,
-                    "total_batches": 0,
+                    "total_batches": batch_count,
                     "total_files_written": total_files_written,
                 },
             )
@@ -864,10 +867,12 @@ class JobExecutor:
 
             # Execute ETL pipeline
             exit_code = self._execute_etl_pipeline()
-            if exit_code != 0:
+            # Only return early for actual failures (exit_code == 2)
+            # Partial success (exit_code == 1) should still push to catalog
+            if exit_code == 2:
                 return exit_code
 
-            # Push to catalog
+            # Push to catalog (for both success and partial success)
             self._push_to_catalog()
 
             return exit_code
