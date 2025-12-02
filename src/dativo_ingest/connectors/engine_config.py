@@ -216,13 +216,17 @@ class EngineConfigParser:
         """Get incremental sync configuration.
 
         Returns:
-            Incremental configuration dictionary
+            Incremental configuration dictionary with 'enabled' field set based on
+            whether incremental is configured in source_config.
         """
+        # Check if incremental is enabled (not None)
+        incremental_enabled = self.source_config.incremental is not None
         incremental = self.source_config.incremental or {}
         recipe_incremental = self.connector_recipe.incremental or {}
 
         # Merge recipe defaults with source config
         config = {
+            "enabled": incremental_enabled,
             "strategy": incremental.get(
                 "strategy", recipe_incremental.get("strategy_default", "updated_after")
             ),
