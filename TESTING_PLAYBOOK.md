@@ -214,8 +214,8 @@ id,name,email,department,salary
 EOF
 
 # 2. Create asset definition
-mkdir -p assets/csv/v1.0
-cat > assets/csv/v1.0/employees.yaml << 'EOF'
+mkdir -p assets/examples/csv/v1.0
+cat > assets/examples/csv/v1.0/employees.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -255,7 +255,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: employees
-asset_path: assets/csv/v1.0/employees.yaml
+asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
   files:
     - path: data/test_case_1/employees.csv
@@ -314,7 +314,7 @@ order_id,customer_id,order_date,amount,updated_at
 EOF
 
 # 2. Create asset
-cat > assets/csv/v1.0/orders.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/orders.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -353,7 +353,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: orders
-asset_path: assets/csv/v1.0/orders.yaml
+asset_path: assets/examples/csv/v1.0/orders.yaml
 source:
   files:
     - path: data/test_case_2/orders.csv
@@ -432,7 +432,7 @@ NESSIE_URI=http://localhost:19120/api/v1
 EOF
 
 # 2. Use existing Stripe asset
-# assets/stripe/v1.0/customers.yaml already exists
+# assets/examples/stripe/v1.0/customers.yaml already exists
 
 # 3. Create job
 mkdir -p jobs/testcase3
@@ -443,7 +443,7 @@ source_connector_path: connectors/stripe.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
-asset_path: assets/stripe/v1.0/customers.yaml
+asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
   objects: [customers]
   incremental:
@@ -509,7 +509,7 @@ source_connector_path: connectors/hubspot.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: hubspot_contacts
-asset_path: assets/hubspot/v1.0/contacts.yaml
+asset_path: assets/examples/hubspot/v1.0/contacts.yaml
 source:
   objects: [contacts]
   incremental:
@@ -529,7 +529,7 @@ source_connector_path: connectors/hubspot.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: hubspot_companies
-asset_path: assets/hubspot/v1.0/companies.yaml
+asset_path: assets/examples/hubspot/v1.0/companies.yaml
 source:
   objects: [companies]
 target:
@@ -546,7 +546,7 @@ source_connector_path: connectors/hubspot.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: hubspot_deals
-asset_path: assets/hubspot/v1.0/deals.yaml
+asset_path: assets/examples/hubspot/v1.0/deals.yaml
 source:
   objects: [deals]
 target:
@@ -597,7 +597,7 @@ product_id,product_name,price,category,in_stock
 EOF
 
 # 2. Create asset with strict validation
-cat > assets/csv/v1.0/products.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/products.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -640,7 +640,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products
-asset_path: assets/csv/v1.0/products.yaml
+asset_path: assets/examples/csv/v1.0/products.yaml
 source:
   files:
     - path: data/test_case_5/products_invalid.csv
@@ -699,7 +699,7 @@ dativo run \
 **Steps:**
 ```bash
 # 1. Create same asset with warn mode
-cat > assets/csv/v1.0/products_warn.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/products_warn.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -742,7 +742,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products_warn
-asset_path: assets/csv/v1.0/products_warn.yaml
+asset_path: assets/examples/csv/v1.0/products_warn.yaml
 source:
   files:
     - path: data/test_case_5/products_invalid.csv
@@ -805,7 +805,7 @@ INSERT INTO employees (first_name, last_name, email, hire_date, salary, departme
 EOF
 
 # 3. Create asset
-cat > assets/postgres/v1.0/db_employees.yaml << 'EOF'
+cat > assets/examples/postgres/v1.0/db_employees.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -859,7 +859,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: db_employees
-asset_path: assets/postgres/v1.0/db_employees.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees.yaml
 source:
   tables:
     - name: employees
@@ -902,7 +902,7 @@ UPDATE employees SET updated_at = CURRENT_TIMESTAMP;
 EOF
 
 # 2. Update asset to include updated_at
-cat > assets/postgres/v1.0/db_employees_incremental.yaml << 'EOF'
+cat > assets/examples/postgres/v1.0/db_employees_incremental.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -947,7 +947,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: db_employees_incremental
-asset_path: assets/postgres/v1.0/db_employees_incremental.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
 source:
   tables:
     - name: employees
@@ -1020,7 +1020,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: markdown_kv
 target_connector_path: connectors/markdown_kv.yaml
 asset: db_employees_incremental
-asset_path: assets/postgres/v1.0/db_employees_incremental.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
 source:
   tables:
     - name: employees
@@ -1159,7 +1159,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products
-asset_path: assets/csv/v1.0/products.yaml
+asset_path: assets/examples/csv/v1.0/products.yaml
 source:
   custom_reader: "plugins/testcase10/json_api_reader.py:JSONAPIReader"
   connection:
@@ -1230,7 +1230,7 @@ mkdir -p data/test_case_11
 python data/test_case_11/generate_large_csv.py
 
 # 3. Create asset
-cat > assets/csv/v1.0/large_dataset.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/large_dataset.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -1268,7 +1268,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: large_dataset
-asset_path: assets/csv/v1.0/large_dataset.yaml
+asset_path: assets/examples/csv/v1.0/large_dataset.yaml
 source:
   custom_reader: "examples/plugins/rust/target/release/libcsv_reader_plugin.so:create_reader"
   files:
@@ -1352,7 +1352,7 @@ EOF
 cp secrets/testcase1/iceberg.env secrets/testcase12/
 
 # 4. Create asset
-cat > assets/google_sheets/v1.0/test_data.yaml << 'EOF'
+cat > assets/examples/google_sheets/v1.0/test_data.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -1386,7 +1386,7 @@ source_connector_path: connectors/google_sheets.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: test_data
-asset_path: assets/google_sheets/v1.0/test_data.yaml
+asset_path: assets/examples/google_sheets/v1.0/test_data.yaml
 source:
   spreadsheet_id: "YOUR_SPREADSHEET_ID_HERE"  # From spreadsheet URL
   sheet_name: "Sheet1"
@@ -1448,7 +1448,7 @@ source_connector_path: connectors/gdrive_csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products
-asset_path: assets/csv/v1.0/products.yaml
+asset_path: assets/examples/csv/v1.0/products.yaml
 source:
   files:
     - file_id: "YOUR_GDRIVE_FILE_ID_HERE"
@@ -1506,7 +1506,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: employees
-asset_path: assets/csv/v1.0/employees.yaml
+asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
   files:
     - path: data/test_case_14/${tenant}_data.csv
@@ -1580,7 +1580,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: db_employees
-asset_path: assets/postgres/v1.0/db_employees.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees.yaml
 source:
   tables:
     - name: employees
@@ -1638,7 +1638,7 @@ EOF
 # Test different partitioning strategies
 
 # Strategy A: Single column partitioning (region)
-cat > assets/csv/v1.0/sales_by_region.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/sales_by_region.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -1670,7 +1670,7 @@ compliance:
 EOF
 
 # Strategy B: Multi-level partitioning (region → product_category)
-cat > assets/csv/v1.0/sales_multi_partition.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/sales_multi_partition.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -1702,7 +1702,7 @@ compliance:
 EOF
 
 # Strategy C: Date partitioning (ingest_date - automatic)
-cat > assets/csv/v1.0/sales_date_partition.yaml << 'EOF'
+cat > assets/examples/csv/v1.0/sales_date_partition.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
 kind: DataContract
@@ -1745,7 +1745,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: sales_${strategy}
-asset_path: assets/csv/v1.0/sales_${strategy}.yaml
+asset_path: assets/examples/csv/v1.0/sales_${strategy}.yaml
 source:
   files:
     - path: data/test_case_16/sales_data.csv
@@ -1808,7 +1808,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: employees
-asset_path: assets/csv/v1.0/employees.yaml
+asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
   files:
     - path: data/test_case_1/employees.csv
@@ -1956,7 +1956,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: db_employees
-asset_path: assets/postgres/v1.0/db_employees.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees.yaml
 source:
   tables:
     - name: employees
@@ -1998,7 +1998,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: employees
-asset_path: assets/csv/v1.0/employees.yaml
+asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
   files:
     - path: data/test_case_1/employees.csv
@@ -2017,7 +2017,7 @@ source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: employees
-asset_path: assets/csv/v1.0/employees.yaml
+asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
   files:
     - path: data/nonexistent.csv
@@ -2070,7 +2070,7 @@ source_connector_path: connectors/stripe.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
-asset_path: assets/stripe/v1.0/customers.yaml
+asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
   objects: [customers]
   incremental:
@@ -2097,7 +2097,7 @@ source_connector_path: connectors/hubspot.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: hubspot_contacts
-asset_path: assets/hubspot/v1.0/contacts.yaml
+asset_path: assets/examples/hubspot/v1.0/contacts.yaml
 source:
   objects: [contacts]
   incremental:
@@ -2124,7 +2124,7 @@ source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: db_employees_incremental
-asset_path: assets/postgres/v1.0/db_employees_incremental.yaml
+asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
 source:
   tables:
     - name: employees
@@ -2307,7 +2307,7 @@ cat >> data/test_case_1/employees.csv << 'EOF'
 EOF
 
 # 3. Update asset schema to include new column
-# Edit assets/csv/v1.0/employees.yaml - add "title" field
+# Edit assets/examples/csv/v1.0/employees.yaml - add "title" field
 
 # 4. Re-run job
 dativo run --config jobs/testcase1/employees_to_iceberg.yaml ...
