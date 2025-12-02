@@ -514,7 +514,12 @@ def test_airbyte_config_json_does_not_contain_streams(
 def test_airbyte_temp_file_cleanup_on_second_file_failure(
     mock_getenv, mock_subprocess, mock_docker, source_config, mock_connector_recipe
 ):
-    """Test that temp files are cleaned up even if second file creation fails."""
+    """Test that temp files are cleaned up even if catalog file creation fails in _run_airbyte_container.
+
+    With the fix, _get_airbyte_catalog no longer creates a temp file (it reuses the catalog
+    from discover()). The temp file creation now happens in _run_airbyte_container for the
+    catalog file used in the read command. This test verifies cleanup works correctly.
+    """
     mock_getenv.return_value = "test-api-key"
 
     # Mock Docker client
@@ -528,15 +533,15 @@ def test_airbyte_temp_file_cleanup_on_second_file_failure(
     original_named_temporary_file = tempfile.NamedTemporaryFile
 
     def mock_named_temporary_file(*args, **kwargs):
-        """Mock NamedTemporaryFile to fail on second call."""
+        """Mock NamedTemporaryFile to fail on third call (catalog file in _run_airbyte_container)."""
         call_count[0] += 1
-        # First call succeeds (for config file)
-        if call_count[0] == 1:
+        # First two calls succeed (discover config, then read config)
+        if call_count[0] <= 2:
             file_obj = original_named_temporary_file(*args, **kwargs)
             created_files.append(Path(file_obj.name))
             return file_obj
         else:
-            # Second call fails (for catalog file)
+            # Third call fails (for catalog file in _run_airbyte_container)
             raise OSError("Disk full or permission denied")
 
     # Mock discover call (needed for catalog generation)
@@ -572,20 +577,22 @@ def test_airbyte_temp_file_cleanup_on_second_file_failure(
 
     extractor = AirbyteExtractor(source_config, mock_connector_recipe)
 
-    # Patch tempfile.NamedTemporaryFile to fail on second call
+    # Patch tempfile.NamedTemporaryFile to fail on third call (catalog file)
     # Note: tempfile is imported inside _run_airbyte_container, so we patch the builtin module
     with patch("tempfile.NamedTemporaryFile", side_effect=mock_named_temporary_file):
-        # Extract should fail when second temp file creation fails
-        with pytest.raises(OSError, match="Disk full or permission denied"):
+        # Extract should fail when catalog temp file creation fails
+        # The OSError gets wrapped in a RuntimeError by _run_airbyte_container
+        with pytest.raises(RuntimeError, match="Disk full or permission denied"):
             list(extractor.extract())
 
-    # Verify that the first temp file was cleaned up
-    # (it should not exist after the finally block executes)
+    # Verify that temp files were cleaned up
+    # (they should not exist after the finally block executes)
     assert (
-        len(created_files) == 1
-    ), "Should have created exactly one temp file before failure"
+        len(created_files) == 2
+    ), "Should have created exactly two temp files before failure (discover config and read config)"
     assert not created_files[
         0
-    ].exists(), (
-        "First temp file should be cleaned up even if second file creation fails"
-    )
+    ].exists(), "First temp file (discover config) should be cleaned up even if catalog file creation fails"
+    assert not created_files[
+        1
+    ].exists(), "Second temp file (read config) should be cleaned up even if catalog file creation fails"
