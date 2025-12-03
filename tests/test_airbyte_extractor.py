@@ -37,7 +37,7 @@ def source_config():
     """Create a source config for testing."""
     return SourceConfig(
         type="hubspot",
-        objects=["contacts"],
+        object="contacts",
         credentials={},
         incremental={"strategy": "updated_after", "cursor_field": "updatedAt"},
     )
@@ -307,16 +307,16 @@ def test_airbyte_extract_metadata(mock_docker, source_config, mock_connector_rec
 @patch("dativo_ingest.connectors.engine_framework.subprocess")
 @patch("dativo_ingest.connectors.engine_framework.DOCKER_AVAILABLE", True)
 @patch("os.getenv")
-def test_airbyte_streams_from_source_config_objects(
+def test_airbyte_streams_from_source_config_object(
     mock_getenv, mock_subprocess, mock_docker, mock_connector_recipe
 ):
-    """Test that streams are correctly retrieved from source_config.objects."""
+    """Test that streams are correctly retrieved from source_config.object."""
     mock_getenv.return_value = "test-api-key"
 
-    # Source config with objects specified
+    # Source config with object specified
     source_config = SourceConfig(
         type="hubspot",
-        objects=["contacts", "deals"],  # Explicitly set objects
+        object="contacts",  # Explicitly set object
         credentials={},
     )
 
@@ -341,7 +341,6 @@ def test_airbyte_streams_from_source_config_objects(
                 "catalog": {
                     "streams": [
                         {"name": "contacts", "json_schema": {"properties": {}}},
-                        {"name": "deals", "json_schema": {"properties": {}}},
                     ]
                 },
             }
@@ -368,7 +367,7 @@ def test_airbyte_streams_from_source_config_objects(
 
     mock_subprocess.Popen.side_effect = popen_side_effect
 
-    # The key test: verify that when we call extract, the streams come from source_config.objects
+    # The key test: verify that when we call extract, the streams come from source_config.object
     # We can verify this by checking the discover call was made with the right streams
     list(extractor.extract())
 
@@ -383,13 +382,13 @@ def test_airbyte_streams_from_source_config_objects(
 def test_airbyte_streams_fallback_to_defaults(
     mock_getenv, mock_subprocess, mock_docker, mock_connector_recipe
 ):
-    """Test that streams fall back to streams_default when source_config.objects is not set."""
+    """Test that streams fall back to streams_default when source_config.object is not set."""
     mock_getenv.return_value = "test-api-key"
 
-    # Source config WITHOUT objects specified (should use defaults)
+    # Source config WITHOUT object specified (should use defaults)
     source_config = SourceConfig(
         type="hubspot",
-        objects=None,  # No objects specified
+        object=None,  # No object specified
         credentials={},
     )
 

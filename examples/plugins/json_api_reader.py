@@ -36,7 +36,7 @@ class JSONAPIReader(BaseReader):
             options:
               page_size: 100
               max_pages: null  # null = no limit
-          objects: ["users", "orders"]
+          object: "users"  # One job = one object
     """
     
     __version__ = "1.0.0"  # Plugin version

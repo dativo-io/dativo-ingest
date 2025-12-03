@@ -92,7 +92,7 @@ class RustReaderWrapper(BaseReader):
             "type": self.source_config.type,
             "connection": self.source_config.connection or {},
             "credentials": self.source_config.credentials or {},
-            "objects": self.source_config.objects or [],
+            "object": self.source_config.object,
             "files": self.source_config.files or [],
             "incremental": self.source_config.incremental or {},
             "engine": self.source_config.engine or {},

@@ -445,7 +445,7 @@ target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
-  objects: [customers]
+  object: customers
   incremental:
     enabled: true
     lookback_days: 7
@@ -511,7 +511,7 @@ target_connector_path: connectors/iceberg.yaml
 asset: hubspot_contacts
 asset_path: assets/examples/hubspot/v1.0/contacts.yaml
 source:
-  objects: [contacts]
+  object: contacts
   incremental:
     enabled: true
     lookback_days: 7
@@ -531,7 +531,7 @@ target_connector_path: connectors/iceberg.yaml
 asset: hubspot_companies
 asset_path: assets/examples/hubspot/v1.0/companies.yaml
 source:
-  objects: [companies]
+  object: companies
 target:
   connection:
     s3:
@@ -548,7 +548,7 @@ target_connector_path: connectors/iceberg.yaml
 asset: hubspot_deals
 asset_path: assets/examples/hubspot/v1.0/deals.yaml
 source:
-  objects: [deals]
+  object: deals
 target:
   connection:
     s3:
@@ -2072,7 +2072,7 @@ target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
-  objects: [customers]
+  object: customers
   incremental:
     enabled: true
     lookback_days: 1
@@ -2099,7 +2099,7 @@ target_connector_path: connectors/iceberg.yaml
 asset: hubspot_contacts
 asset_path: assets/examples/hubspot/v1.0/contacts.yaml
 source:
-  objects: [contacts]
+  object: contacts
   incremental:
     enabled: true
     lookback_days: 1

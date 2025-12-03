@@ -113,42 +113,33 @@ class JobExecutor:
         try:
             self.asset_definition = self.job_config._resolve_asset()
 
-            # Validate that source.objects matches asset definition's object field
-            if self.source_config.objects:
+            # Validate that source.object matches asset definition's object field
+            # DESIGN DECISION: One job = one asset = one source object (see docs/DESIGN_ONE_ASSET_PER_JOB.md)
+            # This invariant ensures:
+            # - Clear failure semantics (one job = one failure)
+            # - Per-asset governance and FinOps metadata
+            # - Simple debugging and testing
+            # - Scalable configuration model
+            # For grouping multiple assets, use orchestration layer (Dagster) rather than multi-asset jobs.
+            if self.source_config.object:
                 asset_object = self.asset_definition.object
-                source_objects = self.source_config.objects
+                source_object = self.source_config.object
 
-                # For standard connectors, only one object should be specified
-                # and it must match the asset definition's object field
-                if len(source_objects) > 1:
+                if source_object != asset_object:
                     self.logger.error(
-                        f"Multiple objects specified in source.objects: {source_objects}. "
-                        f"Each job should extract only one object that matches the asset definition. "
-                        f"Asset definition specifies object: '{asset_object}'. "
-                        "Create separate job files for each object.",
+                        f"Source object '{source_object}' does not match asset definition object '{asset_object}'. "
+                        f"source.object must contain the same object as specified in the asset definition.",
                         extra={
                             "asset_object": asset_object,
-                            "source_objects": source_objects,
-                            "event_type": "validation_error",
-                        },
-                    )
-                    return 2
-
-                if source_objects[0] != asset_object:
-                    self.logger.error(
-                        f"Source object '{source_objects[0]}' does not match asset definition object '{asset_object}'. "
-                        f"source.objects must contain the same object as specified in the asset definition.",
-                        extra={
-                            "asset_object": asset_object,
-                            "source_object": source_objects[0],
+                            "source_object": source_object,
                             "event_type": "validation_error",
                         },
                     )
                     return 2
             else:
-                # If objects is not specified, warn but don't fail (may be handled by connector defaults)
+                # If object is not specified, warn but don't fail (may be handled by connector defaults)
                 self.logger.warning(
-                    f"source.objects not specified. Asset definition expects object: '{self.asset_definition.object}'.",
+                    f"source.object not specified. Asset definition expects object: '{self.asset_definition.object}'.",
                     extra={
                         "asset_object": self.asset_definition.object,
                         "event_type": "validation_warning",

@@ -79,8 +79,8 @@ class EngineConfigParser:
             config["streams"] = streams
 
         # Override with job-level source config
-        if self.source_config.objects:
-            config["streams"] = self.source_config.objects
+        if self.source_config.object:
+            config["streams"] = [self.source_config.object]
 
         # Add incremental configuration
         if self.source_config.incremental:

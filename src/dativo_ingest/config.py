@@ -342,7 +342,7 @@ class SourceConfig(BaseModel):
     type: str
     description: Optional[str] = None
     credentials: Optional[Dict[str, Any]] = None
-    objects: Optional[List[str]] = None
+    object: Optional[str] = None
     files: Optional[List[Dict[str, Any]]] = None
     sheets: Optional[List[Dict[str, Any]]] = None
     tables: Optional[List[Dict[str, Any]]] = None
