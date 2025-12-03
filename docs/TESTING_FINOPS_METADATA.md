@@ -33,7 +33,7 @@ target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
-  objects: [customers]
+  object: customers
   incremental:
     enabled: true
     lookback_days: 7

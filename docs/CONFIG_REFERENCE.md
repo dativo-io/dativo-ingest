@@ -17,6 +17,8 @@ Complete reference guide for configuring jobs, assets, connectors, and storage o
 
 Job configurations define the source connector, target connector, asset, and tenant-specific overrides for data ingestion.
 
+**Design Principle**: Each job processes exactly one asset (one source object). See [DESIGN_ONE_ASSET_PER_JOB.md](DESIGN_ONE_ASSET_PER_JOB.md) for the rationale behind this invariant.
+
 ### Structure
 
 Job configs define the source connector, target connector, asset, and tenant-specific overrides:
@@ -39,7 +41,7 @@ asset_path: /app/assets/hubspot/v1.0/contacts.yaml
 
 # Source configuration
 source:
-  objects: [contacts]
+  object: contacts
   incremental:
     lookback_days: 1
 
@@ -67,6 +69,8 @@ logging:
 - `target_connector_path`: Path to target connector recipe
 - `asset`: Asset name
 - `asset_path`: Path to asset definition
+
+**Important**: Each job must process exactly one asset (one source object). The `source.objects` array must contain exactly one object that matches the asset definition's `object` field. To process multiple assets, create separate job files and group them using orchestration (see [DESIGN_ONE_ASSET_PER_JOB.md](DESIGN_ONE_ASSET_PER_JOB.md)).
 
 ### Optional Fields
 

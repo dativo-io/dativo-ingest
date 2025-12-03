@@ -24,6 +24,8 @@ struct SourceConfig {
     connection: HashMap<String, serde_json::Value>,
     files: Vec<FileConfig>,
     #[serde(default)]
+    object: Option<String>, // Source object name (optional, for connectors that use it)
+    #[serde(default)]
     engine: EngineConfig,
 }
 
@@ -295,5 +297,27 @@ mod tests {
         assert_eq!(config.source_type, "csv");
         assert_eq!(config.files.len(), 1);
         assert_eq!(config.engine.options.batch_size, 1000);
+        assert_eq!(config.object, None);
+    }
+
+    #[test]
+    fn test_config_parsing_with_object() {
+        let config_json = r#"{
+            "type": "csv",
+            "connection": {},
+            "object": "customers",
+            "files": [{"path": "test.csv"}],
+            "engine": {
+                "options": {
+                    "batch_size": 1000,
+                    "delimiter": ","
+                }
+            }
+        }"#;
+
+        let config: SourceConfig = serde_json::from_str(config_json).unwrap();
+        assert_eq!(config.source_type, "csv");
+        assert_eq!(config.object, Some("customers".to_string()));
+        assert_eq!(config.files.len(), 1);
     }
 }

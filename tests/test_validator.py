@@ -67,7 +67,7 @@ def valid_job_config(temp_dir):
         "target_connector_path": "connectors/iceberg.yaml",
         "asset_path": str(temp_dir / "asset.yaml"),
         "source": {
-            "objects": ["customers"],
+            "object": "customers",
         },
         "target": {
             "branch": "test_tenant",

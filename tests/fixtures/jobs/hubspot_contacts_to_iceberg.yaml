@@ -16,7 +16,7 @@ asset_path: assets/hubspot/v1.0/contacts.yaml
 
 # Source configuration
 source:
-  objects: [contacts]
+  object: contacts
   incremental:
     strategy: updated_at
     cursor_field: updatedAt

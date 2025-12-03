@@ -37,7 +37,7 @@ def stripe_source_config():
     """Create Stripe source config."""
     return SourceConfig(
         type="stripe",
-        objects=["customers"],
+        object="customers",
         credentials={},
         incremental={"strategy": "created", "cursor_field": "created"},
     )
