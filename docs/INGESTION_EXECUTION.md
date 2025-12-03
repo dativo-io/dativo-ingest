@@ -22,10 +22,17 @@ This document describes how the Dativo ingestion platform executes jobs, from da
 The ingestion pipeline follows these steps:
 
 1. **Extract**: Read data from source (CSV, API, database, etc.)
+   - Initialize WAL Manager (if WAL enabled)
+   - Load incremental state and WAL checkpoints
+   - Resume from checkpoint if resuming failed run
+   - Update WAL checkpoints during extraction
 2. **Validate**: Validate records against asset schema
 3. **Write**: Write validated records to Parquet files
 4. **Commit**: Commit Parquet files to Iceberg table via Nessie
-5. **Update State**: Update incremental sync state (if applicable)
+5. **Update State**: 
+   - Finalize WAL (if enabled)
+   - Update incremental sync state (if applicable)
+   - Cleanup WAL files after successful commit
 
 ---
 
@@ -146,7 +153,13 @@ target:
 
 ## Incremental Syncs
 
-### File-Based Incremental
+Dativo supports two layers of state management for efficient data ingestion:
+
+### 1. Incremental State (Cross-Run)
+
+Tracks logical cursors across job runs (e.g., `last_updated_at`, `last_created`). Updated only after successful Iceberg/Nessie commit.
+
+#### File-Based Incremental
 
 For CSV and file-based sources:
 
@@ -168,7 +181,75 @@ The system:
 3. Processes files modified within lookback window
 4. Updates state after successful processing
 
+#### Cursor-Based Incremental
+
+For database and API sources:
+
+**Configuration:**
+```yaml
+source:
+  tables:
+    - name: public.orders
+      object: orders
+  incremental:
+    strategy: cursor_field
+    cursor_field: updated_at
+    lookback_days: 7
+```
+
+The system:
+1. Tracks maximum cursor value in state file
+2. Filters records where `cursor_field >= last_value`
+3. Updates state with new maximum after successful processing
+
+### 2. WAL / Checkpointing (Intra-Run)
+
+Enables jobs to resume extraction within a single run at page/offset/chunk boundaries. Complements incremental state by reducing reprocessing after failures.
+
+**Configuration:**
+```yaml
+source:
+  wal:
+    enabled: true
+    base_dir: /app/wal  # Optional, defaults to /app/wal
+```
+
+**How it works:**
+1. **Job Start**: WAL Manager creates checkpoint file for the run
+2. **During Extraction**: Extractors update checkpoints after each chunk/page/batch
+3. **On Failure**: WAL persists, allowing resume from last checkpoint
+4. **On Success**: WAL is finalized and cleaned up after commit
+
+**Checkpoint Types:**
+- **Chunk-based**: For file extractors (CSV, GDrive CSV) - tracks chunk number
+- **Offset-based**: For database extractors (Postgres, MySQL) - tracks record offset
+- **Spreadsheet-based**: For Google Sheets - tracks processed spreadsheets
+- **State-based**: For Airbyte/Meltano - tracks STATE messages
+
+**Resume Behavior:**
+- On retry, extractors load checkpoint from WAL
+- Skip already processed chunks/pages/offsets
+- Continue from last checkpoint
+- Reduces reprocessing time significantly
+
+**Example:**
+```yaml
+source:
+  type: csv
+  files:
+    - path: /data/large_file.csv
+  wal:
+    enabled: true
+```
+
+If job fails after processing chunk 50, on retry it will:
+1. Load WAL checkpoint (chunk 50)
+2. Skip first 50 chunks
+3. Resume from chunk 51
+
 ### State Management
+
+#### Incremental State Files
 
 State files are stored at (default for development):
 ```
@@ -195,6 +276,25 @@ State format:
 }
 ```
 
+#### WAL Files
+
+WAL files are stored at:
+```
+{wal_base_dir}/{tenant_id}/{job_name}/{run_id}.wal.json
+```
+
+**Default location**: `/app/wal/` (configurable via `source.wal.base_dir`)
+
+**Lifecycle:**
+- Created at job start
+- Updated during extraction (per chunk/page/batch)
+- Finalized on successful extraction
+- Cleaned up after successful commit
+
+**Note:** WAL files are temporary and automatically cleaned up. They should not be committed to version control.
+
+For detailed WAL documentation, see [WAL_CHECKPOINTING.md](WAL_CHECKPOINTING.md).
+
 ---
 
 ## Error Handling
@@ -204,6 +304,17 @@ State format:
 - **0**: Success - all records processed successfully
 - **1**: Partial success - some records had errors (warn mode)
 - **2**: Failure - job failed (validation errors in strict mode, or other errors)
+
+### WAL Resume on Retry
+
+When a job fails and WAL is enabled:
+1. WAL file persists with last checkpoint
+2. On retry, job detects existing WAL file
+3. Extractors resume from last checkpoint
+4. Already processed chunks/pages/offsets are skipped
+5. Processing continues from checkpoint
+
+This significantly reduces reprocessing time for large datasets.
 
 ### Retry Configuration
 
@@ -239,6 +350,16 @@ All errors are logged with:
 - Records are processed in batches (configurable chunk size)
 - Parquet files are written when batch size reaches target
 - Multiple files can be written per job run
+
+### WAL Checkpointing
+
+When WAL is enabled, checkpoints are updated after each batch:
+- **CSV/GDrive CSV**: After each chunk
+- **Postgres/MySQL**: After each batch
+- **Google Sheets**: After each spreadsheet
+- **Airbyte/Meltano**: After each STATE message
+
+This enables fast resume after failures by skipping already processed data.
 
 ### Memory Management
 
@@ -326,12 +447,16 @@ schema_validation_mode: strict
 INFO: Starting job execution (connector_type=csv, tenant_id=acme)
 INFO: Asset definition loaded (asset_name=csv_person)
 INFO: Extractor initialized (source_type=csv)
+INFO: WAL manager initialized (wal_file=/app/wal/acme/csv_person/20240101_120000.wal.json)
 INFO: Schema validator initialized (validation_mode=strict)
 INFO: Parquet writer initialized (output_base=s3://lake/acme/csv_person)
 INFO: Iceberg committer initialized (branch=acme)
 INFO: Iceberg table ensured (table_name=csv_person)
 INFO: Wrote batch: 1000 records, 1 files
+INFO: Updated checkpoint for stream: default (checkpoint_type=chunk_based)
 INFO: Files committed to Iceberg (files_added=1, commit_id=abc123)
+INFO: WAL finalized before commit
+INFO: WAL cleaned up after successful commit
 INFO: Job execution completed (total_records=1000, valid_records=1000, exit_code=0)
 ```
 

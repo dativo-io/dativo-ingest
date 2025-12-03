@@ -123,6 +123,11 @@ dativo-ingest/
 │   └── {tenant_id}/
 │       └── {job_name}.json
 │
+├── wal/                    # WAL checkpoint files (per tenant/job/run)
+│   └── {tenant_id}/
+│       └── {job_name}/
+│           └── {run_id}.wal.json
+│
 └── src/
     └── dativo_ingest/      # Source code
         ├── cli.py          # CLI entrypoint

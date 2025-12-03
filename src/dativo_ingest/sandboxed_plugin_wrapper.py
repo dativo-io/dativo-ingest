@@ -121,7 +121,9 @@ class SandboxedReaderWrapper(BaseReader):
             )
 
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data via sandbox.
 
@@ -130,6 +132,7 @@ class SandboxedReaderWrapper(BaseReader):
 
         Args:
             state_manager: Optional state manager for incremental syncs
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records
@@ -144,10 +147,14 @@ class SandboxedReaderWrapper(BaseReader):
             else:
                 state_manager_dict = {}
 
+        # Serialize checkpoint_context if provided
+        checkpoint_context_dict = checkpoint_context or {}
+
         result = self.sandbox.execute(
             "extract",
             source_config=source_config_dict,
             state_manager=state_manager_dict,
+            checkpoint_context=checkpoint_context_dict,
         )
 
         # Result should be a list of batches

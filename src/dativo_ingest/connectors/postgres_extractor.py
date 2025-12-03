@@ -207,12 +207,15 @@ class PostgresExtractor:
         return query, params
 
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data from Postgres tables.
 
         Args:
             state_manager: Optional incremental state manager for tracking cursor state
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as dictionaries
@@ -310,11 +313,41 @@ class PostgresExtractor:
                 all_processed_records = []
                 records_processed = 0
 
+                # Check for WAL checkpoint to resume from
+                start_offset = 0
+                wal_manager = None
+                if checkpoint_context:
+                    checkpoint = checkpoint_context.get("checkpoint")
+                    wal_manager = checkpoint_context.get("wal_manager")
+                    if checkpoint and checkpoint.get("type") == "offset_based":
+                        start_offset = checkpoint.get("last_offset", 0)
+                        self.logger.info(
+                            f"Resuming Postgres extraction from offset {start_offset}",
+                            extra={
+                                "table_name": table_name,
+                                "resume_offset": start_offset,
+                                "event_type": "postgres_resume",
+                            },
+                        )
+
                 # Execute query with server-side cursor for large datasets
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     cursor.execute(query, params)
 
+                    # Skip to resume offset if needed
+                    if start_offset > 0:
+                        cursor.scroll(start_offset, mode="absolute")
+                        self.logger.info(
+                            f"Skipped to offset {start_offset}",
+                            extra={
+                                "table_name": table_name,
+                                "offset": start_offset,
+                                "event_type": "postgres_offset_skip",
+                            },
+                        )
+
                     # Fetch in batches
+                    batch_number = 0
                     while True:
                         records = cursor.fetchmany(batch_size)
                         if not records:
@@ -333,6 +366,23 @@ class PostgresExtractor:
 
                         all_processed_records.extend(batch)
                         records_processed += len(batch)
+                        batch_number += 1
+                        current_offset = start_offset + records_processed
+
+                        # Update WAL checkpoint after each batch
+                        if wal_manager and checkpoint_context:
+                            stream_name = checkpoint_context.get(
+                                "stream_name", object_name
+                            )
+                            checkpoint_data = {
+                                "type": "offset_based",
+                                "table_name": table_name,
+                                "last_offset": current_offset,
+                                "batch_number": batch_number,
+                                "records_processed": records_processed,
+                            }
+                            wal_manager.update_checkpoint(stream_name, checkpoint_data)
+
                         yield batch
 
                     # Update state after successful processing using strategy

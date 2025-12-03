@@ -292,19 +292,24 @@ class GoogleSheetsExtractor:
         return records
 
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data from Google Sheets.
 
         Args:
             state_manager: Optional incremental state manager for tracking spreadsheet state
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as dictionaries
         """
         # Delegate to engine extractor if using non-native engine
         if self._use_engine:
-            yield from self._engine_extractor.extract(state_manager)
+            yield from self._engine_extractor.extract(
+                state_manager, checkpoint_context=checkpoint_context
+            )
             return
 
         # Use native implementation
@@ -365,6 +370,25 @@ class GoogleSheetsExtractor:
                     )
                     continue  # Skip this spreadsheet
 
+            # Check for WAL checkpoint to resume from
+            wal_manager = None
+            if checkpoint_context:
+                wal_manager = checkpoint_context.get("wal_manager")
+                checkpoint = checkpoint_context.get("checkpoint")
+                if checkpoint and checkpoint.get("type") == "spreadsheet_based":
+                    # For Google Sheets, we typically process the whole spreadsheet at once
+                    # But we can track which spreadsheets have been processed
+                    processed_spreadsheet_id = checkpoint.get("spreadsheet_id")
+                    if processed_spreadsheet_id == spreadsheet_id:
+                        self.logger.info(
+                            f"Skipping spreadsheet (already processed): {spreadsheet_id}",
+                            extra={
+                                "spreadsheet_id": str(spreadsheet_id),
+                                "event_type": "spreadsheet_wal_skip",
+                            },
+                        )
+                        continue
+
             # Read data from spreadsheet
             rows = self._read_range(spreadsheet_id, full_range)
 
@@ -377,6 +401,17 @@ class GoogleSheetsExtractor:
                     )
                     if is_file_based_strategy:
                         incremental_strategy.update_state(entity_metadata, [])
+                # Update WAL checkpoint even for empty spreadsheets
+                if wal_manager and checkpoint_context:
+                    stream_name = checkpoint_context.get(
+                        "stream_name", str(spreadsheet_id)
+                    )
+                    checkpoint_data = {
+                        "type": "spreadsheet_based",
+                        "spreadsheet_id": str(spreadsheet_id),
+                        "records_processed": 0,
+                    }
+                    wal_manager.update_checkpoint(stream_name, checkpoint_data)
                 continue
 
             # Convert rows to records
@@ -388,6 +423,18 @@ class GoogleSheetsExtractor:
                 records = incremental_strategy.filter_records(records, entity_metadata)
 
             if records:
+                # Update WAL checkpoint after processing spreadsheet
+                if wal_manager and checkpoint_context:
+                    stream_name = checkpoint_context.get(
+                        "stream_name", str(spreadsheet_id)
+                    )
+                    checkpoint_data = {
+                        "type": "spreadsheet_based",
+                        "spreadsheet_id": str(spreadsheet_id),
+                        "records_processed": len(records),
+                    }
+                    wal_manager.update_checkpoint(stream_name, checkpoint_data)
+
                 yield records
 
             # Update state after successful processing
