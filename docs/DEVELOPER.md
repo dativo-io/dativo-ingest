@@ -251,6 +251,52 @@ The following components need to be implemented:
    - Distributed tracing
    - Health check endpoints
 
+## WAL Implementation Details
+
+### Architecture Overview
+
+The WAL (Write-Ahead Log) checkpointing system implements a two-layer state architecture:
+
+1. **Incremental State** (Cross-Run): Logical cursors updated after successful commit
+2. **WAL / Checkpoints** (Intra-Run): Page/offset/chunk boundaries updated during extraction
+
+### Implementation Status
+
+**All Connectors Support WAL:**
+- ✅ Native Extractors: CSV (chunk-based), Postgres/MySQL (offset-based), Google Sheets/GDrive CSV (chunk/spreadsheet-based)
+- ✅ Engine-Based Extractors: Airbyte (STATE message mapping), HubSpot, Stripe (inherit from AirbyteExtractor)
+- ✅ Custom Plugins: All BaseReader implementations accept `checkpoint_context` parameter
+
+**Core Components:**
+- `src/dativo_ingest/wal_manager.py`: WAL file lifecycle management
+- `src/dativo_ingest/job_executor.py`: WAL integration with job execution
+- All extractors updated to accept and use `checkpoint_context`
+
+**Checkpoint Types:**
+- `chunk_based`: CSV, GDrive CSV extractors
+- `offset_based`: Postgres, MySQL extractors
+- `spreadsheet_based`: Google Sheets extractor
+- `state_based`: Airbyte, Meltano, Singer extractors
+
+**File Structure:**
+```
+/app/
+├── state/                    # Incremental state (existing)
+│   └── {tenant_id}/
+│       └── {job_name}.json
+└── wal/                      # WAL files (new)
+    └── {tenant_id}/
+        └── {job_name}/
+            └── {run_id}.wal.json
+```
+
+**Backward Compatibility:**
+- WAL is opt-in via `source.wal.enabled: true`
+- All extractors accept optional `checkpoint_context` parameter
+- Existing incremental state mechanism unchanged
+
+For detailed WAL documentation, see [WAL_CHECKPOINTING.md](WAL_CHECKPOINTING.md).
+
 ## Test Infrastructure Setup
 
 For smoke tests, you'll need:

@@ -49,12 +49,15 @@ class CSVEmployeeReader(BaseReader):
         self.encoding = engine_opts.get("encoding", "utf-8")
 
     def extract(
-        self, state_manager: Optional[Any] = None
+        self,
+        state_manager: Optional[Any] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data from CSV files.
 
         Args:
             state_manager: Optional state manager (not used for CSV)
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as list of dictionaries

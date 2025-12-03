@@ -6,10 +6,11 @@ Complete reference guide for configuring jobs, assets, connectors, and storage o
 
 1. [Job Configuration](#job-configuration)
 2. [Asset Definitions](#asset-definitions)
-3. [Markdown-KV Storage](#markdown-kv-storage)
-4. [Plugin Configuration](#plugin-configuration)
-5. [Architecture Overview](#architecture-overview)
-6. [Additional Resources](#additional-resources)
+3. [Source Configuration](#source-configuration)
+4. [Markdown-KV Storage](#markdown-kv-storage)
+5. [Plugin Configuration](#plugin-configuration)
+6. [Architecture Overview](#architecture-overview)
+7. [Additional Resources](#additional-resources)
 
 ---
 
@@ -44,6 +45,9 @@ source:
   object: contacts
   incremental:
     lookback_days: 1
+  wal:
+    enabled: true
+    base_dir: /app/wal  # Optional
 
 # Target configuration
 target:
@@ -243,6 +247,81 @@ For detailed documentation, see [MARKDOWN_KV_STORAGE.md](MARKDOWN_KV_STORAGE.md)
 
 ---
 
+## Source Configuration
+
+Source configuration allows you to customize connector behavior, enable incremental syncs, and configure WAL checkpointing.
+
+### Basic Source Configuration
+
+```yaml
+source:
+  object: contacts              # Source object/stream name
+  files:                         # For file-based sources
+    - path: /data/file.csv
+  tables:                        # For database sources
+    - name: public.orders
+  incremental:                   # Incremental sync configuration
+    strategy: cursor_field
+    cursor_field: updated_at
+  wal:                          # WAL checkpointing configuration
+    enabled: true
+    base_dir: /app/wal
+```
+
+### Incremental Sync Configuration
+
+See [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md#incremental-syncs) for detailed incremental sync documentation.
+
+### WAL (Write-Ahead Log) / Checkpointing
+
+WAL enables jobs to resume extraction within a single run at page/offset/chunk boundaries, reducing reprocessing after failures.
+
+**Configuration:**
+```yaml
+source:
+  wal:
+    enabled: true              # Enable WAL checkpointing (default: false)
+    base_dir: /app/wal        # Base directory for WAL files (default: /app/wal)
+    run_id: "2024-01-15T10:30:00"  # Optional run ID (default: auto-generated timestamp)
+```
+
+**Fields:**
+- `enabled` (optional): Enable WAL checkpointing (default: `false`)
+- `base_dir` (optional): Base directory for WAL files (default: `/app/wal`)
+- `run_id` (optional): Run ID for WAL file naming (default: timestamp-based)
+
+**How it works:**
+1. **Job Start**: WAL Manager creates checkpoint file for the run
+2. **During Extraction**: Extractors update checkpoints after each chunk/page/batch
+3. **On Failure**: WAL persists, allowing resume from last checkpoint
+4. **On Success**: WAL is finalized and cleaned up after commit
+
+**Checkpoint Types by Extractor:**
+- **CSV / GDrive CSV**: Chunk-based (tracks chunk number)
+- **Postgres / MySQL**: Offset-based (tracks record offset)
+- **Google Sheets**: Spreadsheet-based (tracks processed spreadsheets)
+- **Airbyte / Meltano**: State-based (tracks STATE messages)
+
+**Example:**
+```yaml
+source:
+  type: csv
+  files:
+    - path: /data/large_file.csv
+  wal:
+    enabled: true
+```
+
+**Benefits:**
+- Reduces reprocessing time after failures
+- Enables resume from last checkpoint
+- Complements incremental state (cross-run cursors)
+- No impact on idempotency guarantees
+
+For detailed WAL documentation, see [WAL_CHECKPOINTING.md](WAL_CHECKPOINTING.md) and [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md#incremental-syncs).
+
+---
+
 ## Architecture Overview
 
 ### Component Hierarchy
@@ -319,6 +398,7 @@ The Airbyte engine executes Airbyte source connectors as Docker containers:
 - Supports cursor-based incremental sync
 - State is managed via Airbyte state messages
 - Integrates with Dativo's incremental state manager
+- WAL checkpointing supported for Airbyte connectors (see [Source Configuration](#source-configuration))
 
 ---
 

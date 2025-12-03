@@ -26,18 +26,21 @@ class HubSpotExtractor(AirbyteExtractor):
         super().__init__(source_config, connector_recipe, tenant_id)
 
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data from HubSpot.
 
         Args:
             state_manager: Optional incremental state manager
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as dictionaries
         """
         # Use parent AirbyteExtractor's extract method
-        yield from super().extract(state_manager)
+        yield from super().extract(state_manager, checkpoint_context=checkpoint_context)
 
     def extract_metadata(self) -> Dict[str, Any]:
         """Extract metadata for Dagster asset tags.

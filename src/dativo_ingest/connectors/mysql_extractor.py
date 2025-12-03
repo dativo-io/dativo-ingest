@@ -9,6 +9,7 @@ from ..config import SourceConfig
 from ..incremental import create_incremental_strategy
 from ..incremental.base import IncrementalStrategy
 from ..incremental.strategies import CursorFieldStrategy
+from ..logging import get_logger
 from ..validator import IncrementalStateManager
 
 
@@ -24,6 +25,7 @@ class MySQLExtractor:
         self.source_config = source_config
         self.engine_options = self._get_engine_options()
         self.connection = self._build_connection()
+        self.logger = get_logger()
 
     def _get_engine_options(self) -> Dict[str, Any]:
         """Get engine options from source config.
@@ -220,12 +222,15 @@ class MySQLExtractor:
         return query, params
 
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data from MySQL tables.
 
         Args:
             state_manager: Optional incremental state manager for tracking cursor state
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as dictionaries
@@ -339,10 +344,39 @@ class MySQLExtractor:
                 all_processed_records = []
                 records_processed = 0
 
+                # Check for WAL checkpoint to resume from
+                start_offset = 0
+                wal_manager = None
+                if checkpoint_context:
+                    checkpoint = checkpoint_context.get("checkpoint")
+                    wal_manager = checkpoint_context.get("wal_manager")
+                    if checkpoint and checkpoint.get("type") == "offset_based":
+                        start_offset = checkpoint.get("last_offset", 0)
+                        self.logger.info(
+                            f"Resuming MySQL extraction from offset {start_offset}",
+                            extra={
+                                "table_name": table_name,
+                                "resume_offset": start_offset,
+                                "event_type": "mysql_resume",
+                            },
+                        )
+
                 # Execute query with dictionary cursor (returns dicts directly)
                 cursor = conn.cursor(dictionary=True)
                 try:
                     cursor.execute(query, params)
+
+                    # Skip to resume offset if needed
+                    if start_offset > 0:
+                        cursor.fetchmany(start_offset)  # Skip records
+                        self.logger.info(
+                            f"Skipped to offset {start_offset}",
+                            extra={
+                                "table_name": table_name,
+                                "offset": start_offset,
+                                "event_type": "mysql_offset_skip",
+                            },
+                        )
 
                     # Fetch in batches
                     while True:
@@ -374,6 +408,23 @@ class MySQLExtractor:
 
                         all_processed_records.extend(batch)
                         records_processed += len(batch)
+                        batch_number = records_processed // batch_size
+                        current_offset = start_offset + records_processed
+
+                        # Update WAL checkpoint after each batch
+                        if wal_manager and checkpoint_context:
+                            stream_name = checkpoint_context.get(
+                                "stream_name", object_name
+                            )
+                            checkpoint_data = {
+                                "type": "offset_based",
+                                "table_name": table_name,
+                                "last_offset": current_offset,
+                                "batch_number": batch_number,
+                                "records_processed": records_processed,
+                            }
+                            wal_manager.update_checkpoint(stream_name, checkpoint_data)
+
                         yield batch
 
                     # Update state after successful processing using strategy

@@ -207,11 +207,54 @@ export AWS_REGION="us-east-1"
 make test-smoke
 ```
 
+## WAL Testing
+
+The WAL (Write-Ahead Log) checkpointing system has comprehensive test coverage:
+
+### Test Categories
+
+1. **Unit Tests** (`tests/test_wal_manager.py`): 13 test cases covering WAL Manager core functionality
+   - WAL file creation, loading, checkpoint updates
+   - Resume detection, finalization, cleanup
+   - Multiple checkpoint types and atomic writes
+
+2. **Integration Tests** (`tests/integration/test_wal_integration.py`): 8 test cases
+   - CSV, Postgres, MySQL, GDrive CSV, Google Sheets extractors with WAL
+   - Airbyte extractor STATE message mapping
+   - WAL finalization and cleanup
+
+3. **Infrastructure Tests** (`tests/test_wal_infrastructure.py`): 11 test cases
+   - Directory creation, permissions, concurrent access
+   - Atomic writes, cleanup, persistence
+   - Multi-tenant and multi-job scenarios
+
+4. **Smoke Tests** (`tests/smoke_tests_wal.sh`): End-to-end testing
+   - WAL file creation during job execution
+   - Checkpoint updates and resume scenarios
+   - WAL finalization verification
+
+### Running WAL Tests
+
+```bash
+# Run all WAL tests
+pytest tests/test_wal_manager.py \
+       tests/integration/test_wal_integration.py \
+       tests/test_wal_infrastructure.py -v
+
+# Run smoke tests
+./tests/smoke_tests_wal.sh
+```
+
+**Test Results**: All 32 test cases passing (13 unit + 8 integration + 11 infrastructure)
+
+For detailed WAL documentation, see [WAL_CHECKPOINTING.md](WAL_CHECKPOINTING.md).
+
 ## Additional Resources
 
 - [SETUP_AND_ONBOARDING.md](SETUP_AND_ONBOARDING.md) - Comprehensive setup and onboarding guide
 - [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md) - Detailed execution flow
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) - Configuration options
+- [WAL_CHECKPOINTING.md](WAL_CHECKPOINTING.md) - WAL checkpointing documentation
 - [QUICKSTART.md](../QUICKSTART.md) - Quick start guide
 - [README.md](../README.md) - Project overview
 
