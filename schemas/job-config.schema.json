@@ -78,11 +78,9 @@
             "required": ["path"]
           }
         },
-        "objects": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+        "object": {
+          "type": "string",
+          "description": "Source object/table/stream name (must match asset.object)"
         },
         "connection": {
           "type": "object",

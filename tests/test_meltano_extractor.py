@@ -32,7 +32,7 @@ def source_config():
     """Create a source config for testing."""
     return SourceConfig(
         type="postgres",
-        objects=["employees"],
+        object="employees",
         credentials={},
         incremental={"strategy": "updated_at", "cursor_field": "modifieddate"},
     )

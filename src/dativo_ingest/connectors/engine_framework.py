@@ -295,8 +295,8 @@ class AirbyteExtractor(BaseEngineExtractor):
 
         # Get requested streams from source_config or engine options (not from config)
         # Streams should not be in the config passed to Airbyte (they belong in the catalog)
-        if self.source_config.objects:
-            requested_streams = self.source_config.objects
+        if self.source_config.object:
+            requested_streams = [self.source_config.object]
         else:
             airbyte_opts = self.config_parser.engine_options.get("airbyte", {})
             requested_streams = airbyte_opts.get("streams_default", [])

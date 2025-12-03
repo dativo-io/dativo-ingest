@@ -686,7 +686,7 @@ asset: stripe_customers
 asset_path: assets/stripe/v1.0/customers.yaml
 
 source:
-  objects: [customers]
+  object: customers
   engine:
     type: airbyte
     options:

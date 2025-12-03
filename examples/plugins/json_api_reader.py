@@ -36,7 +36,7 @@ class JSONAPIReader(BaseReader):
             options:
               page_size: 100
               max_pages: null  # null = no limit
-          objects: ["users", "orders"]
+          object: "users"  # One job = one object
     """
     
     __version__ = "1.0.0"  # Plugin version
@@ -132,11 +132,11 @@ class JSONAPIReader(BaseReader):
         """
         from dativo_ingest.plugins import DiscoveryResult
         
-        # If objects are specified in config, return those
-        objects = self.source_config.objects or []
+        # If object is specified in config, return that
+        obj_name = self.source_config.object
         
         discovered = []
-        for obj_name in objects:
+        if obj_name:
             discovered.append({
                 "name": obj_name,
                 "type": "endpoint",
@@ -162,9 +162,9 @@ class JSONAPIReader(BaseReader):
         Yields:
             Batches of records as list of dictionaries
         """
-        objects = self.source_config.objects or []
+        obj_name = self.source_config.object
         
-        for obj_name in objects:
+        if obj_name:
             # Fetch all pages for this object
             yield from self._fetch_object_pages(obj_name)
     
@@ -295,7 +295,7 @@ def main():
             "base_url": "https://jsonplaceholder.typicode.com",
             "timeout": 30,
         },
-        objects=["posts", "users"],
+        object="posts",  # One job = one object
         engine={
             "options": {
                 "page_size": 10,

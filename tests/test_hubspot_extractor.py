@@ -34,7 +34,7 @@ def hubspot_source_config():
     """Create HubSpot source config."""
     return SourceConfig(
         type="hubspot",
-        objects=["contacts"],
+        object="contacts",
         credentials={},
         incremental={"strategy": "updated_after", "cursor_field": "updatedAt"},
     )

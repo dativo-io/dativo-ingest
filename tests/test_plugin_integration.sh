@@ -315,7 +315,7 @@ config = SourceConfig(
     type='test',
     connection={'url': 'http://test'},
     credentials={'token': 'secret'},
-    objects=['table1']
+    object='table1'
 )
 
 # Create wrapper without library (just for testing serialization)
@@ -326,7 +326,7 @@ config_dict = json.loads(config_json)
 
 assert config_dict['type'] == 'test'
 assert config_dict['connection']['url'] == 'http://test'
-assert 'table1' in config_dict['objects']
+assert config_dict['object'] == 'table1'
 \""
 
 # ==========================

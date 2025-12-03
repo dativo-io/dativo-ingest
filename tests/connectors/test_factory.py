@@ -92,7 +92,7 @@ class TestExtractorFactory:
 
     def test_create_stripe_without_recipe(self):
         """Test that Stripe requires connector recipe."""
-        source_config = SourceConfig(type="stripe", objects=["customers"])
+        source_config = SourceConfig(type="stripe", object="customers")
         job_config = Mock(spec=JobConfig)
         job_config.source_connector_path = None
 
@@ -103,7 +103,7 @@ class TestExtractorFactory:
 
     def test_create_hubspot_without_recipe(self):
         """Test that HubSpot requires connector recipe."""
-        source_config = SourceConfig(type="hubspot", objects=["contacts"])
+        source_config = SourceConfig(type="hubspot", object="contacts")
         job_config = Mock(spec=JobConfig)
         job_config.source_connector_path = None
 
@@ -128,7 +128,7 @@ class TestExtractorFactory:
         mock_extractor = Mock()
         mock_airbyte_extractor.return_value = mock_extractor
 
-        source_config = SourceConfig(type="custom_airbyte", objects=["stream1"])
+        source_config = SourceConfig(type="custom_airbyte", object="stream1")
         job_config = Mock(spec=JobConfig)
         job_config.source_connector_path = "connectors/test.yaml"
 

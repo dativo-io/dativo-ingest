@@ -540,7 +540,7 @@ class TestRustPluginBridge:
             type="test",
             connection={"endpoint": "http://test"},
             credentials={"api_key": "test"},
-            objects=["table1"],
+            object="table1",
         )
 
         # Test serialization (without actually loading library)
@@ -553,7 +553,7 @@ class TestRustPluginBridge:
         assert config_dict["type"] == "test"
         assert config_dict["connection"]["endpoint"] == "http://test"
         assert config_dict["credentials"]["api_key"] == "test"
-        assert "table1" in config_dict["objects"]
+        assert config_dict["object"] == "table1"
 
 
 class TestPluginErrorHandling:

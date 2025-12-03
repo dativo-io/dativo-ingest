@@ -30,7 +30,7 @@ source:
     options:
       page_size: 100
       max_pages: null
-  objects: ["users", "orders"]
+  object: "users"  # One job = one object. Create separate jobs for multiple objects.
 ```
 
 **Test Locally:**

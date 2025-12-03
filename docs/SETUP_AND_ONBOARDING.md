@@ -171,7 +171,7 @@ target_connector_path: connectors/targets/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
-  objects: [customers]
+  object: customers
 target:
   connection:
     s3:
@@ -416,7 +416,7 @@ target_connector_path: connectors/targets/iceberg.yaml
 asset: new_connector_object
 asset_path: assets/new_connector/v1.0/object.yaml
 source:
-  objects: [object_name]
+  object: object_name
 target:
   connection:
     s3:
@@ -592,7 +592,7 @@ target_connector_path: connectors/targets/iceberg.yaml
 asset: new_source_object
 asset_path: assets/new_source/v1.0/object.yaml
 source:
-  objects: [object_name]
+  object: object_name
   incremental:
     lookback_days: 1
 ```
@@ -641,7 +641,7 @@ target_connector_path: connectors/targets/iceberg.yaml
 asset: slack_messages
 asset_path: assets/slack/v1.0/messages.yaml
 source:
-  objects: [messages]
+  object: messages
   incremental:
     lookback_days: 7
 ```
