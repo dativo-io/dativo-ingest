@@ -16,7 +16,7 @@ asset_path: /app/assets/stripe/v1.0/customers.yaml
 
 # Source configuration
 source:
-  objects: [customers]
+  object: customers
   incremental:
     lookback_days: 1
 

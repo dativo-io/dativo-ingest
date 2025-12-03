@@ -292,8 +292,8 @@ source:
   credentials:
     api_key: "${MY_API_KEY}"
   
-  # Objects to extract
-  objects: ["users", "orders"]
+  # Object to extract (one job = one object)
+  object: "users"
   
   # Engine options (passed to your reader)
   engine:

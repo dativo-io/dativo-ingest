@@ -167,7 +167,7 @@ Do you need to extract data from a source?
 ```yaml
 source:
   type: stripe
-  objects: [customers]
+  object: customers
   incremental:
     lookback_days: 1
 ```

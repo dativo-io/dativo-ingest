@@ -12,7 +12,7 @@ asset: hubspot_contacts
 asset_path: /app/assets/hubspot/v1.0/contacts.yaml
 
 source:
-  objects: [contacts]
+  object: contacts
   incremental:
     lookback_days: 1
 

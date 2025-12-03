@@ -34,8 +34,9 @@ source:
       page_size: 100
       max_pages: null  # null = no limit
   
-  # Objects to extract (passed to your custom reader)
-  objects: ["users", "orders"]
+  # Object to extract (passed to your custom reader)
+  # Note: One job = one object. Create separate jobs for multiple objects.
+  object: users
 
 # Target configuration with custom writer
 target:

@@ -239,7 +239,7 @@ target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml  # Always versioned
 source:
-  objects: [customers]
+  object: customers
   incremental:
     lookback_days: 1
 target:
@@ -460,6 +460,7 @@ src/dativo_ingest/   # Source code
 **Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
 **Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
 **Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
+**Design Decisions:** [docs/DESIGN_ONE_ASSET_PER_JOB.md](docs/DESIGN_ONE_ASSET_PER_JOB.md) - Why one asset per job  
 **Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
 **Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
 **Data Flow Architecture:** [DATA_FLOW_ARCHITECTURE.md](DATA_FLOW_ARCHITECTURE.md) - How data moves from readers to writers  
