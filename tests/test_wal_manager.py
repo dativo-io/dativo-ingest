@@ -315,3 +315,107 @@ class TestWALManager:
         resume_point = manager2.get_resume_point("stream1")
         assert resume_point["chunk_number"] == 5
         assert manager2.is_resuming()
+
+    def test_temp_file_naming(self, tmp_path):
+        """Test that temp file is created with correct name (not double .wal)."""
+        wal_base_dir = tmp_path / "wal"
+        manager = WALManager(
+            job_name="test_job",
+            tenant_id="test_tenant",
+            wal_base_dir=str(wal_base_dir),
+            run_id="20240101_120000",
+        )
+
+        manager.create_wal()
+
+        # Verify WAL file name
+        expected_wal = manager.wal_dir / "20240101_120000.wal.json"
+        assert manager.wal_file == expected_wal
+
+        # Update checkpoint to trigger atomic write
+        manager.update_checkpoint(
+            "stream1",
+            {"type": "chunk_based", "chunk_number": 1},
+        )
+
+        # Verify no temp file exists (should be cleaned up)
+        temp_files = list(manager.wal_dir.glob("*.wal.json.tmp"))
+        assert len(temp_files) == 0, f"Found unexpected temp files: {temp_files}"
+
+        # Verify no incorrectly named temp files exist (double .wal)
+        incorrect_temp_files = list(manager.wal_dir.glob("*.wal.wal.json.tmp"))
+        assert (
+            len(incorrect_temp_files) == 0
+        ), f"Found incorrectly named temp files (double .wal): {incorrect_temp_files}"
+
+    def test_final_file_naming(self, tmp_path):
+        """Test that final file is created with correct name (not double .wal)."""
+        wal_base_dir = tmp_path / "wal"
+        manager = WALManager(
+            job_name="test_job",
+            tenant_id="test_tenant",
+            wal_base_dir=str(wal_base_dir),
+            run_id="20240101_120000",
+        )
+
+        manager.create_wal()
+        manager.finalize_wal()
+
+        # Verify final file name is correct
+        expected_final = manager.wal_dir / "20240101_120000.wal.final"
+        assert manager.wal_final_file == expected_final
+        assert manager.wal_final_file.exists()
+
+        # Verify no incorrectly named final files exist (double .wal)
+        incorrect_final_files = list(manager.wal_dir.glob("*.wal.wal.final"))
+        assert (
+            len(incorrect_final_files) == 0
+        ), f"Found incorrectly named final files (double .wal): {incorrect_final_files}"
+
+    def test_find_latest_wal_skips_finalized(self, tmp_path):
+        """Test that find_latest_wal correctly identifies finalized files."""
+        wal_base_dir = tmp_path / "wal"
+        tenant_id = "test_tenant"
+        job_name = "test_job"
+
+        # Create and finalize first WAL
+        manager1 = WALManager(
+            job_name=job_name,
+            tenant_id=tenant_id,
+            wal_base_dir=str(wal_base_dir),
+            run_id="20240101_100000",
+        )
+        manager1.create_wal()
+        manager1.finalize_wal()
+
+        # Verify final file exists with correct name
+        final_file = manager1.wal_dir / "20240101_100000.wal.final"
+        assert final_file.exists(), "Final file should exist"
+
+        # Verify no incorrectly named final file exists
+        incorrect_final = manager1.wal_dir / "20240101_100000.wal.wal.final"
+        assert (
+            not incorrect_final.exists()
+        ), "Incorrectly named final file (double .wal) should not exist"
+
+        # Create second WAL (not finalized)
+        manager2 = WALManager(
+            job_name=job_name,
+            tenant_id=tenant_id,
+            wal_base_dir=str(wal_base_dir),
+            run_id="20240101_110000",
+        )
+        manager2.create_wal()
+
+        # find_latest_wal should return the non-finalized one
+        latest = WALManager.find_latest_wal(
+            job_name=job_name,
+            tenant_id=tenant_id,
+            wal_base_dir=str(wal_base_dir),
+        )
+
+        assert latest is not None
+        assert manager2.run_id in str(latest)
+        assert manager1.run_id not in str(
+            latest
+        ), "find_latest_wal should skip finalized WAL files"
