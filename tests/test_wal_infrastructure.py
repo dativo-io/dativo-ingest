@@ -143,9 +143,8 @@ class TestWALInfrastructure:
         manager.finalize_wal()
         manager.cleanup_wal()
 
-        # Files should be removed
+        # File should be removed
         assert not manager.wal_file.exists()
-        assert not manager.wal_final_file.exists()
 
     def test_wal_persistence_after_failure(self, tmp_path):
         """Test that WAL files persist after failure (for resume)."""

@@ -320,8 +320,7 @@ Similar to Airbyte, using Singer STATE format.
 └── wal/                      # WAL files (new)
     └── {tenant_id}/
         └── {job_name}/
-            ├── {run_id}.wal.json      # Active WAL
-            └── {run_id}.wal.final     # Finalized WAL (temporary)
+            └── {run_id}.wal.json      # WAL file (status: "in_progress" or "completed")
 ```
 
 ## Performance Considerations

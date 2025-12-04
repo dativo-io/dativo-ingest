@@ -139,7 +139,6 @@ class TestWALManager:
         loaded = manager.load_wal()
         assert loaded["status"] == "completed"
         assert "completed_at" in loaded
-        assert manager.wal_final_file.exists()
 
     def test_cleanup_wal(self, tmp_path):
         """Test cleaning up WAL."""
@@ -155,7 +154,6 @@ class TestWALManager:
         manager.cleanup_wal()
 
         assert not manager.wal_file.exists()
-        assert not manager.wal_final_file.exists()
 
     def test_is_resuming(self, tmp_path):
         """Test resume detection."""
@@ -348,8 +346,8 @@ class TestWALManager:
             len(incorrect_temp_files) == 0
         ), f"Found incorrectly named temp files (double .wal): {incorrect_temp_files}"
 
-    def test_final_file_naming(self, tmp_path):
-        """Test that final file is created with correct name (not double .wal)."""
+    def test_finalize_wal_sets_status_completed(self, tmp_path):
+        """Test that finalize_wal sets status to completed in JSON."""
         wal_base_dir = tmp_path / "wal"
         manager = WALManager(
             job_name="test_job",
@@ -359,18 +357,14 @@ class TestWALManager:
         )
 
         manager.create_wal()
+        assert manager._wal_data["status"] == "in_progress"
+
         manager.finalize_wal()
 
-        # Verify final file name is correct
-        expected_final = manager.wal_dir / "20240101_120000.wal.final"
-        assert manager.wal_final_file == expected_final
-        assert manager.wal_final_file.exists()
-
-        # Verify no incorrectly named final files exist (double .wal)
-        incorrect_final_files = list(manager.wal_dir.glob("*.wal.wal.final"))
-        assert (
-            len(incorrect_final_files) == 0
-        ), f"Found incorrectly named final files (double .wal): {incorrect_final_files}"
+        # Verify status is set to completed in JSON
+        loaded = manager.load_wal()
+        assert loaded["status"] == "completed"
+        assert "completed_at" in loaded
 
     def test_find_latest_wal_skips_finalized(self, tmp_path):
         """Test that find_latest_wal correctly identifies finalized files."""
@@ -388,15 +382,9 @@ class TestWALManager:
         manager1.create_wal()
         manager1.finalize_wal()
 
-        # Verify final file exists with correct name
-        final_file = manager1.wal_dir / "20240101_100000.wal.final"
-        assert final_file.exists(), "Final file should exist"
-
-        # Verify no incorrectly named final file exists
-        incorrect_final = manager1.wal_dir / "20240101_100000.wal.wal.final"
-        assert (
-            not incorrect_final.exists()
-        ), "Incorrectly named final file (double .wal) should not exist"
+        # Verify status is completed in JSON
+        loaded1 = manager1.load_wal()
+        assert loaded1["status"] == "completed"
 
         # Create second WAL (not finalized)
         manager2 = WALManager(

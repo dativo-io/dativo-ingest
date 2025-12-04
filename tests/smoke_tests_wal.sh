@@ -184,11 +184,13 @@ echo ""
 echo "📝 Test 5: WAL finalization"
 echo "─────────────────────────────────────────────────────────────────────"
 
-# Look for finalized WAL files
-FINAL_FILES=$(find "$WAL_DIR" -name "*.wal.final" 2>/dev/null | wc -l | tr -d ' ')
+# Look for finalized WAL files (check JSON status field)
+FINALIZED_WALS=$(find "$WAL_DIR" -name "*.wal.json" -type f 2>/dev/null | while read f; do
+    python3 -c "import json, sys; data=json.load(open('$f')); sys.exit(0 if data.get('status')=='completed' else 1)" 2>/dev/null && echo "$f"
+done | wc -l | tr -d ' ')
 
-if [ "$FINAL_FILES" -gt 0 ]; then
-    echo -e "${GREEN}✅ PASS: Finalized WAL files found ($FINAL_FILES file(s))${NC}"
+if [ "$FINALIZED_WALS" -gt 0 ]; then
+    echo -e "${GREEN}✅ PASS: Finalized WAL files found ($FINALIZED_WALS file(s))${NC}"
     echo "   This indicates successful job completion"
 else
     echo -e "${YELLOW}⚠️  INFO: No finalized WAL files (jobs may not have completed)${NC}"

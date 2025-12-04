@@ -162,12 +162,12 @@ class TestWALCSVIntegration:
 
         # Finalize WAL
         wal_manager.finalize_wal()
-        assert wal_manager.wal_final_file.exists()
+        loaded = wal_manager.load_wal()
+        assert loaded["status"] == "completed"
 
         # Cleanup WAL
         wal_manager.cleanup_wal()
         assert not wal_manager.wal_file.exists()
-        assert not wal_manager.wal_final_file.exists()
 
     def test_csv_extractor_checkpoint_file_id_mismatch(self, tmp_path):
         """Test that CSV extractor ignores checkpoint when file_id doesn't match.
