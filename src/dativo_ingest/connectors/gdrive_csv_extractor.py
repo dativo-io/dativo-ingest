@@ -10,6 +10,7 @@ from ..config import ConnectorRecipe, SourceConfig
 from ..incremental import create_incremental_strategy
 from ..incremental.base import IncrementalStrategy
 from ..incremental.strategies import FileModifiedTimeStrategy
+from ..logging import get_logger
 from ..validator import IncrementalStateManager
 from .engine_framework import AirbyteExtractor, BaseEngineExtractor
 
@@ -33,6 +34,7 @@ class GDriveCSVExtractor:
         self.source_config = source_config
         self.connector_recipe = connector_recipe
         self.tenant_id = tenant_id
+        self.logger = get_logger()
 
         # Determine engine type
         if connector_recipe:
@@ -373,15 +375,29 @@ class GDriveCSVExtractor:
                         checkpoint = checkpoint_context.get("checkpoint")
                         wal_manager = checkpoint_context.get("wal_manager")
                         if checkpoint and checkpoint.get("type") == "chunk_based":
-                            start_chunk = checkpoint.get("chunk_number", 0)
-                            self.logger.info(
-                                f"Resuming GDrive CSV extraction from chunk {start_chunk + 1}",
-                                extra={
-                                    "file_id": str(file_id),
-                                    "resume_chunk": start_chunk + 1,
-                                    "event_type": "gdrive_csv_resume",
-                                },
-                            )
+                            # Only apply checkpoint if it matches the current file
+                            checkpoint_file_id = checkpoint.get("file_id")
+                            current_file_id_str = str(file_id)
+                            if checkpoint_file_id == current_file_id_str:
+                                start_chunk = checkpoint.get("chunk_number", 0)
+                                self.logger.info(
+                                    f"Resuming GDrive CSV extraction from chunk {start_chunk + 1} for file {file_id}",
+                                    extra={
+                                        "file_id": str(file_id),
+                                        "resume_chunk": start_chunk + 1,
+                                        "event_type": "gdrive_csv_resume",
+                                    },
+                                )
+                            else:
+                                # Checkpoint is for a different file, start from beginning
+                                self.logger.info(
+                                    f"Checkpoint found for different file (checkpoint file_id: {checkpoint_file_id}, current file_id: {current_file_id_str}), starting from beginning",
+                                    extra={
+                                        "file_id": str(file_id),
+                                        "checkpoint_file_id": checkpoint_file_id,
+                                        "event_type": "gdrive_csv_resume_skipped",
+                                    },
+                                )
 
                     # Read CSV with specified options
                     chunk_count = 0

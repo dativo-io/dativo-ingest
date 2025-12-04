@@ -173,15 +173,30 @@ class CSVExtractor:
                 checkpoint = checkpoint_context.get("checkpoint")
                 wal_manager = checkpoint_context.get("wal_manager")
                 if checkpoint and checkpoint.get("type") == "chunk_based":
-                    start_chunk = checkpoint.get("chunk_number", 0)
-                    self.logger.info(
-                        f"Resuming CSV extraction from chunk {start_chunk + 1}",
-                        extra={
-                            "file_path": str(file_path),
-                            "resume_chunk": start_chunk + 1,
-                            "event_type": "csv_resume",
-                        },
-                    )
+                    # Only apply checkpoint if it matches the current file
+                    checkpoint_file_id = checkpoint.get("file_id")
+                    if checkpoint_file_id == file_id:
+                        start_chunk = checkpoint.get("chunk_number", 0)
+                        self.logger.info(
+                            f"Resuming CSV extraction from chunk {start_chunk + 1} for file {file_id}",
+                            extra={
+                                "file_path": str(file_path),
+                                "file_id": file_id,
+                                "resume_chunk": start_chunk + 1,
+                                "event_type": "csv_resume",
+                            },
+                        )
+                    else:
+                        # Checkpoint is for a different file, start from beginning
+                        self.logger.info(
+                            f"Checkpoint found for different file (checkpoint file_id: {checkpoint_file_id}, current file_id: {file_id}), starting from beginning",
+                            extra={
+                                "file_path": str(file_path),
+                                "file_id": file_id,
+                                "checkpoint_file_id": checkpoint_file_id,
+                                "event_type": "csv_resume_skipped",
+                            },
+                        )
 
             # Read CSV with specified options
             try:
