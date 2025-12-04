@@ -550,6 +550,166 @@ class TestWALAirbyteIntegration:
         )
 
 
+class TestWALJobExecutorCheckpointPreservation:
+    """Integration tests for WAL checkpoint type preservation by job executor."""
+
+    def test_job_executor_preserves_extractor_checkpoint_types(self, tmp_path):
+        """Test that job executor doesn't overwrite extractor-specific checkpoint types."""
+        wal_base_dir = tmp_path / "wal"
+        wal_manager = WALManager(
+            job_name="test_job",
+            tenant_id="test_tenant",
+            wal_base_dir=str(wal_base_dir),
+        )
+        wal_manager.create_wal()
+
+        stream_name = "test_stream"
+
+        # Simulate extractor updating checkpoint with specific type (chunk_based)
+        extractor_checkpoint = {
+            "type": "chunk_based",
+            "file_id": "test_file.csv",
+            "chunk_number": 5,
+            "records_in_chunk": 100,
+        }
+        wal_manager.update_checkpoint(stream_name, extractor_checkpoint)
+
+        # Verify extractor checkpoint was set
+        checkpoint = wal_manager.get_checkpoint(stream_name)
+        assert checkpoint is not None
+        assert checkpoint["type"] == "chunk_based"
+        assert checkpoint["chunk_number"] == 5
+
+        # Simulate job executor checking and potentially updating checkpoint
+        # (This mimics the logic in job_executor.py lines 586-614)
+        current_checkpoint = wal_manager.get_checkpoint(stream_name)
+        should_update = (
+            current_checkpoint is None
+            or current_checkpoint.get("type") == "batch_based"
+        )
+
+        # Job executor should NOT update because checkpoint has specific type
+        assert (
+            not should_update
+        ), "Job executor should not overwrite extractor-specific checkpoint types"
+
+        # Verify checkpoint type is still chunk_based (not overwritten)
+        final_checkpoint = wal_manager.get_checkpoint(stream_name)
+        assert final_checkpoint["type"] == "chunk_based"
+        assert final_checkpoint["chunk_number"] == 5
+
+    def test_job_executor_updates_batch_based_fallback(self, tmp_path):
+        """Test that job executor updates checkpoint when extractor doesn't set specific type."""
+        wal_base_dir = tmp_path / "wal"
+        wal_manager = WALManager(
+            job_name="test_job",
+            tenant_id="test_tenant",
+            wal_base_dir=str(wal_base_dir),
+        )
+        wal_manager.create_wal()
+
+        stream_name = "test_stream"
+
+        # Simulate job executor setting batch_based checkpoint (fallback)
+        batch_checkpoint = {
+            "type": "batch_based",
+            "last_batch": 1,
+            "records_processed": 100,
+        }
+        wal_manager.update_checkpoint(stream_name, batch_checkpoint)
+
+        # Verify batch_based checkpoint was set
+        checkpoint = wal_manager.get_checkpoint(stream_name)
+        assert checkpoint is not None
+        assert checkpoint["type"] == "batch_based"
+
+        # Simulate job executor checking again (should update since it's batch_based)
+        current_checkpoint = wal_manager.get_checkpoint(stream_name)
+        should_update = (
+            current_checkpoint is None
+            or current_checkpoint.get("type") == "batch_based"
+        )
+
+        # Job executor SHOULD update because checkpoint is batch_based (fallback)
+        assert should_update, "Job executor should update batch_based checkpoints"
+
+        # Update with new batch
+        new_batch_checkpoint = {
+            "type": "batch_based",
+            "last_batch": 2,
+            "records_processed": 200,
+        }
+        wal_manager.update_checkpoint(stream_name, new_batch_checkpoint)
+
+        # Verify checkpoint was updated
+        final_checkpoint = wal_manager.get_checkpoint(stream_name)
+        assert final_checkpoint["type"] == "batch_based"
+        assert final_checkpoint["last_batch"] == 2
+        assert final_checkpoint["records_processed"] == 200
+
+    def test_job_executor_handles_multiple_checkpoint_types(self, tmp_path):
+        """Test that job executor preserves different extractor checkpoint types."""
+        wal_base_dir = tmp_path / "wal"
+        wal_manager = WALManager(
+            job_name="test_job",
+            tenant_id="test_tenant",
+            wal_base_dir=str(wal_base_dir),
+        )
+        wal_manager.create_wal()
+
+        # Test chunk_based (CSV extractor)
+        csv_checkpoint = {
+            "type": "chunk_based",
+            "file_id": "test.csv",
+            "chunk_number": 3,
+        }
+        wal_manager.update_checkpoint("csv_stream", csv_checkpoint)
+        assert wal_manager.get_checkpoint("csv_stream")["type"] == "chunk_based"
+
+        # Test offset_based (Postgres extractor)
+        postgres_checkpoint = {
+            "type": "offset_based",
+            "last_offset": 50000,
+            "batch_number": 5,
+        }
+        wal_manager.update_checkpoint("postgres_stream", postgres_checkpoint)
+        assert wal_manager.get_checkpoint("postgres_stream")["type"] == "offset_based"
+
+        # Test spreadsheet_based (Google Sheets extractor)
+        sheets_checkpoint = {
+            "type": "spreadsheet_based",
+            "spreadsheet_id": "abc123",
+            "records_processed": 1000,
+        }
+        wal_manager.update_checkpoint("sheets_stream", sheets_checkpoint)
+        assert (
+            wal_manager.get_checkpoint("sheets_stream")["type"] == "spreadsheet_based"
+        )
+
+        # Test state_based (Airbyte extractor)
+        airbyte_checkpoint = {
+            "type": "state_based",
+            "airbyte_state": {"streams": []},
+        }
+        wal_manager.update_checkpoint("airbyte_stream", airbyte_checkpoint)
+        assert wal_manager.get_checkpoint("airbyte_stream")["type"] == "state_based"
+
+        # Verify all checkpoint types are preserved (job executor logic)
+        for stream_name in [
+            "csv_stream",
+            "postgres_stream",
+            "sheets_stream",
+            "airbyte_stream",
+        ]:
+            checkpoint = wal_manager.get_checkpoint(stream_name)
+            should_update = (
+                checkpoint is None or checkpoint.get("type") == "batch_based"
+            )
+            assert (
+                not should_update
+            ), f"Job executor should not overwrite {checkpoint['type']} checkpoint"
+
+
 class TestWALJobExecutorResume:
     """Integration tests for WAL resume functionality with find_latest_wal."""
 

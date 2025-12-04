@@ -579,18 +579,45 @@ class JobExecutor:
                     )
 
                     # Update WAL checkpoint after successful batch write
+                    # Only update if extractor hasn't already updated with a specific checkpoint type
+                    # Extractors update checkpoints with types like: chunk_based, offset_based,
+                    # spreadsheet_based, state_based. We only use batch_based as a fallback for
+                    # extractors that don't implement checkpoint updates.
                     if self.wal_manager and checkpoint_context:
                         stream_name = checkpoint_context["stream_name"]
-                        # Extractors should update checkpoints themselves, but we can also update here
-                        # as a fallback for extractors that don't implement checkpoint updates
-                        # The checkpoint data format depends on extractor type
-                        # For now, we'll track batch-level progress
-                        checkpoint_data = {
-                            "type": "batch_based",
-                            "last_batch": batch_count,
-                            "records_processed": total_valid_records,
-                        }
-                        self.wal_manager.update_checkpoint(stream_name, checkpoint_data)
+                        current_checkpoint = self.wal_manager.get_checkpoint(
+                            stream_name
+                        )
+
+                        # Only update if checkpoint doesn't exist or is already batch_based
+                        # (meaning extractor hasn't updated it with a specific type)
+                        should_update = (
+                            current_checkpoint is None
+                            or current_checkpoint.get("type") == "batch_based"
+                        )
+
+                        if should_update:
+                            checkpoint_data = {
+                                "type": "batch_based",
+                                "last_batch": batch_count,
+                                "records_processed": total_valid_records,
+                            }
+                            self.wal_manager.update_checkpoint(
+                                stream_name, checkpoint_data
+                            )
+                        else:
+                            # Extractor has already updated checkpoint with specific type
+                            # Log for debugging but don't overwrite
+                            self.logger.debug(
+                                f"Skipping batch_based checkpoint update - extractor already updated with type: {current_checkpoint.get('type')}",
+                                extra={
+                                    "stream_name": stream_name,
+                                    "extractor_checkpoint_type": current_checkpoint.get(
+                                        "type"
+                                    ),
+                                    "event_type": "checkpoint_skipped_extractor_updated",
+                                },
+                            )
                 else:
                     self.logger.warning(
                         f"Batch {batch_count} had no valid records to write",
