@@ -342,13 +342,33 @@ class GoogleSheetsExtractor:
             if checkpoint and checkpoint.get("type") == "spreadsheet_based":
                 checkpointed_spreadsheet_id = checkpoint.get("spreadsheet_id")
                 if checkpointed_spreadsheet_id:
-                    self.logger.info(
-                        f"Resuming from WAL checkpoint at spreadsheet: {checkpointed_spreadsheet_id}",
-                        extra={
-                            "checkpointed_spreadsheet_id": checkpointed_spreadsheet_id,
-                            "event_type": "wal_resume_detected",
-                        },
-                    )
+                    # Verify checkpointed spreadsheet exists in current config
+                    # Extract all spreadsheet IDs from current config
+                    current_spreadsheet_ids = [
+                        cfg.get("id") or cfg.get("spreadsheet_id")
+                        for cfg in spreadsheets
+                        if cfg.get("id") or cfg.get("spreadsheet_id")
+                    ]
+
+                    if checkpointed_spreadsheet_id not in current_spreadsheet_ids:
+                        # Checkpointed spreadsheet not found in current config - clear checkpoint
+                        self.logger.warning(
+                            f"Checkpointed spreadsheet {checkpointed_spreadsheet_id} not found in current config, starting from beginning",
+                            extra={
+                                "checkpointed_spreadsheet_id": checkpointed_spreadsheet_id,
+                                "current_spreadsheet_ids": current_spreadsheet_ids,
+                                "event_type": "wal_resume_skipped_missing_spreadsheet",
+                            },
+                        )
+                        checkpointed_spreadsheet_id = None
+                    else:
+                        self.logger.info(
+                            f"Resuming from WAL checkpoint at spreadsheet: {checkpointed_spreadsheet_id}",
+                            extra={
+                                "checkpointed_spreadsheet_id": checkpointed_spreadsheet_id,
+                                "event_type": "wal_resume_detected",
+                            },
+                        )
 
         # Process each spreadsheet
         for spreadsheet_config in spreadsheets:

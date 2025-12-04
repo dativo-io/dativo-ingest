@@ -394,6 +394,124 @@ class TestWALGoogleSheetsIntegration:
         assert resume_point["type"] == "spreadsheet_based"
         assert resume_point["records_processed"] == 100
 
+    def test_google_sheets_extractor_missing_checkpointed_spreadsheet(self, tmp_path):
+        """Test Google Sheets extractor clears checkpoint when checkpointed spreadsheet not in config."""
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+
+        # Mock Google API modules
+        mock_google_oauth2 = MagicMock()
+        mock_google_oauth2.service_account = MagicMock()
+        mock_google_oauth2.service_account.Credentials = MagicMock()
+        mock_credentials = MagicMock()
+        mock_google_oauth2.service_account.Credentials.from_service_account_file = (
+            MagicMock(return_value=mock_credentials)
+        )
+
+        mock_sheets_service = MagicMock()
+        mock_sheets_service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = {
+            "values": [["col1", "col2"], ["val1", "val2"]]
+        }
+
+        mock_discovery = MagicMock()
+        mock_discovery.build = MagicMock(return_value=mock_sheets_service)
+
+        # Create a mock Path that returns instances with exists() = True
+        def mock_path_constructor(*args, **kwargs):
+            mock_path = MagicMock(spec=Path)
+            mock_path.exists.return_value = True
+            mock_path.__str__ = lambda: str(args[0]) if args else ""
+            mock_path.__fspath__ = lambda: str(args[0]) if args else ""
+            return mock_path
+
+        with (
+            patch(
+                "dativo_ingest.connectors.google_sheets_extractor.Path",
+                side_effect=mock_path_constructor,
+            ),
+            patch.dict(
+                sys.modules,
+                {
+                    "google": MagicMock(),
+                    "google.oauth2": mock_google_oauth2,
+                    "google.oauth2.service_account": mock_google_oauth2.service_account,
+                    "googleapiclient": MagicMock(),
+                    "googleapiclient.discovery": mock_discovery,
+                },
+            ),
+        ):
+            from dativo_ingest.config import ConnectorRecipe, SourceConfig
+            from dativo_ingest.connectors.google_sheets_extractor import (
+                GoogleSheetsExtractor,
+            )
+
+            # Create WAL manager with checkpoint for non-existent spreadsheet
+            wal_base_dir = tmp_path / "wal"
+            wal_manager = WALManager(
+                job_name="test_job",
+                tenant_id="test_tenant",
+                wal_base_dir=str(wal_base_dir),
+            )
+            wal_manager.create_wal()
+
+            # Create checkpoint for spreadsheet that won't be in config
+            checkpoint = {
+                "type": "spreadsheet_based",
+                "spreadsheet_id": "missing_sheet_123",
+                "records_processed": 100,
+            }
+            wal_manager.update_checkpoint("default", checkpoint)
+
+            # Create source config with DIFFERENT spreadsheet IDs
+            # Note: SourceConfig uses 'sheets' but extractor checks for 'spreadsheets'
+            source_config = SourceConfig(
+                type="google_sheets",
+                credentials={"file_template": "/secrets/test/gsheets.json"},
+            )
+            # Set spreadsheets attribute directly (extractor checks for this)
+            # Use object.__setattr__ to bypass Pydantic validation
+            object.__setattr__(
+                source_config,
+                "spreadsheets",
+                [{"id": "sheet_456"}, {"id": "sheet_789"}],
+            )
+
+            connector_recipe = ConnectorRecipe(
+                name="google_sheets",
+                type="google_sheets",
+                roles=["source"],
+                default_engine={"type": "native"},
+                credentials={"type": "service_account"},
+            )
+
+            extractor = GoogleSheetsExtractor(
+                source_config, connector_recipe, tenant_id="test_tenant"
+            )
+
+            # Create checkpoint context with missing spreadsheet ID
+            checkpoint_context = {
+                "checkpoint": checkpoint,
+                "wal_manager": wal_manager,
+                "stream_name": "default",
+            }
+
+            # Extract data - should process all spreadsheets (not skip them)
+            batches = list(extractor.extract(checkpoint_context=checkpoint_context))
+
+            # Verify that both spreadsheets were processed (not skipped)
+            # The extractor should have cleared the checkpoint and processed all spreadsheets
+            assert (
+                len(batches) == 2
+            ), "Should process both spreadsheets when checkpoint is invalid"
+            assert len(batches[0]) == 1, "First spreadsheet should have 1 record"
+            assert len(batches[1]) == 1, "Second spreadsheet should have 1 record"
+
+            # Verify that get was called for both spreadsheets (not skipped)
+            assert (
+                mock_sheets_service.spreadsheets.return_value.values.return_value.get.call_count
+                == 2
+            )
+
 
 class TestWALAirbyteIntegration:
     """Integration tests for WAL with Airbyte extractor (mocked)."""
