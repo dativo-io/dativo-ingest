@@ -9,6 +9,7 @@ from ..config import SourceConfig
 from ..incremental import create_incremental_strategy
 from ..incremental.base import IncrementalStrategy
 from ..incremental.strategies import CursorFieldStrategy
+from ..logging import get_logger
 from ..validator import IncrementalStateManager
 
 
@@ -24,6 +25,7 @@ class PostgresExtractor:
         self.source_config = source_config
         self.engine_options = self._get_engine_options()
         self.connection = self._build_connection()
+        self.logger = get_logger()
 
     def _get_engine_options(self) -> Dict[str, Any]:
         """Get engine options from source config.
@@ -331,10 +333,15 @@ class PostgresExtractor:
                         )
 
                 # Execute query with server-side cursor for large datasets
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                # Use named cursor to enable scrolling support for WAL checkpoint resumption
+                cursor_name = f"cursor_{table_name.replace('.', '_').replace('-', '_')}"
+                with conn.cursor(
+                    name=cursor_name, cursor_factory=RealDictCursor
+                ) as cursor:
                     cursor.execute(query, params)
 
                     # Skip to resume offset if needed
+                    # Server-side cursors support scrolling, client-side cursors do not
                     if start_offset > 0:
                         cursor.scroll(start_offset, mode="absolute")
                         self.logger.info(
