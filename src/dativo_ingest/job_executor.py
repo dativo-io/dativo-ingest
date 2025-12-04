@@ -194,6 +194,25 @@ class JobExecutor:
         # Use asset name or job name for WAL file naming
         job_name = self.job_config.asset or "default_job"
 
+        # If run_id not explicitly provided, check for existing WAL files to resume
+        if run_id is None:
+            latest_wal_file = WALManager.find_latest_wal(
+                job_name=job_name,
+                tenant_id=self.tenant_id,
+                wal_base_dir=wal_base_dir,
+            )
+            if latest_wal_file:
+                # Extract run_id from filename (e.g., "20240101_120000.wal.json" -> "20240101_120000")
+                run_id = latest_wal_file.stem.replace(".wal", "")
+                self.logger.info(
+                    f"Found existing WAL file, will resume: {latest_wal_file}",
+                    extra={
+                        "wal_file": str(latest_wal_file),
+                        "run_id": run_id,
+                        "event_type": "wal_resume_detected",
+                    },
+                )
+
         self.wal_manager = WALManager(
             job_name=job_name,
             tenant_id=self.tenant_id,
