@@ -274,7 +274,9 @@ class WALManager:
         self.wal_dir.mkdir(parents=True, exist_ok=True)
 
         # Write atomically (write to temp file, then rename)
-        temp_file = self.wal_file.with_suffix(".wal.json.tmp")
+        temp_file = self.wal_file.with_name(
+            self.wal_file.name.replace(".wal.json", ".wal.json.tmp")
+        )
         try:
             with open(temp_file, "w") as f:
                 json.dump(self._wal_data, f, indent=2)
@@ -308,7 +310,7 @@ class WALManager:
         # Collect all non-finalized WALs and extract run_id from filename
         wal_files = []
         for p in wal_dir.glob("*.wal.json"):
-            final_file = p.with_suffix(".wal.final")
+            final_file = p.with_name(p.name.replace(".wal.json", ".wal.final"))
             if not final_file.exists():
                 try:
                     # Extract run_id from filename (e.g., "20240101_120000.wal.json" -> "20240101_120000")
