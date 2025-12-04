@@ -305,18 +305,22 @@ class WALManager:
         if not wal_dir.exists():
             return None
 
-        # Find all WAL files (not finalized)
-        wal_files = list(wal_dir.glob("*.wal.json"))
+        # Collect all non-finalized WALs and extract run_id from filename
+        wal_files = []
+        for p in wal_dir.glob("*.wal.json"):
+            final_file = p.with_suffix(".wal.final")
+            if not final_file.exists():
+                try:
+                    # Extract run_id from filename (e.g., "20240101_120000.wal.json" -> "20240101_120000")
+                    run_id = p.stem.replace(".wal", "")
+                    wal_files.append((run_id, p))
+                except Exception:
+                    continue
+
         if not wal_files:
             return None
 
-        # Sort by modification time (newest first)
-        wal_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-
-        # Return the most recent non-finalized WAL
-        for wal_file in wal_files:
-            final_file = wal_file.with_suffix(".wal.final")
-            if not final_file.exists():
-                return wal_file
-
-        return None
+        # Sort by run_id descending (newest first)
+        # run_id format is YYYYMMDD_HHMMSS, so string sort works correctly
+        wal_files.sort(key=lambda x: x[0], reverse=True)
+        return wal_files[0][1]
