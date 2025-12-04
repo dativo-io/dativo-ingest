@@ -100,12 +100,15 @@ class RustReaderWrapper(BaseReader):
         return json.dumps(config_dict).encode("utf-8")
 
     def extract(
-        self, state_manager: Optional[Any] = None
+        self,
+        state_manager: Optional[Any] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data using Rust reader.
 
         Args:
             state_manager: Optional state manager (not used in Rust plugins yet)
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records

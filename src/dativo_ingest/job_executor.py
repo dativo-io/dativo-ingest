@@ -10,6 +10,7 @@ from .plugins import PluginLoader, extract_sandbox_config
 from .schema_validator import SchemaValidator
 from .utils import expand_env_variable
 from .validator import ConnectorValidator, IncrementalStateManager
+from .wal_manager import WALManager
 
 
 class JobExecutor:
@@ -34,6 +35,7 @@ class JobExecutor:
         self.writer: Any = None
         self.committer: Any = None
         self.state_manager: Optional[IncrementalStateManager] = None
+        self.wal_manager: Optional[WALManager] = None
         self.source_tags: Optional[Dict[str, Any]] = None
 
     def _setup_logging(self) -> None:
@@ -177,6 +179,74 @@ class JobExecutor:
                         "event_type": "state_initialized",
                     },
                 )
+
+    def _initialize_wal_manager(self) -> None:
+        """Initialize WAL manager if WAL is enabled."""
+        if not self.source_config.wal or not self.source_config.wal.get(
+            "enabled", False
+        ):
+            return
+
+        wal_config = self.source_config.wal
+        wal_base_dir = wal_config.get("base_dir", "/app/wal")
+        run_id = wal_config.get("run_id")  # Optional: allow override
+
+        # Use asset name or job name for WAL file naming
+        job_name = self.job_config.asset or "default_job"
+
+        # If run_id not explicitly provided, check for existing WAL files to resume
+        if run_id is None:
+            latest_wal_file = WALManager.find_latest_wal(
+                job_name=job_name,
+                tenant_id=self.tenant_id,
+                wal_base_dir=wal_base_dir,
+            )
+            if latest_wal_file:
+                # Extract run_id from filename (e.g., "20240101_120000.wal.json" -> "20240101_120000")
+                run_id = latest_wal_file.stem.replace(".wal", "")
+                self.logger.info(
+                    f"Found existing WAL file, will resume: {latest_wal_file}",
+                    extra={
+                        "wal_file": str(latest_wal_file),
+                        "run_id": run_id,
+                        "event_type": "wal_resume_detected",
+                    },
+                )
+
+        self.wal_manager = WALManager(
+            job_name=job_name,
+            tenant_id=self.tenant_id,
+            wal_base_dir=wal_base_dir,
+            run_id=run_id,
+        )
+
+        # Create or load WAL
+        metadata = {
+            "extractor_type": (
+                getattr(self.extractor, "__class__", {}).__name__
+                if self.extractor
+                else "unknown"
+            ),
+            "connector_type": self.source_config.type,
+        }
+        self.wal_manager.create_wal(metadata=metadata)
+
+        if self.wal_manager.is_resuming():
+            self.logger.info(
+                "Resuming from WAL checkpoint",
+                extra={
+                    "wal_file": str(self.wal_manager.wal_file),
+                    "event_type": "wal_resume",
+                },
+            )
+        else:
+            self.logger.info(
+                "WAL manager initialized",
+                extra={
+                    "wal_file": str(self.wal_manager.wal_file),
+                    "event_type": "wal_initialized",
+                },
+            )
 
     def _initialize_extractor(self) -> int:
         """Initialize extractor using ExtractorFactory.
@@ -416,8 +486,21 @@ class JobExecutor:
                     "event_type": "extraction_started",
                 },
             )
+
+            # Prepare checkpoint context for extractor
+            checkpoint_context = None
+            if self.wal_manager:
+                stream_name = self.source_config.object or "default"
+                checkpoint = self.wal_manager.get_resume_point(stream_name)
+                checkpoint_context = {
+                    "checkpoint": checkpoint,
+                    "wal_manager": self.wal_manager,
+                    "stream_name": stream_name,
+                }
+
             for batch_records in self.extractor.extract(
-                state_manager=self.state_manager
+                state_manager=self.state_manager,
+                checkpoint_context=checkpoint_context,
             ):
                 batch_count += 1
                 total_records += len(batch_records)
@@ -494,6 +577,47 @@ class JobExecutor:
                             "event_type": "batch_written",
                         },
                     )
+
+                    # Update WAL checkpoint after successful batch write
+                    # Only update if extractor hasn't already updated with a specific checkpoint type
+                    # Extractors update checkpoints with types like: chunk_based, offset_based,
+                    # spreadsheet_based, state_based. We only use batch_based as a fallback for
+                    # extractors that don't implement checkpoint updates.
+                    if self.wal_manager and checkpoint_context:
+                        stream_name = checkpoint_context["stream_name"]
+                        current_checkpoint = self.wal_manager.get_checkpoint(
+                            stream_name
+                        )
+
+                        # Only update if checkpoint doesn't exist or is already batch_based
+                        # (meaning extractor hasn't updated it with a specific type)
+                        should_update = (
+                            current_checkpoint is None
+                            or current_checkpoint.get("type") == "batch_based"
+                        )
+
+                        if should_update:
+                            checkpoint_data = {
+                                "type": "batch_based",
+                                "last_batch": batch_count,
+                                "records_processed": total_valid_records,
+                            }
+                            self.wal_manager.update_checkpoint(
+                                stream_name, checkpoint_data
+                            )
+                        else:
+                            # Extractor has already updated checkpoint with specific type
+                            # Log for debugging but don't overwrite
+                            self.logger.debug(
+                                f"Skipping batch_based checkpoint update - extractor already updated with type: {current_checkpoint.get('type')}",
+                                extra={
+                                    "stream_name": stream_name,
+                                    "extractor_checkpoint_type": current_checkpoint.get(
+                                        "type"
+                                    ),
+                                    "event_type": "checkpoint_skipped_extractor_updated",
+                                },
+                            )
                 else:
                     self.logger.warning(
                         f"Batch {batch_count} had no valid records to write",
@@ -525,6 +649,14 @@ class JobExecutor:
                     },
                 )
 
+            # Finalize WAL before committing (on successful extraction)
+            if self.wal_manager:
+                self.wal_manager.finalize_wal()
+                self.logger.info(
+                    "WAL finalized before commit",
+                    extra={"event_type": "wal_finalized"},
+                )
+
             # Commit all files
             exit_code = self._commit_files(
                 all_file_metadata,
@@ -535,6 +667,15 @@ class JobExecutor:
                 validation_mode,
                 batch_count,
             )
+
+            # Cleanup WAL after successful commit
+            if exit_code == 0 and self.wal_manager:
+                self.wal_manager.cleanup_wal()
+                self.logger.info(
+                    "WAL cleaned up after successful commit",
+                    extra={"event_type": "wal_cleaned"},
+                )
+
             return exit_code
 
         except Exception as e:
@@ -886,6 +1027,9 @@ class JobExecutor:
             exit_code = self._initialize_extractor()
             if exit_code != 0:
                 return exit_code
+
+            # Initialize WAL manager (after extractor is initialized for metadata)
+            self._initialize_wal_manager()
 
             # Initialize validator
             exit_code = self._initialize_validator()

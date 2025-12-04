@@ -152,12 +152,15 @@ class JSONAPIReader(BaseReader):
         )
     
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data from JSON API.
         
         Args:
             state_manager: Optional state manager for incremental syncs
+            checkpoint_context: Optional checkpoint context for WAL resume
         
         Yields:
             Batches of records as list of dictionaries

@@ -64,12 +64,15 @@ class BaseEngineExtractor(ABC):
 
     @abstractmethod
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data using the engine.
 
         Args:
             state_manager: Optional incremental state manager
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as dictionaries
@@ -124,12 +127,15 @@ class AirbyteExtractor(BaseEngineExtractor):
         )
 
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data using Airbyte Docker container.
 
         Args:
             state_manager: Optional incremental state manager
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as dictionaries
@@ -141,9 +147,9 @@ class AirbyteExtractor(BaseEngineExtractor):
             # Get incremental configuration
             incremental_config = self.config_parser.get_incremental_config()
 
-            # Run Airbyte container
+            # Run Airbyte container with checkpoint context
             records = self._run_airbyte_container(
-                config, incremental_config, state_manager
+                config, incremental_config, state_manager, checkpoint_context
             )
 
             # Yield records in batches
@@ -239,6 +245,7 @@ class AirbyteExtractor(BaseEngineExtractor):
         config: Dict[str, Any],
         incremental_config: Dict[str, Any],
         state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[Dict[str, Any]]:
         """Run Airbyte Docker container and stream records.
 
@@ -246,6 +253,7 @@ class AirbyteExtractor(BaseEngineExtractor):
             config: Airbyte configuration
             incremental_config: Incremental sync configuration
             state_manager: Optional incremental state manager
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Individual records as dictionaries
@@ -314,15 +322,41 @@ class AirbyteExtractor(BaseEngineExtractor):
         # Build config JSON
         config_json = json.dumps(config)
 
+        # Build initial STATE message from incremental state + WAL checkpoint
+        initial_state = None
+        wal_manager = None
+        if checkpoint_context:
+            wal_manager = checkpoint_context.get("wal_manager")
+            checkpoint = checkpoint_context.get("checkpoint")
+            stream_name = checkpoint_context.get(
+                "stream_name", self.source_config.object or "default"
+            )
+
+            # Build Airbyte STATE format from WAL checkpoint
+            if checkpoint and checkpoint.get("type") == "state_based":
+                # Use checkpoint's airbyte_state directly
+                initial_state = checkpoint.get("airbyte_state")
+            elif checkpoint:
+                # Convert checkpoint to Airbyte STATE format
+                # For now, we'll use a simple format - extractors can override
+                initial_state = checkpoint.get("airbyte_state")
+
+        # Also check incremental state manager for cursor values
+        if state_manager and incremental_config.get("enabled"):
+            # Merge incremental state into Airbyte STATE format if needed
+            # This is connector-specific, so we'll let the connector handle it
+            pass
+
         # Run container with read command
-        # Airbyte protocol: requires both config and catalog
+        # Airbyte protocol: requires both config and catalog, optionally state
         try:
-            # Use temporary files for config and catalog
+            # Use temporary files for config, catalog, and state
             import tempfile
 
             temp_dir = _get_temp_dir()
             tmp_config_path = None
             tmp_catalog_path = None
+            tmp_state_path = None
 
             try:
                 with tempfile.NamedTemporaryFile(
@@ -341,23 +375,55 @@ class AirbyteExtractor(BaseEngineExtractor):
                     os.fsync(tmp_catalog_file.fileno())
                     tmp_catalog_path = Path(tmp_catalog_file.name).absolute()
 
-                # Use subprocess with mounted files
-                process = subprocess.Popen(
+                # Create state file if we have initial state
+                docker_cmd = [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "-v",
+                    f"{tmp_config_path}:/airbyte_config.json:ro",
+                    "-v",
+                    f"{tmp_catalog_path}:/airbyte_catalog.json:ro",
+                ]
+
+                if initial_state:
+                    state_json = json.dumps(initial_state)
+                    with tempfile.NamedTemporaryFile(
+                        mode="w", suffix=".json", delete=False, dir=str(temp_dir)
+                    ) as tmp_state_file:
+                        tmp_state_file.write(state_json)
+                        tmp_state_file.flush()
+                        os.fsync(tmp_state_file.fileno())
+                        tmp_state_path = Path(tmp_state_file.name).absolute()
+                    docker_cmd.extend(
+                        [
+                            "-v",
+                            f"{tmp_state_path}:/airbyte_state.json:ro",
+                        ]
+                    )
+
+                docker_cmd.extend(
                     [
-                        "docker",
-                        "run",
-                        "--rm",
-                        "-v",
-                        f"{tmp_config_path}:/airbyte_config.json:ro",
-                        "-v",
-                        f"{tmp_catalog_path}:/airbyte_catalog.json:ro",
                         self.docker_image,
                         "read",
                         "--config",
                         "/airbyte_config.json",
                         "--catalog",
                         "/airbyte_catalog.json",
-                    ],
+                    ]
+                )
+
+                if initial_state:
+                    docker_cmd.extend(
+                        [
+                            "--state",
+                            "/airbyte_state.json",
+                        ]
+                    )
+
+                # Use subprocess with mounted files
+                process = subprocess.Popen(
+                    docker_cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -387,6 +453,27 @@ class AirbyteExtractor(BaseEngineExtractor):
                                 state = record.get("state", {})
                                 if state_manager and state:
                                     self._update_state(state_manager, state)
+
+                                # Update WAL checkpoint with Airbyte STATE
+                                if wal_manager and checkpoint_context:
+                                    stream_name = checkpoint_context.get(
+                                        "stream_name",
+                                        self.source_config.object or "default",
+                                    )
+                                    checkpoint_data = {
+                                        "type": "state_based",
+                                        "airbyte_state": state,
+                                    }
+                                    wal_manager.update_checkpoint(
+                                        stream_name, checkpoint_data
+                                    )
+                                    self.logger.debug(
+                                        "Updated WAL checkpoint from Airbyte STATE",
+                                        extra={
+                                            "stream_name": stream_name,
+                                            "event_type": "wal_state_updated",
+                                        },
+                                    )
                         except json.JSONDecodeError:
                             # Skip invalid JSON lines (may be logs)
                             continue
@@ -415,6 +502,11 @@ class AirbyteExtractor(BaseEngineExtractor):
                 try:
                     if tmp_catalog_path is not None:
                         tmp_catalog_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                try:
+                    if tmp_state_path is not None:
+                        tmp_state_path.unlink(missing_ok=True)
                 except Exception:
                     pass
 
@@ -869,12 +961,15 @@ class MeltanoExtractor(BaseEngineExtractor):
         )
 
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data using Meltano tap.
 
         Args:
             state_manager: Optional incremental state manager
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as dictionaries
@@ -913,12 +1008,15 @@ class SingerExtractor(BaseEngineExtractor):
         )
 
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data using Singer tap.
 
         Args:
             state_manager: Optional incremental state manager
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as dictionaries
