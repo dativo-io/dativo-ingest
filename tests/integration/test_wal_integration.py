@@ -169,6 +169,99 @@ class TestWALCSVIntegration:
         assert not wal_manager.wal_file.exists()
         assert not wal_manager.wal_final_file.exists()
 
+    def test_csv_extractor_checkpoint_file_id_mismatch(self, tmp_path):
+        """Test that CSV extractor ignores checkpoint when file_id doesn't match.
+
+        This test verifies the fix for the bug where a checkpoint for File A
+        would incorrectly be applied to File B, causing File B to skip chunks.
+        """
+        # Create two test CSV files with different content
+        csv_file_a = tmp_path / "file_a.csv"
+        csv_file_b = tmp_path / "file_b.csv"
+
+        # File A: 30 records
+        df_a = pd.DataFrame(
+            {
+                "id": range(1, 31),
+                "name": [f"Name_A_{i}" for i in range(1, 31)],
+            }
+        )
+        df_a.to_csv(csv_file_a, index=False)
+
+        # File B: 30 records
+        df_b = pd.DataFrame(
+            {
+                "id": range(1, 31),
+                "name": [f"Name_B_{i}" for i in range(1, 31)],
+            }
+        )
+        df_b.to_csv(csv_file_b, index=False)
+
+        # Create source config with both files
+        source_config = SourceConfig(
+            type="csv",
+            files=[
+                {"path": str(csv_file_a), "id": "file_a"},
+                {"path": str(csv_file_b), "id": "file_b"},
+            ],
+            engine={"options": {"native": {"chunk_size": 10}}},
+        )
+
+        # Create extractor
+        extractor = CSVExtractor(source_config)
+
+        # Create WAL manager
+        wal_base_dir = tmp_path / "wal"
+        wal_manager = WALManager(
+            job_name="test_job",
+            tenant_id="test_tenant",
+            wal_base_dir=str(wal_base_dir),
+        )
+        wal_manager.create_wal(metadata={"extractor_type": "CSVExtractor"})
+
+        # Create a checkpoint for file_a at chunk 2
+        # This simulates File A being partially processed
+        checkpoint_file_a = {
+            "type": "chunk_based",
+            "file_id": "file_a",
+            "chunk_number": 2,
+            "records_in_chunk": 10,
+        }
+        wal_manager.update_checkpoint("default", checkpoint_file_a)
+
+        # Now try to extract with checkpoint context
+        # The checkpoint is for file_a, but file_b should NOT use it
+        checkpoint_context = {
+            "checkpoint": wal_manager.get_resume_point("default"),
+            "wal_manager": wal_manager,
+            "stream_name": "default",
+        }
+
+        # Extract all batches and track file_b batches
+        file_b_batches = []
+
+        for batch in extractor.extract(checkpoint_context=checkpoint_context):
+            # Identify file_b batches by checking record content
+            if batch and len(batch) > 0 and "name" in batch[0]:
+                if "Name_B_" in batch[0]["name"]:
+                    file_b_batches.append(batch)
+
+        # Verify file_b was processed completely
+        # File B has 30 records, chunk_size=10, so should have 3 batches
+        # If checkpoint was incorrectly applied, file_b would skip first 2 chunks
+        # and only have 1 batch (10 records)
+        file_b_total_records = sum(len(batch) for batch in file_b_batches)
+        assert file_b_total_records == 30, (
+            f"Expected 30 records for file_b, got {file_b_total_records}. "
+            f"Checkpoint for file_a was incorrectly applied to file_b."
+        )
+
+        # Verify file_b has all 3 batches (not skipped)
+        assert len(file_b_batches) == 3, (
+            f"Expected 3 batches for file_b, got {len(file_b_batches)}. "
+            f"Checkpoint for file_a caused file_b to skip chunks."
+        )
+
 
 class TestWALPostgresIntegration:
     """Integration tests for WAL with Postgres extractor (mocked)."""

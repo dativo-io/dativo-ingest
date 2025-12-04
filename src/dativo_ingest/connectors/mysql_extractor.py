@@ -351,15 +351,28 @@ class MySQLExtractor:
                     checkpoint = checkpoint_context.get("checkpoint")
                     wal_manager = checkpoint_context.get("wal_manager")
                     if checkpoint and checkpoint.get("type") == "offset_based":
-                        start_offset = checkpoint.get("last_offset", 0)
-                        self.logger.info(
-                            f"Resuming MySQL extraction from offset {start_offset}",
-                            extra={
-                                "table_name": table_name,
-                                "resume_offset": start_offset,
-                                "event_type": "mysql_resume",
-                            },
-                        )
+                        # Only apply checkpoint if it matches the current table
+                        checkpoint_table_name = checkpoint.get("table_name")
+                        if checkpoint_table_name == table_name:
+                            start_offset = checkpoint.get("last_offset", 0)
+                            self.logger.info(
+                                f"Resuming MySQL extraction from offset {start_offset} for table {table_name}",
+                                extra={
+                                    "table_name": table_name,
+                                    "resume_offset": start_offset,
+                                    "event_type": "mysql_resume",
+                                },
+                            )
+                        else:
+                            # Checkpoint is for a different table, start from beginning
+                            self.logger.info(
+                                f"Checkpoint found for different table (checkpoint table: {checkpoint_table_name}, current table: {table_name}), starting from beginning",
+                                extra={
+                                    "table_name": table_name,
+                                    "checkpoint_table_name": checkpoint_table_name,
+                                    "event_type": "mysql_resume_skipped",
+                                },
+                            )
 
                 # Execute query with dictionary cursor (returns dicts directly)
                 cursor = conn.cursor(dictionary=True)
