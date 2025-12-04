@@ -12,8 +12,9 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from dativo_ingest.config import SourceConfig
+from dativo_ingest.config import JobConfig, SourceConfig
 from dativo_ingest.connectors.csv_extractor import CSVExtractor
+from dativo_ingest.job_executor import JobExecutor
 from dativo_ingest.wal_manager import WALManager
 
 
@@ -336,3 +337,99 @@ class TestWALAirbyteIntegration:
             resume_point["airbyte_state"]["streams"][0]["stream_descriptor"]["name"]
             == "customers"
         )
+
+
+class TestWALJobExecutorResume:
+    """Integration tests for WAL resume functionality with find_latest_wal."""
+
+    def test_wal_resume_finds_existing_wal_across_run_ids(self, tmp_path):
+        """Test that WALManager finds and resumes from existing WAL file when run_id is not specified."""
+        wal_base_dir = tmp_path / "wal"
+        job_name = "test_job"
+        tenant_id = "test_tenant"
+        original_run_id = "20240101_120000"
+
+        # Step 1: Create a WAL file with a specific run_id and checkpoint
+        wal_manager1 = WALManager(
+            job_name=job_name,
+            tenant_id=tenant_id,
+            wal_base_dir=str(wal_base_dir),
+            run_id=original_run_id,
+        )
+        wal_manager1.create_wal(metadata={"extractor_type": "CSVExtractor"})
+        checkpoint = {
+            "type": "chunk_based",
+            "file_id": "test_file",
+            "chunk_number": 3,
+            "records_in_chunk": 10,
+        }
+        wal_manager1.update_checkpoint("test_file", checkpoint)
+
+        # Verify WAL file exists
+        assert wal_manager1.wal_file.exists()
+        assert wal_manager1.get_checkpoint("test_file") is not None
+
+        # Step 2: Simulate what JobExecutor does - find existing WAL when run_id is None
+        # This tests the fix: find_latest_wal() should be called before creating WALManager
+        latest_wal_file = WALManager.find_latest_wal(
+            job_name=job_name,
+            tenant_id=tenant_id,
+            wal_base_dir=str(wal_base_dir),
+        )
+
+        # Verify that find_latest_wal found the existing WAL
+        assert latest_wal_file is not None
+        assert original_run_id in str(latest_wal_file)
+
+        # Step 3: Create a new WALManager WITHOUT specifying run_id
+        # It should use the run_id from the found WAL file
+        extracted_run_id = latest_wal_file.stem.replace(".wal", "")
+        wal_manager2 = WALManager(
+            job_name=job_name,
+            tenant_id=tenant_id,
+            wal_base_dir=str(wal_base_dir),
+            run_id=extracted_run_id,  # Use run_id from found WAL
+        )
+
+        # Load the existing WAL
+        wal_manager2.load_wal()
+
+        # Verify that WAL manager is resuming
+        assert wal_manager2.is_resuming() is True
+        assert wal_manager2.run_id == original_run_id
+
+        # Verify checkpoint is still accessible
+        checkpoint_data = wal_manager2.get_checkpoint("test_file")
+        assert checkpoint_data is not None
+        assert checkpoint_data["chunk_number"] == 3
+
+    def test_wal_creates_new_when_none_exists(self, tmp_path):
+        """Test that WALManager creates a new WAL file when none exists."""
+        wal_base_dir = tmp_path / "wal"
+        job_name = "test_job"
+        tenant_id = "test_tenant"
+
+        # Simulate what JobExecutor does - check for existing WAL
+        latest_wal_file = WALManager.find_latest_wal(
+            job_name=job_name,
+            tenant_id=tenant_id,
+            wal_base_dir=str(wal_base_dir),
+        )
+
+        # Verify no existing WAL found
+        assert latest_wal_file is None
+
+        # Create new WALManager (will generate new run_id)
+        wal_manager = WALManager(
+            job_name=job_name,
+            tenant_id=tenant_id,
+            wal_base_dir=str(wal_base_dir),
+            run_id=None,  # Will generate new timestamp-based run_id
+        )
+
+        # Create new WAL
+        wal_manager.create_wal()
+
+        # Verify that WAL manager is NOT resuming
+        assert wal_manager.is_resuming() is False
+        assert wal_manager.wal_file.exists()
