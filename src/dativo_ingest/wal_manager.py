@@ -40,7 +40,6 @@ class WALManager:
         # Build WAL directory path
         self.wal_dir = self.wal_base_dir / self.tenant_id / self.job_name
         self.wal_file = self.wal_dir / f"{self.run_id}.wal.json"
-        self.wal_final_file = self.wal_dir / f"{self.run_id}.wal.final"
 
         # In-memory WAL state
         self._wal_data: Optional[Dict[str, Any]] = None
@@ -219,9 +218,6 @@ class WALManager:
         # Write final state
         self._write_wal()
 
-        # Create final marker file
-        self.wal_final_file.touch()
-
         self.logger.info(
             f"Finalized WAL: {self.wal_file}",
             extra={
@@ -234,7 +230,7 @@ class WALManager:
     def cleanup_wal(self) -> None:
         """Clean up WAL file (called after successful commit).
 
-        Removes both the WAL file and final marker.
+        Removes the WAL file.
         """
         try:
             if self.wal_file.exists():
@@ -243,9 +239,6 @@ class WALManager:
                     f"Removed WAL file: {self.wal_file}",
                     extra={"wal_file": str(self.wal_file), "event_type": "wal_cleaned"},
                 )
-
-            if self.wal_final_file.exists():
-                self.wal_final_file.unlink()
 
         except Exception as e:
             # Don't fail the job if cleanup fails
@@ -310,14 +303,20 @@ class WALManager:
         # Collect all non-finalized WALs and extract run_id from filename
         wal_files = []
         for p in wal_dir.glob("*.wal.json"):
-            final_file = p.with_name(p.name.replace(".wal.json", ".wal.final"))
-            if not final_file.exists():
-                try:
+            try:
+                # Read status from JSON to check if finalized
+                with open(p, "r") as f:
+                    wal_data = json.load(f)
+                status = wal_data.get("status", "in_progress")
+
+                # Only include non-finalized WALs (status != "completed")
+                if status != "completed":
                     # Extract run_id from filename (e.g., "20240101_120000.wal.json" -> "20240101_120000")
                     run_id = p.stem.replace(".wal", "")
                     wal_files.append((run_id, p))
-                except Exception:
-                    continue
+            except (json.JSONDecodeError, IOError, KeyError):
+                # Skip invalid or unreadable files
+                continue
 
         if not wal_files:
             return None
