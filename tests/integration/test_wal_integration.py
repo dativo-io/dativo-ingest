@@ -224,6 +224,27 @@ class TestWALMySQLIntegration:
         assert resume_point["last_offset"] == 30000
         assert resume_point["type"] == "offset_based"
 
+    def test_mysql_extractor_with_wal_resume(self, tmp_path):
+        """Test MySQL extractor resuming from WAL checkpoint."""
+        wal_base_dir = tmp_path / "wal"
+        wal_manager = WALManager(
+            job_name="test_job",
+            tenant_id="test_tenant",
+            wal_base_dir=str(wal_base_dir),
+        )
+        wal_manager.create_wal()
+
+        checkpoint = {
+            "type": "offset_based",
+            "table_name": "test_table",
+            "last_offset": 30000,
+        }
+        wal_manager.update_checkpoint("test_table", checkpoint)
+
+        resume_point = wal_manager.get_resume_point("test_table")
+        assert resume_point["last_offset"] == 30000
+        assert resume_point["type"] == "offset_based"
+
 
 class TestWALGDriveCSVIntegration:
     """Integration tests for WAL with GDrive CSV extractor."""
@@ -278,31 +299,6 @@ class TestWALGoogleSheetsIntegration:
         assert resume_point["spreadsheet_id"] == "sheet_123"
         assert resume_point["type"] == "spreadsheet_based"
         assert resume_point["records_processed"] == 100
-
-
-class TestWALMySQLIntegration:
-    """Integration tests for WAL with MySQL extractor (mocked)."""
-
-    def test_mysql_extractor_with_wal_resume(self, tmp_path):
-        """Test MySQL extractor resuming from WAL checkpoint."""
-        wal_base_dir = tmp_path / "wal"
-        wal_manager = WALManager(
-            job_name="test_job",
-            tenant_id="test_tenant",
-            wal_base_dir=str(wal_base_dir),
-        )
-        wal_manager.create_wal()
-
-        checkpoint = {
-            "type": "offset_based",
-            "table_name": "test_table",
-            "last_offset": 30000,
-        }
-        wal_manager.update_checkpoint("test_table", checkpoint)
-
-        resume_point = wal_manager.get_resume_point("test_table")
-        assert resume_point["last_offset"] == 30000
-        assert resume_point["type"] == "offset_based"
 
 
 class TestWALAirbyteIntegration:
