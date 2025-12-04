@@ -354,6 +354,7 @@ class SourceConfig(BaseModel):
     custom_reader: Optional[str] = (
         None  # Path to custom reader class (format: "path/to/module.py:ClassName")
     )
+    wal: Optional[Dict[str, Any]] = None  # WAL/checkpointing configuration
 
 
 class TargetConfig(BaseModel):

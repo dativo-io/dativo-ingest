@@ -10,6 +10,7 @@ from ..config import ConnectorRecipe, SourceConfig
 from ..incremental import create_incremental_strategy
 from ..incremental.base import IncrementalStrategy
 from ..incremental.strategies import FileModifiedTimeStrategy
+from ..logging import get_logger
 from ..validator import IncrementalStateManager
 from .engine_framework import AirbyteExtractor, BaseEngineExtractor
 
@@ -33,6 +34,7 @@ class GDriveCSVExtractor:
         self.source_config = source_config
         self.connector_recipe = connector_recipe
         self.tenant_id = tenant_id
+        self.logger = get_logger()
 
         # Determine engine type
         if connector_recipe:
@@ -275,19 +277,24 @@ class GDriveCSVExtractor:
             return None
 
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data from Google Drive CSV files.
 
         Args:
             state_manager: Optional incremental state manager for tracking file state
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as dictionaries
         """
         # Delegate to engine extractor if using non-native engine
         if self._use_engine:
-            yield from self._engine_extractor.extract(state_manager)
+            yield from self._engine_extractor.extract(
+                state_manager, checkpoint_context=checkpoint_context
+            )
             return
 
         # Use native implementation
@@ -361,7 +368,39 @@ class GDriveCSVExtractor:
                             "pandas is required for CSV extraction. Install with: pip install pandas"
                         )
 
+                    # Check for WAL checkpoint to resume from
+                    start_chunk = 0
+                    wal_manager = None
+                    if checkpoint_context:
+                        checkpoint = checkpoint_context.get("checkpoint")
+                        wal_manager = checkpoint_context.get("wal_manager")
+                        if checkpoint and checkpoint.get("type") == "chunk_based":
+                            # Only apply checkpoint if it matches the current file
+                            checkpoint_file_id = checkpoint.get("file_id")
+                            current_file_id_str = str(file_id)
+                            if checkpoint_file_id == current_file_id_str:
+                                start_chunk = checkpoint.get("chunk_number", 0)
+                                self.logger.info(
+                                    f"Resuming GDrive CSV extraction from chunk {start_chunk + 1} for file {file_id}",
+                                    extra={
+                                        "file_id": str(file_id),
+                                        "resume_chunk": start_chunk + 1,
+                                        "event_type": "gdrive_csv_resume",
+                                    },
+                                )
+                            else:
+                                # Checkpoint is for a different file, start from beginning
+                                self.logger.info(
+                                    f"Checkpoint found for different file (checkpoint file_id: {checkpoint_file_id}, current file_id: {current_file_id_str}), starting from beginning",
+                                    extra={
+                                        "file_id": str(file_id),
+                                        "checkpoint_file_id": checkpoint_file_id,
+                                        "event_type": "gdrive_csv_resume_skipped",
+                                    },
+                                )
+
                     # Read CSV with specified options
+                    chunk_count = 0
                     for chunk_df in pd.read_csv(
                         tmp_path,
                         chunksize=chunk_size,
@@ -372,8 +411,14 @@ class GDriveCSVExtractor:
                         na_values=["", "NULL", "null", "None"],
                         keep_default_na=False,
                     ):
+                        # Skip chunks before resume point
+                        if chunk_count < start_chunk:
+                            chunk_count += 1
+                            continue
+
                         # Convert DataFrame to list of dictionaries
                         records = chunk_df.to_dict("records")
+                        chunk_count += 1
 
                         # Replace NaN with None for JSON serialization
                         for record in records:
@@ -389,6 +434,22 @@ class GDriveCSVExtractor:
 
                         if records:
                             all_processed_records.extend(records)
+
+                            # Update WAL checkpoint after each chunk
+                            if wal_manager and checkpoint_context:
+                                stream_name = checkpoint_context.get(
+                                    "stream_name", str(file_id)
+                                )
+                                checkpoint_data = {
+                                    "type": "chunk_based",
+                                    "file_id": str(file_id),
+                                    "chunk_number": chunk_count,
+                                    "records_in_chunk": len(records),
+                                }
+                                wal_manager.update_checkpoint(
+                                    stream_name, checkpoint_data
+                                )
+
                             yield records
 
                     # Update state after successful processing

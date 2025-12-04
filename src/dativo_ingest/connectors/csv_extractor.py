@@ -78,12 +78,15 @@ class CSVExtractor:
         return merged
 
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data from CSV files.
 
         Args:
             state_manager: Optional incremental state manager (deprecated, use incremental strategy)
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as dictionaries
@@ -163,6 +166,38 @@ class CSVExtractor:
                     "pandas is required for CSV extraction. Install with: pip install pandas"
                 )
 
+            # Check for WAL checkpoint to resume from
+            start_chunk = 0
+            wal_manager = None
+            if checkpoint_context:
+                checkpoint = checkpoint_context.get("checkpoint")
+                wal_manager = checkpoint_context.get("wal_manager")
+                if checkpoint and checkpoint.get("type") == "chunk_based":
+                    # Only apply checkpoint if it matches the current file
+                    checkpoint_file_id = checkpoint.get("file_id")
+                    if checkpoint_file_id == file_id:
+                        start_chunk = checkpoint.get("chunk_number", 0)
+                        self.logger.info(
+                            f"Resuming CSV extraction from chunk {start_chunk + 1} for file {file_id}",
+                            extra={
+                                "file_path": str(file_path),
+                                "file_id": file_id,
+                                "resume_chunk": start_chunk + 1,
+                                "event_type": "csv_resume",
+                            },
+                        )
+                    else:
+                        # Checkpoint is for a different file, start from beginning
+                        self.logger.info(
+                            f"Checkpoint found for different file (checkpoint file_id: {checkpoint_file_id}, current file_id: {file_id}), starting from beginning",
+                            extra={
+                                "file_path": str(file_path),
+                                "file_id": file_id,
+                                "checkpoint_file_id": checkpoint_file_id,
+                                "event_type": "csv_resume_skipped",
+                            },
+                        )
+
             # Read CSV with specified options
             try:
                 chunk_count = 0
@@ -179,6 +214,11 @@ class CSVExtractor:
                     na_values=["", "NULL", "null", "None"],
                     keep_default_na=False,
                 ):
+                    # Skip chunks before resume point
+                    if chunk_count < start_chunk:
+                        chunk_count += 1
+                        continue
+
                     # Convert DataFrame to list of dictionaries
                     records = chunk_df.to_dict("records")
                     chunk_count += 1
@@ -219,6 +259,19 @@ class CSVExtractor:
                                 "event_type": "csv_chunk_read",
                             },
                         )
+
+                        # Update WAL checkpoint after each chunk
+                        if wal_manager and checkpoint_context:
+                            stream_name = checkpoint_context.get("stream_name", file_id)
+                            checkpoint_data = {
+                                "type": "chunk_based",
+                                "file_id": file_id,
+                                "chunk_number": chunk_count,
+                                "records_in_chunk": len(records),
+                                "total_records_read": total_records_read,
+                            }
+                            wal_manager.update_checkpoint(stream_name, checkpoint_data)
+
                         yield records
 
                 self.logger.info(

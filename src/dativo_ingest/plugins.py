@@ -98,9 +98,14 @@ class BaseReader(ABC):
                 # Initialize your reader with connection details
                 self.connection = self._setup_connection()
 
-            def extract(self, state_manager: Optional[IncrementalStateManager] = None) -> Iterator[List[Dict[str, Any]]]:
+            def extract(
+                self,
+                state_manager: Optional[IncrementalStateManager] = None,
+                checkpoint_context: Optional[Dict[str, Any]] = None,
+            ) -> Iterator[List[Dict[str, Any]]]:
                 # Your custom extraction logic
                 # Read from source using self.source_config.connection
+                # Use checkpoint_context to resume from last checkpoint if provided
                 # Yield batches of records
                 yield batch_records
     """
@@ -206,12 +211,15 @@ class BaseReader(ABC):
 
     @abstractmethod
     def extract(
-        self, state_manager: Optional[IncrementalStateManager] = None
+        self,
+        state_manager: Optional[IncrementalStateManager] = None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
     ) -> Iterator[List[Dict[str, Any]]]:
         """Extract data from source system.
 
         Args:
             state_manager: Optional state manager for incremental syncs
+            checkpoint_context: Optional checkpoint context for WAL resume
 
         Yields:
             Batches of records as list of dictionaries
