@@ -9,6 +9,7 @@ from ..config import ConnectorRecipe, SourceConfig
 from ..incremental import create_incremental_strategy
 from ..incremental.base import IncrementalStrategy
 from ..incremental.strategies import SpreadsheetModifiedTimeStrategy
+from ..logging import get_logger
 from ..validator import IncrementalStateManager
 from .engine_framework import AirbyteExtractor, BaseEngineExtractor
 
@@ -32,6 +33,7 @@ class GoogleSheetsExtractor:
         self.source_config = source_config
         self.connector_recipe = connector_recipe
         self.tenant_id = tenant_id
+        self.logger = get_logger()
 
         # Determine engine type
         if connector_recipe:
@@ -331,6 +333,23 @@ class GoogleSheetsExtractor:
                 default_state_path=None,
             )
 
+        # Check for WAL checkpoint to resume from (before processing loop)
+        wal_manager = None
+        checkpointed_spreadsheet_id = None
+        if checkpoint_context:
+            wal_manager = checkpoint_context.get("wal_manager")
+            checkpoint = checkpoint_context.get("checkpoint")
+            if checkpoint and checkpoint.get("type") == "spreadsheet_based":
+                checkpointed_spreadsheet_id = checkpoint.get("spreadsheet_id")
+                if checkpointed_spreadsheet_id:
+                    self.logger.info(
+                        f"Resuming from WAL checkpoint at spreadsheet: {checkpointed_spreadsheet_id}",
+                        extra={
+                            "checkpointed_spreadsheet_id": checkpointed_spreadsheet_id,
+                            "event_type": "wal_resume_detected",
+                        },
+                    )
+
         # Process each spreadsheet
         for spreadsheet_config in spreadsheets:
             spreadsheet_id = spreadsheet_config.get("id") or spreadsheet_config.get(
@@ -338,6 +357,33 @@ class GoogleSheetsExtractor:
             )
             if not spreadsheet_id:
                 continue
+
+            # Check for WAL checkpoint resume: skip all spreadsheets up to and including
+            # the checkpointed one (since checkpoint is updated after processing)
+            if checkpointed_spreadsheet_id:
+                if spreadsheet_id == checkpointed_spreadsheet_id:
+                    # Found checkpointed spreadsheet - skip it and resume from next
+                    self.logger.info(
+                        f"Skipping checkpointed spreadsheet (already processed): {spreadsheet_id}",
+                        extra={
+                            "spreadsheet_id": str(spreadsheet_id),
+                            "event_type": "spreadsheet_wal_skip",
+                        },
+                    )
+                    # Clear checkpoint flag so we process remaining spreadsheets
+                    checkpointed_spreadsheet_id = None
+                    continue
+                else:
+                    # Haven't reached checkpoint yet - skip this spreadsheet
+                    self.logger.info(
+                        f"Skipping spreadsheet (before checkpoint): {spreadsheet_id}",
+                        extra={
+                            "spreadsheet_id": str(spreadsheet_id),
+                            "checkpointed_spreadsheet_id": checkpointed_spreadsheet_id,
+                            "event_type": "spreadsheet_wal_skip_before_checkpoint",
+                        },
+                    )
+                    continue
 
             range_name = spreadsheet_config.get("range", "A1:Z1000")
             sheet_name = spreadsheet_config.get("sheet", None)
@@ -369,25 +415,6 @@ class GoogleSheetsExtractor:
                         },
                     )
                     continue  # Skip this spreadsheet
-
-            # Check for WAL checkpoint to resume from
-            wal_manager = None
-            if checkpoint_context:
-                wal_manager = checkpoint_context.get("wal_manager")
-                checkpoint = checkpoint_context.get("checkpoint")
-                if checkpoint and checkpoint.get("type") == "spreadsheet_based":
-                    # For Google Sheets, we typically process the whole spreadsheet at once
-                    # But we can track which spreadsheets have been processed
-                    processed_spreadsheet_id = checkpoint.get("spreadsheet_id")
-                    if processed_spreadsheet_id == spreadsheet_id:
-                        self.logger.info(
-                            f"Skipping spreadsheet (already processed): {spreadsheet_id}",
-                            extra={
-                                "spreadsheet_id": str(spreadsheet_id),
-                                "event_type": "spreadsheet_wal_skip",
-                            },
-                        )
-                        continue
 
             # Read data from spreadsheet
             rows = self._read_range(spreadsheet_id, full_range)
