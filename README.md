@@ -336,8 +336,8 @@ See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal a
 - **Google Sheets** - Spreadsheet data
 - **CSV** - Local CSV files
 - **Markdown-KV** - Markdown-KV files for LLM-optimized ingestion
-- **PostgreSQL** - Database (self-hosted only)
-- **MySQL** - Database (self-hosted only)
+- **PostgreSQL** - Database (self-hosted only, full table and incremental sync)
+- **MySQL** - Database (self-hosted only, full table and incremental sync)
 
 ### Targets
 - **Iceberg** - Apache Iceberg tables (Parquet format)

@@ -8,7 +8,7 @@ This document outlines the development roadmap for the Dativo Ingestion Platform
 |---------|--------|----------------|-------------|
 | v1.0.0 | ✅ Complete | 2024-11-01 | Core Framework & Configuration |
 | v1.1.0 | ✅ Complete | 2024-11-07 | ETL Pipeline & Data Processing |
-| v1.2.0 | 🚧 In Progress | TBD | OSS Connector Wrappers |
+| v1.2.0 | ✅ Complete | 2025-12-05 | OSS Connector Wrappers |
 | v1.3.0 | ✅ Complete | 2025-11-07 | Enhanced Orchestration |
 | v2.0.0 | 📋 Planned | TBD | Production Features & Scale |
 
@@ -79,11 +79,11 @@ Implement the complete Extract-Transform-Load pipeline with Parquet writing, sch
 
 ---
 
-## 🚧 v1.2.0 - OSS Connector Wrappers (IN PROGRESS)
+## ✅ v1.2.0 - OSS Connector Wrappers (COMPLETE)
 
-**Status**: In Development
+**Status**: Released 2025-12-05
 
-**Target**: Q4 2024
+**Completion Date**: 2025-12-05
 
 ### Goals
 Expand source connector support beyond CSV to include major SaaS APIs and databases using open-source connector wrappers.
@@ -119,11 +119,14 @@ Expand source connector support beyond CSV to include major SaaS APIs and databa
   - Connection pooling
   - Configurable batch sizes
   - Cursor-based incremental sync with state management
-- [ ] **MySQL Connector** (self-hosted only)
+- [x] **MySQL Connector** (self-hosted only) ✅ **COMPLETE**
   - Full table and incremental sync
   - Query-based extraction
   - Connection pooling
   - Configurable batch sizes
+  - Cursor-based incremental sync with state management
+  - Native Python implementation using mysql-connector-python
+  - WAL checkpointing support
 
 #### State Management Enhancements
 - [ ] Cursor-based incremental sync (timestamp, ID)
@@ -159,7 +162,7 @@ Expand source connector support beyond CSV to include major SaaS APIs and databa
 3. **Meltano/Singer** (future): For legacy ecosystem compatibility
 
 ### Success Criteria
-- [x] All 4 connectors (hubspot, stripe, gdrive_csv, google_sheets) functional ✅
+- [x] All 5 connectors (hubspot, stripe, gdrive_csv, google_sheets, mysql) functional ✅
 - [x] Engine framework supports Airbyte ✅
 - [x] State persistence working across runs ✅
 - [x] Rate limiting handled gracefully ✅
@@ -360,4 +363,4 @@ Have suggestions for the roadmap? Please open an issue with:
 
 ---
 
-**Last Updated**: 2025-11-07
+**Last Updated**: 2025-12-05
