@@ -2,6 +2,16 @@
 
 This guide explains how to create and use custom readers and writers in the Dativo ETL platform.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Connectors vs Custom Readers/Writers](#connectors-vs-custom-readerswriters)
+- [Python Plugins](#python-plugins)
+- [Rust Plugins](#rust-plugins)
+- [Plugin Development Guide](#plugin-development-guide)
+- [Performance Comparison](#performance-comparison)
+- [Examples](#examples)
+
 ## Overview
 
 The Dativo ETL platform supports custom readers and writers in two languages:

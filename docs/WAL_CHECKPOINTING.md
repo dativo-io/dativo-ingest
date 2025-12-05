@@ -2,6 +2,17 @@
 
 > **Note**: This document provides detailed technical documentation for WAL checkpointing. For configuration reference, see [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md). For execution flow details, see [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md).
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Two-Layer State Architecture](#two-layer-state-architecture)
+- [Design Principles](#design-principles)
+- [WAL Manager Architecture](#wal-manager-architecture)
+- [Extractor Integration](#extractor-integration)
+- [Configuration](#configuration)
+- [Resume Logic](#resume-logic)
+- [Examples](#examples)
+
 ## Overview
 
 The WAL (Write-Ahead Log) / checkpointing system enables jobs to resume extraction within a single run at page/offset/chunk boundaries. This complements the existing incremental state mechanism, which tracks cross-run logical cursors (e.g., `last_updated_at`).

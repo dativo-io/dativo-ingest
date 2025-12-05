@@ -2,6 +2,14 @@
 
 Dativo supports integration with data catalogs for automatic lineage tracking and metadata management. When a catalog is configured in a job, lineage information (source → target relationships) and metadata (tags, owners, descriptions) are automatically pushed to the catalog.
 
+## Table of Contents
+
+- [Supported Catalogs](#supported-catalogs)
+- [Configuration](#configuration)
+- [Catalog Types](#catalog-types)
+- [Lineage Tracking](#lineage-tracking)
+- [Metadata Management](#metadata-management)
+
 ## Supported Catalogs
 
 - **OpenMetadata** - Open-source metadata management platform (recommended for local testing)
