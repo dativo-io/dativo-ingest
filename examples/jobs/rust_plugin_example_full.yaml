@@ -5,13 +5,13 @@ tenant_id: acme
 environment: prod
 
 source_connector: csv
-source_connector_path: /app/connectors/csv.yaml
+source_connector_path: /app/connectors/examples/csv.yaml
 
 target_connector: s3
-target_connector_path: /app/connectors/s3.yaml
+target_connector_path: /app/connectors/examples/s3.yaml
 
 asset: high_performance_data
-asset_path: /app/assets/csv/v1.0/person.yaml
+asset_path: /app/assets/examples/csv/v1.0/person.yaml
 
 # Source configuration with Rust CSV reader
 source:

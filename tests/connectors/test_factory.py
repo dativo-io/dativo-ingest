@@ -130,7 +130,7 @@ class TestExtractorFactory:
 
         source_config = SourceConfig(type="custom_airbyte", object="stream1")
         job_config = Mock(spec=JobConfig)
-        job_config.source_connector_path = "connectors/test.yaml"
+        job_config.source_connector_path = "tests/fixtures/connectors/test.yaml"
 
         extractor, source_tags = ExtractorFactory.create(
             source_config, job_config, tenant_id="test_tenant"

@@ -100,5 +100,5 @@ make schema-validate
 
 ## Full Example
 
-See `assets/csv/v1.0/employee.yaml` for a complete example with all optional fields.
+See `assets/examples/csv/v1.0/employee.yaml` for a complete example with all optional fields.
 

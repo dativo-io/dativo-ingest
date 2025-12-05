@@ -170,9 +170,9 @@ Jobs are **tenant-specific configurations** that define what data to extract, fr
 ```yaml
 tenant_id: acme
 source_connector: stripe
-source_connector_path: connectors/sources/stripe.yaml
+source_connector_path: connectors/examples/stripe.yaml
 target_connector: iceberg
-target_connector_path: connectors/targets/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
@@ -334,7 +334,7 @@ docker-compose -f docker-compose.dev.yml up -d
 If the connector type doesn't exist, create a connector recipe:
 
 ```yaml
-# connectors/sources/new_connector.yaml
+# connectors/examples/new_connector.yaml
 name: new_connector
 type: source
 engine: native
@@ -415,9 +415,9 @@ Create job configurations that use the new connector:
 # jobs/{tenant_id}/new_connector_object_to_iceberg.yaml
 tenant_id: {tenant_id}
 source_connector: new_connector
-source_connector_path: connectors/sources/new_connector.yaml
+source_connector_path: connectors/examples/new_connector.yaml
 target_connector: iceberg
-target_connector_path: connectors/targets/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: new_connector_object
 asset_path: assets/new_connector/v1.0/object.yaml
 source:
@@ -467,7 +467,7 @@ connectors:
 Connector recipes define HOW to connect:
 
 ```yaml
-# connectors/sources/new_connector.yaml
+# connectors/examples/new_connector.yaml
 name: new_connector
 type: source
 engine: native
@@ -532,7 +532,7 @@ connectors:
 
 **2. Create Connector Recipe:**
 ```yaml
-# connectors/sources/sqlite.yaml
+# connectors/examples/sqlite.yaml
 name: sqlite
 type: source
 engine: native
@@ -573,7 +573,7 @@ schema:
 #### Step 2: Set Up Source Connector
 
 Ensure the source connector is configured:
-- Connector recipe exists in `connectors/sources/`
+- Connector recipe exists in `connectors/examples/`
 - Connector is registered in `registry/connectors.yaml`
 
 #### Step 3: Configure Secrets
@@ -591,9 +591,9 @@ NEW_SOURCE_ENDPOINT=https://api.example.com
 # jobs/{tenant_id}/new_source_object_to_iceberg.yaml
 tenant_id: {tenant_id}
 source_connector: new_source
-source_connector_path: connectors/sources/new_source.yaml
+source_connector_path: connectors/examples/new_source.yaml
 target_connector: iceberg
-target_connector_path: connectors/targets/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: new_source_object
 asset_path: assets/new_source/v1.0/object.yaml
 source:
@@ -640,9 +640,9 @@ schema:
 # jobs/acme/slack_messages_to_iceberg.yaml
 tenant_id: acme
 source_connector: slack
-source_connector_path: connectors/sources/slack.yaml
+source_connector_path: connectors/examples/slack.yaml
 target_connector: iceberg
-target_connector_path: connectors/targets/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: slack_messages
 asset_path: assets/slack/v1.0/messages.yaml
 source:
@@ -658,7 +658,7 @@ source:
 #### Step 1: Target Connector Configuration
 
 Ensure the target connector is configured:
-- Connector recipe exists in `connectors/targets/`
+- Connector recipe exists in `connectors/examples/`
 - Connector is registered in `registry/connectors.yaml`
 
 #### Step 2: Storage Configuration
@@ -666,7 +666,7 @@ Ensure the target connector is configured:
 Configure storage (S3, MinIO, Azure Blob, etc.):
 
 ```yaml
-# connectors/targets/azure_blob.yaml
+# connectors/examples/azure_blob.yaml
 name: azure_blob
 type: target
 engine: native
@@ -697,7 +697,7 @@ target:
 
 **Connector Recipe:**
 ```yaml
-# connectors/targets/azure_blob.yaml
+# connectors/examples/azure_blob.yaml
 name: azure_blob
 type: target
 engine: native
@@ -720,9 +720,9 @@ AZURE_STORAGE_CONTAINER=...
 # jobs/acme/stripe_customers_to_azure_blob.yaml
 tenant_id: acme
 source_connector: stripe
-source_connector_path: connectors/sources/stripe.yaml
+source_connector_path: connectors/examples/stripe.yaml
 target_connector: azure_blob
-target_connector_path: connectors/targets/azure_blob.yaml
+target_connector_path: connectors/examples/azure_blob.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 target:

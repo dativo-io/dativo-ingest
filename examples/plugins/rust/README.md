@@ -95,10 +95,10 @@ tenant_id: acme
 environment: prod
 
 source_connector: csv
-source_connector_path: /app/connectors/csv.yaml
+source_connector_path: /app/connectors/examples/csv.yaml
 
 target_connector: s3
-target_connector_path: /app/connectors/s3.yaml
+target_connector_path: /app/connectors/examples/s3.yaml
 
 asset: my_data
 asset_path: /app/assets/my_data.yaml
@@ -129,10 +129,10 @@ tenant_id: acme
 environment: prod
 
 source_connector: postgres
-source_connector_path: /app/connectors/postgres.yaml
+source_connector_path: /app/connectors/examples/postgres.yaml
 
 target_connector: s3
-target_connector_path: /app/connectors/s3.yaml
+target_connector_path: /app/connectors/examples/s3.yaml
 
 asset: my_data
 asset_path: /app/assets/my_data.yaml

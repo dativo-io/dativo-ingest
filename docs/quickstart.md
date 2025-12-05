@@ -121,9 +121,9 @@ docker-compose -f docker-compose.dev.yml down -v
 ```yaml
 tenant_id: mytenant
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: my_asset
 asset_path: assets/examples/csv/v1.0/my_asset.yaml
 source:
@@ -136,7 +136,15 @@ target:
       bucket: "${S3_BUCKET}"
 ```
 
-2. Create an asset definition (`assets/csv/v1.0/my_asset.yaml`):
+2. Create an asset definition. Start with the minimal template:
+```bash
+# Copy the minimal template
+cp assets/examples/minimal_asset_template.yaml assets/examples/csv/v1.0/my_asset.yaml
+
+# Edit to match your data schema
+```
+
+Or create manually (`assets/examples/csv/v1.0/my_asset.yaml`):
 ```yaml
 $schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
@@ -157,9 +165,9 @@ target:
   partitioning: [ingest_date]
 team:
   owner: your-email@company.com
-compliance:
-  classification: []
 ```
+
+**Tip:** See `assets/examples/minimal_asset_template.yaml` for the bare minimum required fields. Add optional governance fields (compliance, finops, tags) as needed.
 
 3. Set up secrets (`secrets/mytenant/iceberg.env`):
 ```bash

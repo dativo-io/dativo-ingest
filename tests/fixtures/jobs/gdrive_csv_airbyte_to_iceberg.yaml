@@ -4,11 +4,11 @@ environment: test
 
 # Source connector - Google Drive CSV (Airbyte engine)
 source_connector: gdrive_csv
-source_connector_path: connectors/gdrive_csv_airbyte.yaml
+source_connector_path: tests/fixtures/connectors/gdrive_csv_airbyte.yaml
 
 # Target connector - Iceberg with MinIO storage
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: tests/fixtures/connectors/iceberg.yaml
 
 # Asset definition
 asset: gdrive_csv_file

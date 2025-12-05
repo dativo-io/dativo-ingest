@@ -117,11 +117,11 @@ open http://localhost:3000
 ```yaml
 tenant_id: mycompany
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: mydata
-asset_path: assets/csv/v1.0/mydata.yaml
+asset_path: assets/examples/csv/v1.0/mydata.yaml
 source:
   files:
     - path: data/myfile.csv

@@ -4,15 +4,15 @@ environment: test
 
 # Source connector - Stripe with Airbyte engine
 source_connector: stripe
-source_connector_path: connectors/stripe.yaml
+source_connector_path: tests/fixtures/connectors/stripe.yaml
 
 # Target connector - Iceberg with MinIO storage
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: tests/fixtures/connectors/iceberg.yaml
 
 # Asset definition
 asset: stripe_customers
-asset_path: assets/stripe/v1.0/customers.yaml
+asset_path: tests/fixtures/assets/stripe/v1.0/customers.yaml
 
 # Source configuration
 source:

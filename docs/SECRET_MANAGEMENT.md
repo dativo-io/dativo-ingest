@@ -2,6 +2,15 @@
 
 > Secrets are now loaded via pluggable managers so you can keep credentials wherever it best fits your operations model. Environment variables are the default fallback, while the legacy filesystem loader stays available for backwards compatibility.
 
+## Table of Contents
+
+- [Quick Reference](#quick-reference)
+- [Environment Secret Manager](#environment-secret-manager)
+- [Filesystem Secret Manager](#filesystem-secret-manager)
+- [HashiCorp Vault Secret Manager](#hashicorp-vault-secret-manager)
+- [AWS Secrets Manager](#aws-secrets-manager)
+- [GCP Secret Manager](#gcp-secret-manager)
+
 ## Quick Reference
 
 | Option | Purpose |

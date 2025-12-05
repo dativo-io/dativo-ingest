@@ -84,7 +84,7 @@ target:
 ```
 
 **Asset Definition:**
-Use `assets/markdown_kv/v1.0/kv_lines.yaml`:
+Use `assets/examples/markdown_kv/v1.0/kv_lines.yaml`:
 ```yaml
 asset_path: assets/examples/markdown_kv/v1.0/kv_lines.yaml
 ```
@@ -117,7 +117,7 @@ target:
 ```
 
 **Asset Definition:**
-Use `assets/markdown_kv/v1.0/docs.yaml`:
+Use `assets/examples/markdown_kv/v1.0/docs.yaml`:
 ```yaml
 asset_path: assets/examples/markdown_kv/v1.0/docs.yaml
 ```
@@ -173,7 +173,7 @@ target:
     structured_pattern: "hybrid"
 ```
 
-See `assets/markdown_kv/v1.0/hybrid_example.yaml` for detailed implementation guidance.
+See `assets/examples/markdown_kv/v1.0/hybrid_example.yaml` for detailed implementation guidance.
 
 ## Markdown-KV Format
 
@@ -233,7 +233,7 @@ The parser will automatically detect JSON and store it in the `value_json` field
 Dativo includes a `markdown_kv` source connector for reading Markdown-KV files:
 
 ```yaml
-source_connector_path: connectors/sources/markdown_kv.yaml
+source_connector_path: connectors/examples/markdown_kv.yaml
 source:
   files:
     - file_path: "data/docs/doc1.mdkv"
@@ -263,8 +263,8 @@ markdown_kv = transform_to_markdown_kv(data, format="compact")
 
 ```yaml
 tenant_id: acme
-source_connector_path: connectors/sources/markdown_kv.yaml
-target_connector_path: connectors/targets/iceberg.yaml
+source_connector_path: connectors/examples/markdown_kv.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset_path: assets/examples/markdown_kv/v1.0/string_storage.yaml
 
 source:
@@ -293,8 +293,8 @@ target:
 
 ```yaml
 tenant_id: acme
-source_connector_path: connectors/sources/markdown_kv.yaml
-target_connector_path: connectors/targets/s3.yaml
+source_connector_path: connectors/examples/markdown_kv.yaml
+target_connector_path: connectors/examples/s3.yaml
 asset_path: assets/examples/markdown_kv/v1.0/raw_files.yaml
 
 source:
@@ -319,8 +319,8 @@ target:
 
 ```yaml
 tenant_id: acme
-source_connector_path: connectors/sources/markdown_kv.yaml
-target_connector_path: connectors/targets/iceberg.yaml
+source_connector_path: connectors/examples/markdown_kv.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset_path: assets/examples/markdown_kv/v1.0/kv_lines.yaml
 
 source:
@@ -350,8 +350,8 @@ target:
 
 ```yaml
 tenant_id: acme
-source_connector_path: connectors/sources/markdown_kv.yaml
-target_connector_path: connectors/targets/iceberg.yaml
+source_connector_path: connectors/examples/markdown_kv.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset_path: assets/examples/markdown_kv/v1.0/docs.yaml
 
 source:

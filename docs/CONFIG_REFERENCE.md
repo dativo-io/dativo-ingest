@@ -30,15 +30,15 @@ environment: prod
 
 # Reference to source connector recipe
 source_connector: hubspot
-source_connector_path: /app/connectors/sources/hubspot.yaml
+source_connector_path: /app/connectors/examples/hubspot.yaml
 
 # Reference to target connector recipe
 target_connector: iceberg
-target_connector_path: /app/connectors/targets/iceberg.yaml
+target_connector_path: /app/connectors/examples/iceberg.yaml
 
 # Reference to asset definition
 asset: hubspot_contacts
-asset_path: /app/assets/hubspot/v1.0/contacts.yaml
+asset_path: /app/assets/examples/hubspot/v1.0/contacts.yaml
 
 # Source configuration
 source:
@@ -220,7 +220,7 @@ target:
   markdown_kv_storage:
     mode: "structured"
     structured_pattern: "row_per_kv"
-# Use asset: assets/markdown_kv/v1.0/kv_lines.yaml
+# Use asset: assets/examples/markdown_kv/v1.0/kv_lines.yaml
 ```
 
 **Document-level (compact):**
@@ -230,7 +230,7 @@ target:
   markdown_kv_storage:
     mode: "structured"
     structured_pattern: "document_level"
-# Use asset: assets/markdown_kv/v1.0/docs.yaml
+# Use asset: assets/examples/markdown_kv/v1.0/docs.yaml
 ```
 
 **Hybrid (both patterns):**
@@ -371,7 +371,7 @@ Dativo-ingest supports multiple engine types for connectors, allowing you to cho
 The engine type is determined from the connector recipe's `default_engine.type` field:
 
 ```yaml
-# connectors/hubspot.yaml
+# connectors/examples/hubspot.yaml
 default_engine:
   type: airbyte
   options:

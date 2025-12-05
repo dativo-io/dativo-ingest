@@ -679,11 +679,11 @@ Speedup: Writer doesn't bottleneck on API data
 ```yaml
 tenant_id: mycompany
 source_connector: stripe
-source_connector_path: connectors/stripe.yaml
+source_connector_path: connectors/examples/stripe.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: stripe_customers
-asset_path: assets/stripe/v1.0/customers.yaml
+asset_path: assets/examples/stripe/v1.0/customers.yaml
 
 source:
   object: customers

@@ -186,8 +186,8 @@ WAL is opt-in and configured in the job's source configuration:
 
 ```yaml
 tenant_id: acme
-source_connector_path: connectors/stripe.yaml
-target_connector_path: connectors/iceberg.yaml
+source_connector_path: connectors/examples/stripe.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 
 source:
@@ -213,7 +213,7 @@ source:
 Connectors can declare WAL support in their recipe files (optional metadata):
 
 ```yaml
-# connectors/stripe.yaml
+# connectors/examples/stripe.yaml
 connector:
   name: stripe
   type: stripe
@@ -412,8 +412,8 @@ pytest tests/test_wal_manager.py tests/integration/test_wal_integration.py tests
 ```yaml
 # Job configuration
 tenant_id: test_tenant
-source_connector_path: connectors/csv.yaml
-target_connector_path: connectors/iceberg.yaml
+source_connector_path: connectors/examples/csv.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset_path: assets/examples/csv/v1.0/employees.yaml
 
 source:

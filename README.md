@@ -101,15 +101,22 @@ python3 --version  # Should show 3.10.0 or higher
 # 1. Run automated setup
 ./scripts/setup-dev.sh
 
-# 2. Source environment variables
+# 2. Configure environment variables
+# Copy .env.example to .env and fill in your values (optional for local testing)
+cp .env.example .env
+# Edit .env to add API keys for Stripe, HubSpot, or Google if needed
+
+# 3. Source environment variables
 source .env
 
-# 3. Run end-to-end test (filesystem secret manager)
+# 4. Run end-to-end test (filesystem secret manager)
 dativo run --job-dir tests/fixtures/jobs \
   --secret-manager filesystem \
   --secrets-dir tests/fixtures/secrets \
   --mode self_hosted
 ```
+
+**Note:** The `.env.example` file contains placeholders for all environment variables. Copy it to `.env` and update values as needed. For local testing with MinIO and Nessie, the default values work out of the box.
 
 For detailed instructions, see:
 - [docs/quickstart.md](docs/quickstart.md) - Quick reference guide
@@ -148,6 +155,26 @@ docker run --rm -p 3000:3000 \
 ```
 
 > Omit the `/app/secrets` volume and `--secrets-dir` flag when using non-filesystem secret managers.
+
+## 🧪 Run the Demo
+
+Experience Dativo with zero local installation:
+
+```bash
+docker compose -f docker-compose.demo.yml up --build
+```
+
+This launches:
+- **MinIO** (S3-compatible storage) - http://localhost:9001
+- **Nessie** (Iceberg catalog) - http://localhost:19120/api/v1
+- **Pre-configured demo job** - Ingests sample CSV data into Iceberg
+
+After startup, view results in the MinIO console or check the job logs. The demo includes a complete CSV-to-Iceberg ingestion pipeline with no configuration required.
+
+**View Results:**
+- MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
+- Browse data: `mc ls local/demo-bucket --recursive`
+- Nessie API: http://localhost:19120/api/v1
 
 ## CLI Usage
 
@@ -272,16 +299,16 @@ Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/r
 Defines source, target, asset, and tenant overrides.
 
 ### Path Conventions
-- **Local Development**: Use relative paths (e.g., `connectors/stripe.yaml`)
-- **Docker**: Use absolute paths (e.g., `/app/connectors/stripe.yaml`)
+- **Local Development**: Use relative paths (e.g., `connectors/examples/stripe.yaml`)
+- **Docker**: Use absolute paths (e.g., `/app/connectors/examples/stripe.yaml`)
 - **Assets**: Always use versioned paths (e.g., `assets/examples/stripe/v1.0/customers.yaml`)
 
 ```yaml
 tenant_id: acme
 source_connector: stripe
-source_connector_path: connectors/stripe.yaml  # Local: relative, Docker: /app/connectors/stripe.yaml
+source_connector_path: connectors/examples/stripe.yaml  # Local: relative, Docker: /app/connectors/examples/stripe.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml  # Always versioned
 source:
@@ -551,5 +578,10 @@ src/dativo_ingest/   # Source code
 ### Advanced Features
 - **[Agentic AI Orchestration](docs/experimental/AGENTIC_AI_ORCHESTRATION_Dativo.md)** - AI-powered orchestration and workflow automation
 - **[Governance and FinOps](docs/experimental/GOVERNANCE_AND_FINOPS_Dativo.md)** - Advanced governance, compliance, and financial operations features
+
+### Project Information
+- **[Roadmap](docs/roadmap.md)** - Development roadmap and version milestones
+- **[Changelog](CHANGELOG.md)** - Version history and release notes
+- **[Testing Overview](docs/testing-overview.md)** - Visual guide to the testing suite and test cases
 
 

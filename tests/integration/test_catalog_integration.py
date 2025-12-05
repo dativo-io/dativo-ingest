@@ -101,8 +101,8 @@ class TestOpenMetadataIntegration:
         """Create sample job config."""
         return JobConfig(
             tenant_id="test_tenant",
-            source_connector_path="connectors/csv.yaml",
-            target_connector_path="connectors/iceberg.yaml",
+            source_connector_path="tests/fixtures/connectors/csv.yaml",
+            target_connector_path="tests/fixtures/connectors/iceberg.yaml",
             asset_path="assets/test.yaml",
             source={
                 "type": "csv",
@@ -243,8 +243,8 @@ def test_job_with_catalog_config(tmp_path):
     # Create a test job config with catalog
     job_yaml = """
 tenant_id: test_tenant
-source_connector_path: connectors/csv.yaml
-target_connector_path: connectors/iceberg.yaml
+source_connector_path: tests/fixtures/connectors/csv.yaml
+target_connector_path: tests/fixtures/connectors/iceberg.yaml
 asset_path: tests/fixtures/assets/csv/v1.0/employee.yaml
 source:
   type: csv

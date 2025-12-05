@@ -30,8 +30,8 @@ def sample_job_config(sample_asset_definition):
     """Create a sample job config for testing."""
     return JobConfig(
         tenant_id="test_tenant",
-        source_connector_path="connectors/csv.yaml",
-        target_connector_path="connectors/iceberg.yaml",
+        source_connector_path="tests/fixtures/connectors/csv.yaml",
+        target_connector_path="tests/fixtures/connectors/iceberg.yaml",
         asset_path="assets/test.yaml",
         source={"type": "csv", "files": [{"path": "test.csv", "object": "test"}]},
         target={
@@ -505,8 +505,8 @@ class TestCatalogIntegration:
         """Test catalog configuration in job config."""
         job_yaml = """
 tenant_id: test_tenant
-source_connector_path: connectors/csv.yaml
-target_connector_path: connectors/iceberg.yaml
+source_connector_path: tests/fixtures/connectors/csv.yaml
+target_connector_path: tests/fixtures/connectors/iceberg.yaml
 asset_path: assets/test.yaml
 source:
   type: csv

@@ -22,15 +22,15 @@ environment: prod
 
 # Source connector
 source_connector: ${SOURCE}
-source_connector_path: connectors/${SOURCE}.yaml
+source_connector_path: connectors/examples/${SOURCE}.yaml
 
 # Target connector
 target_connector: ${TARGET}
-target_connector_path: connectors/${TARGET}.yaml
+target_connector_path: connectors/examples/${TARGET}.yaml
 
 # Asset definition
 asset: ${JOB_NAME}
-asset_path: assets/${SOURCE}/v1.0/${JOB_NAME}.yaml
+asset_path: assets/examples/${SOURCE}/v1.0/${JOB_NAME}.yaml
 
 # Source configuration
 source:
@@ -57,7 +57,7 @@ EOF
 echo "✅ Job template created: ${JOB_FILE}"
 echo ""
 echo "📝 Next steps:"
-echo "   1. Create asset definition: assets/${SOURCE}/v1.0/${JOB_NAME}.yaml"
+echo "   1. Create asset definition: assets/examples/${SOURCE}/v1.0/${JOB_NAME}.yaml"
 echo "   2. Set up secrets: secrets/${TENANT_ID}/iceberg.env"
 echo "   3. Update source file path in job config"
 echo "   4. Run: dativo run --config ${JOB_FILE} --mode self_hosted"

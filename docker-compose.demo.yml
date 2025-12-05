@@ -1,0 +1,161 @@
+# Dativo Ingestion Platform - Demo Environment
+# 
+# One-command launch for instant demo experience.
+# Includes MinIO, Nessie, and a pre-configured Dativo runner with demo job.
+#
+# Usage:
+#   docker compose -f docker-compose.demo.yml up --build
+#
+# After startup, view results:
+#   - MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
+#   - MinIO API: http://localhost:9000
+#   - Nessie API: http://localhost:19120/api/v1
+#   - View ingested data: mc ls local/demo-bucket --recursive
+
+services:
+  # Nessie - Git-like data catalog for Iceberg tables
+  nessie:
+    image: projectnessie/nessie:latest
+    container_name: dativo-demo-nessie
+    ports:
+      - "19120:19120"
+    environment:
+      - QUARKUS_HTTP_PORT=19120
+      - QUARKUS_HTTP_CORS_ORIGINS=*
+    volumes:
+      - nessie-demo-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:19120/api/v1/config"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dativo-demo
+
+  # MinIO - S3-compatible object storage
+  minio:
+    image: minio/minio:latest
+    container_name: dativo-demo-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio-demo-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dativo-demo
+
+  # MinIO client - Initialize bucket and show demo results
+  minio-init:
+    image: minio/mc:latest
+    container_name: dativo-demo-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo "🪣 Setting up MinIO bucket..."
+        mc alias set local http://minio:9000 minioadmin minioadmin
+        mc mb local/demo-bucket 2>/dev/null || echo "Bucket may already exist"
+        echo "✅ MinIO bucket 'demo-bucket' ready"
+    networks:
+      - dativo-demo
+
+  # Dativo Runner - Demo job execution
+  dativo-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dativo-ingest:demo
+    container_name: dativo-demo-runner
+    depends_on:
+      nessie:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      # MinIO/S3 Configuration
+      - S3_ENDPOINT=http://minio:9000
+      - S3_BUCKET=demo-bucket
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+      # Nessie Catalog
+      - NESSIE_URI=http://nessie:19120/api/v1
+      # Demo tenant secrets (using environment variables)
+      - DATIVO_SECRET__demo__csv__text=demo
+      - DATIVO_SECRET__demo__iceberg__env=$$'S3_ENDPOINT=http://minio:9000\nAWS_ACCESS_KEY_ID=minioadmin\nAWS_SECRET_ACCESS_KEY=minioadmin\nAWS_REGION=us-east-1\nS3_BUCKET=demo-bucket\nNESSIE_URI=http://nessie:19120/api/v1'
+    volumes:
+      # Connectors and assets
+      - ./connectors:/app/connectors:ro
+      - ./assets:/app/assets:ro
+      # Demo job configuration and data
+      - ./demo:/app/demo:ro
+      # State directory (persists between runs)
+      - demo-state:/app/state
+    command: >
+      sh -c "
+        echo '🚀 Dativo Demo - Starting ingestion job...';
+        echo '';
+        echo '📋 Job Configuration:';
+        echo '  - Source: CSV (demo data)';
+        echo '  - Target: Iceberg (Parquet)';
+        echo '  - Storage: MinIO (S3-compatible)';
+        echo '  - Catalog: Nessie';
+        echo '';
+        python -m dativo_ingest.cli run \
+          --config /app/demo/jobs/csv_to_iceberg.yaml \
+          --secret-manager env \
+          --mode self_hosted;
+        EXIT_CODE=$$?;
+        echo '';
+        echo '═══════════════════════════════════════════════════════════════';
+        if [ $$EXIT_CODE -eq 0 ]; then
+          echo '✅ Demo job completed successfully!';
+          echo '';
+          echo '📊 View your results:';
+          echo '  • MinIO Console: http://localhost:9001';
+          echo '    Login: minioadmin / minioadmin';
+          echo '  • Browse bucket: mc ls local/demo-bucket --recursive';
+          echo '  • Nessie API: http://localhost:19120/api/v1';
+          echo '';
+          echo '💡 Next steps:';
+          echo '  • Check the demo job config: ./demo/jobs/csv_to_iceberg.yaml';
+          echo '  • Modify the job and restart: docker compose -f docker-compose.demo.yml restart dativo-runner';
+          echo '  • Explore other connectors: ./connectors/';
+        else
+          echo '⚠️  Demo job completed with warnings or errors (exit code: '$$EXIT_CODE')';
+          echo '  Check logs above for details.';
+        fi;
+        echo '═══════════════════════════════════════════════════════════════';
+        echo '';
+        echo '🔄 To run the demo again:';
+        echo '   docker compose -f docker-compose.demo.yml restart dativo-runner';
+        echo '';
+        # Keep container running so users can inspect logs
+        tail -f /dev/null
+      "
+    networks:
+      - dativo-demo
+
+volumes:
+  nessie-demo-data:
+  minio-demo-data:
+  demo-state:
+
+networks:
+  dativo-demo:
+    driver: bridge
+

@@ -14,7 +14,7 @@ git add DATA_FLOW_SUMMARY.txt
 git add TESTING_PLAYBOOK.md
 git add TESTING_QUICK_REFERENCE.md
 git add TESTING_GUIDE_INDEX.md
-git add TESTING_OVERVIEW.txt
+git add docs/testing-overview.md
 git add TESTING_RESOURCES_SUMMARY.md
 git add PR_SUMMARY.md
 git add GIT_COMMIT_GUIDE.md
@@ -43,7 +43,7 @@ git add PYTHON_SETUP_GUIDE.md \
         TESTING_PLAYBOOK.md \
         TESTING_QUICK_REFERENCE.md \
         TESTING_GUIDE_INDEX.md \
-        TESTING_OVERVIEW.txt \
+        docs/testing-overview.md \
         TESTING_RESOURCES_SUMMARY.md \
         PR_SUMMARY.md \
         GIT_COMMIT_GUIDE.md \
@@ -114,7 +114,7 @@ git commit -m "docs: Add data flow architecture documentation
 git add TESTING_PLAYBOOK.md \
         TESTING_QUICK_REFERENCE.md \
         TESTING_GUIDE_INDEX.md \
-        TESTING_OVERVIEW.txt \
+        docs/testing-overview.md \
         TESTING_RESOURCES_SUMMARY.md
 
 git commit -m "docs: Add comprehensive testing playbook and guides
@@ -122,7 +122,7 @@ git commit -m "docs: Add comprehensive testing playbook and guides
 - Added TESTING_PLAYBOOK.md with 20 detailed test cases (2,399 lines)
 - Added TESTING_QUICK_REFERENCE.md with CLI command cheat sheet (416 lines)
 - Added TESTING_GUIDE_INDEX.md as testing navigation hub (407 lines)
-- Added TESTING_OVERVIEW.txt with visual test case tree
+- Added docs/testing-overview.md with visual test case tree
 - Covers 100% of platform capabilities with copy-paste ready examples
 - Includes Stripe/HubSpot test account setup guides
 - Provides learning path from beginner to expert"
@@ -194,7 +194,7 @@ Users with Python 3.9 encountered:
 - `TESTING_PLAYBOOK.md` - 20 test cases
 - `TESTING_QUICK_REFERENCE.md` - Command cheat sheet
 - `TESTING_GUIDE_INDEX.md` - Testing navigation
-- `TESTING_OVERVIEW.txt` - Visual test tree
+- `docs/testing-overview.md` - Visual test tree
 - `TESTING_RESOURCES_SUMMARY.md` - Resource summary
 - `PR_SUMMARY.md` - This PR documentation
 - `GIT_COMMIT_GUIDE.md` - Commit instructions
@@ -296,7 +296,7 @@ markdownlint *.md
 - **Reference:** TESTING_QUICK_REFERENCE.md (416 lines)
 - **Navigation:** TESTING_GUIDE_INDEX.md (407 lines)
 - **Visual:** DATA_FLOW_SUMMARY.txt (200+ lines)
-- **Visual:** TESTING_OVERVIEW.txt (150+ lines)
+- **Visual:** docs/testing-overview.md (150+ lines)
 - **Summary:** TESTING_RESOURCES_SUMMARY.md (300+ lines)
 
 ### Scripts Enhanced

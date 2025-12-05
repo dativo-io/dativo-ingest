@@ -317,7 +317,7 @@ Use this checklist to track your testing progress:
 ### Platform Documentation
 - [README.md](../README.md) - Platform overview and architecture
 - [quickstart.md](quickstart.md) - Quick start guide
-- [ROADMAP.md](../ROADMAP.md) - Feature roadmap and version history
+- [Roadmap](roadmap.md) - Feature roadmap and version history
 
 ### Setup Guides
 - **[environment-setup.md](environment-setup.md)** - Environment variables reference (NEW!)

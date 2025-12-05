@@ -5,11 +5,11 @@ environment: test
 
 # Source connector - CSV (simple source for testing target)
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: tests/fixtures/connectors/csv.yaml
 
 # Target connector - Google Sheets (as target)
 target_connector: google_sheets
-target_connector_path: connectors/google_sheets.yaml
+target_connector_path: tests/fixtures/connectors/google_sheets.yaml
 
 # Asset definition
 asset: google_sheets_sheet

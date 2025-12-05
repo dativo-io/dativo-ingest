@@ -416,8 +416,8 @@ dativo_ingest run \
 **Job Configuration:**
 ```yaml
 tenant_id: acme
-source_connector_path: connectors/sources/csv.yaml
-target_connector_path: connectors/targets/iceberg.yaml
+source_connector_path: connectors/examples/csv.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset_path: assets/examples/csv/v1.0/person.yaml
 
 source:

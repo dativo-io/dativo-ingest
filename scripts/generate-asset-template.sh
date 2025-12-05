@@ -7,7 +7,7 @@ SOURCE_TYPE="${1:-csv}"
 ASSET_NAME="${2:-my_asset}"
 OWNER_EMAIL="${3:-your-email@company.com}"
 
-ASSET_DIR="assets/${SOURCE_TYPE}/v1.0"
+ASSET_DIR="assets/examples/${SOURCE_TYPE}/v1.0"
 ASSET_FILE="${ASSET_DIR}/${ASSET_NAME}.yaml"
 
 # Create directory if it doesn't exist

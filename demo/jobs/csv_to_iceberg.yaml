@@ -1,0 +1,49 @@
+# CSV to Iceberg Demo Job
+# This demo ingests sample employee CSV data into an Iceberg table
+tenant_id: demo
+environment: demo
+
+# Source connector - CSV files
+source_connector: csv
+source_connector_path: /app/connectors/examples/csv.yaml
+
+# Target connector - Iceberg with Nessie catalog
+target_connector: iceberg
+target_connector_path: /app/connectors/examples/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: /app/assets/examples/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: /app/demo/data/employees.csv
+      object: Employee_Complete_Dataset
+  engine:
+    options:
+      encoding: "utf-8"
+
+# Target configuration - Iceberg with Nessie catalog
+target:
+  connection:
+    nessie:
+      uri: "${NESSIE_URI}"
+      ref: "main"
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: "${S3_BUCKET}"
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+      prefix: "demo/csv_employee"
+
+# Execution configuration
+schema_validation_mode: warn
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+

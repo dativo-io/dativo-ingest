@@ -1,0 +1,34 @@
+# Minimal Asset Template
+# 
+# This is the bare minimum asset definition required to run a job.
+# Copy this file and customize for your use case.
+#
+# Usage:
+#   cp assets/examples/minimal_asset_template.yaml assets/examples/csv/v1.0/my_asset.yaml
+#   # Then edit my_asset.yaml with your schema fields
+
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: my_asset
+version: "1.0"
+source_type: csv
+object: my_object
+
+# Schema definition - define your data fields here
+schema:
+  - name: id
+    type: integer
+    required: true
+  - name: name
+    type: string
+    required: true
+
+# Target configuration
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+
+# Governance (minimum required)
+team:
+  owner: your-email@company.com

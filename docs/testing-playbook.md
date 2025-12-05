@@ -251,9 +251,9 @@ mkdir -p jobs/testcase1
 cat > jobs/testcase1/employees_to_iceberg.yaml << 'EOF'
 tenant_id: testcase1
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: employees
 asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
@@ -349,9 +349,9 @@ mkdir -p jobs/testcase2
 cat > jobs/testcase2/orders_incremental.yaml << 'EOF'
 tenant_id: testcase2
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: orders
 asset_path: assets/examples/csv/v1.0/orders.yaml
 source:
@@ -439,9 +439,9 @@ mkdir -p jobs/testcase3
 cat > jobs/testcase3/stripe_customers.yaml << 'EOF'
 tenant_id: testcase3
 source_connector: stripe
-source_connector_path: connectors/stripe.yaml
+source_connector_path: connectors/examples/stripe.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
@@ -505,9 +505,9 @@ cp secrets/testcase3/iceberg.env secrets/testcase4/
 cat > jobs/testcase4/hubspot_contacts.yaml << 'EOF'
 tenant_id: testcase4
 source_connector: hubspot
-source_connector_path: connectors/hubspot.yaml
+source_connector_path: connectors/examples/hubspot.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: hubspot_contacts
 asset_path: assets/examples/hubspot/v1.0/contacts.yaml
 source:
@@ -525,9 +525,9 @@ EOF
 cat > jobs/testcase4/hubspot_companies.yaml << 'EOF'
 tenant_id: testcase4
 source_connector: hubspot
-source_connector_path: connectors/hubspot.yaml
+source_connector_path: connectors/examples/hubspot.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: hubspot_companies
 asset_path: assets/examples/hubspot/v1.0/companies.yaml
 source:
@@ -542,9 +542,9 @@ EOF
 cat > jobs/testcase4/hubspot_deals.yaml << 'EOF'
 tenant_id: testcase4
 source_connector: hubspot
-source_connector_path: connectors/hubspot.yaml
+source_connector_path: connectors/examples/hubspot.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: hubspot_deals
 asset_path: assets/examples/hubspot/v1.0/deals.yaml
 source:
@@ -636,9 +636,9 @@ mkdir -p jobs/testcase5 secrets/testcase5
 cat > jobs/testcase5/products_strict.yaml << 'EOF'
 tenant_id: testcase5
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: products
 asset_path: assets/examples/csv/v1.0/products.yaml
 source:
@@ -738,9 +738,9 @@ mkdir -p jobs/testcase6 secrets/testcase6
 cat > jobs/testcase6/products_warn.yaml << 'EOF'
 tenant_id: testcase6
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: products_warn
 asset_path: assets/examples/csv/v1.0/products_warn.yaml
 source:
@@ -855,9 +855,9 @@ mkdir -p jobs/testcase7
 cat > jobs/testcase7/postgres_employees.yaml << 'EOF'
 tenant_id: testcase7
 source_connector: postgres
-source_connector_path: connectors/postgres.yaml
+source_connector_path: connectors/examples/postgres.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: db_employees
 asset_path: assets/examples/postgres/v1.0/db_employees.yaml
 source:
@@ -943,9 +943,9 @@ mkdir -p jobs/testcase8 secrets/testcase8
 cat > jobs/testcase8/postgres_employees_incremental.yaml << 'EOF'
 tenant_id: testcase8
 source_connector: postgres
-source_connector_path: connectors/postgres.yaml
+source_connector_path: connectors/examples/postgres.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: db_employees_incremental
 asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
 source:
@@ -1016,9 +1016,9 @@ mkdir -p jobs/testcase9 secrets/testcase9
 cat > jobs/testcase9/postgres_to_markdown_kv.yaml << 'EOF'
 tenant_id: testcase9
 source_connector: postgres
-source_connector_path: connectors/postgres.yaml
+source_connector_path: connectors/examples/postgres.yaml
 target_connector: markdown_kv
-target_connector_path: connectors/markdown_kv.yaml
+target_connector_path: connectors/examples/markdown_kv.yaml
 asset: db_employees_incremental
 asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
 source:
@@ -1155,9 +1155,9 @@ mkdir -p jobs/testcase10 secrets/testcase10
 cat > jobs/testcase10/custom_reader_job.yaml << 'EOF'
 tenant_id: testcase10
 source_connector: csv  # Just for metadata
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: products
 asset_path: assets/examples/csv/v1.0/products.yaml
 source:
@@ -1264,9 +1264,9 @@ mkdir -p jobs/testcase11 secrets/testcase11
 cat > jobs/testcase11/rust_csv_reader.yaml << 'EOF'
 tenant_id: testcase11
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: large_dataset
 asset_path: assets/examples/csv/v1.0/large_dataset.yaml
 source:
@@ -1382,9 +1382,9 @@ mkdir -p jobs/testcase12
 cat > jobs/testcase12/google_sheets_job.yaml << 'EOF'
 tenant_id: testcase12
 source_connector: google_sheets
-source_connector_path: connectors/google_sheets.yaml
+source_connector_path: connectors/examples/google_sheets.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: test_data
 asset_path: assets/examples/google_sheets/v1.0/test_data.yaml
 source:
@@ -1444,9 +1444,9 @@ mkdir -p jobs/testcase13
 cat > jobs/testcase13/gdrive_csv_job.yaml << 'EOF'
 tenant_id: testcase13
 source_connector: gdrive_csv
-source_connector_path: connectors/gdrive_csv.yaml
+source_connector_path: connectors/examples/gdrive_csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: products
 asset_path: assets/examples/csv/v1.0/products.yaml
 source:
@@ -1502,9 +1502,9 @@ EOF
   cat > jobs/$tenant/tenant_job.yaml << EOF
 tenant_id: $tenant
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: employees
 asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
@@ -1576,9 +1576,9 @@ mkdir -p jobs/testcase15
 cat > jobs/testcase15/env_secrets_job.yaml << 'EOF'
 tenant_id: testcase15
 source_connector: postgres
-source_connector_path: connectors/postgres.yaml
+source_connector_path: connectors/examples/postgres.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: db_employees
 asset_path: assets/examples/postgres/v1.0/db_employees.yaml
 source:
@@ -1741,9 +1741,9 @@ for strategy in by_region multi_partition date_partition; do
   cat > jobs/testcase16/sales_${strategy}.yaml << EOF
 tenant_id: testcase16
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: sales_${strategy}
 asset_path: assets/examples/csv/v1.0/sales_${strategy}.yaml
 source:
@@ -1804,9 +1804,9 @@ mkdir -p jobs/testcase17 secrets/testcase17
 cat > jobs/testcase17/catalog_integration_job.yaml << 'EOF'
 tenant_id: testcase17
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: employees
 asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
@@ -1952,9 +1952,9 @@ cp secrets/testcase1/iceberg.env secrets/testcase19/
 cat > jobs/testcase19/invalid_creds.yaml << 'EOF'
 tenant_id: testcase19
 source_connector: postgres
-source_connector_path: connectors/postgres.yaml
+source_connector_path: connectors/examples/postgres.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: db_employees
 asset_path: assets/examples/postgres/v1.0/db_employees.yaml
 source:
@@ -1994,9 +1994,9 @@ mkdir -p jobs/testcase19_multi
 cat > jobs/testcase19_multi/success_job.yaml << 'EOF'
 tenant_id: testcase19
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: employees
 asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
@@ -2013,9 +2013,9 @@ EOF
 cat > jobs/testcase19_multi/failure_job.yaml << 'EOF'
 tenant_id: testcase19
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: employees
 asset_path: assets/examples/csv/v1.0/employees.yaml
 source:
@@ -2066,9 +2066,9 @@ mkdir -p jobs/production secrets/production
 cat > jobs/production/stripe_customers_daily.yaml << 'EOF'
 tenant_id: production
 source_connector: stripe
-source_connector_path: connectors/stripe.yaml
+source_connector_path: connectors/examples/stripe.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
@@ -2093,9 +2093,9 @@ EOF
 cat > jobs/production/hubspot_contacts_hourly.yaml << 'EOF'
 tenant_id: production
 source_connector: hubspot
-source_connector_path: connectors/hubspot.yaml
+source_connector_path: connectors/examples/hubspot.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: hubspot_contacts
 asset_path: assets/examples/hubspot/v1.0/contacts.yaml
 source:
@@ -2122,7 +2122,7 @@ tenant_id: production
 source_connector: postgres
 source_connector_path: connectors/postgres.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: db_employees_incremental
 asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
 source:

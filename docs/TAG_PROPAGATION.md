@@ -205,7 +205,7 @@ Job configurations can override or extend asset-level tags:
 
 ```yaml
 tenant_id: acme
-asset_path: /app/assets/csv/v1.0/employee.yaml
+asset_path: /app/assets/examples/csv/v1.0/employee.yaml
 
 # Override field-level classifications
 classification_overrides:
