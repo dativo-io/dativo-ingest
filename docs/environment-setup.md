@@ -2,11 +2,17 @@
 
 Complete guide to setting up environment variables for dativo-ingest.
 
----
+## Table of Contents
 
-## Quick Setup (2 Minutes)
+- [Quick Setup](#quick-setup)
+- [Environment Variables Explained](#environment-variables-explained)
+- [Secret Manager Configuration](#secret-manager-configuration)
+- [Verification](#verification)
+- [Troubleshooting](#troubleshooting)
 
-### Step 1: Source the .env File
+## Quick Setup
+
+### Step 1: Source the .env file
 
 An `.env` file has been created for you with all necessary variables:
 
@@ -14,7 +20,7 @@ An `.env` file has been created for you with all necessary variables:
 source .env
 ```
 
-### Step 2: Verify Variables Are Set
+### Step 2: Verify variables are set
 
 ```bash
 echo $S3_ENDPOINT
@@ -29,7 +35,7 @@ minioadmin
 http://localhost:19120/api/v1
 ```
 
-### Step 3: Run Your First Test
+### Step 3: Run your first test
 
 ```bash
 dativo run \
@@ -38,8 +44,6 @@ dativo run \
   --secrets-dir tests/fixtures/secrets \
   --mode self_hosted
 ```
-
----
 
 ## Environment Variables Explained
 
@@ -109,8 +113,8 @@ GOOGLE_SHEETS_CREDENTIALS_PATH=/path/to/service-account.json
 ```
 
 **See:** 
-- [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md) - Test Case 3 for Stripe setup
-- [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md) - Test Case 4 for HubSpot setup
+- [testing-playbook.md](testing-playbook.md) - Test Case 3 for Stripe setup
+- [testing-playbook.md](testing-playbook.md) - Test Case 4 for HubSpot setup
 
 ---
 
@@ -311,14 +315,14 @@ Once your environment is set up:
 1. ✅ **Run preflight check:** `./scripts/preflight-check.sh`
 2. ✅ **Generate test data:** `./scripts/generate-test-data.sh`
 3. ✅ **Source environment:** `source .env`
-4. ✅ **Run first test:** Start with [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md) Test Case 1
+4. ✅ **Run first test:** Start with [testing-playbook.md](testing-playbook.md) Test Case 1
 
 ---
 
 ## Related Documentation
 
-- [TESTING_GUIDE_INDEX.md](TESTING_GUIDE_INDEX.md) - Complete testing guide
-- [TESTING_QUICK_REFERENCE.md](TESTING_QUICK_REFERENCE.md) - Command cheat sheet
+- [testing-guide-index.md](testing-guide-index.md) - Complete testing guide
+- [testing-quick-reference.md](testing-quick-reference.md) - Command cheat sheet
 - [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md) - Secret management patterns
 
 ---

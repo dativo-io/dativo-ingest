@@ -436,11 +436,11 @@ dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --
 
 | Document | Purpose | When to Use |
 |----------|---------|-------------|
-| [TESTING_GUIDE_INDEX.md](TESTING_GUIDE_INDEX.md) | Navigation hub | Start here |
-| [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md) | Detailed test cases | When running tests |
-| [TESTING_QUICK_REFERENCE.md](TESTING_QUICK_REFERENCE.md) | Command cheat sheet | Quick lookups |
-| [README.md](README.md) | Platform overview | Understanding dativo-ingest |
-| [QUICKSTART.md](QUICKSTART.md) | Quick start | Initial setup |
+| [testing-guide-index.md](testing-guide-index.md) | Navigation hub | Start here |
+| [testing-playbook.md](testing-playbook.md) | Detailed test cases | When running tests |
+| [testing-quick-reference.md](testing-quick-reference.md) | Command cheat sheet | Quick lookups |
+| [README.md](../README.md) | Platform overview | Understanding dativo-ingest |
+| [quickstart.md](quickstart.md) | Quick start | Initial setup |
 | [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md) | Plugin development | Creating plugins |
 | [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md) | Secret patterns | Managing secrets |
 | [docs/CATALOG_INTEGRATION.md](docs/CATALOG_INTEGRATION.md) | Catalog setup | Catalog integration |

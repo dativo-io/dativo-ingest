@@ -4,7 +4,7 @@ Welcome to the comprehensive testing guide for dativo-ingest! This index helps y
 
 ## 📚 Documentation Overview
 
-### 1. **[TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md)** - Complete Testing Guide
+### 1. **[testing-playbook.md](testing-playbook.md)** - Complete Testing Guide
 **START HERE!** Comprehensive playbook with 20 detailed test cases covering all dativo-ingest capabilities.
 
 **What's Inside:**
@@ -38,7 +38,7 @@ Welcome to the comprehensive testing guide for dativo-ingest! This index helps y
 
 ---
 
-### 2. **[TESTING_QUICK_REFERENCE.md](TESTING_QUICK_REFERENCE.md)** - Quick Command Reference
+### 2. **[testing-quick-reference.md](testing-quick-reference.md)** - Quick Command Reference
 **Use this for quick lookups!** Cheat sheet with common commands, patterns, and troubleshooting.
 
 **What's Inside:**
@@ -116,7 +116,7 @@ python3.10 -m venv venv
 source venv/bin/activate
 ```
 
-**See [PYTHON_SETUP_GUIDE.md](PYTHON_SETUP_GUIDE.md) for detailed upgrade instructions**
+**See [python-setup.md](python-setup.md) for detailed upgrade instructions**
 
 ### Step 1: Validate Environment
 ```bash
@@ -140,7 +140,7 @@ echo $AWS_ACCESS_KEY_ID  # Should show: minioadmin
 echo $NESSIE_URI         # Should show: http://localhost:19120/api/v1
 ```
 
-**See [ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md) for complete variable reference**
+**See [environment-setup.md](environment-setup.md) for complete variable reference**
 
 ### Step 3: Generate Test Data
 ```bash
@@ -172,7 +172,7 @@ open http://localhost:3000
 ```
 
 ### Step 6: Follow Test Cases
-Open [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md) and work through test cases 1-20.
+Open [testing-playbook.md](testing-playbook.md) and work through test cases 1-20.
 
 ---
 
@@ -315,13 +315,13 @@ Use this checklist to track your testing progress:
 ## 📖 Additional Resources
 
 ### Platform Documentation
-- [README.md](README.md) - Platform overview and architecture
-- [QUICKSTART.md](QUICKSTART.md) - Quick start guide
-- [ROADMAP.md](ROADMAP.md) - Feature roadmap and version history
+- [README.md](../README.md) - Platform overview and architecture
+- [quickstart.md](quickstart.md) - Quick start guide
+- [ROADMAP.md](../ROADMAP.md) - Feature roadmap and version history
 
 ### Setup Guides
-- **[ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md)** - Environment variables reference (NEW!)
-- [PYTHON_SETUP_GUIDE.md](PYTHON_SETUP_GUIDE.md) - Python 3.10+ installation guide
+- **[environment-setup.md](environment-setup.md)** - Environment variables reference (NEW!)
+- [python-setup.md](python-setup.md) - Python 3.10+ installation guide
 - [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Complete setup and testing guide
 
 ### Configuration Guides
@@ -399,7 +399,7 @@ Don't jump straight to Test Case 20. Build up your understanding by completing t
 Document any issues you encounter and solutions you find. This will help with troubleshooting later.
 
 ### 5. Use the Quick Reference
-Keep [TESTING_QUICK_REFERENCE.md](TESTING_QUICK_REFERENCE.md) open for quick command lookups.
+Keep [testing-quick-reference.md](testing-quick-reference.md) open for quick command lookups.
 
 ### 6. Clean Up Between Tests
 ```bash
@@ -416,7 +416,7 @@ mc rm local/test-bucket/mytenant/ --recursive --force
 
 If you encounter issues:
 
-1. Check [TESTING_QUICK_REFERENCE.md](TESTING_QUICK_REFERENCE.md) → Troubleshooting
+1. Check [testing-quick-reference.md](testing-quick-reference.md) → Troubleshooting
 2. Run preflight check: `./scripts/preflight-check.sh`
 3. Check service logs: `docker-compose -f docker-compose.dev.yml logs`
 4. Review error messages in dativo output

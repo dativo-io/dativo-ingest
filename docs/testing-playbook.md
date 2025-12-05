@@ -2369,8 +2369,8 @@ This playbook covers:
 6. Simulate production scenarios (Test Case 20)
 
 ### 📚 Additional Resources
-- [README.md](README.md) - Platform overview
-- [QUICKSTART.md](QUICKSTART.md) - Quick start guide
+- [README.md](../README.md) - Platform overview
+- [quickstart.md](quickstart.md) - Quick start guide
 - [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md) - Plugin development
 - [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md) - Secret managers
 - [docs/CATALOG_INTEGRATION.md](docs/CATALOG_INTEGRATION.md) - Catalog setup

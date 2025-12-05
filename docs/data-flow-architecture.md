@@ -730,7 +730,7 @@ target:
 
 - [CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md) - Creating custom readers/writers
 - [INGESTION_EXECUTION.md](docs/INGESTION_EXECUTION.md) - Execution flow details
-- [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md) - Test Case 11: Rust plugin performance testing
+- [testing-playbook.md](testing-playbook.md) - Test Case 11: Rust plugin performance testing
 
 ---
 

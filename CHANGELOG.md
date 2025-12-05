@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **WAL Checkpointing**: Write-ahead log checkpointing for fault tolerance and resume capability
+  - Full connector support for WAL checkpointing (CSV, PostgreSQL, MySQL, Google Sheets, Google Drive CSV)
+  - Extractor-specific checkpoint types (chunk-based, offset-based, spreadsheet-based)
+  - Automatic WAL file detection and resume from latest checkpoint
+  - JSON status tracking instead of marker files
+  - Server-side cursor support for PostgreSQL WAL checkpoint scrolling
+  - Comprehensive integration tests for all connector types
+- **Apache License 2.0**: Added Apache License 2.0 to the project
+
+### Changed
+- **Source Configuration Migration**: Migrated from `source.objects` (array) to `source.object` (single value)
+  - Breaking change: All job configs must use `source.object` instead of `source.objects`
+  - Added validation to ensure `source.object` matches asset definition `object` field
+  - Updated all connectors, plugins, and tests to use new format
+  - Updated Rust plugin config serialization for object field
+
+### Fixed
+- Fixed WAL resume logic to use `find_latest_wal()` for detecting existing WAL files
+- Fixed WAL file naming bug with `Path.with_suffix()` method
+- Fixed Google Sheets extractor WAL resume bug for missing checkpointed spreadsheet
+- Fixed Google Sheets WAL resume logic to skip all spreadsheets before checkpoint
+- Fixed checkpoint file_id/table_name mismatch bug in multi-file extractors
+- Fixed postgres extractor to use server-side cursor for WAL checkpoint scrolling
+- Fixed duplicate TestWALMySQLIntegration class definition
+- Fixed extractor-specific WAL checkpoint types preservation
+- Fixed catalog push to happen for partial success (exit code 1)
+- Fixed strict tenant_id validation in startup_sequence
+- Fixed temp file cleanup before early return in discover method
+
 ## [0.3.1] - 2025-12-02
 
 ### Changed
@@ -199,4 +229,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.1.0**: Custom plugin system and OSS connector wrappers
 - **0.2.0**: Plugin sandboxing and enhanced security
 - **0.3.0**: Unified incremental sync framework
-- **Unreleased**: Major CLI refactoring for maintainability
+- **0.3.1**: Major CLI refactoring for maintainability
+- **Unreleased**: WAL checkpointing, source configuration migration, Apache License 2.0

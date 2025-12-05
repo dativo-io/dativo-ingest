@@ -1,8 +1,14 @@
 # Python Setup Guide
 
-Dativo-ingest requires **Python 3.10 or higher**. This guide helps you get the right Python version installed.
+Dativo-ingest requires Python 3.10 or higher. This guide helps you get the right Python version installed.
 
----
+## Table of Contents
+
+- [Quick Version Check](#quick-version-check)
+- [Why Python 3.10+?](#why-python-310)
+- [Upgrade Instructions](#upgrade-instructions)
+- [Verification](#verification)
+- [Troubleshooting](#troubleshooting)
 
 ## Quick Version Check
 
@@ -11,7 +17,7 @@ python3 --version
 ```
 
 **Expected:** `Python 3.10.0` or higher  
-**Problem:** If you see `Python 3.9.x` or below, follow the upgrade instructions below
+**Problem:** If you see `Python 3.9.x` or below, follow the upgrade instructions below.
 
 ---
 
@@ -34,7 +40,7 @@ ERROR: Package 'dativo-ingest' requires a different Python: 3.9.x not in '>=3.10
 
 Choose the method that matches your system:
 
-### Option 1: Conda (Recommended - Works on all platforms)
+### Option 1: Conda (recommended - works on all platforms)
 
 **Advantages:**
 - ✅ Easy to manage multiple Python versions
@@ -375,13 +381,13 @@ Once Python 3.10+ is installed:
 
 1. ✅ **Verify environment:** `./scripts/preflight-check.sh`
 2. ✅ **Start services:** `docker-compose -f docker-compose.dev.yml up -d`
-3. ✅ **Run tests:** Follow [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md)
+3. ✅ **Run tests:** Follow [testing-playbook.md](testing-playbook.md)
 
 ---
 
 ## Related Documentation
 
-- [QUICKSTART.md](QUICKSTART.md) - Quick start guide
+- [quickstart.md](quickstart.md) - Quick start guide
 - [README.md](README.md) - Platform overview
 - [TESTING_GUIDE_INDEX.md](TESTING_GUIDE_INDEX.md) - Complete testing guide
 

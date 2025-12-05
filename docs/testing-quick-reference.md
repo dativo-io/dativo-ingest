@@ -16,7 +16,7 @@ echo $AWS_ACCESS_KEY_ID  # Should show: minioadmin
 echo $NESSIE_URI         # Should show: http://localhost:19120/api/v1
 ```
 
-**For detailed variable reference, see [ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md)**
+**For detailed variable reference, see [environment-setup.md](environment-setup.md)**
 
 ### 2. Verify Services
 
@@ -287,7 +287,7 @@ ls -la .env
 - ⚠️ **Wrong format:** Variables must be `KEY=value` (no spaces around `=`)
 - ⚠️ **New terminal:** Need to re-run `source .env` in each new terminal
 
-**See:** [ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md) for complete reference
+**See:** [environment-setup.md](environment-setup.md) for complete reference
 
 ### "Package requires a different Python: 3.9.x not in '>=3.10'"
 
@@ -307,7 +307,7 @@ source venv/bin/activate
 pip install -e .
 ```
 
-**See:** [PYTHON_SETUP_GUIDE.md](PYTHON_SETUP_GUIDE.md) for detailed instructions
+**See:** [python-setup.md](python-setup.md) for detailed instructions
 
 ### "Command not found: dativo"
 
@@ -509,7 +509,7 @@ ls -la .local/state/
 
 ## Additional Resources
 
-- Full playbook: [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md)
-- Platform docs: [README.md](README.md)
-- Quick start: [QUICKSTART.md](QUICKSTART.md)
+- Full playbook: [testing-playbook.md](testing-playbook.md)
+- Platform docs: [README.md](../README.md)
+- Quick start: [quickstart.md](quickstart.md)
 - Custom plugins: [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)

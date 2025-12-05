@@ -2,6 +2,17 @@
 
 Get up and running with Dativo Ingestion Platform in 5 minutes.
 
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Setup Steps](#setup-steps)
+- [Expected Output](#expected-output)
+- [Verify Results](#verify-results)
+- [Troubleshooting](#troubleshooting)
+- [Clean Up](#clean-up)
+- [Creating Your First Job](#creating-your-first-job)
+- [Next Steps](#next-steps)
+
 ## Prerequisites
 
 - **Python 3.10+** (REQUIRED - Python 3.9 and below will not work)
@@ -9,7 +20,7 @@ Get up and running with Dativo Ingestion Platform in 5 minutes.
 
 ### Python Version Requirement
 
-Dativo-ingest requires **Python 3.10 or higher**. Check your version:
+Dativo-ingest requires Python 3.10 or higher. Check your version:
 
 ```bash
 python3 --version
@@ -17,7 +28,7 @@ python3 --version
 
 If you see Python 3.9 or below, you must upgrade:
 
-#### Using Conda (Recommended)
+#### Using Conda (recommended)
 ```bash
 conda create -n dativo python=3.10 -y
 conda activate dativo
@@ -40,7 +51,7 @@ source venv/bin/activate
 
 ## Setup Steps
 
-### 1. Setup
+### Step 1: Setup
 
 ```bash
 # Run automated setup script
@@ -49,13 +60,13 @@ source venv/bin/activate
 
 This installs dependencies, starts infrastructure (Nessie, MinIO), creates buckets, and sets up environment variables.
 
-### 2. Source Environment Variables
+### Step 2: Source Environment Variables
 
 ```bash
 source .env
 ```
 
-### 3. Run End-to-End Test
+### Step 3: Run End-to-End Test
 
 ```bash
 dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
@@ -106,7 +117,7 @@ docker-compose -f docker-compose.dev.yml down -v
 
 ## Creating Your First Job
 
-1. **Create a job config** (`jobs/mytenant/my_job.yaml`):
+1. Create a job config (`jobs/mytenant/my_job.yaml`):
 ```yaml
 tenant_id: mytenant
 source_connector: csv
@@ -125,7 +136,7 @@ target:
       bucket: "${S3_BUCKET}"
 ```
 
-2. **Create an asset definition** (`assets/csv/v1.0/my_asset.yaml`):
+2. Create an asset definition (`assets/csv/v1.0/my_asset.yaml`):
 ```yaml
 $schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
@@ -150,7 +161,7 @@ compliance:
   classification: []
 ```
 
-3. **Set up secrets** (`secrets/mytenant/iceberg.env`):
+3. Set up secrets (`secrets/mytenant/iceberg.env`):
 ```bash
 S3_ENDPOINT=http://localhost:9000
 AWS_ACCESS_KEY_ID=minioadmin
@@ -159,7 +170,7 @@ AWS_REGION=us-east-1
 S3_BUCKET=test-bucket
 ```
 
-4. **Run the job**:
+4. Run the job:
 ```bash
 dativo run --config jobs/mytenant/my_job.yaml --mode self_hosted
 ```

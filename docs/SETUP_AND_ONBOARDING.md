@@ -1115,7 +1115,7 @@ Use this checklist when onboarding new infrastructure:
 
 ## Additional Resources
 
-- [QUICKSTART.md](../QUICKSTART.md) - Quick start guide
+- [quickstart.md](quickstart.md) - Quick start guide
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) - Configuration reference
 - [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md) - Execution flow documentation
 - [CUSTOM_PLUGINS.md](CUSTOM_PLUGINS.md) - Custom plugins guide
