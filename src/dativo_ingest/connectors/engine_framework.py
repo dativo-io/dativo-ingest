@@ -618,7 +618,7 @@ class AirbyteExtractor(BaseEngineExtractor):
                     text=True,
                 )
 
-                stdout, stderr = process.communicate(timeout=30)
+                stdout, stderr = process.communicate(timeout=60)
             finally:
                 # Clean up temp file
                 try:
@@ -712,8 +712,9 @@ class AirbyteExtractor(BaseEngineExtractor):
         except subprocess.TimeoutExpired:
             return {
                 "status": "failed",
-                "message": "Airbyte connection check timeout",
+                "message": "Airbyte connection check timeout after 60 seconds",
                 "error_code": "TIMEOUT_ERROR",
+                "retryable": True,
             }
         except Exception as e:
             return {
