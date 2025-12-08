@@ -321,7 +321,11 @@ cleanup() {
     echo "Cleaning up MinIO bucket (performance test data)..."
     if command -v mc >/dev/null 2>&1; then
         mc alias set local http://localhost:9000 minioadmin minioadmin 2>/dev/null || true
+        # Clean up Nessie catalog database
         mc rm --recursive --force "local/test-bucket/perf_test_db" 2>/dev/null || true
+        # Clean up performance test data (Parquet and CSV files)
+        # Path structure: dativo/performance_test/perf_test_data/
+        mc rm --recursive --force "local/test-bucket/dativo/performance_test/perf_test_data" 2>/dev/null || true
         echo "✅ MinIO bucket cleaned"
     else
         echo -e "${YELLOW}⚠️  MinIO client (mc) not found. Manual cleanup may be needed.${NC}"
