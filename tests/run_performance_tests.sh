@@ -137,9 +137,25 @@ check_prerequisites() {
 setup_infrastructure() {
     print_section "Setting Up Infrastructure"
     
+    # Set environment variables (always needed, even when skipping infrastructure setup)
+    # These use default values if not already set, assuming services are running with default config
+    export S3_ENDPOINT="${S3_ENDPOINT:-http://localhost:9000}"
+    export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-minioadmin}"
+    export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-minioadmin}"
+    export AWS_REGION="${AWS_REGION:-us-east-1}"
+    export S3_BUCKET="${S3_BUCKET:-test-bucket}"
+    export NESSIE_URI="${NESSIE_URI:-http://localhost:19120/api/v1}"
+    export STATE_DIR="${STATE_DIR:-/tmp/dativo-state}"
+    mkdir -p "$STATE_DIR/$TENANT_ID"
+    
     if [ "$SKIP_INFRASTRUCTURE_SETUP" = "true" ]; then
         echo "ℹ️  Skipping infrastructure setup (--skip-infrastructure-setup flag)"
         echo "   Assuming services are already running..."
+        echo "   Using environment variables:"
+        echo "     S3_ENDPOINT=$S3_ENDPOINT"
+        echo "     NESSIE_URI=$NESSIE_URI"
+        echo "     STATE_DIR=$STATE_DIR"
+        echo -e "${GREEN}✅ Environment variables set${NC}"
         return
     fi
     
@@ -152,16 +168,6 @@ setup_infrastructure() {
         echo -e "${RED}❌ Infrastructure setup script not found${NC}"
         exit 1
     fi
-    
-    # Set environment variables
-    export S3_ENDPOINT="${S3_ENDPOINT:-http://localhost:9000}"
-    export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-minioadmin}"
-    export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-minioadmin}"
-    export AWS_REGION="${AWS_REGION:-us-east-1}"
-    export S3_BUCKET="${S3_BUCKET:-test-bucket}"
-    export NESSIE_URI="${NESSIE_URI:-http://localhost:19120/api/v1}"
-    export STATE_DIR="${STATE_DIR:-/tmp/dativo-state}"
-    mkdir -p "$STATE_DIR/$TENANT_ID"
     
     echo -e "${GREEN}✅ Infrastructure ready${NC}"
 }
