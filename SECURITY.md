@@ -54,17 +54,19 @@ When using Dativo-Ingest in production:
 
 1. **Keep dependencies updated**: Regularly update Python packages and Rust plugins
 2. **Use secret managers**: Never hardcode credentials; use Vault, AWS Secrets Manager, or GCP Secret Manager
-3. **Enable sandboxing**: Use Docker-based sandboxing for Python plugins in cloud mode
-4. **Review plugin code**: Audit custom plugins before deploying to production
-5. **Monitor logs**: Enable structured logging and monitor for suspicious activity
-6. **Limit network access**: Restrict plugin network access using seccomp profiles
-7. **Rotate credentials**: Regularly rotate API keys and database passwords
-8. **Use least privilege**: Grant plugins only the minimum permissions needed
+3. **Enable log redaction**: Enable secret redaction in logging configuration to prevent credentials from appearing in logs
+4. **Enable sandboxing**: Use Docker-based sandboxing for Python plugins in cloud mode
+5. **Review plugin code**: Audit custom plugins before deploying to production
+6. **Monitor logs**: Enable structured logging and monitor for suspicious activity
+7. **Limit network access**: Restrict plugin network access using seccomp profiles
+8. **Rotate credentials**: Regularly rotate API keys and database passwords
+9. **Use least privilege**: Grant plugins only the minimum permissions needed
 
 ### Known Security Considerations
 
 - **Python Plugin Sandboxing**: Python plugins run in Docker containers in cloud mode with resource limits and network isolation
 - **Secret Management**: Secrets are loaded via pluggable backends; ensure your secret manager is properly configured
+- **Log Redaction**: The logging system includes automatic secret redaction to prevent credentials from appearing in logs. Enable this feature via the `logging.redaction` configuration option in job configs or `--log-redaction` CLI flag.
 - **State Files**: State files may contain sensitive metadata; ensure proper file permissions
 - **Network Access**: Plugins may make external network calls; review plugin code and use network restrictions where possible
 

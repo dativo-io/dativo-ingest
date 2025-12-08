@@ -6,19 +6,72 @@ import re
 from typing import Any, Dict, Optional
 
 
+def _redact_dict_values(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively redact secret values in a dictionary.
+
+    Args:
+        data: Dictionary that may contain secrets
+
+    Returns:
+        Dictionary with secret values redacted
+    """
+    redacted = {}
+    secret_key_patterns = [
+        "password",
+        "token",
+        "api_key",
+        "secret",
+        "credential",
+        "access_key",
+        "secret_key",
+        "secret_access_key",
+        "private_key",
+        "auth_token",
+        "bearer",
+    ]
+
+    for key, value in data.items():
+        key_lower = key.lower()
+        # Check if key matches any secret pattern
+        is_secret_key = any(pattern in key_lower for pattern in secret_key_patterns)
+
+        if isinstance(value, dict):
+            redacted[key] = _redact_dict_values(value)
+        elif isinstance(value, str) and is_secret_key:
+            # Redact string values in secret keys
+            redacted[key] = "[REDACTED]"
+        elif isinstance(value, str) and len(value) >= 20:
+            # Redact long strings that look like secrets (base64-like)
+            if re.match(r"^[A-Za-z0-9+/=]{20,}$", value):
+                redacted[key] = "[REDACTED]"
+            else:
+                redacted[key] = value
+        else:
+            redacted[key] = value
+
+    return redacted
+
+
 class StructuredJSONFormatter(logging.Formatter):
     """JSON formatter for structured logging with secret redaction."""
 
     def __init__(self, redact_secrets: bool = False):
         super().__init__()
         self.redact_secrets = redact_secrets
-        # Patterns for common secret fields
+        # Patterns for common secret fields - these match the field name and value
+        # Format: field_name followed by colon/equals and the value
         self.secret_patterns = [
-            r'password["\']?\s*[:=]\s*["\']?([^"\']+)',
-            r'token["\']?\s*[:=]\s*["\']?([^"\']+)',
-            r'api_key["\']?\s*[:=]\s*["\']?([^"\']+)',
-            r'secret["\']?\s*[:=]\s*["\']?([^"\']+)',
-            r'credential["\']?\s*[:=]\s*["\']?([^"\']+)',
+            r'(password["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(token["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(api_key["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(secret["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(credential["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(access_key["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(secret_key["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(secret_access_key["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(private_key["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(auth_token["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(bearer["\']?\s*[:=]\s*["\']?)([^"\']+)',
         ]
 
     def format(self, record: logging.LogRecord) -> str:
@@ -48,19 +101,70 @@ class StructuredJSONFormatter(logging.Formatter):
         if hasattr(record, "connector_type"):
             log_data["connector_type"] = record.connector_type
 
-        # Add any other extra fields
+        # Collect all extra fields from record attributes
+        extra_fields = {}
         if hasattr(record, "extra_data"):
-            log_data.update(record.extra_data)
+            if isinstance(record.extra_data, dict):
+                extra_fields.update(record.extra_data)
+
+        # Also check for extra dict items (from logger.info(..., extra={...}))
+        # These are stored as attributes on the record
+        for key, value in record.__dict__.items():
+            # Skip standard LogRecord attributes and already processed fields
+            if key not in [
+                "name",
+                "msg",
+                "args",
+                "created",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "module",
+                "msecs",
+                "message",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "tenant_id",
+                "job_name",
+                "event_type",
+                "connector_type",
+                "extra_data",
+            ]:
+                extra_fields[key] = value
+
+        # Redact secrets in extra fields before adding to log_data
+        if self.redact_secrets and extra_fields:
+            redacted_extra = _redact_dict_values(extra_fields)
+            log_data.update(redacted_extra)
+        elif extra_fields:
+            log_data.update(extra_fields)
 
         # Redact secrets if enabled
         if self.redact_secrets:
             log_str = json.dumps(log_data)
+            # First, redact known secret field patterns (field_name: value -> field_name: [REDACTED])
             for pattern in self.secret_patterns:
-                log_str = re.sub(pattern, r"\1", log_str, flags=re.IGNORECASE)
-                # Replace matched secrets with [REDACTED]
-                log_str = re.sub(
-                    r'(["\']?)([A-Za-z0-9+/=]{20,})(["\']?)', r"\1[REDACTED]\3", log_str
-                )
+                log_str = re.sub(pattern, r"\1[REDACTED]", log_str, flags=re.IGNORECASE)
+            # Then, redact any long base64-like strings (likely secrets) that are 20+ chars
+            # This catches secrets that might be in values without obvious field names
+            log_str = re.sub(
+                r'(["\']?)([A-Za-z0-9+/=]{20,})(["\']?)',
+                lambda m: (
+                    m.group(1) + "[REDACTED]" + m.group(3)
+                    if not m.group(2).startswith("[REDACTED]")
+                    else m.group(0)
+                ),
+                log_str,
+            )
             return log_str
 
         return json.dumps(log_data)
