@@ -315,10 +315,18 @@ cleanup() {
         echo -e "${YELLOW}⚠️  MinIO client (mc) not found. Manual cleanup may be needed.${NC}"
     fi
     
+    # Clean up generated performance test data files
+    echo "Cleaning up generated performance test data files..."
+    if [ -f "$PERF_TEST_CSV_FILE" ]; then
+        rm -f "$PERF_TEST_CSV_FILE"
+        echo "✅ Removed: $PERF_TEST_CSV_FILE"
+    fi
+    # Also clean up any other perf_test_data CSV files
+    rm -f "$SCRIPT_DIR/fixtures/seeds/perf_test_data"*.csv 2>/dev/null || true
+    
     echo -e "${GREEN}✅ Cleanup complete${NC}"
     echo ""
     echo "Test results and logs available in: $RESULTS_DIR"
-    echo "CSV test data preserved at: $PERF_TEST_CSV_FILE"
 }
 
 # Function to set test result (bash 3.2 compatible)
@@ -774,15 +782,32 @@ main() {
     
     # Test 4: Iceberg -> CSV (Rust)
     # This test depends on Test 2's output, so skip if Rust plugins are not available
-    if [ -f "$PROJECT_ROOT/examples/plugins/rust/target/release/libcsv_reader_plugin.so" ] || \
-       [ -f "$PROJECT_ROOT/examples/plugins/rust/target/release/libcsv_reader_plugin.dylib" ]; then
-        run_performance_test \
-            "performance_test_4_iceberg_to_csv_rust" \
-            "Iceberg table on S3 (MinIO) -> CSV writer (Rust)" \
-            "$SCRIPT_DIR/fixtures/jobs/performance_test_4_iceberg_to_csv_rust.yaml" || true
+    # Verify that the config actually uses Rust CSV writer
+    local test4_config="$SCRIPT_DIR/fixtures/jobs/performance_test_4_iceberg_to_csv_rust.yaml"
+    local uses_rust_writer=false
+    if grep -q "libcsv_writer_plugin" "$test4_config" 2>/dev/null; then
+        uses_rust_writer=true
+    fi
+    
+    if [ "$uses_rust_writer" = "true" ]; then
+        # Check for Rust CSV writer plugin
+        if [ -f "$PROJECT_ROOT/examples/plugins/rust/target/release/libcsv_writer_plugin.so" ] || \
+           [ -f "$PROJECT_ROOT/examples/plugins/rust/target/release/libcsv_writer_plugin.dylib" ]; then
+            run_performance_test \
+                "performance_test_4_iceberg_to_csv_rust" \
+                "Iceberg table on S3 (MinIO) -> CSV writer (Rust)" \
+                "$test4_config" || true
+        else
+            echo -e "${RED}❌ Test 4 config requires Rust CSV writer plugin, but plugin not found${NC}"
+            echo -e "${YELLOW}   Expected: libcsv_writer_plugin.so or libcsv_writer_plugin.dylib${NC}"
+            echo -e "${YELLOW}   Location: examples/plugins/rust/target/release/${NC}"
+            echo -e "${YELLOW}   Run: cd examples/plugins/rust && cargo build --release${NC}"
+            set_test_result "performance_test_4_iceberg_to_csv_rust" "SKIPPED" "" "Rust CSV writer plugin not found"
+        fi
     else
-        echo -e "${YELLOW}⚠️  Skipping Test 4: Rust CSV reader plugin not found (required for Test 2 data source)${NC}"
-        set_test_result "performance_test_4_iceberg_to_csv_rust" "SKIPPED" "" "Rust plugin not found (Test 2 dependency)"
+        echo -e "${RED}❌ Test 4 config does not use Rust CSV writer plugin${NC}"
+        echo -e "${YELLOW}   Config should specify: custom_writer: \"...libcsv_writer_plugin.so:create_writer\"${NC}"
+        set_test_result "performance_test_4_iceberg_to_csv_rust" "SKIPPED" "" "Config does not use Rust writer"
     fi
     
     print_results

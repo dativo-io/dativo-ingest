@@ -218,6 +218,11 @@ s3:/
 /tmp/dativo_ingest*
 /tmp/dativo-state
 
+# Performance test data files (generated, should not be committed)
+# These are large files (100MB-1GB) generated on-demand for performance testing
+tests/fixtures/seeds/perf_test_data*.csv
+**/perf_test_data*.csv
+
 # Runtime/test directories - structure preserved with .gitkeep
 # Example files are tracked, but test cases are ignored
 

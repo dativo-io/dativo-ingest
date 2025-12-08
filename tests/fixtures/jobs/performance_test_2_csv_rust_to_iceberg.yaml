@@ -32,11 +32,13 @@ target:
       secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
       region: "${AWS_REGION}"
       path_style_access: true
-  catalog:
-    type: nessie
+
+catalog:
+  type: nessie
+  connection:
     uri: "${NESSIE_URI}"
-    database: perf_test_db
-    table: test2_csv_rust
+  database: perf_test_db
+  table_name: test2_csv_rust
 
 schema_validation_mode: warn
 logging:
