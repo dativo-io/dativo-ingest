@@ -187,9 +187,9 @@ class TestCLIBucketExtraction:
             """
 tenant_id: test_tenant
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: minio
-target_connector_path: connectors/minio.yaml
+target_connector_path: connectors/examples/minio.yaml
 asset: test_asset
 asset_path: tests/fixtures/assets/csv/v1.0/product.yaml
 source:
@@ -227,9 +227,9 @@ target:
             """
 tenant_id: test_tenant
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: s3
-target_connector_path: connectors/s3.yaml
+target_connector_path: connectors/examples/s3.yaml
 asset: test_asset
 asset_path: tests/fixtures/assets/csv/v1.0/product.yaml
 source:

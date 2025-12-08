@@ -4,11 +4,11 @@ environment: test
 
 # Source connector - Google Sheets (Airbyte engine)
 source_connector: google_sheets
-source_connector_path: connectors/google_sheets_airbyte.yaml
+source_connector_path: connectors/examples/google_sheets_airbyte.yaml
 
 # Target connector - Iceberg with MinIO storage
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 
 # Asset definition
 asset: google_sheets_sheet

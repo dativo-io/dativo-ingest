@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **WAL Checkpointing**: Write-Ahead Log checkpointing for improved reliability and recovery
+  - Automatic checkpoint creation during job execution
+  - Recovery from checkpoints on job restart
+  - Configurable checkpoint intervals
+  - See [docs/WAL_CHECKPOINTING.md](docs/WAL_CHECKPOINTING.md) for details
+- **Documentation Reorganization**: Comprehensive documentation restructure for public release
+  - Added `docs/index.md` - Documentation index with organized links to all documentation
+  - Added `docs/connectors.md` - Complete connector reference with capabilities matrix
+  - Moved documentation files to `docs/` directory for better organization:
+    - `QUICKSTART.md` → `docs/quickstart.md`
+    - `PYTHON_SETUP_GUIDE.md` → `docs/python-setup.md`
+    - `ROADMAP.md` → `docs/roadmap.md`
+    - `GIT_COMMIT_GUIDE.md` → `docs/git-commit-guide.md`
+    - `TESTING_OVERVIEW.txt` → `docs/testing-overview.md`
+  - Added experimental documentation directory (`docs/experimental/`)
+  - Fixed all broken documentation links
+- **Demo Infrastructure**: One-command demo environment for quick evaluation
+  - `docker-compose.demo.yml` - Pre-configured Nessie and MinIO services
+  - `demo/` directory with sample data (`demo/data/employees.csv`) and job configurations
+  - `demo/README.md` - Complete demo instructions
+  - Quick start guide for new users
+- **Connector Reorganization**: Improved connector organization
+  - Moved all connector configs from `connectors/` to `connectors/examples/`
+  - Better organization for connector recipes
+  - Clear separation between examples and registry
+  - Updated all test paths and documentation references
+- **Environment Template**: Added `.env.example` file
+  - Template for all required environment variables
+  - Pre-configured defaults for local development
+  - Comprehensive comments and sections
+  - Ready-to-use configuration for MinIO, Nessie, PostgreSQL, MySQL
+
+### Changed
+- **Source Configuration Migration**: Simplified source configuration
+  - Updated from `source.objects` to `source.object`
+  - Single object per job (one asset per job design)
+  - Simplified configuration structure
+  - Backward compatibility maintained where possible
+- **README Major Update**: Complete README rewrite for public release
+  - Added comparison table: Dativo vs. Airbyte vs. Meltano
+  - Added comprehensive table of contents
+  - Improved positioning as headless, config-driven platform
+  - Enhanced multi-tenant architecture emphasis
+  - Updated quick start instructions with demo environment
+  - Updated all documentation links to new paths
+  - Added "Why Dativo?" section
+  - Better feature highlights and use cases
+- **Test Paths**: Updated all test configurations
+  - All test fixture paths updated to reference `connectors/examples/`
+  - All documentation examples updated
+  - Maintained backward compatibility where possible
+
+### Fixed
+- Fixed Airbyte timeout issues in connector execution
+- Improved error messages for missing connector files
+- Enhanced path resolution for connector recipes
+- Fixed broken documentation links after reorganization
+- Fixed duplicate content in CHANGELOG
+
+### Removed
+- Removed temporary summary files:
+  - `COMPLETE_CHANGES_SUMMARY.md`
+  - `PR_SUMMARY.md`
+  - `MOUNT_POINTS_SUMMARY.md`
+  - `IMPLEMENTATION_SUMMARY.md`
+  - `DOCUMENTATION_UPDATE_SUMMARY.md`
+  - `DOCS_UPDATE_SUMMARY.md`
+  - `FIXES_APPLIED.md`
+  - `DATA_FLOW_SUMMARY.txt`
+
 ## [0.3.1] - 2025-12-02
 
 ### Changed
@@ -199,4 +270,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.1.0**: Custom plugin system and OSS connector wrappers
 - **0.2.0**: Plugin sandboxing and enhanced security
 - **0.3.0**: Unified incremental sync framework
-- **Unreleased**: Major CLI refactoring for maintainability
+- **0.3.1**: Major CLI refactoring for maintainability
+- **Unreleased**: Documentation reorganization, demo infrastructure, connector reorganization, and public release preparation

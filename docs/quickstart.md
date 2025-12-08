@@ -40,6 +40,15 @@ source venv/bin/activate
 
 ## Setup Steps
 
+### 0. Verify Prerequisites (Recommended)
+
+```bash
+# Check Python version, Docker, and other prerequisites
+./scripts/preflight-check.sh
+```
+
+This script verifies all prerequisites and provides helpful error messages if anything is missing.
+
 ### 1. Setup
 
 ```bash
@@ -110,9 +119,9 @@ docker-compose -f docker-compose.dev.yml down -v
 ```yaml
 tenant_id: mytenant
 source_connector: csv
-source_connector_path: connectors/csv.yaml
+source_connector_path: connectors/examples/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: my_asset
 asset_path: assets/examples/csv/v1.0/my_asset.yaml
 source:

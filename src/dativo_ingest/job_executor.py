@@ -345,7 +345,7 @@ class JobExecutor:
         return output_base
 
     def _initialize_writer(self) -> int:
-        """Initialize writer (custom or Parquet).
+        """Initialize writer (custom, Spark, or Parquet).
 
         Returns:
             Exit code (0=success, 2=failure)
@@ -383,24 +383,67 @@ class JobExecutor:
                     },
                 )
             else:
-                from .parquet_writer import ParquetWriter
+                # Determine engine type from target connector recipe or target config
+                engine_type = None
+                if self.target_config.engine:
+                    engine_type = self.target_config.engine.get("type")
+                else:
+                    # Try to get engine type from connector recipe
+                    try:
+                        target_recipe = self.job_config._resolve_target_recipe()
+                        default_engine = target_recipe.default_engine
+                        if isinstance(default_engine, dict):
+                            engine_type = default_engine.get("type")
+                        elif default_engine:
+                            engine_type = str(default_engine)
+                    except Exception as e:
+                        self.logger.debug(
+                            f"Could not load target connector recipe to determine engine type: {e}",
+                            extra={"event_type": "engine_type_determination_skipped"},
+                        )
 
                 validation_mode = self.job_config.schema_validation_mode or "strict"
-                self.writer = ParquetWriter(
-                    self.asset_definition,
-                    self.target_config,
-                    output_base,
-                    validation_mode=validation_mode,
-                )
 
-                self.logger.info(
-                    "Parquet writer initialized",
-                    extra={
-                        "output_base": output_base,
-                        "validation_mode": validation_mode,
-                        "event_type": "writer_initialized",
-                    },
-                )
+                # Branch based on engine type
+                if engine_type == "spark":
+                    from .spark_writer import SparkWriter
+
+                    self.writer = SparkWriter(
+                        self.asset_definition,
+                        self.target_config,
+                        output_base,
+                        validation_mode=validation_mode,
+                    )
+
+                    self.logger.info(
+                        "Spark writer initialized",
+                        extra={
+                            "output_base": output_base,
+                            "validation_mode": validation_mode,
+                            "engine_type": "spark",
+                            "event_type": "writer_initialized",
+                        },
+                    )
+                else:
+                    # Default to native Parquet writer
+                    from .parquet_writer import ParquetWriter
+
+                    self.writer = ParquetWriter(
+                        self.asset_definition,
+                        self.target_config,
+                        output_base,
+                        validation_mode=validation_mode,
+                    )
+
+                    self.logger.info(
+                        "Parquet writer initialized",
+                        extra={
+                            "output_base": output_base,
+                            "validation_mode": validation_mode,
+                            "engine_type": engine_type or "native",
+                            "event_type": "writer_initialized",
+                        },
+                    )
         except Exception as e:
             self.logger.error(
                 f"Failed to initialize writer: {e}",

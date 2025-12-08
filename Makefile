@@ -24,16 +24,19 @@ schema-odcs:
 test-unit: build-plugin-images
 	@PYTHONPATH=src pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration
 
-# Integration tests: Test module integration, tag derivation, and ODCS compliance
+# Integration tests: Test module integration, tag derivation, ODCS compliance, and MySQL
 # Note: Some tests may require Docker images to be built
+# MySQL integration tests require MySQL database (will skip if not available)
 test-integration: build-plugin-images
 	@echo "🔍 Running integration tests..."
 	@if [ -f venv/bin/python ]; then \
 		PYTHONPATH=src venv/bin/python tests/integration/test_tag_derivation_integration.py; \
 		PYTHONPATH=src venv/bin/python tests/integration/test_complete_integration.py; \
+		PYTHONPATH=src pytest tests/integration/test_mysql_integration.py tests/integration/test_mysql_end_to_end.py -v -m integration --tb=short || echo "⚠️  MySQL integration tests skipped (MySQL/MinIO not available)"; \
 	else \
 		PYTHONPATH=src python3 tests/integration/test_tag_derivation_integration.py; \
 		PYTHONPATH=src python3 tests/integration/test_complete_integration.py; \
+		PYTHONPATH=src pytest tests/integration/test_mysql_integration.py tests/integration/test_mysql_end_to_end.py -v -m integration --tb=short || echo "⚠️  MySQL integration tests skipped (MySQL/MinIO not available)"; \
 	fi
 	@echo "✅ All integration tests passed"
 

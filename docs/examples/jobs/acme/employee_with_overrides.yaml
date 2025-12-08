@@ -5,11 +5,11 @@ environment: prod
 
 # Reference to source connector recipe
 source_connector: csv
-source_connector_path: /app/connectors/csv.yaml
+source_connector_path: /app/connectors/examples/csv.yaml
 
 # Reference to target connector recipe
 target_connector: iceberg
-target_connector_path: /app/connectors/iceberg.yaml
+target_connector_path: /app/connectors/examples/iceberg.yaml
 
 # Reference to asset definition
 asset: csv_employee
