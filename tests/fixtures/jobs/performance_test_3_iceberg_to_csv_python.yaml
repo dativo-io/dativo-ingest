@@ -1,0 +1,57 @@
+# Performance Test 3: Iceberg Table -> CSV Writer (Python)
+# Tests: Reading Parquet files from Iceberg table and writing as CSV
+# Note: Reads from the S3 path where Tests 1 and 2 write Parquet files
+# Path structure: {domain}/{dataProduct}/{table_name} = dativo/performance_test/perf_test_data
+# This matches the asset definition used by Tests 1 and 2
+tenant_id: perf_test_tenant
+environment: test
+
+source_connector: s3
+source_connector_path: connectors/examples/s3.yaml
+
+target_connector: s3
+target_connector_path: connectors/examples/s3.yaml
+
+asset: perf_test_data
+asset_path: tests/fixtures/assets/csv/v1.0/perf_test_data.yaml
+
+source:
+  custom_reader: "tests/fixtures/plugins/parquet_reader.py:ParquetReader"
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+  files:
+    # Path matches where Tests 1 and 2 write Parquet files (based on asset definition)
+    # Asset: domain=dativo, dataProduct=performance_test, name=perf_test_data
+    # S3 path: s3://test-bucket/dativo/performance_test/perf_test_data/
+    - path: "dativo/performance_test/perf_test_data"
+      object: perf_test_data
+  engine:
+    options:
+      file_format: parquet
+      batch_size: 50000
+
+target:
+  custom_writer: "tests/fixtures/plugins/csv_writer.py:CSVWriter"
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+  engine:
+    options:
+      delimiter: ","
+      include_header: true
+
+schema_validation_mode: warn
+logging:
+  redaction: false
+  level: INFO

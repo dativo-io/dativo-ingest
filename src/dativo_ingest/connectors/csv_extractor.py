@@ -117,6 +117,8 @@ class CSVExtractor:
                     "CSV file configuration must include 'path' or 'file' field"
                 )
 
+            # Expand environment variables in file path
+            file_path_str = os.path.expandvars(file_path_str)
             file_path = Path(file_path_str)
             if not file_path.exists():
                 raise FileNotFoundError(f"CSV file not found: {file_path}")

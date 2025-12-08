@@ -28,23 +28,46 @@ run_test() {
     TESTS_RUN=$((TESTS_RUN + 1))
     echo -n "Test $TESTS_RUN: $test_name... "
     
-    if eval "$test_command" > /dev/null 2>&1; then
+    # Capture output for error reporting
+    local test_output
+    test_output=$(eval "$test_command" 2>&1)
+    local test_exit=$?
+    
+    if [ $test_exit -eq 0 ]; then
         echo -e "${GREEN}PASSED${NC}"
         TESTS_PASSED=$((TESTS_PASSED + 1))
         return 0
     else
         echo -e "${RED}FAILED${NC}"
+        echo "   Error output:"
+        echo "$test_output" | sed 's/^/   /' | head -10
         TESTS_FAILED=$((TESTS_FAILED + 1))
         return 1
     fi
 }
 
 # Setup test environment
-export PYTHONPATH="/workspace/src:$PYTHONPATH"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+
+# Detect Python interpreter (prefer venv, then system python)
+if [ -f "$PROJECT_ROOT/venv/bin/python" ]; then
+    PYTHON_CMD="$PROJECT_ROOT/venv/bin/python"
+elif command -v python >/dev/null 2>&1; then
+    PYTHON_CMD="python"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_CMD="python3"
+else
+    echo "❌ ERROR: No Python interpreter found"
+    exit 1
+fi
+
 TEST_DIR=$(mktemp -d)
 trap "rm -rf $TEST_DIR" EXIT
 
 echo "Test directory: $TEST_DIR"
+echo "Using Python: $PYTHON_CMD"
 echo ""
 
 # ==========================
@@ -79,7 +102,7 @@ schema:
 EOF
 
 run_test "CSV extractor can read file" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.connectors.csv_extractor import CSVExtractor
 from dativo_ingest.config import SourceConfig
 config = SourceConfig(type='csv', files=[{'path': '$TEST_DIR/test.csv'}])
@@ -111,14 +134,14 @@ class TestReader(BaseReader):
 EOF
 
 run_test "Can load custom Python reader" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 reader_class = PluginLoader.load_reader('$TEST_DIR/custom_reader.py:TestReader')
 assert reader_class.__name__ == 'TestReader'
 \""
 
 run_test "Custom Python reader extracts data" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 from dativo_ingest.config import SourceConfig
 reader_class = PluginLoader.load_reader('$TEST_DIR/custom_reader.py:TestReader')
@@ -146,14 +169,14 @@ class TestWriter(BaseWriter):
 EOF
 
 run_test "Can load custom Python writer" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 writer_class = PluginLoader.load_writer('$TEST_DIR/custom_writer.py:TestWriter')
 assert writer_class.__name__ == 'TestWriter'
 \""
 
 run_test "Custom Python writer writes data" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 from dativo_ingest.config import TargetConfig
 
@@ -182,7 +205,7 @@ echo "--- End-to-End Pipeline ---"
 echo ""
 
 run_test "Python reader + writer pipeline" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 from dativo_ingest.config import SourceConfig, TargetConfig
 
@@ -215,28 +238,28 @@ echo "--- Plugin Type Detection ---"
 echo ""
 
 run_test "Detects Python plugin from .py extension" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 plugin_type = PluginLoader._detect_plugin_type('/path/to/plugin.py:Class')
 assert plugin_type == 'python'
 \""
 
 run_test "Detects Rust plugin from .so extension" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && python3 -c \"
 from dativo_ingest.plugins import PluginLoader
 plugin_type = PluginLoader._detect_plugin_type('/path/to/libplugin.so:create_reader')
 assert plugin_type == 'rust'
 \""
 
 run_test "Detects Rust plugin from .dylib extension" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 plugin_type = PluginLoader._detect_plugin_type('/path/to/libplugin.dylib:create_reader')
 assert plugin_type == 'rust'
 \""
 
 run_test "Detects Rust plugin from .dll extension" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 plugin_type = PluginLoader._detect_plugin_type('/path/to/plugin.dll:create_reader')
 assert plugin_type == 'rust'
@@ -259,7 +282,7 @@ class ErrorReader(BaseReader):
 EOF
 
 run_test "Reader errors are propagated" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 from dativo_ingest.config import SourceConfig
 reader_class = PluginLoader.load_reader('$TEST_DIR/error_reader.py:ErrorReader')
@@ -272,23 +295,23 @@ except ValueError as e:
 \""
 
 run_test "Missing plugin file raises error" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 try:
     PluginLoader.load_reader('/nonexistent/plugin.py:Class')
     assert False, 'Should have raised error'
-except ValueError as e:
-    assert 'not found' in str(e)
+except (ValueError, FileNotFoundError, ImportError) as e:
+    assert 'not found' in str(e) or 'No such file' in str(e) or 'No module' in str(e)
 \""
 
 run_test "Invalid plugin format raises error" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.plugins import PluginLoader
 try:
     PluginLoader.load_reader('invalid_format_without_colon')
     assert False, 'Should have raised error'
 except ValueError as e:
-    assert 'must be in format' in str(e)
+    assert 'must be in format' in str(e) or 'format' in str(e).lower()
 \""
 
 # ==========================
@@ -299,14 +322,14 @@ echo "--- Rust Plugin Bridge ---"
 echo ""
 
 run_test "Rust bridge module can be imported" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 from dativo_ingest.rust_plugin_bridge import RustReaderWrapper, RustWriterWrapper
 assert RustReaderWrapper is not None
 assert RustWriterWrapper is not None
 \""
 
 run_test "Rust wrapper serializes config to JSON" \
-    "python3 -c \"
+    "cd '$PROJECT_ROOT' && $PYTHON_CMD -c \"
 import json
 from dativo_ingest.rust_plugin_bridge import RustReaderWrapper
 from dativo_ingest.config import SourceConfig

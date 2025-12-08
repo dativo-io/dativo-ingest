@@ -1,5 +1,5 @@
 [workspace]
-members = ["csv_reader", "parquet_writer"]
+members = ["csv_reader", "csv_writer", "parquet_writer"]
 resolver = "2"
 
 [workspace.dependencies]
