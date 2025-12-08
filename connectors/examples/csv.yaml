@@ -1,0 +1,21 @@
+# CSV connector - supports both source and target roles
+name: csv
+type: csv
+roles: [source, target]  # Can read and write CSV files
+description: "CSV file connector (bidirectional)"
+default_engine:
+  type: native
+  options:
+    native:
+      library: "pandas"
+      library_version: "2.1.0"
+      chunk_size: 10000  # rows per chunk
+      encoding: "utf-8"
+      delimiter: ","
+      quote_char: '"'
+credentials:
+  type: none  # No credentials needed for local files
+incremental:
+  strategy: file_modified_time
+  lookback_days_default: 0
+
