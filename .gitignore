@@ -201,6 +201,11 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Vim swap files
+*.swp
+*.swo
+*~
+
 # State files (incremental sync cursors)
 # Runtime state should not be committed to version control
 state/
