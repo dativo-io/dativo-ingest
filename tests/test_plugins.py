@@ -1403,6 +1403,377 @@ class TestPluginVersioning:
         assert writer.__version__ is not None
 
 
+class TestCSVWriter:
+    """Tests for CSVWriter plugin."""
+
+    def test_csv_writer_basic_local(self, tmp_path):
+        """Test CSVWriter writes CSV files locally."""
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = [
+                {"name": "id", "type": "integer"},
+                {"name": "name", "type": "string"},
+                {"name": "email", "type": "string"},
+            ]
+
+        target_config = TargetConfig(
+            type="csv",
+            connection={},
+            engine={"options": {"delimiter": ",", "include_header": True}},
+        )
+
+        output_base = str(tmp_path / "output")
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        records = [
+            {"id": 1, "name": "Alice", "email": "alice@example.com"},
+            {"id": 2, "name": "Bob", "email": "bob@example.com"},
+        ]
+
+        metadata = writer.write_batch(records, 0)
+        assert len(metadata) == 1
+        assert metadata[0]["record_count"] == 2
+        assert metadata[0]["format"] == "csv"
+        assert "path" in metadata[0]
+        assert metadata[0]["size_bytes"] > 0
+
+        # Verify file exists and content is correct
+        output_file = Path(metadata[0]["path"])
+        assert output_file.exists()
+        content = output_file.read_text()
+        assert "id,name,email" in content
+        assert "1,Alice,alice@example.com" in content
+        assert "2,Bob,bob@example.com" in content
+
+    def test_csv_writer_schema_extraction(self, tmp_path):
+        """Test CSVWriter correctly extracts fieldnames from schema list."""
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = [
+                {"name": "id", "type": "integer"},
+                {"name": "name", "type": "string"},
+                {"name": "email", "type": "string"},
+            ]
+
+        target_config = TargetConfig(
+            type="csv",
+            connection={},
+            engine={"options": {"delimiter": ",", "include_header": True}},
+        )
+
+        output_base = str(tmp_path / "output")
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        # Records with extra fields should still work (schema defines order)
+        records = [
+            {
+                "id": 1,
+                "name": "Alice",
+                "email": "alice@example.com",
+                "extra": "ignored",
+            },
+        ]
+
+        metadata = writer.write_batch(records, 0)
+        output_file = Path(metadata[0]["path"])
+        content = output_file.read_text()
+
+        # Header should match schema order
+        assert content.startswith("id,name,email")
+        # Extra field should not appear in header
+        assert "extra" not in content.split("\n")[0]
+
+    def test_csv_writer_no_schema_fallback(self, tmp_path):
+        """Test CSVWriter falls back to record keys when schema is missing."""
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = None  # No schema
+
+        target_config = TargetConfig(
+            type="csv",
+            connection={},
+            engine={"options": {"delimiter": ",", "include_header": True}},
+        )
+
+        output_base = str(tmp_path / "output")
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        records = [
+            {"id": 1, "name": "Alice"},
+            {"id": 2, "name": "Bob"},
+        ]
+
+        metadata = writer.write_batch(records, 0)
+        output_file = Path(metadata[0]["path"])
+        content = output_file.read_text()
+
+        # Should use record keys (order may vary)
+        assert "id" in content
+        assert "name" in content
+
+    def test_csv_writer_custom_delimiter(self, tmp_path):
+        """Test CSVWriter with custom delimiter."""
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = [
+                {"name": "id", "type": "integer"},
+                {"name": "name", "type": "string"},
+            ]
+
+        target_config = TargetConfig(
+            type="csv",
+            connection={},
+            engine={"options": {"delimiter": "|", "include_header": True}},
+        )
+
+        output_base = str(tmp_path / "output")
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        records = [{"id": 1, "name": "Alice"}]
+        metadata = writer.write_batch(records, 0)
+        output_file = Path(metadata[0]["path"])
+        content = output_file.read_text()
+
+        # Should use pipe delimiter
+        assert "id|name" in content
+        assert "1|Alice" in content
+        assert "," not in content.split("\n")[1]  # Data line shouldn't have comma
+
+    def test_csv_writer_no_header(self, tmp_path):
+        """Test CSVWriter without header row."""
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = [
+                {"name": "id", "type": "integer"},
+                {"name": "name", "type": "string"},
+            ]
+
+        target_config = TargetConfig(
+            type="csv",
+            connection={},
+            engine={"options": {"delimiter": ",", "include_header": False}},
+        )
+
+        output_base = str(tmp_path / "output")
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        records = [{"id": 1, "name": "Alice"}]
+        metadata = writer.write_batch(records, 0)
+        output_file = Path(metadata[0]["path"])
+        content = output_file.read_text()
+
+        # Should not have header
+        assert "id,name" not in content
+        # Should start with data
+        assert content.startswith("1,Alice") or content.startswith("1,Alice\n")
+
+    def test_csv_writer_multi_file_header(self, tmp_path):
+        """Test CSVWriter header handling across multiple files."""
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = [
+                {"name": "id", "type": "integer"},
+                {"name": "name", "type": "string"},
+            ]
+
+        target_config = TargetConfig(
+            type="csv",
+            connection={},
+            engine={"options": {"delimiter": ",", "include_header": True}},
+        )
+
+        output_base = str(tmp_path / "output")
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        # Write first batch
+        records1 = [{"id": 1, "name": "Alice"}]
+        metadata1 = writer.write_batch(records1, 0)
+        file1 = Path(metadata1[0]["path"])
+        content1 = file1.read_text()
+        assert "id,name" in content1
+
+        # Write second batch - should NOT include header again
+        records2 = [{"id": 2, "name": "Bob"}]
+        metadata2 = writer.write_batch(records2, 1)
+        file2 = Path(metadata2[0]["path"])
+        content2 = file2.read_text()
+
+        # Second file should NOT have header (header_written flag prevents it)
+        assert "id,name" not in content2
+        assert "2,Bob" in content2
+
+    def test_csv_writer_empty_records(self, tmp_path):
+        """Test CSVWriter handles empty record batches."""
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = [{"name": "id", "type": "integer"}]
+
+        target_config = TargetConfig(type="csv", connection={})
+        output_base = str(tmp_path / "output")
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        # Empty batch should return empty list
+        metadata = writer.write_batch([], 0)
+        assert metadata == []
+
+    def test_csv_writer_check_connection_local(self, tmp_path):
+        """Test CSVWriter connection check for local filesystem."""
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = []
+
+        target_config = TargetConfig(type="csv", connection={})
+        output_base = str(tmp_path / "output")
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        result = writer.check_connection()
+        assert result.success is True
+        assert "writable" in result.message.lower()
+        assert "output_base" in result.details
+
+    def test_csv_writer_check_connection_s3_mock(self, tmp_path):
+        """Test CSVWriter connection check for S3 (mocked)."""
+        from unittest.mock import MagicMock, patch
+
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = []
+
+        target_config = TargetConfig(
+            type="csv",
+            connection={
+                "s3": {
+                    "bucket": "test-bucket",
+                    "endpoint": "http://localhost:9000",
+                    "access_key_id": "test-key",
+                    "secret_access_key": "test-secret",
+                    "region": "us-east-1",
+                }
+            },
+        )
+        output_base = "s3://test-bucket/output"
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        # Mock S3 client
+        mock_s3_client = MagicMock()
+        mock_s3_client.head_bucket.return_value = True
+        writer.s3_client = mock_s3_client
+
+        result = writer.check_connection()
+        assert result.success is True
+        assert "accessible" in result.message.lower()
+        assert result.details["bucket"] == "test-bucket"
+        mock_s3_client.head_bucket.assert_called_once_with(Bucket="test-bucket")
+
+    def test_csv_writer_check_connection_s3_error(self, tmp_path):
+        """Test CSVWriter connection check handles S3 errors."""
+        from unittest.mock import MagicMock
+
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = []
+
+        target_config = TargetConfig(
+            type="csv",
+            connection={
+                "s3": {
+                    "bucket": "test-bucket",
+                    "endpoint": "http://localhost:9000",
+                    "access_key_id": "test-key",
+                    "secret_access_key": "test-secret",
+                    "region": "us-east-1",
+                }
+            },
+        )
+        output_base = "s3://test-bucket/output"
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        # Mock S3 client with 404 error (simulate NoSuchBucket)
+        mock_s3_client = MagicMock()
+        error = Exception("404 NoSuchBucket")
+        mock_s3_client.head_bucket.side_effect = error
+        writer.s3_client = mock_s3_client
+
+        result = writer.check_connection()
+        assert result.success is False
+        assert "not found" in result.message.lower() or "404" in result.message.lower()
+        assert result.error_code == "RESOURCE_NOT_FOUND"
+
+    def test_csv_writer_commit_files(self, tmp_path):
+        """Test CSVWriter commit_files method."""
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = [{"name": "id", "type": "integer"}]
+
+        target_config = TargetConfig(type="csv", connection={})
+        output_base = str(tmp_path / "output")
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        # Write some batches
+        metadata1 = writer.write_batch([{"id": 1}, {"id": 2}], 0)
+        metadata2 = writer.write_batch([{"id": 3}, {"id": 4}], 1)
+
+        # Commit files
+        all_metadata = metadata1 + metadata2
+        result = writer.commit_files(all_metadata)
+
+        assert result["status"] == "success"
+        assert result["files_added"] == 2
+        assert result["total_records"] == 4
+        assert result["total_bytes"] > 0
+        assert (
+            result["total_bytes"]
+            == metadata1[0]["size_bytes"] + metadata2[0]["size_bytes"]
+        )
+
+    def test_csv_writer_default_options(self, tmp_path):
+        """Test CSVWriter uses default options when not specified."""
+        from tests.fixtures.plugins.csv_writer import CSVWriter
+
+        class MockAsset:
+            name = "test_table"
+            schema = [{"name": "id", "type": "integer"}]
+
+        # No engine options provided
+        target_config = TargetConfig(type="csv", connection={})
+        output_base = str(tmp_path / "output")
+        writer = CSVWriter(MockAsset(), target_config, output_base)
+
+        # Should use defaults: delimiter=",", include_header=True
+        assert writer.delimiter == ","
+        assert writer.include_header is True
+
+        records = [{"id": 1}]
+        metadata = writer.write_batch(records, 0)
+        output_file = Path(metadata[0]["path"])
+        content = output_file.read_text()
+
+        # Should have comma delimiter and header
+        assert "," in content or "id" in content
+
+
 class TestModuleExports:
     """Tests for module exports and imports."""
 
