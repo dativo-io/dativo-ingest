@@ -1,24 +1,71 @@
 # Dativo Ingestion Platform
 
-A headless, config-driven ingestion engine. Extracts data from SaaS APIs (Stripe, HubSpot) and databases (PostgreSQL, MySQL) into object storage (S3, MinIO) as Iceberg-backed datasets. Supports Markdown-KV format for LLM-optimized data ingestion.
+A **headless, config-driven** ingestion engine for modern data stacks. Extract data from SaaS APIs (Stripe, HubSpot) and databases (PostgreSQL, MySQL) into object storage (S3, MinIO) as Iceberg-backed datasets. Supports Markdown-KV format for LLM-optimized data ingestion.
 
-## 🧪 Testing & Validation
+## Table of Contents
 
-**NEW!** Comprehensive testing resources for all capabilities:
-- **[TESTING_GUIDE_INDEX.md](TESTING_GUIDE_INDEX.md)** - Complete testing documentation index
-- **[TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md)** - 20 detailed test cases with step-by-step instructions
-- **[TESTING_QUICK_REFERENCE.md](TESTING_QUICK_REFERENCE.md)** - Quick command reference and troubleshooting
-- **[ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md)** - Environment variables reference
-- **[scripts/preflight-check.sh](scripts/preflight-check.sh)** - Validate your environment is ready
-- **[scripts/generate-test-data.sh](scripts/generate-test-data.sh)** - Generate sample test datasets
+- [Why Dativo?](#why-dativo)
+- [Comparison: Dativo vs. Alternatives](#comparison-dativo-vs-alternatives)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Demo Environment](#demo-environment)
+- [CLI Usage](#cli-usage)
+- [Configuration](#configuration)
+- [Supported Connectors](#supported-connectors)
+- [Plugin System](#plugin-system)
+- [Data Catalog Integration](#data-catalog-integration)
+- [Multi-Tenant Architecture](#multi-tenant-architecture)
+- [Testing](#testing)
+- [Project Structure](#project-structure)
+- [Documentation](#documentation)
+- [License](#license)
 
-Quick start testing:
-```bash
-./scripts/preflight-check.sh    # Validate environment
-./scripts/generate-test-data.sh  # Generate test data
-source .env                      # Load environment variables
-dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
-```
+## Why Dativo?
+
+Dativo is designed for teams that need:
+
+- **Headless Operation**: No UI required - perfect for GitOps, CI/CD, and infrastructure-as-code
+- **Config-Driven**: Everything is YAML - connectors, assets, jobs, and schedules
+- **Multi-Tenant First**: Built-in tenant isolation for state, secrets, and data
+- **Iceberg Native**: Direct integration with Apache Iceberg for modern data lakes
+- **Plugin Architecture**: Extend with Python or Rust plugins for custom logic
+- **Production Ready**: Enterprise features like sandboxing, retry policies, and observability
+
+## Comparison: Dativo vs. Alternatives
+
+| Feature | Dativo | Airbyte | Meltano |
+|--------|--------|---------|---------|
+| **Architecture** | Headless, config-driven | UI-first, API-driven | CLI-first, plugin-based |
+| **Deployment** | Docker, Kubernetes | Docker, Cloud | Python package |
+| **Configuration** | YAML files (GitOps) | Web UI + API | YAML files |
+| **Multi-Tenancy** | ✅ Built-in isolation | ❌ Single tenant | ❌ Single tenant |
+| **Iceberg Support** | ✅ Native | ❌ Limited | ❌ Limited |
+| **Custom Plugins** | ✅ Python + Rust | ❌ Connectors only | ✅ Python (Singer) |
+| **Orchestration** | ✅ Dagster built-in | ❌ External only | ❌ External only |
+| **Catalog Integration** | ✅ OpenMetadata, Glue, Unity | ❌ Limited | ❌ Limited |
+| **Markdown-KV** | ✅ Native support | ❌ No | ❌ No |
+| **Schema Validation** | ✅ ODCS v3.0.2 | ⚠️ Basic | ⚠️ Basic |
+| **Secret Management** | ✅ Multiple backends | ⚠️ Basic | ⚠️ Basic |
+| **Best For** | Multi-tenant SaaS, data platforms | Single-tenant, UI-driven | Singer ecosystem |
+
+**When to Choose Dativo:**
+- Building a multi-tenant data platform
+- Need headless, GitOps-friendly ingestion
+- Require Iceberg-native integration
+- Want custom plugins (Python/Rust)
+- Need built-in orchestration (Dagster)
+
+**When to Choose Airbyte:**
+- Need 300+ pre-built connectors
+- Prefer UI-driven configuration
+- Single-tenant use case
+- Don't need Iceberg integration
+
+**When to Choose Meltano:**
+- Already using Singer taps/targets
+- Prefer Python-only plugins
+- CLI-first workflow
+- Don't need multi-tenancy
 
 ## Architecture
 
@@ -51,6 +98,8 @@ python3 --version  # Should show 3.10.0 or higher
 # • pyenv: pyenv install 3.10.13 && pyenv local 3.10.13
 ```
 
+See [docs/python-setup.md](docs/python-setup.md) for detailed Python setup instructions.
+
 ### Setup and Run
 
 ```bash
@@ -58,7 +107,7 @@ python3 --version  # Should show 3.10.0 or higher
 ./scripts/setup-dev.sh
 
 # 2. Source environment variables
-source .env
+source .env.example  # Or create your own .env file
 
 # 3. Run end-to-end test (filesystem secret manager)
 dativo run --job-dir tests/fixtures/jobs \
@@ -68,8 +117,7 @@ dativo run --job-dir tests/fixtures/jobs \
 ```
 
 **For detailed instructions, see:**
-- [QUICKSTART.md](QUICKSTART.md) - Quick reference guide
-- [ENVIRONMENT_SETUP_GUIDE.md](ENVIRONMENT_SETUP_GUIDE.md) - Environment variables reference
+- [docs/quickstart.md](docs/quickstart.md) - Quick reference guide
 - [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md) - Comprehensive setup guide
 
 ### Docker Deployment
@@ -105,6 +153,20 @@ docker run --rm -p 3000:3000 \
 
 > Omit the `/app/secrets` volume and `--secrets-dir` flag when using non-filesystem secret managers.
 
+## Demo Environment
+
+**NEW!** One-command demo environment:
+
+```bash
+# Start demo infrastructure (Nessie + MinIO)
+docker-compose -f docker-compose.demo.yml up -d
+
+# Run demo job
+dativo run --config demo/jobs/csv_to_iceberg.yaml --mode self_hosted
+```
+
+See [demo/README.md](demo/README.md) for complete demo instructions.
+
 ## CLI Usage
 
 ### Run a Single Job
@@ -130,23 +192,6 @@ This validates:
 - `--json`: Output results in JSON format
 - `--verbose`: Show detailed information including error details
 
-**Example:**
-```bash
-dativo check --config jobs/acme/stripe_customers.yaml --verbose
-
-# Output:
-# ============================================================
-# Connection Check Results
-# ============================================================
-# 
-# Source: success
-#   Connection successful: API accessible
-#   Details: {'api_version': 'v1', 'account_id': 'acct_123'}
-# 
-# Target: success
-#   S3 bucket 'my-bucket' is accessible
-```
-
 ### Discover Available Streams
 
 List available tables/streams from a connector:
@@ -157,28 +202,6 @@ dativo discover --connector stripe [--json] [--verbose]
 
 # Using job config
 dativo discover --config jobs/acme/stripe_customers.yaml [--json] [--verbose]
-```
-
-This helps generate asset definitions by discovering what data is available.
-
-**Options:**
-- `--json`: Output results as JSON
-- `--verbose`: Show detailed information including column schemas
-
-**Example:**
-```bash
-dativo discover --config jobs/postgres_job.yaml --verbose
-
-# Output:
-# ============================================================
-# Discovery Results
-# ============================================================
-# 
-# Found 12 stream(s):
-# 
-# 1. customers
-#    Type: table
-#    Schema: {"id": "integer", "email": "varchar", ...}
 ```
 
 **Options:**
@@ -211,31 +234,21 @@ dativo start orchestrated --runner-config <path>
 
 Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/runner.yaml`
 
-## Execution Flow
-
-1. **Extract** - Read data from source (API, database, files)
-2. **Validate** - Validate records against asset schema (strict or warn mode)
-3. **Write** - Write to Parquet files (target: 128-200 MB, supports partitioning)
-4. **Commit** - Optional: Commit to Iceberg catalog (files always written to S3)
-5. **Update State** - Track incremental sync state
-
-**Catalog Note**: Iceberg catalog is optional. Without catalog, Parquet files are written directly to S3/MinIO. See [docs/CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md).
-
 ## Configuration
 
 **Job Config** - Defines source, target, asset, and tenant overrides:
 
 **Path Conventions:**
-- **Local Development**: Use relative paths (e.g., `connectors/stripe.yaml`)
-- **Docker**: Use absolute paths (e.g., `/app/connectors/stripe.yaml`)
+- **Local Development**: Use relative paths (e.g., `connectors/examples/stripe.yaml`)
+- **Docker**: Use absolute paths (e.g., `/app/connectors/examples/stripe.yaml`)
 - **Assets**: Always use versioned paths (e.g., `assets/examples/stripe/v1.0/customers.yaml`)
 
 ```yaml
 tenant_id: acme
 source_connector: stripe
-source_connector_path: connectors/stripe.yaml  # Local: relative, Docker: /app/connectors/stripe.yaml
+source_connector_path: connectors/examples/stripe.yaml  # Local: relative, Docker: /app/connectors/examples/stripe.yaml
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml  # Always versioned
 source:
@@ -278,6 +291,15 @@ target:
 See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for complete reference.  
 See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal asset example.
 
+## Execution Flow
+
+1. **Extract** - Read data from source (API, database, files)
+2. **Validate** - Validate records against asset schema (strict or warn mode)
+3. **Write** - Write to Parquet files (target: 128-200 MB, supports partitioning)
+4. **Commit** - Optional: Commit to Iceberg catalog (files always written to S3)
+5. **Update State** - Track incremental sync state
+
+**Catalog Note**: Iceberg catalog is optional. Without catalog, Parquet files are written directly to S3/MinIO. See [docs/CATALOG_LIMITATIONS.md](docs/CATALOG_LIMITATIONS.md).
 
 ## Supported Connectors
 
@@ -295,6 +317,8 @@ See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal a
 - **Iceberg** - Apache Iceberg tables (Parquet format)
 - **S3** - Amazon S3 object storage
 - **MinIO** - MinIO object storage
+
+See [docs/connectors.md](docs/connectors.md) for complete connector reference.
 
 ## Plugin System
 
@@ -415,6 +439,32 @@ Dativo supports three storage patterns for Markdown-KV format:
 
 See [docs/MARKDOWN_KV_STORAGE.md](docs/MARKDOWN_KV_STORAGE.md) for detailed documentation.
 
+## Multi-Tenant Architecture
+
+Dativo is built with **multi-tenancy as a first-class feature**:
+
+### Tenant Isolation
+
+- **State Isolation**: Each tenant has separate state files (`state/{tenant_id}/`)
+- **Secret Isolation**: Secrets are tenant-scoped (`secrets/{tenant_id}/`)
+- **Data Isolation**: Tenant ID included in S3 paths and Iceberg table names
+- **Logging Isolation**: Tenant ID tagged in all log entries
+
+### Tenant Configuration
+
+```yaml
+tenant_id: acme  # Required in all job configs
+environment: prod
+```
+
+### Orchestration
+
+- **Serial Execution**: One job per tenant at a time (prevents Nessie commit conflicts)
+- **Tenant-Level Scheduling**: Schedules are tenant-aware
+- **Resource Quotas**: (Future) Tenant-level resource limits
+
+See [docs/RUNNER_AND_ORCHESTRATION.md](docs/RUNNER_AND_ORCHESTRATION.md) for orchestration details.
+
 ## Exit Codes
 
 - `0`: Success - All jobs completed successfully
@@ -443,7 +493,8 @@ See [tests/README.md](tests/README.md) for detailed testing documentation.
 ## Project Structure
 
 ```
-connectors/          # Connector recipes (tenant-agnostic)
+connectors/
+  examples/          # Connector recipes (tenant-agnostic)
 assets/              # Asset schemas (ODCS v3.0.2)
   {source}/v{version}/
 jobs/                # Job configs (tenant-specific)
@@ -451,20 +502,49 @@ jobs/                # Job configs (tenant-specific)
 configs/             # Runner and policy configs
 registry/            # Connector capabilities registry
 secrets/             # (Optional) filesystem secrets (tenant-organized)
+  {tenant_id}/
 state/               # Incremental sync state
+  {tenant_id}/
+demo/                # Demo environment
+  data/              # Sample data
+  jobs/              # Demo job configs
 src/dativo_ingest/   # Source code
+docs/                # Documentation
+  index.md           # Documentation index
+  connectors.md      # Connector reference
+  quickstart.md      # Quick start guide
+  experimental/      # Experimental features
 ```
 
 ## Documentation
 
-**Quick Start:** [QUICKSTART.md](QUICKSTART.md)  
-**Setup Guide:** [docs/SETUP_AND_ONBOARDING.md](docs/SETUP_AND_ONBOARDING.md)  
-**Config Reference:** [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)  
-**Design Decisions:** [docs/DESIGN_ONE_ASSET_PER_JOB.md](docs/DESIGN_ONE_ASSET_PER_JOB.md) - Why one asset per job  
-**Custom Plugins:** [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)  
-**Secrets Reference:** [docs/SECRET_MANAGEMENT.md](docs/SECRET_MANAGEMENT.md)  
-**Data Flow Architecture:** [DATA_FLOW_ARCHITECTURE.md](DATA_FLOW_ARCHITECTURE.md) - How data moves from readers to writers  
-**Python Setup:** [PYTHON_SETUP_GUIDE.md](PYTHON_SETUP_GUIDE.md) - Python 3.10+ installation guide  
-**Testing:** [tests/README.md](tests/README.md)
+**Documentation Index:** [docs/index.md](docs/index.md) - Complete documentation navigation
 
+**Quick Start:**
+- [Quick Start Guide](docs/quickstart.md)
+- [Python Setup Guide](docs/python-setup.md)
+- [Setup and Testing](docs/SETUP_AND_TESTING.md)
 
+**Core Documentation:**
+- [Configuration Reference](docs/CONFIG_REFERENCE.md)
+- [Connector Reference](docs/connectors.md)
+- [Secret Management](docs/SECRET_MANAGEMENT.md)
+- [Schema Validation](docs/SCHEMA_VALIDATION.md)
+
+**Architecture:**
+- [Data Flow Architecture](DATA_FLOW_ARCHITECTURE.md)
+- [Design: One Asset Per Job](docs/DESIGN_ONE_ASSET_PER_JOB.md)
+- [Runner and Orchestration](docs/RUNNER_AND_ORCHESTRATION.md)
+
+**Advanced:**
+- [Custom Plugins](docs/CUSTOM_PLUGINS.md)
+- [Catalog Integration](docs/CATALOG_INTEGRATION.md)
+- [WAL Checkpointing](docs/WAL_CHECKPOINTING.md)
+- [Tag Propagation](docs/TAG_PROPAGATION.md)
+
+**Roadmap:**
+- [Roadmap](docs/roadmap.md)
+
+## License
+
+Apache License 2.0 - See [LICENSE](LICENSE) file for details.

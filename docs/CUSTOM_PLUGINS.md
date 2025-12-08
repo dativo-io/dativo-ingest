@@ -34,7 +34,7 @@ Understanding when to use **connectors** versus **custom readers/writers** is cr
 
 **Example Connector:**
 ```yaml
-# connectors/hubspot.yaml
+# connectors/examples/hubspot.yaml
 name: hubspot
 type: hubspot
 default_engine:
@@ -59,7 +59,7 @@ credentials:
 ```yaml
 # Job config
 source_connector: custom_api
-source_connector_path: /app/connectors/csv.yaml  # Just for metadata
+source_connector_path: /app/connectors/examples/csv.yaml  # Just for metadata
 
 source:
   custom_reader: "/app/plugins/json_api_reader.py:JSONAPIReader"
@@ -116,7 +116,7 @@ You can use a **connector as a "base"** (for metadata/validation) while using a 
 
 ```yaml
 source_connector: postgres  # Provides metadata about postgres type
-source_connector_path: /app/connectors/postgres.yaml
+source_connector_path: /app/connectors/examples/postgres.yaml
 
 source:
   custom_reader: "/app/plugins/my_custom_postgres_reader.py:MyReader"
@@ -272,10 +272,10 @@ tenant_id: acme
 environment: prod
 
 source_connector: my_custom_source
-source_connector_path: /app/connectors/my_source.yaml
+source_connector_path: /app/connectors/examples/my_source.yaml
 
 target_connector: s3
-target_connector_path: /app/connectors/s3.yaml
+target_connector_path: /app/connectors/examples/s3.yaml
 
 asset: my_data
 asset_path: /app/assets/my_data.yaml
@@ -397,10 +397,10 @@ tenant_id: acme
 environment: prod
 
 source_connector: postgres
-source_connector_path: /app/connectors/postgres.yaml
+source_connector_path: /app/connectors/examples/postgres.yaml
 
 target_connector: my_custom_target
-target_connector_path: /app/connectors/my_target.yaml
+target_connector_path: /app/connectors/examples/my_target.yaml
 
 asset: my_data
 asset_path: /app/assets/my_data.yaml

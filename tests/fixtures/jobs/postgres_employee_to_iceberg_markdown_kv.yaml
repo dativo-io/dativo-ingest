@@ -5,11 +5,11 @@ environment: test
 
 # Source connector - Postgres with AdventureWorks database
 source_connector: postgres
-source_connector_path: connectors/postgres.yaml
+source_connector_path: connectors/examples/postgres.yaml
 
 # Target connector - Iceberg with MinIO storage
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 
 # Asset definition - Markdown-KV format (string mode)
 asset: postgres_employee_markdown_kv
