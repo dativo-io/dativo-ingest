@@ -32,7 +32,12 @@ cleanup() {
     echo ""
     echo "🧹 Cleaning up WAL test artifacts..."
     if [ -d "$WAL_DIR" ]; then
-        rm -rf "$WAL_DIR"/* 2>/dev/null || true
+        # Remove all WAL files
+        find "$WAL_DIR" -name "*.wal.json" -type f -delete 2>/dev/null || true
+        # Remove all WAL temp files
+        find "$WAL_DIR" -name "*.wal.json.tmp" -type f -delete 2>/dev/null || true
+        # Remove empty directories
+        find "$WAL_DIR" -type d -empty -delete 2>/dev/null || true
     fi
     echo "✅ Cleanup complete"
 }
