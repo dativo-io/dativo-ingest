@@ -1,0 +1,68 @@
+# Example: CSV to Iceberg using Spark Engine
+# This example demonstrates how to use Apache Spark for writing to Iceberg tables
+# Spark engine provides better performance for large datasets and distributed processing
+
+tenant_id: acme
+environment: prod
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/examples/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: assets/examples/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: data/employees.csv
+      object: Employee
+
+# Target configuration with Spark engine
+target:
+  type: iceberg
+  # Specify Spark engine instead of default native engine
+  engine:
+    type: spark
+    options:
+      spark:
+        # Target file size in MB
+        max_file_size_mb: 200
+        # Additional Spark configuration
+        config:
+          spark.sql.adaptive.enabled: "true"
+          spark.sql.adaptive.coalescePartitions.enabled: "true"
+          # For production Spark clusters, specify master:
+          # spark.master: "spark://spark-master:7077"
+          # spark.executor.memory: "4g"
+          # spark.executor.cores: "2"
+        # Optional: Specify Iceberg JARs if not in Spark classpath
+        # jars:
+        #   - "s3a://path/to/iceberg-spark-runtime.jar"
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: "${S3_BUCKET}"
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true  # Set to true for MinIO
+    # Optional: Nessie catalog for Iceberg metadata
+    nessie:
+      uri: "${NESSIE_URI}"
+  catalog: nessie  # Optional: omit for S3-only writes
+  branch: main
+  partitioning: [ingest_date]
+
+# Execution configuration
+schema_validation_mode: warn
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO

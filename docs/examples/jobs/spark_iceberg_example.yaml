@@ -1,0 +1,91 @@
+# Example: Using Spark Engine for Iceberg Target
+# 
+# This example demonstrates how to configure a job to use Apache Spark
+# for writing to Iceberg tables. Spark engine provides better performance
+# for large datasets and supports distributed processing.
+#
+# Prerequisites:
+# - Install PySpark: pip install pyspark
+# - Spark runtime (local or cluster)
+# - MinIO/S3 and Nessie catalog (via docker-compose.dev.yml)
+
+tenant_id: acme
+environment: prod
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/examples/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: assets/examples/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: data/employees.csv
+      object: Employee
+
+# Target configuration with Spark engine
+target:
+  type: iceberg
+  # Enable Spark engine (default is 'native')
+  engine:
+    type: spark
+    options:
+      spark:
+        # Target file size in MB (Spark will coalesce partitions to approximate this)
+        max_file_size_mb: 200
+        
+        # Spark configuration options
+        config:
+          # Enable adaptive query execution for better performance
+          spark.sql.adaptive.enabled: "true"
+          spark.sql.adaptive.coalescePartitions.enabled: "true"
+          
+          # For Spark clusters, uncomment and configure:
+          # spark.master: "spark://spark-master:7077"
+          # spark.executor.memory: "4g"
+          # spark.executor.cores: "2"
+          # spark.driver.memory: "2g"
+        
+        # Optional: Specify Iceberg JAR paths if not in Spark classpath
+        # jars:
+        #   - "s3a://path/to/iceberg-spark-runtime-3.5_2.12.jar"
+        #   - "s3a://path/to/hadoop-aws.jar"
+  
+  # Storage connection (S3/MinIO and Nessie catalog)
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT:-http://localhost:9000}"
+      bucket: "${S3_BUCKET:-test-bucket}"
+      access_key_id: "${AWS_ACCESS_KEY_ID:-minioadmin}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
+      region: "${AWS_REGION:-us-east-1}"
+      path_style_access: true  # Required for MinIO
+    # Optional: Nessie catalog for Iceberg metadata management
+    nessie:
+      uri: "${NESSIE_URI:-http://localhost:19120/api/v1}"
+  
+  catalog: nessie  # Optional: omit for S3-only writes
+  branch: main
+  partitioning: [ingest_date]
+
+# Execution configuration
+schema_validation_mode: warn  # Use 'strict' for production
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO
+
+# Usage:
+# 1. Start infrastructure: docker-compose -f docker-compose.dev.yml up -d
+# 2. Set environment variables (or use defaults above)
+# 3. Run: dativo run --config examples/jobs/spark_iceberg_example.yaml
+#
+# For more details, see docs/SPARK_SETUP.md

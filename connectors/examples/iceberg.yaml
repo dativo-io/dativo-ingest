@@ -12,6 +12,17 @@ default_engine:
       batch_size_rows: 50000
       max_file_size_mb: 200
       compression: "snappy"
+    spark:
+      # Spark engine options (used when engine.type: spark)
+      max_file_size_mb: 200
+      config:
+        # Additional Spark configuration options
+        spark.sql.adaptive.enabled: "true"
+        spark.sql.adaptive.coalescePartitions.enabled: "true"
+      # Optional: Specify Iceberg and S3A JARs if not available in Spark classpath
+      # jars:
+      #   - "s3a://path/to/iceberg-spark-runtime.jar"
+      #   - "s3a://path/to/hadoop-aws.jar"
 connection_template:
   # Nessie catalog (optional - omit for S3-only writes)
   # nessie:

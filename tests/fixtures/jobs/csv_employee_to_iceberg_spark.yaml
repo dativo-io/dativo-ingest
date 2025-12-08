@@ -1,0 +1,56 @@
+# CSV Employee to Iceberg job using Spark engine
+tenant_id: test_tenant
+environment: test
+
+# Source connector
+source_connector: csv
+source_connector_path: connectors/examples/csv.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+
+# Asset definition
+asset: csv_employee
+asset_path: tests/fixtures/assets/csv/v1.0/employee.yaml
+
+# Source configuration
+source:
+  files:
+    - path: tests/fixtures/seeds/employee/Employee_Complete_Dataset.csv
+  engine:
+    options:
+      encoding: "utf-8"  # File is UTF-8 encoded
+
+# Target configuration - Iceberg table configuration with Spark engine
+target:
+  type: iceberg
+  engine:
+    type: spark
+    options:
+      spark:
+        max_file_size_mb: 200
+        config:
+          spark.sql.adaptive.enabled: "true"
+          spark.sql.adaptive.coalescePartitions.enabled: "true"
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+    nessie:
+      uri: "${NESSIE_URI}"
+  catalog: nessie
+  branch: main
+  partitioning: [ingest_date]
+
+# Execution configuration
+schema_validation_mode: warn  # Warn on validation errors instead of failing
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO

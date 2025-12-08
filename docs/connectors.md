@@ -517,10 +517,28 @@ target:
 - SQL-based extraction
 - Connection pooling
 
-### Spark Engine
-- Apache Spark integration
-- Large-scale processing
-- Distributed execution
+### Spark Engine (Iceberg Targets)
+- Apache Spark integration for writing to Iceberg tables
+- Large-scale processing and distributed execution
+- Better performance for datasets > 10GB
+- Supports Spark clusters and adaptive query execution
+
+**Configuration Example:**
+```yaml
+target:
+  type: iceberg
+  engine:
+    type: spark
+    options:
+      spark:
+        max_file_size_mb: 200
+        config:
+          spark.sql.adaptive.enabled: "true"
+```
+
+**See Also:**
+- [Spark Setup Guide](SPARK_SETUP.md) - Complete setup and configuration guide
+- [Configuration Reference - Spark Engine](CONFIG_REFERENCE.md#spark-engine-iceberg-targets) - Detailed configuration options
 
 ## Best Practices
 
