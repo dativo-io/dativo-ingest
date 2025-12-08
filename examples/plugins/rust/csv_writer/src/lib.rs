@@ -87,6 +87,30 @@ impl CsvWriter {
         })
     }
 
+    /// Efficiently convert serde_json::Value to String
+    /// Optimized to avoid unnecessary allocations for common types
+    #[inline]
+    fn value_to_string(value: &serde_json::Value) -> String {
+        match value {
+            // For strings, we still need to clone, but this is explicit
+            serde_json::Value::String(s) => s.clone(),
+            // For numbers, use to_string which is already optimized in serde_json
+            serde_json::Value::Number(n) => n.to_string(),
+            // For bools, directly create String from static str (slightly more efficient)
+            serde_json::Value::Bool(b) => {
+                if *b {
+                    String::from("true")
+                } else {
+                    String::from("false")
+                }
+            }
+            // Null is empty string
+            serde_json::Value::Null => String::new(),
+            // For arrays/objects, fall back to to_string
+            _ => value.to_string(),
+        }
+    }
+
     /// Write batch of records to CSV file
     fn write_batch(
         &mut self,
@@ -105,11 +129,15 @@ impl CsvWriter {
         self.file_counter += 1;
 
         // Get field names from schema or first record
+        // Store as Vec<String> for header writing, but also create Vec<&str> for efficient lookups
         let fieldnames: Vec<String> = if !self.config.schema.is_empty() {
             self.config.schema.iter().map(|f| f.name.clone()).collect()
         } else {
             records[0].keys().map(|k| k.clone()).collect()
         };
+        
+        // Create string slice references for efficient HashMap lookups
+        let fieldname_refs: Vec<&str> = fieldnames.iter().map(|s| s.as_str()).collect();
 
         // Create CSV writer
         let delimiter_byte = if self.config.engine.options.delimiter.len() == 1 {
@@ -134,22 +162,23 @@ impl CsvWriter {
             self.header_written = true;
         }
 
-        // Write records
+        // Write records with optimized conversion
+        // Pre-allocate row vector with capacity to avoid reallocations
+        let row_capacity = fieldnames.len();
+        
         for record in &records {
-            let mut row = Vec::new();
-            for fieldname in &fieldnames {
+            // Pre-allocate row vector with known capacity to avoid reallocations
+            let mut row = Vec::with_capacity(row_capacity);
+            
+            // Use fieldname string slices for faster HashMap lookups (avoids String comparison overhead)
+            for fieldname in &fieldname_refs {
                 let value = record
-                    .get(fieldname)
-                    .map(|v| match v {
-                        serde_json::Value::String(s) => s.clone(),
-                        serde_json::Value::Number(n) => n.to_string(),
-                        serde_json::Value::Bool(b) => b.to_string(),
-                        serde_json::Value::Null => String::new(),
-                        _ => v.to_string(),
-                    })
+                    .get(*fieldname)
+                    .map(|v| Self::value_to_string(v))
                     .unwrap_or_default();
                 row.push(value);
             }
+            
             writer
                 .write_record(&row)
                 .map_err(|e| format!("Failed to write record: {}", e))?;
