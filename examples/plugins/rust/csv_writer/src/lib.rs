@@ -4,6 +4,7 @@
 //! - Fast CSV writing using the csv crate
 //! - Efficient memory management
 //! - Configurable formatting options
+//! - Size-based file splitting for optimal file sizes
 //! - C-compatible FFI interface
 //!
 //! Build with: cargo build --release
@@ -52,6 +53,8 @@ struct EngineOptions {
     delimiter: String,
     #[serde(default = "default_include_header")]
     include_header: bool,
+    #[serde(default = "default_target_size_mb")]
+    target_size_mb: u64,
 }
 
 fn default_delimiter() -> String {
@@ -60,6 +63,11 @@ fn default_delimiter() -> String {
 
 fn default_include_header() -> bool {
     true
+}
+
+fn default_target_size_mb() -> u64 {
+    // Default to 50 MB for CSV files (smaller than Parquet since CSV is uncompressed)
+    50
 }
 
 #[derive(Debug, Serialize)]
@@ -111,22 +119,70 @@ impl CsvWriter {
         }
     }
 
-    /// Write batch of records to CSV file
-    fn write_batch(
-        &mut self,
-        records: Vec<HashMap<String, serde_json::Value>>,
-    ) -> Result<FileMetadata, String> {
-        // Use internal counter for backward compatibility
-        let counter = self.file_counter;
-        self.file_counter += 1;
-        self.write_batch_with_counter(records, counter)
+    /// Estimate CSV size for a sample of records
+    fn estimate_csv_size(
+        &self,
+        records: &[HashMap<String, serde_json::Value>],
+        fieldnames: &[String],
+        delimiter_byte: u8,
+        include_header: bool,
+    ) -> u64 {
+        if records.is_empty() {
+            return 0;
+        }
+
+        // Sample up to 1000 records to estimate size
+        let sample_size = records.len().min(1000);
+        let sample = &records[0..sample_size];
+
+        // Create a temporary buffer to estimate size
+        let mut buffer = Vec::new();
+        let mut writer = WriterBuilder::new()
+            .delimiter(delimiter_byte)
+            .has_headers(false)
+            .from_writer(&mut buffer);
+
+        // Write header if needed
+        if include_header {
+            let _ = writer.write_record(fieldnames);
+        }
+
+        // Write sample records
+        let fieldname_refs: Vec<&str> = fieldnames.iter().map(|s| s.as_str()).collect();
+        let mut row = Vec::with_capacity(fieldnames.len());
+        for record in sample {
+            row.clear();
+            for fieldname in &fieldname_refs {
+                let value = record
+                    .get(*fieldname)
+                    .map(|v| Self::value_to_string(v))
+                    .unwrap_or_default();
+                row.push(value);
+            }
+            let _ = writer.write_record(&row);
+        }
+
+        let _ = writer.flush();
+        // Drop writer to release borrow on buffer
+        drop(writer);
+        let sample_size_bytes = buffer.len() as u64;
+
+        // Estimate total size based on sample
+        if sample_size > 0 {
+            (sample_size_bytes * records.len() as u64) / sample_size as u64
+        } else {
+            0
+        }
     }
 
-    /// Write batch of records to CSV file with specified counter
-    fn write_batch_with_counter(
+    /// Write a chunk of records to a single CSV file
+    fn write_chunk(
         &mut self,
-        records: Vec<HashMap<String, serde_json::Value>>,
+        records: &[HashMap<String, serde_json::Value>],
         file_counter: usize,
+        fieldnames: &[String],
+        fieldname_refs: &[&str],
+        delimiter_byte: u8,
     ) -> Result<FileMetadata, String> {
         if records.is_empty() {
             return Err("No records to write".to_string());
@@ -139,24 +195,6 @@ impl CsvWriter {
 
         let output_file = output_dir.join(format!("part-{:05}.csv", file_counter));
 
-        // Get field names from schema or first record
-        // Store as Vec<String> for header writing, but also create Vec<&str> for efficient lookups
-        let fieldnames: Vec<String> = if !self.config.schema.is_empty() {
-            self.config.schema.iter().map(|f| f.name.clone()).collect()
-        } else {
-            records[0].keys().map(|k| k.clone()).collect()
-        };
-        
-        // Create string slice references for efficient HashMap lookups
-        let fieldname_refs: Vec<&str> = fieldnames.iter().map(|s| s.as_str()).collect();
-
-        // Create CSV writer
-        let delimiter_byte = if self.config.engine.options.delimiter.len() == 1 {
-            self.config.engine.options.delimiter.as_bytes()[0]
-        } else {
-            b','
-        };
-
         let file = File::create(&output_file)
             .map_err(|e| format!("Failed to create output file: {}", e))?;
 
@@ -165,29 +203,21 @@ impl CsvWriter {
             .has_headers(false) // We'll write headers manually if needed
             .from_writer(file);
 
-        // Write header if needed
+        // Write header if needed (only for first file)
         if self.config.engine.options.include_header && !self.header_written {
             writer
-                .write_record(&fieldnames)
+                .write_record(fieldnames)
                 .map_err(|e| format!("Failed to write header: {}", e))?;
             self.header_written = true;
         }
 
         // Write records with optimized conversion
-        // Reuse a single row vector across all records to avoid repeated allocations
-        let row_capacity = fieldnames.len();
-        let mut row = Vec::with_capacity(row_capacity);
+        let mut row = Vec::with_capacity(fieldnames.len());
         
-        // Process records in batches for better cache locality
-        for record in &records {
-            // Clear and reuse the same vector (more efficient than allocating new ones)
-            // Note: clear() doesn't deallocate, it just sets length to 0
+        for record in records {
             row.clear();
-            // Reserve is not needed here since we already have capacity
             
-            // Use fieldname string slices for faster HashMap lookups (avoids String comparison overhead)
-            // Process fields in order for better cache performance
-            for fieldname in &fieldname_refs {
+            for fieldname in fieldname_refs {
                 let value = record
                     .get(*fieldname)
                     .map(|v| Self::value_to_string(v))
@@ -195,7 +225,6 @@ impl CsvWriter {
                 row.push(value);
             }
             
-            // Write record immediately to avoid keeping data in memory
             writer
                 .write_record(&row)
                 .map_err(|e| format!("Failed to write record: {}", e))?;
@@ -216,6 +245,95 @@ impl CsvWriter {
             record_count: records.len(),
             format: "csv".to_string(),
         })
+    }
+
+    /// Write batch of records to CSV file(s) with size-based splitting
+    fn write_batch_with_counter(
+        &mut self,
+        records: Vec<HashMap<String, serde_json::Value>>,
+        file_counter: usize,
+    ) -> Result<Vec<FileMetadata>, String> {
+        if records.is_empty() {
+            return Err("No records to write".to_string());
+        }
+
+        // Get field names from schema or first record
+        let fieldnames: Vec<String> = if !self.config.schema.is_empty() {
+            self.config.schema.iter().map(|f| f.name.clone()).collect()
+        } else {
+            records[0].keys().map(|k| k.clone()).collect()
+        };
+        
+        // Create string slice references for efficient HashMap lookups
+        let fieldname_refs: Vec<&str> = fieldnames.iter().map(|s| s.as_str()).collect();
+
+        // Get delimiter
+        let delimiter_byte = if self.config.engine.options.delimiter.len() == 1 {
+            self.config.engine.options.delimiter.as_bytes()[0]
+        } else {
+            b','
+        };
+
+        // Calculate target size in bytes
+        let target_size_bytes = self.config.engine.options.target_size_mb * 1024 * 1024;
+
+        // Estimate total size
+        let estimated_total_size = self.estimate_csv_size(
+            &records,
+            &fieldnames,
+            delimiter_byte,
+            self.config.engine.options.include_header && !self.header_written,
+        );
+
+        let mut all_metadata = Vec::new();
+        let mut current_counter = file_counter;
+
+        // If estimated size is less than target, write everything in one file
+        if estimated_total_size <= target_size_bytes || target_size_bytes == 0 {
+            let metadata = self.write_chunk(
+                &records,
+                current_counter,
+                &fieldnames,
+                &fieldname_refs,
+                delimiter_byte,
+            )?;
+            all_metadata.push(metadata);
+        } else {
+            // Split into multiple files based on estimated size
+            let estimated_records_per_file = if estimated_total_size > 0 {
+                (records.len() as u64 * target_size_bytes) / estimated_total_size
+            } else {
+                records.len() as u64
+            };
+
+            let mut chunk_start = 0;
+            while chunk_start < records.len() {
+                // Calculate chunk end based on estimated size
+                let chunk_end = if estimated_records_per_file > 0 {
+                    (chunk_start + estimated_records_per_file as usize).min(records.len())
+                } else {
+                    records.len()
+                };
+
+                // Write chunk
+                let chunk = &records[chunk_start..chunk_end];
+                let metadata = self.write_chunk(
+                    chunk,
+                    current_counter,
+                    &fieldnames,
+                    &fieldname_refs,
+                    delimiter_byte,
+                )?;
+
+                // If file is still too large, we'll split more aggressively next time
+                // For now, just move to next file
+                all_metadata.push(metadata);
+                current_counter += 1;
+                chunk_start = chunk_end;
+            }
+        }
+
+        Ok(all_metadata)
     }
 }
 
@@ -296,12 +414,10 @@ pub unsafe extern "C" fn write_batch(
     };
 
     // Use provided file_counter if available, otherwise use internal counter
-    // Update internal counter to be one more than the value used
     let current_counter = input.file_counter.unwrap_or(writer.file_counter);
-    writer.file_counter = current_counter + 1;
 
-    // Write batch
-    let metadata = match writer.write_batch_with_counter(input.records, current_counter) {
+    // Write batch (may return multiple files if split)
+    let metadata_vec = match writer.write_batch_with_counter(input.records, current_counter) {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Write error: {}", e);
@@ -309,8 +425,11 @@ pub unsafe extern "C" fn write_batch(
         }
     };
 
+    // Update internal counter based on number of files written
+    writer.file_counter = current_counter + metadata_vec.len();
+
     // Serialize metadata to JSON
-    let json = match serde_json::to_string(&vec![metadata]) {
+    let json = match serde_json::to_string(&metadata_vec) {
         Ok(j) => j,
         Err(e) => {
             eprintln!("JSON serialization error: {}", e);
