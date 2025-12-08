@@ -205,3 +205,72 @@ class TestAWSSecretsManager:
         secrets = manager.load_secrets("tenant1")
 
         assert secrets["host"] == "localhost"
+
+    def test_smoke_test_load_secret_successfully(self):
+        """Smoke test: Validate that AWS manager can successfully load a secret at runtime."""
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {
+            "SecretString": '{"api_key": "test-api-key-123", "database_url": "postgres://localhost/db"}'
+        }
+
+        manager = AWSSecretsManager(
+            region_name="us-east-1",
+            secrets=[{"name": "config", "format": "json"}],
+            client=mock_client,
+        )
+
+        secrets = manager.load_secrets("tenant1")
+
+        assert "config" in secrets
+        assert secrets["config"]["api_key"] == "test-api-key-123"
+        assert secrets["config"]["database_url"] == "postgres://localhost/db"
+        mock_client.get_secret_value.assert_called_once()
+
+    def test_raises_import_error_when_boto3_missing(self):
+        """Test that ImportError is raised when boto3 is not installed."""
+        import sys
+        from unittest.mock import patch
+
+        # Temporarily remove boto3 from sys.modules if present
+        boto3_backup = sys.modules.pop("boto3", None)
+        try:
+            with patch.dict("sys.modules", {"boto3": None}):
+                manager = AWSSecretsManager(region_name="us-east-1")
+                with pytest.raises(ImportError, match="boto3 is required"):
+                    manager._build_client()
+        finally:
+            if boto3_backup:
+                sys.modules["boto3"] = boto3_backup
+
+    def test_raises_client_error_when_secret_not_found(self):
+        """Test that ClientError is raised when secret is not found in AWS."""
+        from botocore.exceptions import ClientError
+
+        mock_client = MagicMock()
+        error_response = {
+            "Error": {
+                "Code": "ResourceNotFoundException",
+                "Message": "Secrets Manager can't find the specified secret.",
+            }
+        }
+        mock_client.get_secret_value.side_effect = ClientError(
+            error_response, "GetSecretValue"
+        )
+
+        manager = AWSSecretsManager(
+            region_name="us-east-1",
+            secrets=[{"name": "missing_secret"}],
+            client=mock_client,
+        )
+
+        with pytest.raises(ClientError) as exc_info:
+            manager.load_secrets("tenant1")
+
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
+
+    def test_raises_value_error_when_no_secrets_or_bundle_configured(self):
+        """Test that ValueError is raised when neither secrets nor bundle is configured."""
+        manager = AWSSecretsManager(region_name="us-east-1", client=MagicMock())
+
+        with pytest.raises(ValueError, match="requires either"):
+            manager.load_secrets("tenant1")

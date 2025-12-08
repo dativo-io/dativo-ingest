@@ -69,7 +69,7 @@ A missing tenant directory raises a `ValueError`, matching the legacy behaviour.
 
 ## HashiCorp Vault Secret Manager
 
-- Depends on the `hvac` library (now declared in `pyproject.toml`).
+- **Required dependency**: `hvac>=2.1.0` (declared in `pyproject.toml`). Install with `pip install hvac` if not already included.
 - Supports token and AppRole auth.
 - Reads data from KV v1 or v2 mounts; you can specify multiple paths.
 
@@ -98,7 +98,20 @@ dativo run --job-dir jobs/acme \
 
 Each path is formatted with `{tenant}` and merged into the final secret map.
 
+### Error Handling
+
+The Vault secret manager raises the following errors:
+
+- **`ImportError`**: Raised when `hvac` library is not installed. Install with `pip install hvac`.
+- **`ValueError("Vault address is required (set 'address' or VAULT_ADDR)")`**: Raised when `address` is not provided and `VAULT_ADDR` environment variable is not set.
+- **`ValueError("Vault token is required for token authentication")`**: Raised when using token auth but `token` is missing and `VAULT_TOKEN` is not set.
+- **`ValueError("role_id and secret_id are required for approle auth")`**: Raised when using AppRole auth but credentials are missing.
+- **`ValueError("Vault authentication failed")`**: Raised when the client cannot authenticate with Vault (e.g., invalid token or credentials).
+- **Missing secrets**: If a secret path does not exist in Vault, the manager returns an empty dictionary for that path and continues processing other paths. No exception is raised for missing paths.
+
 ## AWS Secrets Manager
+
+- **Required dependency**: `boto3>=1.28.0` (declared in `pyproject.toml`). Install with `pip install boto3` if not already included.
 
 AWS support uses either discrete secret definitions or a “bundle” secret that contains a JSON object.
 
@@ -127,7 +140,19 @@ bundle_format: json
 
 The bundle secret must deserialize into a JSON object (keys become individual secrets). Use this when you already store tenant credentials as a single document.
 
+### Error Handling
+
+The AWS Secrets Manager raises the following errors:
+
+- **`ImportError`**: Raised when `boto3` library is not installed. Install with `pip install boto3`.
+- **`ValueError("AWS Secrets Manager requires either 'secrets' definitions or 'bundle_secret_id_template'")`**: Raised when neither `secrets` list nor `bundle_secret_id_template` is configured.
+- **`ValueError("AWS bundle secret must deserialize into a dictionary")`**: Raised when a bundle secret is not valid JSON or does not parse to a dictionary.
+- **`botocore.exceptions.ClientError` with code `ResourceNotFoundException`**: Raised by boto3 when a secret does not exist in AWS Secrets Manager. This is a runtime error that occurs when attempting to load a secret that hasn't been created.
+- **`botocore.exceptions.ClientError` with code `AccessDeniedException`**: Raised when the AWS credentials or IAM role lacks permission to access the secret.
+
 ## GCP Secret Manager
+
+- **Required dependency**: `google-cloud-secret-manager>=2.20.0` (declared in `pyproject.toml`). Install with `pip install google-cloud-secret-manager` if not already included.
 
 Configuration mirrors the AWS model.
 
@@ -151,6 +176,29 @@ bundle_format: json
 ```
 
 Provide the file via `--secret-manager-config` or inline JSON.
+
+### Error Handling
+
+The GCP Secret Manager raises the following errors:
+
+- **`ImportError`**: Raised when `google-cloud-secret-manager` library is not installed. Install with `pip install google-cloud-secret-manager`.
+- **`ValueError("project_id is required for GCP secret manager")`**: Raised when `project_id` is not provided and `GOOGLE_CLOUD_PROJECT` environment variable is not set.
+- **`ValueError("GCP Secret Manager requires either 'secrets' definitions or 'bundle_secret_id_template'")`**: Raised when neither `secrets` list nor `bundle_secret_id_template` is configured.
+- **`ValueError("GCP bundle secret must deserialize into a dictionary")`**: Raised when a bundle secret is not valid JSON or does not parse to a dictionary.
+- **`google.api_core.exceptions.NotFound`**: Raised when a secret or secret version does not exist in GCP Secret Manager. This is a runtime error that occurs when attempting to access a secret that hasn't been created.
+- **`google.api_core.exceptions.PermissionDenied`**: Raised when the service account or credentials lack permission to access the secret.
+
+## Required Dependencies
+
+Each secret manager backend requires specific Python packages:
+
+| Manager | Required Package | Minimum Version | Installation |
+|---------|-----------------|-----------------|--------------|
+| Vault | `hvac` | 2.1.0 | `pip install hvac` |
+| AWS | `boto3` | 1.28.0 | `pip install boto3` |
+| GCP | `google-cloud-secret-manager` | 2.20.0 | `pip install google-cloud-secret-manager` |
+
+These dependencies are declared in `pyproject.toml` and should be installed automatically when installing the package. If you're using a minimal installation or the dependencies are missing, install them manually using the commands above.
 
 ## Environment Variables
 
