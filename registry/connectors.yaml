@@ -104,8 +104,3 @@ connectors:
     roles: [source, target]  # Bidirectional - can read and write from MinIO
     default_engine: native
     engines_supported: [native]
-
-  azure_blob:
-    roles: [source, target]  # Bidirectional - can read and write from Azure Blob
-    default_engine: native
-    engines_supported: [native]

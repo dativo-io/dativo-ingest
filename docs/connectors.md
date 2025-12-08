@@ -25,7 +25,6 @@ Connectors are tenant-agnostic, reusable YAML recipes that define how to connect
 | `iceberg` | target | lake | ✅ | N/A | native | tables |
 | `s3` | source, target | storage | ✅ | N/A | native | objects |
 | `minio` | source, target | storage | ✅ | N/A | native | objects |
-| `azure_blob` | source, target | storage | ✅ | N/A | native | objects |
 
 ## Source Connectors
 
@@ -433,37 +432,6 @@ target:
 - `AWS_SECRET_ACCESS_KEY` - MinIO secret key (default: minioadmin)
 - `AWS_REGION` - Region (default: us-east-1)
 - `S3_ENDPOINT` - MinIO endpoint (default: http://localhost:9000)
-
----
-
-### Azure Blob Storage
-
-**Type**: `azure_blob`  
-**Category**: Storage  
-**Roles**: Source and Target (bidirectional)  
-**Cloud Mode**: ✅ Supported  
-**Incremental**: N/A
-
-**Description**: Read and write objects to Azure Blob Storage.
-
-**Engines**:
-- `native` (default) - Native Python implementation
-
-**Configuration Example**:
-```yaml
-target_connector: azure_blob
-target_connector_path: connectors/examples/azure_blob.yaml
-target:
-  connection:
-    azure_blob:
-      container: "${AZURE_CONTAINER}"
-      account_name: "${AZURE_ACCOUNT_NAME}"
-```
-
-**Credentials**:
-- `AZURE_ACCOUNT_NAME` - Azure storage account name
-- `AZURE_ACCOUNT_KEY` - Azure storage account key
-- `AZURE_CONTAINER` - Azure blob container name
 
 ---
 
