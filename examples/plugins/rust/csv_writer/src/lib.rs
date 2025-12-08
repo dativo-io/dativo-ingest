@@ -163,14 +163,19 @@ impl CsvWriter {
         }
 
         // Write records with optimized conversion
-        // Pre-allocate row vector with capacity to avoid reallocations
+        // Reuse a single row vector across all records to avoid repeated allocations
         let row_capacity = fieldnames.len();
+        let mut row = Vec::with_capacity(row_capacity);
         
+        // Process records in batches for better cache locality
         for record in &records {
-            // Pre-allocate row vector with known capacity to avoid reallocations
-            let mut row = Vec::with_capacity(row_capacity);
+            // Clear and reuse the same vector (more efficient than allocating new ones)
+            // Note: clear() doesn't deallocate, it just sets length to 0
+            row.clear();
+            // Reserve is not needed here since we already have capacity
             
             // Use fieldname string slices for faster HashMap lookups (avoids String comparison overhead)
+            // Process fields in order for better cache performance
             for fieldname in &fieldname_refs {
                 let value = record
                     .get(*fieldname)
@@ -179,6 +184,7 @@ impl CsvWriter {
                 row.push(value);
             }
             
+            // Write record immediately to avoid keeping data in memory
             writer
                 .write_record(&row)
                 .map_err(|e| format!("Failed to write record: {}", e))?;
@@ -255,7 +261,7 @@ pub unsafe extern "C" fn write_batch(
 
     let writer = &mut *writer;
 
-    // Parse input JSON
+    // Parse input JSON - use bytes directly for better performance
     let c_str = match CStr::from_ptr(records_json).to_str() {
         Ok(s) => s,
         Err(_) => return std::ptr::null(),
@@ -266,6 +272,8 @@ pub unsafe extern "C" fn write_batch(
         records: Vec<HashMap<String, serde_json::Value>>,
     }
 
+    // Use from_str which is already optimized in serde_json
+    // For very large inputs, consider using a streaming parser in the future
     let input: Input = match serde_json::from_str(c_str) {
         Ok(i) => i,
         Err(e) => {

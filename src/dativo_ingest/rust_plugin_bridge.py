@@ -283,28 +283,45 @@ class RustWriterWrapper(BaseWriter):
             File metadata
         """
         # Convert datetime objects to ISO format strings for JSON serialization
+        # Optimized to avoid creating intermediate dicts when possible
         import datetime
 
         serializable_records = []
-        for record in records:
-            serializable_record = {}
-            for key, value in record.items():
-                if isinstance(value, datetime.datetime):
-                    serializable_record[key] = value.isoformat()
-                elif isinstance(value, datetime.date):
-                    serializable_record[key] = datetime.datetime.combine(
-                        value, datetime.time.min
-                    ).isoformat()
-                else:
-                    serializable_record[key] = value
-            serializable_records.append(serializable_record)
+        # Pre-allocate list capacity hint (Python lists grow efficiently, but this helps)
+        serializable_records = [None] * len(records)
+
+        # Process records more efficiently - only create new dicts when needed
+        for i, record in enumerate(records):
+            # Check if conversion is needed (datetime objects)
+            needs_conversion = any(
+                isinstance(v, (datetime.datetime, datetime.date))
+                for v in record.values()
+            )
+
+            if needs_conversion:
+                # Create new dict only when datetime conversion is needed
+                serializable_record = {}
+                for key, value in record.items():
+                    if isinstance(value, datetime.datetime):
+                        serializable_record[key] = value.isoformat()
+                    elif isinstance(value, datetime.date):
+                        serializable_record[key] = datetime.datetime.combine(
+                            value, datetime.time.min
+                        ).isoformat()
+                    else:
+                        serializable_record[key] = value
+                serializable_records[i] = serializable_record
+            else:
+                # No conversion needed, use record directly (avoids dict copy)
+                serializable_records[i] = record
 
         # Serialize records and counter
+        # Use compact JSON (no spaces) for smaller payload and faster parsing
         input_dict = {
             "records": serializable_records,
             "file_counter": file_counter,
         }
-        input_json = json.dumps(input_dict).encode("utf-8")
+        input_json = json.dumps(input_dict, separators=(",", ":")).encode("utf-8")
 
         # Call Rust write_batch function
         # Returns a raw pointer (c_void_p) to avoid ctypes auto-conversion
