@@ -207,6 +207,10 @@ state/
 .local/
 *.state.json
 
+# WAL (Write-Ahead Log) files - test artifacts
+*.wal.json
+tests/fixtures/wal/
+
 # Test output and artifacts
 # Generated test data and Parquet files from smoke tests
 s3:/
