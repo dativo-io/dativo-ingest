@@ -116,6 +116,18 @@ impl CsvWriter {
         &mut self,
         records: Vec<HashMap<String, serde_json::Value>>,
     ) -> Result<FileMetadata, String> {
+        // Use internal counter for backward compatibility
+        let counter = self.file_counter;
+        self.file_counter += 1;
+        self.write_batch_with_counter(records, counter)
+    }
+
+    /// Write batch of records to CSV file with specified counter
+    fn write_batch_with_counter(
+        &mut self,
+        records: Vec<HashMap<String, serde_json::Value>>,
+        file_counter: usize,
+    ) -> Result<FileMetadata, String> {
         if records.is_empty() {
             return Err("No records to write".to_string());
         }
@@ -125,8 +137,7 @@ impl CsvWriter {
         std::fs::create_dir_all(&output_dir)
             .map_err(|e| format!("Failed to create output directory: {}", e))?;
 
-        let output_file = output_dir.join(format!("part-{:05}.csv", self.file_counter));
-        self.file_counter += 1;
+        let output_file = output_dir.join(format!("part-{:05}.csv", file_counter));
 
         // Get field names from schema or first record
         // Store as Vec<String> for header writing, but also create Vec<&str> for efficient lookups
@@ -270,6 +281,8 @@ pub unsafe extern "C" fn write_batch(
     #[derive(Deserialize)]
     struct Input {
         records: Vec<HashMap<String, serde_json::Value>>,
+        #[serde(default)]
+        file_counter: Option<usize>,
     }
 
     // Use from_str which is already optimized in serde_json
@@ -282,8 +295,13 @@ pub unsafe extern "C" fn write_batch(
         }
     };
 
+    // Use provided file_counter if available, otherwise use internal counter
+    // Update internal counter to be one more than the value used
+    let current_counter = input.file_counter.unwrap_or(writer.file_counter);
+    writer.file_counter = current_counter + 1;
+
     // Write batch
-    let metadata = match writer.write_batch(input.records) {
+    let metadata = match writer.write_batch_with_counter(input.records, current_counter) {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Write error: {}", e);
