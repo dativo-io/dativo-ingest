@@ -89,18 +89,23 @@ class RustReaderWrapper(BaseReader):
             JSON bytes
         """
         import os
+
         from dativo_ingest.utils import expand_env_variable
-        
+
         # Expand environment variables in file paths before passing to Rust
         files = []
-        for file_config in (self.source_config.files or []):
+        for file_config in self.source_config.files or []:
             expanded_file = file_config.copy()
             if "path" in expanded_file:
-                expanded_file["path"] = expand_env_variable(expanded_file["path"]) or expanded_file["path"]
+                expanded_file["path"] = (
+                    expand_env_variable(expanded_file["path"]) or expanded_file["path"]
+                )
             if "file" in expanded_file:
-                expanded_file["file"] = expand_env_variable(expanded_file["file"]) or expanded_file["file"]
+                expanded_file["file"] = (
+                    expand_env_variable(expanded_file["file"]) or expanded_file["file"]
+                )
             files.append(expanded_file)
-        
+
         config_dict = {
             "type": self.source_config.type,
             "connection": self.source_config.connection or {},
