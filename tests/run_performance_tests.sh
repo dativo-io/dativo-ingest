@@ -515,7 +515,12 @@ write_statistics_file() {
         
         # Comparison 3: End-to-end pipeline comparison
         if [ "$test1_status" = "PASSED" ] && [ "$test3_status" = "PASSED" ] && [ "$test1_num" != "0" ] && [ "$test3_num" != "0" ]; then
-            local total_python=$(echo "scale=2; $test1_num + $test3_num" | bc 2>/dev/null || echo "N/A")
+            local total_python
+            if command -v bc >/dev/null 2>&1; then
+                total_python=$(echo "scale=2; $test1_num + $test3_num" | bc 2>/dev/null || echo "N/A")
+            else
+                total_python=$(awk "BEGIN {printf \"%.2f\", $test1_num + $test3_num}" 2>/dev/null || echo "N/A")
+            fi
             echo "End-to-End Pipeline (CSV -> Iceberg -> CSV):"
             echo "  Read (Python):  $(format_duration "$test1_duration")s"
             echo "  Write (Python): $(format_duration "$test3_duration")s"
@@ -526,7 +531,12 @@ write_statistics_file() {
         fi
         
         if [ "$test2_status" = "PASSED" ] && [ "$test4_status" = "PASSED" ] && [ "$test2_num" != "0" ] && [ "$test4_num" != "0" ]; then
-            local total_rust=$(echo "scale=2; $test2_num + $test4_num" | bc 2>/dev/null || echo "N/A")
+            local total_rust
+            if command -v bc >/dev/null 2>&1; then
+                total_rust=$(echo "scale=2; $test2_num + $test4_num" | bc 2>/dev/null || echo "N/A")
+            else
+                total_rust=$(awk "BEGIN {printf \"%.2f\", $test2_num + $test4_num}" 2>/dev/null || echo "N/A")
+            fi
             echo "End-to-End Pipeline (CSV -> Iceberg -> CSV) with Rust:"
             echo "  Read (Rust):  $(format_duration "$test2_duration")s"
             echo "  Write (Rust): $(format_duration "$test4_duration")s"
@@ -536,7 +546,12 @@ write_statistics_file() {
             echo ""
             
             # Compare total pipelines
-            local total_python=$(echo "scale=2; $test1_num + $test3_num" | bc 2>/dev/null || echo "0")
+            local total_python
+            if command -v bc >/dev/null 2>&1; then
+                total_python=$(echo "scale=2; $test1_num + $test3_num" | bc 2>/dev/null || echo "0")
+            else
+                total_python=$(awk "BEGIN {printf \"%.2f\", $test1_num + $test3_num}" 2>/dev/null || echo "0")
+            fi
             if [ "$total_python" != "0" ] && [ "$total_python" != "N/A" ] && [ "$total_rust" != "N/A" ]; then
                 local pipeline_speedup=$(calculate_speedup "$total_python" "$total_rust")
                 if [ "$pipeline_speedup" != "N/A" ]; then
@@ -678,8 +693,15 @@ print_results() {
     # End-to-end pipeline comparison
     if [ "$test1_status" = "PASSED" ] && [ "$test3_status" = "PASSED" ] && [ "$test2_status" = "PASSED" ] && [ "$test4_status" = "PASSED" ] && \
        [ "$test1_num" != "0" ] && [ "$test2_num" != "0" ] && [ "$test3_num" != "0" ] && [ "$test4_num" != "0" ]; then
-        local total_python=$(echo "scale=2; $test1_num + $test3_num" | bc 2>/dev/null || echo "0")
-        local total_rust=$(echo "scale=2; $test2_num + $test4_num" | bc 2>/dev/null || echo "0")
+        local total_python
+        local total_rust
+        if command -v bc >/dev/null 2>&1; then
+            total_python=$(echo "scale=2; $test1_num + $test3_num" | bc 2>/dev/null || echo "0")
+            total_rust=$(echo "scale=2; $test2_num + $test4_num" | bc 2>/dev/null || echo "0")
+        else
+            total_python=$(awk "BEGIN {printf \"%.2f\", $test1_num + $test3_num}" 2>/dev/null || echo "0")
+            total_rust=$(awk "BEGIN {printf \"%.2f\", $test2_num + $test4_num}" 2>/dev/null || echo "0")
+        fi
         if [ "$total_python" != "0" ] && [ "$total_rust" != "0" ] && [ "$total_python" != "N/A" ] && [ "$total_rust" != "N/A" ]; then
             local pipeline_speedup=$(calculate_speedup "$total_python" "$total_rust")
             echo ""
