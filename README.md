@@ -296,6 +296,8 @@ See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal a
 1. **Extract** - Read data from source (API, database, files)
 2. **Validate** - Validate records against asset schema (strict or warn mode)
 3. **Write** - Write to Parquet files (target: 128-200 MB, supports partitioning)
+   - **Native Engine** (default): Fast PyArrow-based writer
+   - **Spark Engine**: Apache Spark for large-scale processing (set `target.engine.type: spark`)
 4. **Commit** - Optional: Commit to Iceberg catalog (files always written to S3)
 5. **Update State** - Track incremental sync state
 

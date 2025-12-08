@@ -361,7 +361,8 @@ Dativo-ingest supports multiple engine types for connectors, allowing you to cho
 
 ### Supported Engines
 
-- **`native`**: Python-based native implementation (default for file connectors)
+- **`native`**: Python-based native implementation (default for file connectors and Iceberg targets)
+- **`spark`**: Apache Spark engine (for Iceberg targets - better performance for large datasets)
 - **`airbyte`**: Airbyte Docker containers (default for SaaS API connectors)
 - **`meltano`**: Meltano taps/targets (planned)
 - **`singer`**: Singer taps (planned)
@@ -399,6 +400,61 @@ The Airbyte engine executes Airbyte source connectors as Docker containers:
 - State is managed via Airbyte state messages
 - Integrates with Dativo's incremental state manager
 - WAL checkpointing supported for Airbyte connectors (see [Source Configuration](#source-configuration))
+
+### Spark Engine (Iceberg Targets)
+
+The Spark engine uses Apache Spark to write Parquet files directly to Iceberg tables. This provides better performance and scalability for large datasets compared to the native writer.
+
+**When to Use Spark Engine:**
+- Large datasets (> 10GB)
+- Need distributed processing
+- Existing Spark infrastructure
+- Complex transformations before writing
+
+**When to Use Native Engine:**
+- Small to medium datasets (< 10GB)
+- Simple use cases
+- Resource constraints
+- Faster startup time needed
+
+**Configuration:**
+
+```yaml
+target:
+  type: iceberg
+  engine:
+    type: spark
+    options:
+      spark:
+        max_file_size_mb: 200  # Target file size
+        config:
+          # Spark configuration options
+          spark.sql.adaptive.enabled: "true"
+          spark.sql.adaptive.coalescePartitions.enabled: "true"
+          # For Spark clusters:
+          # spark.master: "spark://spark-master:7077"
+          # spark.executor.memory: "4g"
+        # Optional: JAR paths if not in Spark classpath
+        # jars:
+        #   - "s3a://path/to/iceberg-spark-runtime.jar"
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: "${S3_BUCKET}"
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+    nessie:
+      uri: "${NESSIE_URI}"
+  catalog: nessie
+```
+
+**Prerequisites:**
+- Install PySpark: `pip install pyspark`
+- Spark runtime with Iceberg support (automatically configured)
+- S3/MinIO for storage
+- Nessie catalog (optional)
+
+For detailed setup instructions, see [SPARK_SETUP.md](SPARK_SETUP.md).
 
 ---
 

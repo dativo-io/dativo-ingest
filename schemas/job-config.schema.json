@@ -115,6 +115,11 @@
         "engine": {
           "type": "object",
           "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["airbyte", "meltano", "singer", "native", "jdbc"],
+              "description": "Engine type for source extraction"
+            },
             "options": {"type": "object"}
           }
         }
@@ -153,7 +158,15 @@
         "engine": {
           "type": "object",
           "properties": {
-            "options": {"type": "object"}
+            "type": {
+              "type": "string",
+              "enum": ["native", "spark"],
+              "description": "Engine type for target writes. 'native' uses PyArrow/Parquet writer, 'spark' uses Apache Spark."
+            },
+            "options": {
+              "type": "object",
+              "description": "Engine-specific options"
+            }
           }
         }
       },
