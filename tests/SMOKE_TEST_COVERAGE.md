@@ -244,10 +244,10 @@ tenant_id: test_tenant
 environment: test
 
 source_connector: your_connector
-source_connector_path: connectors/your_connector.yaml
+source_connector_path: connectors/examples/your_connector.yaml
 
 target_connector: iceberg
-target_connector_path: connectors/iceberg.yaml
+target_connector_path: connectors/examples/iceberg.yaml
 
 asset: your_asset
 asset_path: assets/your_connector/v1.0/your_asset.yaml
@@ -305,8 +305,7 @@ PYTHONPATH=src python -m dativo_ingest.cli run \
 
 1. **Meltano engine**: Not explicitly tested (only implicit via postgres/mysql defaults)
 2. **Singer engine**: Not tested at all
-3. **Azure Blob connector**: No test fixtures
-4. **S3/MinIO as source**: Only tested as targets
+3. **S3/MinIO as source**: Only tested as targets
 5. **Multiple objects in single job**: Not tested
 6. **Full refresh mode**: Not explicitly tested
 7. **Schema evolution**: Not tested
@@ -315,8 +314,7 @@ PYTHONPATH=src python -m dativo_ingest.cli run \
 
 1. Add explicit Meltano engine tests
 2. Add Singer engine tests (if supported)
-3. Add Azure Blob connector tests
-4. Add S3/MinIO source tests
+3. Add S3/MinIO source tests
 5. Add multi-object job tests
 6. Add full refresh mode tests
 7. Add schema evolution tests

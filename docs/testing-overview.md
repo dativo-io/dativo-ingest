@@ -216,7 +216,7 @@
 
   PLATFORM DOCS
   → README.md - Platform overview
-  → QUICKSTART.md - Quick start guide
+  → [Quick Start Guide](quickstart.md) - Quick start guide
   → docs/* - Detailed documentation
 
 ┌──────────────────────────────────────────────────────────────────────────────┐

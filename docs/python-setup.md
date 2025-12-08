@@ -381,9 +381,9 @@ Once Python 3.10+ is installed:
 
 ## Related Documentation
 
-- [QUICKSTART.md](QUICKSTART.md) - Quick start guide
-- [README.md](README.md) - Platform overview
-- [TESTING_GUIDE_INDEX.md](TESTING_GUIDE_INDEX.md) - Complete testing guide
+- [Quick Start Guide](quickstart.md) - Quick start guide
+- [README](../README.md) - Platform overview
+- [Testing Guide Index](../TESTING_GUIDE_INDEX.md) - Complete testing guide
 
 ---
 

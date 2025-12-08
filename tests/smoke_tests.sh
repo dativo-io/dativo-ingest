@@ -74,6 +74,11 @@ set -e
 SUCCESS_COUNT=$(echo "$OUTPUT" | grep -c '"event_type": "job_finished"' 2>/dev/null || true)
 FAILED_COUNT=$(echo "$OUTPUT" | grep -c '"event_type": "job_error"' 2>/dev/null || true)
 
+# Count MySQL-specific job results
+MYSQL_JOBS=$(echo "$OUTPUT" | grep -cE "mysql.*to.*iceberg|mysql.*to.*s3" 2>/dev/null || true)
+MYSQL_SUCCESS=$(echo "$OUTPUT" | grep -E "mysql.*to.*iceberg|mysql.*to.*s3" | grep -c '"event_type": "job_finished"' 2>/dev/null || true)
+MYSQL_FAILED=$(echo "$OUTPUT" | grep -E "mysql.*to.*iceberg|mysql.*to.*s3" | grep -c '"event_type": "job_error"' 2>/dev/null || true)
+
 # Count expected failures (database connection errors, API credential errors, Docker errors)
 DB_CONN_ERRORS=$(echo "$OUTPUT" | grep -cE "(Failed to connect to (Postgres|MySQL) database|Connection refused|invalid_host_that_does_not_exist)" 2>/dev/null || true)
 API_CRED_ERRORS=$(echo "$OUTPUT" | grep -cE "(API key not found|credentials not found|HUBSPOT_API_KEY|STRIPE_API_KEY|service account credentials|invalid_key|authentication|unauthorized)" 2>/dev/null || true)
@@ -102,6 +107,18 @@ echo "  🔑 API credential errors (expected if credentials not set): $API_CRED_
 echo "  🐳 Docker errors (expected if Docker not available): $DOCKER_ERRORS"
 echo "  ⚠️  Strict validation errors (expected for error scenario tests): $STRICT_VALIDATION_ERRORS"
 echo "  📄 Malformed data errors (expected for error scenario tests): $MALFORMED_DATA_ERRORS"
+if [ "$MYSQL_JOBS" -gt 0 ]; then
+    echo ""
+    echo "  🗄️  MySQL Jobs:"
+    echo "     Total MySQL jobs found: $MYSQL_JOBS"
+    echo "     ✅ Successful: $MYSQL_SUCCESS"
+    echo "     ❌ Failed: $MYSQL_FAILED"
+    if [ "$MYSQL_SUCCESS" -gt 0 ]; then
+        echo "     ✅ MySQL connector is functional"
+    elif [ "$MYSQL_FAILED" -gt 0 ] && [ "$DB_CONN_ERRORS" -eq 0 ]; then
+        echo "     ⚠️  MySQL jobs failed (check logs above for details)"
+    fi
+fi
 echo ""
 
 # Check for critical errors (non-database related)

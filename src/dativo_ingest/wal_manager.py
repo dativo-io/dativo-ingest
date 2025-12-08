@@ -230,9 +230,33 @@ class WALManager:
     def cleanup_wal(self) -> None:
         """Clean up WAL file (called after successful commit).
 
-        Removes the WAL file.
+        Removes the WAL file and any associated temp files.
         """
         try:
+            # Clean up temp file if it exists (orphaned from interrupted write)
+            temp_file = self.wal_file.with_name(
+                self.wal_file.name.replace(".wal.json", ".wal.json.tmp")
+            )
+            if temp_file.exists():
+                try:
+                    temp_file.unlink()
+                    self.logger.debug(
+                        f"Removed WAL temp file: {temp_file}",
+                        extra={
+                            "temp_file": str(temp_file),
+                            "event_type": "wal_temp_cleaned",
+                        },
+                    )
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to cleanup WAL temp file {temp_file}: {e}",
+                        extra={
+                            "temp_file": str(temp_file),
+                            "event_type": "wal_temp_cleanup_failed",
+                        },
+                    )
+
+            # Clean up WAL file
             if self.wal_file.exists():
                 self.wal_file.unlink()
                 self.logger.debug(

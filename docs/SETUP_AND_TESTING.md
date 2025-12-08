@@ -255,6 +255,6 @@ For detailed WAL documentation, see [WAL_CHECKPOINTING.md](WAL_CHECKPOINTING.md)
 - [INGESTION_EXECUTION.md](INGESTION_EXECUTION.md) - Detailed execution flow
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) - Configuration options
 - [WAL_CHECKPOINTING.md](WAL_CHECKPOINTING.md) - WAL checkpointing documentation
-- [QUICKSTART.md](../QUICKSTART.md) - Quick start guide
+- [Quick Start Guide](quickstart.md) - Quick start guide
 - [README.md](../README.md) - Project overview
 
