@@ -1,6 +1,5 @@
 # Performance Test 4: Iceberg Table -> CSV Writer (Rust)
 # Tests: Reading Parquet files from Iceberg table and writing as CSV with Rust writer
-# Note: Currently uses Python CSV writer (Rust CSV writer can be added later)
 tenant_id: perf_test_tenant
 environment: test
 
@@ -14,6 +13,7 @@ asset: perf_test_data
 asset_path: tests/fixtures/assets/csv/v1.0/perf_test_data.yaml
 
 source:
+  custom_reader: "tests/fixtures/plugins/parquet_reader.py:ParquetReader"
   connection:
     s3:
       endpoint: "${S3_ENDPOINT}"
@@ -23,7 +23,7 @@ source:
       region: "${AWS_REGION}"
       path_style_access: true
   files:
-    - path: "perf_test_db/test2_csv_rust/data"
+    - path: "dativo/performance_test/perf_test_data"
       object: perf_test_data
   engine:
     options:
@@ -31,7 +31,7 @@ source:
       batch_size: 100000
 
 target:
-  custom_writer: "tests/fixtures/plugins/csv_writer.py:CSVWriter"
+  custom_writer: "examples/plugins/rust/target/release/libcsv_writer_plugin.so:create_writer"
   connection:
     s3:
       endpoint: "${S3_ENDPOINT}"

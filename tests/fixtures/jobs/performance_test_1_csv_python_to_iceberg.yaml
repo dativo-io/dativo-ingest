@@ -17,6 +17,7 @@ source:
     - path: "${PERF_TEST_CSV_FILE}"
       object: perf_test_data
   engine:
+    type: native
     options:
       batch_size: 50000
       delimiter: ","
@@ -31,11 +32,13 @@ target:
       secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
       region: "${AWS_REGION}"
       path_style_access: true
-  catalog:
-    type: nessie
+
+catalog:
+  type: nessie
+  connection:
     uri: "${NESSIE_URI}"
-    database: perf_test_db
-    table: test1_csv_python
+  database: perf_test_db
+  table_name: test1_csv_python
 
 schema_validation_mode: warn
 logging:

@@ -13,6 +13,7 @@ asset: perf_test_data
 asset_path: tests/fixtures/assets/csv/v1.0/perf_test_data.yaml
 
 source:
+  custom_reader: "tests/fixtures/plugins/parquet_reader.py:ParquetReader"
   connection:
     s3:
       endpoint: "${S3_ENDPOINT}"
@@ -22,7 +23,7 @@ source:
       region: "${AWS_REGION}"
       path_style_access: true
   files:
-    - path: "perf_test_db/test1_csv_python/data"
+    - path: "dativo/performance_test/perf_test_data"
       object: perf_test_data
   engine:
     options:

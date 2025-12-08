@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
 from dativo_ingest.plugins import BaseWriter, ConnectionTestResult
+from dativo_ingest.utils import expand_env_variable
 
 
 class CSVWriter(BaseWriter):
@@ -61,14 +62,20 @@ class CSVWriter(BaseWriter):
         s3_config = (
             target_config.connection.get("s3", {}) if target_config.connection else {}
         )
-        self.bucket = s3_config.get("bucket")
-        self.endpoint = s3_config.get("endpoint")
-        self.region = s3_config.get("region", "us-east-1")
+        # Expand environment variables in config values
+        self.bucket = expand_env_variable(s3_config.get("bucket"))
+        self.endpoint = expand_env_variable(s3_config.get("endpoint"))
+        region_expanded = expand_env_variable(s3_config.get("region"))
+        self.region = region_expanded if region_expanded else os.getenv("AWS_REGION", "us-east-1")
+        access_key_expanded = expand_env_variable(s3_config.get("access_key_id"))
+        self.access_key_id = access_key_expanded if access_key_expanded else os.getenv("AWS_ACCESS_KEY_ID")
+        secret_key_expanded = expand_env_variable(s3_config.get("secret_access_key"))
+        self.secret_access_key = secret_key_expanded if secret_key_expanded else os.getenv("AWS_SECRET_ACCESS_KEY")
 
         # Initialize S3 client if bucket is configured
         self.s3_client = None
         if self.bucket:
-            self.s3_client = self._setup_s3_client(s3_config)
+            self.s3_client = self._setup_s3_client()
 
         # Track if header has been written (for multi-file writes)
         self.header_written = False
@@ -128,19 +135,16 @@ class CSVWriter(BaseWriter):
                     error_code="CONNECTION_ERROR",
                 )
 
-    def _setup_s3_client(self, s3_config: Dict[str, Any]):
+    def _setup_s3_client(self):
         """Set up S3 client with credentials."""
         try:
             import boto3
 
-            # Get credentials
-            access_key = s3_config.get("access_key_id") or os.getenv(
-                "AWS_ACCESS_KEY_ID"
-            )
-            secret_key = s3_config.get("secret_access_key") or os.getenv(
-                "AWS_SECRET_ACCESS_KEY"
-            )
-            endpoint = s3_config.get("endpoint")
+            # Use expanded instance variables
+            endpoint = self.endpoint
+            access_key = self.access_key_id
+            secret_key = self.secret_access_key
+            region = self.region
 
             if endpoint:
                 # MinIO or S3-compatible storage
@@ -149,17 +153,17 @@ class CSVWriter(BaseWriter):
                     endpoint_url=endpoint,
                     aws_access_key_id=access_key,
                     aws_secret_access_key=secret_key,
-                    region_name=self.region,
+                    region_name=region,
                 )
             elif access_key and secret_key:
                 return boto3.client(
                     "s3",
-                    region_name=self.region,
+                    region_name=region,
                     aws_access_key_id=access_key,
                     aws_secret_access_key=secret_key,
                 )
             else:
-                return boto3.client("s3", region_name=self.region)
+                return boto3.client("s3", region_name=region)
 
         except ImportError:
             raise ImportError(
