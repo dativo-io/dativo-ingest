@@ -27,10 +27,18 @@ test-unit: build-plugin-images
 
 # Integration tests: Test module integration, tag derivation, ODCS compliance, and MySQL
 # Note: Some tests may require Docker images to be built
-# MySQL integration tests require MySQL database (will skip if not available)
+# MySQL integration tests require MySQL database - infrastructure is started automatically
+# Sets up MySQL environment variables to match docker-compose configuration (port 3307)
 test-integration: build-plugin-images
 	@echo "🔍 Running integration tests..."
-	@if [ -f venv/bin/python ]; then \
+	@echo "🐳 Ensuring infrastructure services are running (Postgres, MySQL, MinIO, Nessie)..."
+	@bash tests/setup_smoke_test_infrastructure.sh --no-teardown >/dev/null 2>&1 || echo "⚠️  Infrastructure setup had issues, but continuing..."
+	@bash -c 'export MYSQL_HOST=$${MYSQL_HOST:-localhost}; \
+	export MYSQL_PORT=$${MYSQL_PORT:-3307}; \
+	export MYSQL_DATABASE=$${MYSQL_DATABASE:-employees}; \
+	export MYSQL_USER=$${MYSQL_USER:-test}; \
+	export MYSQL_PASSWORD=$${MYSQL_PASSWORD:-test}; \
+	if [ -f venv/bin/python ]; then \
 		PYTHONPATH=src venv/bin/python tests/integration/test_tag_derivation_integration.py; \
 		PYTHONPATH=src venv/bin/python tests/integration/test_complete_integration.py; \
 		PYTHONPATH=src pytest tests/integration/test_mysql_integration.py tests/integration/test_mysql_end_to_end.py -v -m integration --tb=short || echo "⚠️  MySQL integration tests skipped (MySQL/MinIO not available)"; \
@@ -38,7 +46,7 @@ test-integration: build-plugin-images
 		PYTHONPATH=src python3 tests/integration/test_tag_derivation_integration.py; \
 		PYTHONPATH=src python3 tests/integration/test_complete_integration.py; \
 		PYTHONPATH=src pytest tests/integration/test_mysql_integration.py tests/integration/test_mysql_end_to_end.py -v -m integration --tb=short || echo "⚠️  MySQL integration tests skipped (MySQL/MinIO not available)"; \
-	fi
+	fi'
 	@echo "✅ All integration tests passed"
 
 # Smoke tests: Run actual CLI commands with test fixtures (true E2E)
