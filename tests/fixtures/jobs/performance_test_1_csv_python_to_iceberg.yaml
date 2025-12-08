@@ -1,0 +1,43 @@
+# Performance Test 1: CSV Reader (Python) -> Iceberg Table
+# Tests: Standard Python CSV reader writing to Iceberg table on S3 (MinIO)
+tenant_id: perf_test_tenant
+environment: test
+
+source_connector: csv
+source_connector_path: connectors/examples/csv.yaml
+
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+
+asset: perf_test_data
+asset_path: tests/fixtures/assets/csv/v1.0/perf_test_data.yaml
+
+source:
+  files:
+    - path: "${PERF_TEST_CSV_FILE}"
+      object: perf_test_data
+  engine:
+    options:
+      batch_size: 50000
+      delimiter: ","
+      encoding: "utf-8"
+
+target:
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+  catalog:
+    type: nessie
+    uri: "${NESSIE_URI}"
+    database: perf_test_db
+    table: test1_csv_python
+
+schema_validation_mode: warn
+logging:
+  redaction: false
+  level: INFO

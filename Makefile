@@ -1,4 +1,4 @@
-.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test-workflows test-plugin test format format-check lint clean clean-state clean-temp build-plugin-images
+.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test-workflows test-plugin test-performance test format format-check lint clean clean-state clean-temp build-plugin-images
 
 schema-validate: schema-connectors schema-odcs
 
@@ -21,8 +21,9 @@ schema-odcs:
 
 # Unit tests: Test internal functions (config loading, validation, etc.)
 # Note: Some tests (sandbox integration) require Docker images to be built
+# Performance tests are excluded (use make test-performance)
 test-unit: build-plugin-images
-	@PYTHONPATH=src pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration
+	@PYTHONPATH=src pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration -m "not performance"
 
 # Integration tests: Test module integration, tag derivation, ODCS compliance, and MySQL
 # Note: Some tests may require Docker images to be built
@@ -57,6 +58,14 @@ test-smoke:
 test-plugin:
 	@echo "🔌 Running plugin tests..."
 	@bash tests/run_all_plugin_tests.sh
+
+# Performance tests: Run end-to-end performance benchmarks
+# Tests CSV->Iceberg and Iceberg->CSV with Python and Rust plugins
+# REQUIRES: Docker (MinIO, Nessie), Rust (for Rust plugin tests), 1GB test data
+# Note: This is separate from standard tests as it requires significant resources
+test-performance:
+	@echo "⚡ Running performance tests..."
+	@bash tests/run_performance_tests.sh
 
 # Validate GitHub Actions workflows
 test-workflows:
