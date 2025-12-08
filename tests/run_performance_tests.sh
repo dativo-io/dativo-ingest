@@ -315,10 +315,18 @@ cleanup() {
         echo -e "${YELLOW}⚠️  MinIO client (mc) not found. Manual cleanup may be needed.${NC}"
     fi
     
+    # Clean up generated performance test data files
+    echo "Cleaning up generated performance test data files..."
+    if [ -f "$PERF_TEST_CSV_FILE" ]; then
+        rm -f "$PERF_TEST_CSV_FILE"
+        echo "✅ Removed: $PERF_TEST_CSV_FILE"
+    fi
+    # Also clean up any other perf_test_data CSV files
+    rm -f "$SCRIPT_DIR/fixtures/seeds/perf_test_data"*.csv 2>/dev/null || true
+    
     echo -e "${GREEN}✅ Cleanup complete${NC}"
     echo ""
     echo "Test results and logs available in: $RESULTS_DIR"
-    echo "CSV test data preserved at: $PERF_TEST_CSV_FILE"
 }
 
 # Function to set test result (bash 3.2 compatible)
