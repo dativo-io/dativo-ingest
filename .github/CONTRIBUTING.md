@@ -7,8 +7,8 @@ Thank you for your interest in contributing to Dativo ETL!
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/YOUR_ORG/dativo-etl.git
-cd dativo-etl
+git clone https://github.com/YOUR_ORG/dativo-ingest.git
+cd dativo-ingest
 ```
 
 ### 2. Set Up Python Environment
@@ -261,6 +261,10 @@ For merge approval:
 ### Reporting Bugs
 
 **Use GitHub Issues** with:
+
+> **Security Issues**: Please do NOT report security vulnerabilities through public GitHub issues. See [SECURITY.md](../../SECURITY.md) for responsible disclosure.
+
+**Use GitHub Issues** with:
 - Clear title
 - Steps to reproduce
 - Expected vs actual behavior
@@ -330,19 +334,16 @@ cargo build --release
 
 ## Code of Conduct
 
-### Our Standards
+This project adheres to a Code of Conduct that all contributors are expected to follow. Please read [CODE_OF_CONDUCT.md](../../CODE_OF_CONDUCT.md) for details.
 
+**Summary:**
 - Be respectful and inclusive
 - Accept constructive criticism
 - Focus on what's best for the project
 - Show empathy towards others
 
-### Unacceptable Behavior
-
-- Harassment or discrimination
-- Trolling or insulting comments
-- Publishing others' private information
-- Other unprofessional conduct
+**Reporting Issues:**
+If you experience or witness unacceptable behavior, please report it following the guidelines in [CODE_OF_CONDUCT.md](../../CODE_OF_CONDUCT.md).
 
 ## License
 
