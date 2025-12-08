@@ -59,19 +59,20 @@ class StructuredJSONFormatter(logging.Formatter):
         super().__init__()
         self.redact_secrets = redact_secrets
         # Patterns for common secret fields - these match the field name and value
-        # Format: field_name followed by colon/equals and the value
+        # Format: field_name (with optional spaces/underscores) followed by colon/equals and the value
+        # Handles: "password: value", "api_key: value", "API key: value", etc.
         self.secret_patterns = [
-            r'(password["\']?\s*[:=]\s*["\']?)([^"\']+)',
-            r'(token["\']?\s*[:=]\s*["\']?)([^"\']+)',
-            r'(api_key["\']?\s*[:=]\s*["\']?)([^"\']+)',
-            r'(secret["\']?\s*[:=]\s*["\']?)([^"\']+)',
-            r'(credential["\']?\s*[:=]\s*["\']?)([^"\']+)',
-            r'(access_key["\']?\s*[:=]\s*["\']?)([^"\']+)',
-            r'(secret_key["\']?\s*[:=]\s*["\']?)([^"\']+)',
-            r'(secret_access_key["\']?\s*[:=]\s*["\']?)([^"\']+)',
-            r'(private_key["\']?\s*[:=]\s*["\']?)([^"\']+)',
-            r'(auth_token["\']?\s*[:=]\s*["\']?)([^"\']+)',
-            r'(bearer["\']?\s*[:=]\s*["\']?)([^"\']+)',
+            r'(\bpassword\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
+            r'(\btoken\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
+            r'(\bapi[_\s]?key\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
+            r'(\bsecret\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
+            r'(\bcredential\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
+            r'(\baccess[_\s]?key\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
+            r'(\bsecret[_\s]?key\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
+            r'(\bsecret[_\s]?access[_\s]?key\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
+            r'(\bprivate[_\s]?key\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
+            r'(\bauth[_\s]?token\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
+            r'(\bbearer\s*["\']?\s*[:=]\s*["\']?)([^"\'\s,}]+)',
         ]
 
     def format(self, record: logging.LogRecord) -> str:
@@ -148,24 +149,28 @@ class StructuredJSONFormatter(logging.Formatter):
         elif extra_fields:
             log_data.update(extra_fields)
 
-        # Redact secrets if enabled
+        # Redact secrets if enabled - redact in the data structure before JSON encoding
         if self.redact_secrets:
-            log_str = json.dumps(log_data)
-            # First, redact known secret field patterns (field_name: value -> field_name: [REDACTED])
-            for pattern in self.secret_patterns:
-                log_str = re.sub(pattern, r"\1[REDACTED]", log_str, flags=re.IGNORECASE)
-            # Then, redact any long base64-like strings (likely secrets) that are 20+ chars
-            # This catches secrets that might be in values without obvious field names
-            log_str = re.sub(
-                r'(["\']?)([A-Za-z0-9+/=]{20,})(["\']?)',
-                lambda m: (
-                    m.group(1) + "[REDACTED]" + m.group(3)
-                    if not m.group(2).startswith("[REDACTED]")
-                    else m.group(0)
-                ),
-                log_str,
-            )
-            return log_str
+            # Redact secrets in the message string
+            if "message" in log_data and isinstance(log_data["message"], str):
+                message = log_data["message"]
+                # Redact known secret patterns in message
+                for pattern in self.secret_patterns:
+                    message = re.sub(
+                        pattern, r"\1[REDACTED]", message, flags=re.IGNORECASE
+                    )
+                # Redact long base64-like strings
+                message = re.sub(
+                    r'(["\']?)([A-Za-z0-9+/=]{20,})(["\']?)',
+                    lambda m: (
+                        m.group(1) + "[REDACTED]" + m.group(3)
+                        if not m.group(2).startswith("[REDACTED]")
+                        and "[REDACTED]" not in m.group(2)
+                        else m.group(0)
+                    ),
+                    message,
+                )
+                log_data["message"] = message
 
         return json.dumps(log_data)
 
