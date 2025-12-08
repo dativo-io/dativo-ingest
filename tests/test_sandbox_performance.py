@@ -36,6 +36,7 @@ from dativo_ingest.config import SourceConfig, TargetConfig
 from dativo_ingest.plugins import PluginLoader
 
 
+@pytest.mark.performance
 @pytest.mark.skipif(not DOCKER_AVAILABLE, reason="Docker not available")
 class TestSandboxPerformance:
     """Test sandbox performance overhead."""

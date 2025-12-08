@@ -697,6 +697,7 @@ class ConfigWriter(BaseWriter):
         assert config["has_connection"] is True
 
 
+@pytest.mark.performance
 class TestPluginPerformance:
     """Tests for plugin performance characteristics."""
 

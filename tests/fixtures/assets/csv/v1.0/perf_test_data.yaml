@@ -1,0 +1,66 @@
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+id: 550e8400-e29b-41d4-a716-446655440005
+name: perf_test_data
+version: "1.0"
+status: active
+domain: dativo
+dataProduct: performance_test
+tenant: perf_test_tenant
+description:
+  purpose: "Performance test dataset for benchmarking CSV and Iceberg operations"
+  limitations: "Generated test data - not for production use"
+  usage: "Used for performance benchmarking and testing"
+tags: [performance, test-data, benchmark]
+# Dativo extensions
+source_type: csv
+object: PerformanceTestData
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+  mode: warn
+schema:
+  - name: id
+    type: integer
+    required: true
+  - name: name
+    type: string
+    required: true
+  - name: email
+    type: string
+    required: true
+  - name: department
+    type: string
+    required: true
+  - name: salary
+    type: integer
+    required: true
+  - name: age
+    type: integer
+    required: true
+  - name: city
+    type: string
+    required: true
+  - name: country
+    type: string
+    required: true
+  - name: status
+    type: string
+    required: true
+  - name: created_at
+    type: string
+    required: true
+data_quality:
+  expectations: []
+  monitoring:
+    enabled: false
+team:
+  owner: test-team@company.com
+compliance:
+  classification: []
+  regulations: []
+  retention_days: 1
+  security:
+    access_control: public
+    encryption_required: false
