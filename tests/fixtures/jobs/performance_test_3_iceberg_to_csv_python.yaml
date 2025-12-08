@@ -1,5 +1,8 @@
 # Performance Test 3: Iceberg Table -> CSV Writer (Python)
 # Tests: Reading Parquet files from Iceberg table and writing as CSV
+# Note: Reads from the S3 path where Tests 1 and 2 write Parquet files
+# Path structure: {domain}/{dataProduct}/{table_name} = dativo/performance_test/perf_test_data
+# This matches the asset definition used by Tests 1 and 2
 tenant_id: perf_test_tenant
 environment: test
 
@@ -23,6 +26,9 @@ source:
       region: "${AWS_REGION}"
       path_style_access: true
   files:
+    # Path matches where Tests 1 and 2 write Parquet files (based on asset definition)
+    # Asset: domain=dativo, dataProduct=performance_test, name=perf_test_data
+    # S3 path: s3://test-bucket/dativo/performance_test/perf_test_data/
     - path: "dativo/performance_test/perf_test_data"
       object: perf_test_data
   engine:
