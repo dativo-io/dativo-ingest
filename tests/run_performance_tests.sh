@@ -750,7 +750,7 @@ main() {
     run_performance_test \
         "performance_test_1_csv_python_to_iceberg" \
         "CSV reader (Python) -> Iceberg table on S3 (MinIO)" \
-        "$SCRIPT_DIR/fixtures/jobs/performance_test_1_csv_python_to_iceberg.yaml"
+        "$SCRIPT_DIR/fixtures/jobs/performance_test_1_csv_python_to_iceberg.yaml" || true
     
     # Test 2: CSV (Rust) -> Iceberg
     if [ -f "$PROJECT_ROOT/examples/plugins/rust/target/release/libcsv_reader_plugin.so" ] || \
@@ -758,7 +758,7 @@ main() {
         run_performance_test \
             "performance_test_2_csv_rust_to_iceberg" \
             "CSV reader (Rust) -> Iceberg table on S3 (MinIO)" \
-            "$SCRIPT_DIR/fixtures/jobs/performance_test_2_csv_rust_to_iceberg.yaml"
+            "$SCRIPT_DIR/fixtures/jobs/performance_test_2_csv_rust_to_iceberg.yaml" || true
     else
         echo -e "${YELLOW}⚠️  Skipping Test 2: Rust CSV reader plugin not found${NC}"
         set_test_result "performance_test_2_csv_rust_to_iceberg" "SKIPPED" "" "Rust plugin not found"
@@ -770,13 +770,20 @@ main() {
     run_performance_test \
         "performance_test_3_iceberg_to_csv_python" \
         "Iceberg table on S3 (MinIO) -> CSV writer (Python)" \
-        "$SCRIPT_DIR/fixtures/jobs/performance_test_3_iceberg_to_csv_python.yaml"
+        "$SCRIPT_DIR/fixtures/jobs/performance_test_3_iceberg_to_csv_python.yaml" || true
     
     # Test 4: Iceberg -> CSV (Rust)
-    run_performance_test \
-        "performance_test_4_iceberg_to_csv_rust" \
-        "Iceberg table on S3 (MinIO) -> CSV writer (Rust)" \
-        "$SCRIPT_DIR/fixtures/jobs/performance_test_4_iceberg_to_csv_rust.yaml"
+    # This test depends on Test 2's output, so skip if Rust plugins are not available
+    if [ -f "$PROJECT_ROOT/examples/plugins/rust/target/release/libcsv_reader_plugin.so" ] || \
+       [ -f "$PROJECT_ROOT/examples/plugins/rust/target/release/libcsv_reader_plugin.dylib" ]; then
+        run_performance_test \
+            "performance_test_4_iceberg_to_csv_rust" \
+            "Iceberg table on S3 (MinIO) -> CSV writer (Rust)" \
+            "$SCRIPT_DIR/fixtures/jobs/performance_test_4_iceberg_to_csv_rust.yaml" || true
+    else
+        echo -e "${YELLOW}⚠️  Skipping Test 4: Rust CSV reader plugin not found (required for Test 2 data source)${NC}"
+        set_test_result "performance_test_4_iceberg_to_csv_rust" "SKIPPED" "" "Rust plugin not found (Test 2 dependency)"
+    fi
     
     print_results
 }
