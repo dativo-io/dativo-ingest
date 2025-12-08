@@ -18,7 +18,7 @@ This comprehensive guide provides step-by-step instructions for setting up dativ
 
 ### What is Dativo-Ingest?
 
-Dativo-Ingest is a **headless, config-driven ingestion engine** that extracts data from third-party SaaS APIs (like Stripe or HubSpot) and databases (like PostgreSQL or MySQL) into vendor-owned object storage (S3, MinIO, Azure Blob) as Iceberg-backed datasets. It is so cutting-edge that even supports Markdown-KV format for LLM-optimized data ingestion.
+Dativo-Ingest is a **headless, config-driven ingestion engine** that extracts data from third-party SaaS APIs (like Stripe or HubSpot) and databases (like PostgreSQL or MySQL) into vendor-owned object storage (S3, MinIO) as Iceberg-backed datasets. It is so cutting-edge that even supports Markdown-KV format for LLM-optimized data ingestion.
 
 ### Core Concepts
 
@@ -663,18 +663,7 @@ Ensure the target connector is configured:
 
 #### Step 2: Storage Configuration
 
-Configure storage (S3, MinIO, Azure Blob, etc.):
-
-```yaml
-# connectors/targets/azure_blob.yaml
-name: azure_blob
-type: target
-engine: native
-connection_template:
-  account_name: "${AZURE_STORAGE_ACCOUNT_NAME}"
-  account_key: "${AZURE_STORAGE_ACCOUNT_KEY}"
-  container: "${AZURE_STORAGE_CONTAINER}"
-```
+Configure storage (S3, MinIO, etc.):
 
 #### Step 3: Catalog Setup (Optional)
 
@@ -691,45 +680,6 @@ Define partitioning strategy in asset definition:
 target:
   file_format: parquet
   partitioning: [ingest_date, region]  # Partition columns
-```
-
-#### Example: Adding Azure Blob Storage
-
-**Connector Recipe:**
-```yaml
-# connectors/targets/azure_blob.yaml
-name: azure_blob
-type: target
-engine: native
-connection_template:
-  account_name: "${AZURE_STORAGE_ACCOUNT_NAME}"
-  account_key: "${AZURE_STORAGE_ACCOUNT_KEY}"
-  container: "${AZURE_STORAGE_CONTAINER}"
-```
-
-**Secrets:**
-```bash
-# secrets/acme/azure_blob.env
-AZURE_STORAGE_ACCOUNT_NAME=...
-AZURE_STORAGE_ACCOUNT_KEY=...
-AZURE_STORAGE_CONTAINER=...
-```
-
-**Job Configuration:**
-```yaml
-# jobs/acme/stripe_customers_to_azure_blob.yaml
-tenant_id: acme
-source_connector: stripe
-source_connector_path: connectors/sources/stripe.yaml
-target_connector: azure_blob
-target_connector_path: connectors/targets/azure_blob.yaml
-asset: stripe_customers
-asset_path: assets/examples/stripe/v1.0/customers.yaml
-target:
-  connection:
-    azure_blob:
-      account_name: "${AZURE_STORAGE_ACCOUNT_NAME}"
-      container: "${AZURE_STORAGE_CONTAINER}"
 ```
 
 ---
