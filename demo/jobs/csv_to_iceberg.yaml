@@ -1,0 +1,54 @@
+# Demo: CSV to Iceberg Job
+# Simple example job for the demo environment
+tenant_id: demo
+environment: demo
+
+# Source connector - CSV files
+source_connector: csv
+source_connector_path: connectors/examples/csv.yaml
+
+# Target connector - Iceberg tables
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+
+# Asset definition
+asset: employees
+asset_path: assets/examples/csv/v1.0/employees.yaml
+
+# Source configuration
+source:
+  files:
+    - path: demo/data/employees.csv
+      object: employees
+
+# Target configuration
+target:
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT:-http://localhost:9000}"
+      bucket: "${S3_BUCKET:-test-bucket}"
+      access_key_id: "${AWS_ACCESS_KEY_ID:-minioadmin}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
+      region: "${AWS_REGION:-us-east-1}"
+      path_style_access: true
+
+# Optional: Catalog configuration (Nessie)
+# Uncomment to enable catalog integration
+# target:
+#   connection:
+#     s3:
+#       endpoint: "${S3_ENDPOINT:-http://localhost:9000}"
+#       bucket: "${S3_BUCKET:-test-bucket}"
+#   catalog:
+#     type: nessie
+#     uri: "${NESSIE_URI:-http://localhost:19120/api/v1}"
+#     database: demo
+#     table: employees
+
+# Schema validation
+schema_validation_mode: warn
+
+# Logging
+logging:
+  redaction: false
+  level: INFO

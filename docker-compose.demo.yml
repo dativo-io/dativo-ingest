@@ -1,0 +1,46 @@
+services:
+  nessie:
+    image: projectnessie/nessie:latest
+    container_name: dativo-demo-nessie
+    ports:
+      - "19120:19120"
+    environment:
+      - QUARKUS_HTTP_PORT=19120
+      - QUARKUS_HTTP_CORS_ORIGINS=*
+    volumes:
+      - nessie-demo-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:19120/api/v1/config"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dativo-demo
+
+  minio:
+    image: minio/minio:latest
+    container_name: dativo-demo-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio-demo-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dativo-demo
+
+volumes:
+  nessie-demo-data:
+  minio-demo-data:
+
+networks:
+  dativo-demo:
+    driver: bridge
