@@ -40,6 +40,15 @@ source venv/bin/activate
 
 ## Setup Steps
 
+### 0. Verify Prerequisites (Recommended)
+
+```bash
+# Check Python version, Docker, and other prerequisites
+./scripts/preflight-check.sh
+```
+
+This script verifies all prerequisites and provides helpful error messages if anything is missing.
+
 ### 1. Setup
 
 ```bash

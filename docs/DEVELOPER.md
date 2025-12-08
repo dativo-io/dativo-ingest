@@ -39,9 +39,11 @@ dativo start orchestrated --runner-config tests/fixtures/runner.yaml
 from dativo_ingest.logging import setup_logging
 logger = setup_logging(level="INFO", redact_secrets=True)
 
-# TODO: Add metrics initialization
-# TODO: Add tracing initialization
+# TODO: Add metrics initialization (Prometheus/StatsD)
+# TODO: Add tracing initialization (OpenTelemetry)
 ```
+
+**Note**: Metrics and tracing are planned for future releases. The current logging infrastructure provides structured JSON logs with tenant tagging and secret redaction, which is sufficient for most operational needs.
 
 ### 2. Load Secrets from Secrets Storage
 
@@ -50,17 +52,18 @@ logger = setup_logging(level="INFO", redact_secrets=True)
 **Current State**:
 - ✅ Connector recipes reference secrets via `file_template` (e.g., `/secrets/{tenant}/gsheets.json`)
 - ✅ Environment variables are supported (e.g., `${NESSIE_URI}`)
-- ❌ Secrets loading mechanism (not yet implemented)
-- ❌ Secrets validation (not yet implemented)
+- ✅ Secrets loading mechanism is fully implemented with pluggable backends
+- ✅ Secrets validation is implemented (`validate_secrets_for_connector()`)
 
-**Required Actions**:
-- Implement secrets loader that:
-  - Reads from `/secrets/{tenant}/` directory structure
-  - Supports environment variable substitution
-  - Validates required secrets are present
-  - Handles missing secrets gracefully
-- Create test secrets directory structure
-- Document required secrets per connector type
+**Implementation**:
+The secrets system supports multiple backends via the `--secret-manager` CLI flag:
+- **Environment (default)**: Uses `DATIVO_SECRET__{TENANT}__{SECRET}__[json|env|text]` pattern
+- **Filesystem**: Legacy `/secrets/{tenant}/` directory structure
+- **HashiCorp Vault**: KV v1/v2 mounts with token or AppRole auth
+- **AWS Secrets Manager**: Discrete secrets or bundle documents
+- **GCP Secret Manager**: Similar to AWS with GCP-specific configuration
+
+All secret managers support environment variable substitution and handle missing secrets gracefully.
 
 **Secret manager options** (see [docs/SECRET_MANAGEMENT.md](SECRET_MANAGEMENT.md) for full reference):
 
@@ -84,31 +87,22 @@ or environment variables `DATIVO_SECRET_MANAGER` / `DATIVO_SECRET_MANAGER_CONFIG
 
 **Current State**:
 - ✅ Single job loading is implemented (`JobConfig.from_yaml()`)
-- ❌ Directory-based job loading (not yet implemented)
-- ❌ Job discovery and validation (not yet implemented)
-
-**Required Actions**:
-- Add `--job-dir` CLI argument to load jobs from directory
-- Implement job discovery:
-  - Scan directory for `*.yaml` files
-  - Validate each job config
-  - Report any invalid jobs
-- Create runner config generator from job directory
+- ✅ Directory-based job loading is fully implemented (`JobConfig.load_jobs_from_directory()`)
+- ✅ Job discovery and validation is implemented
 
 **Implementation**:
-```python
-# In CLI
-def load_jobs_from_directory(job_dir: Path) -> List[JobConfig]:
-    """Load all job configs from a directory."""
-    jobs = []
-    for job_file in job_dir.glob("*.yaml"):
-        try:
-            job = JobConfig.from_yaml(job_file)
-            jobs.append(job)
-        except Exception as e:
-            logger.error(f"Failed to load job {job_file}: {e}")
-    return jobs
+The `--job-dir` CLI argument loads all YAML files from a directory (recursively scans for `*.yaml` and `*.yml` files). Each job config is validated during loading, and errors are reported while allowing valid jobs to proceed.
+
+**Usage**:
+```bash
+dativo run --job-dir tests/fixtures/jobs --mode self_hosted
 ```
+
+**Implementation Details** (`src/dativo_ingest/config.py`):
+- Recursively scans directory for `*.yaml` and `*.yml` files
+- Validates each job config using `JobConfig.from_yaml()`
+- Reports errors for invalid jobs but continues loading valid ones
+- Raises `ValueError` only if no valid jobs are found
 
 ### 4. Resolve Environment Variables
 
@@ -117,13 +111,11 @@ def load_jobs_from_directory(job_dir: Path) -> List[JobConfig]:
 **Current State**:
 - ✅ Environment variable expansion in paths (`os.path.expandvars()`)
 - ✅ Environment variable references in connector templates (e.g., `${NESSIE_URI}`)
-- ❌ Environment variable validation (not yet implemented)
-- ❌ Missing environment variable detection (not yet implemented)
+- ✅ Environment variable validation is implemented (`JobConfig.validate_environment_variables()`)
+- ✅ Missing environment variable detection is implemented
 
-**Required Actions**:
-- Validate all required environment variables are set
-- Provide clear error messages for missing variables
-- Document required environment variables per connector
+**Implementation**:
+The `JobConfig.validate_environment_variables()` method checks for required environment variables based on connector type and target configuration. It's called automatically during the startup sequence and provides clear error messages for missing variables.
 
 **Required Environment Variables** (for smoke tests):
 - `NESSIE_URI` - Nessie catalog URI
@@ -137,14 +129,21 @@ def load_jobs_from_directory(job_dir: Path) -> List[JobConfig]:
 **Purpose**: Ensure required infrastructure services are available
 
 **Current State**:
-- ❌ Infrastructure health checks (not yet implemented)
-- ❌ Connection validation (not yet implemented)
+- ✅ Infrastructure health checks are implemented (`validate_infrastructure()`)
+- ✅ Connection validation is implemented (`dativo check` command)
 
-**Required Actions**:
-- Check Nessie catalog is accessible
-- Check S3/MinIO is accessible
-- Validate credentials work
-- Check required ports are open
+**Implementation**:
+The `validate_infrastructure()` function (`src/dativo_ingest/infrastructure.py`) checks:
+- Nessie catalog connectivity (if catalog is configured)
+- S3/MinIO connectivity and credentials
+- Required ports accessibility
+
+The `dativo check` command provides comprehensive connection validation:
+```bash
+dativo check --config jobs/acme/stripe_customers.yaml --mode self_hosted
+```
+
+This validates both source and target connections before running the full job.
 
 **Infrastructure Dependencies** (for smoke tests):
 - Nessie catalog (default: `http://localhost:19120/api/v1`)
@@ -157,13 +156,17 @@ def load_jobs_from_directory(job_dir: Path) -> List[JobConfig]:
 
 **Current State**:
 - ✅ State path generation in job configs
-- ❌ State directory creation (not yet implemented)
-- ❌ State file validation (not yet implemented)
+- ✅ State directory creation is implemented (`initialize_state_directory()`)
+- ✅ State file validation is implemented (writability checks)
 
-**Required Actions**:
-- Create state directory structure if it doesn't exist
-- Validate state directory is writable
-- Initialize state files if needed
+**Implementation**:
+The `initialize_state_directory()` function (`src/dativo_ingest/validator.py`):
+- Creates parent directories if they don't exist (`mkdir(parents=True, exist_ok=True)`)
+- Validates that the state directory is writable
+- Handles missing incremental config gracefully
+- Automatically called during startup sequence for all jobs
+
+State files are stored at `.local/state/{tenant_id}/` by default (configurable via `STATE_DIR` environment variable).
 
 ### 7. Load and Validate Configurations
 
@@ -225,31 +228,19 @@ def startup_sequence(job_dir: Path, secrets_dir: Path, tenant_id: str):
 
 ## Missing Components
 
-The following components need to be implemented:
+The following components are still planned for future implementation:
 
-1. **Secrets Loader** (`src/dativo_ingest/secrets.py`):
-   - Load secrets from filesystem
-   - Support environment variable substitution
-   - Validate required secrets
-
-2. **Infrastructure Validator** (`src/dativo_ingest/infrastructure.py`):
-   - Health checks for Nessie, S3/MinIO
-   - Connection validation
-   - Credential validation
-
-3. **Job Directory Loader** (CLI enhancement):
-   - `--job-dir` argument
-   - Job discovery and loading
-   - Batch validation
-
-4. **Environment Variable Validator**:
-   - Check required variables are set
-   - Provide helpful error messages
-
-5. **Observability Enhancements**:
-   - Metrics collection
-   - Distributed tracing
+1. **Observability Enhancements**:
+   - Metrics collection (Prometheus, StatsD)
+   - Distributed tracing (OpenTelemetry)
    - Health check endpoints
+
+**Note**: All other components listed in previous versions have been implemented:
+- ✅ Secrets Loader (`src/dativo_ingest/secrets/`) - Multiple backends (env, filesystem, vault, aws, gcp)
+- ✅ Infrastructure Validator (`src/dativo_ingest/infrastructure.py`) - Health checks and connection validation
+- ✅ Job Directory Loader (`JobConfig.load_jobs_from_directory()`) - `--job-dir` CLI support
+- ✅ Environment Variable Validator (`JobConfig.validate_environment_variables()`) - Required variable detection
+- ✅ State Directory Initialization (`initialize_state_directory()`) - Directory creation and validation
 
 ## WAL Implementation Details
 
