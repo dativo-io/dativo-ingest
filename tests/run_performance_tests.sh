@@ -29,6 +29,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 # Parse command line flags
@@ -105,6 +106,14 @@ check_prerequisites() {
         errors=$((errors + 1))
     else
         echo -e "${GREEN}✅ Python3 is available${NC}"
+    fi
+    
+    # Check bc (for calculations)
+    if ! command -v bc >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  bc not found - performance comparisons will be limited${NC}"
+        echo "   Install with: brew install bc (macOS) or apt-get install bc (Linux)"
+    else
+        echo -e "${GREEN}✅ bc is available (for calculations)${NC}"
     fi
     
     # Check Rust (optional)
@@ -271,7 +280,13 @@ run_performance_test() {
     
     local exit_code=$?
     local end_time=$(date +%s.%N)
-    local duration=$(echo "$end_time - $start_time" | bc)
+    # Calculate duration (use awk if bc not available)
+    local duration
+    if command -v bc >/dev/null 2>&1; then
+        duration=$(echo "$end_time - $start_time" | bc)
+    else
+        duration=$(awk "BEGIN {printf \"%.2f\", $end_time - $start_time}")
+    fi
     
     if [ $exit_code -eq 0 ]; then
         echo -e "${GREEN}✅ Test completed successfully${NC}"
@@ -355,6 +370,212 @@ get_test_result() {
     esac
 }
 
+# Function to get numeric duration (for calculations)
+get_numeric_duration() {
+    local duration=$1
+    if [ "$duration" = "N/A" ] || [ -z "$duration" ]; then
+        echo "0"
+    else
+        echo "$duration"
+    fi
+}
+
+# Function to format duration
+format_duration() {
+    local duration=$1
+    if [ "$duration" = "N/A" ] || [ -z "$duration" ]; then
+        echo "N/A"
+    else
+        # Convert to readable format (seconds with 2 decimal places)
+        printf "%.2f" "$duration" 2>/dev/null || echo "$duration"
+    fi
+}
+
+# Function to calculate speedup
+calculate_speedup() {
+    local baseline=$1
+    local comparison=$2
+    if [ "$baseline" = "0" ] || [ "$baseline" = "N/A" ] || [ "$comparison" = "0" ] || [ "$comparison" = "N/A" ]; then
+        echo "N/A"
+    else
+        if command -v bc >/dev/null 2>&1; then
+            local speedup=$(echo "scale=2; $baseline / $comparison" | bc 2>/dev/null || echo "N/A")
+            echo "$speedup"
+        else
+            # Fallback using awk
+            local speedup=$(awk "BEGIN {printf \"%.2f\", $baseline / $comparison}" 2>/dev/null || echo "N/A")
+            echo "$speedup"
+        fi
+    fi
+}
+
+# Function to write statistics to file
+write_statistics_file() {
+    local stats_file="$RESULTS_DIR/performance_statistics.txt"
+    
+    {
+        echo "╔══════════════════════════════════════════════════════════════════════════════╗"
+        echo "║              Performance Test Statistics & Comparison                       ║"
+        echo "╚══════════════════════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "Generated: $(date)"
+        echo "Test Data: $PERF_TEST_CSV_FILE ($(du -h "$PERF_TEST_CSV_FILE" 2>/dev/null | cut -f1 || echo 'N/A'))"
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "INDIVIDUAL TEST RESULTS"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        # Test 1: CSV Python -> Iceberg
+        local test1_result=$(get_test_result "performance_test_1_csv_python_to_iceberg")
+        local test1_status=$(echo "$test1_result" | cut -d'|' -f1)
+        local test1_duration=$(echo "$test1_result" | cut -d'|' -f2)
+        echo "Test 1: CSV Reader (Python) -> Iceberg"
+        echo "  Status: $test1_status"
+        echo "  Duration: $(format_duration "$test1_duration") seconds"
+        echo ""
+        
+        # Test 2: CSV Rust -> Iceberg
+        local test2_result=$(get_test_result "performance_test_2_csv_rust_to_iceberg")
+        local test2_status=$(echo "$test2_result" | cut -d'|' -f1)
+        local test2_duration=$(echo "$test2_result" | cut -d'|' -f2)
+        echo "Test 2: CSV Reader (Rust) -> Iceberg"
+        echo "  Status: $test2_status"
+        echo "  Duration: $(format_duration "$test2_duration") seconds"
+        echo ""
+        
+        # Test 3: Iceberg -> CSV Python
+        local test3_result=$(get_test_result "performance_test_3_iceberg_to_csv_python")
+        local test3_status=$(echo "$test3_result" | cut -d'|' -f1)
+        local test3_duration=$(echo "$test3_result" | cut -d'|' -f2)
+        echo "Test 3: Iceberg -> CSV Writer (Python)"
+        echo "  Status: $test3_status"
+        echo "  Duration: $(format_duration "$test3_duration") seconds"
+        echo ""
+        
+        # Test 4: Iceberg -> CSV Rust
+        local test4_result=$(get_test_result "performance_test_4_iceberg_to_csv_rust")
+        local test4_status=$(echo "$test4_result" | cut -d'|' -f1)
+        local test4_duration=$(echo "$test4_result" | cut -d'|' -f2)
+        echo "Test 4: Iceberg -> CSV Writer (Rust)"
+        echo "  Status: $test4_status"
+        echo "  Duration: $(format_duration "$test4_duration") seconds"
+        echo ""
+        
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "PERFORMANCE COMPARISONS"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        # Comparison 1: CSV Reading (Python vs Rust)
+        local test1_num=$(get_numeric_duration "$test1_duration")
+        local test2_num=$(get_numeric_duration "$test2_duration")
+        if [ "$test1_status" = "PASSED" ] && [ "$test2_status" = "PASSED" ] && [ "$test1_num" != "0" ] && [ "$test2_num" != "0" ]; then
+            local csv_speedup=$(calculate_speedup "$test1_num" "$test2_num")
+            echo "CSV Reading Performance:"
+            echo "  Python: $(format_duration "$test1_duration")s"
+            echo "  Rust:   $(format_duration "$test2_duration")s"
+            if [ "$csv_speedup" != "N/A" ]; then
+                echo "  Speedup: ${csv_speedup}x (Rust is $(format_duration "$csv_speedup")x faster)"
+                local improvement
+                if command -v bc >/dev/null 2>&1; then
+                    improvement=$(echo "scale=1; ($test1_num - $test2_num) * 100 / $test1_num" | bc 2>/dev/null || echo "N/A")
+                else
+                    improvement=$(awk "BEGIN {printf \"%.1f\", ($test1_num - $test2_num) * 100 / $test1_num}" 2>/dev/null || echo "N/A")
+                fi
+                if [ "$improvement" != "N/A" ]; then
+                    echo "  Improvement: ${improvement}% faster with Rust"
+                fi
+            fi
+            echo ""
+        fi
+        
+        # Comparison 2: CSV Writing (Python vs Rust)
+        local test3_num=$(get_numeric_duration "$test3_duration")
+        local test4_num=$(get_numeric_duration "$test4_duration")
+        if [ "$test3_status" = "PASSED" ] && [ "$test4_status" = "PASSED" ] && [ "$test3_num" != "0" ] && [ "$test4_num" != "0" ]; then
+            local write_speedup=$(calculate_speedup "$test3_num" "$test4_num")
+            echo "CSV Writing Performance:"
+            echo "  Python: $(format_duration "$test3_duration")s"
+            echo "  Rust:   $(format_duration "$test4_duration")s"
+            if [ "$write_speedup" != "N/A" ]; then
+                echo "  Speedup: ${write_speedup}x (Rust is $(format_duration "$write_speedup")x faster)"
+                local improvement
+                if command -v bc >/dev/null 2>&1; then
+                    improvement=$(echo "scale=1; ($test3_num - $test4_num) * 100 / $test3_num" | bc 2>/dev/null || echo "N/A")
+                else
+                    improvement=$(awk "BEGIN {printf \"%.1f\", ($test3_num - $test4_num) * 100 / $test3_num}" 2>/dev/null || echo "N/A")
+                fi
+                if [ "$improvement" != "N/A" ]; then
+                    echo "  Improvement: ${improvement}% faster with Rust"
+                fi
+            fi
+            echo ""
+        fi
+        
+        # Comparison 3: End-to-end pipeline comparison
+        if [ "$test1_status" = "PASSED" ] && [ "$test3_status" = "PASSED" ] && [ "$test1_num" != "0" ] && [ "$test3_num" != "0" ]; then
+            local total_python=$(echo "scale=2; $test1_num + $test3_num" | bc 2>/dev/null || echo "N/A")
+            echo "End-to-End Pipeline (CSV -> Iceberg -> CSV):"
+            echo "  Read (Python):  $(format_duration "$test1_duration")s"
+            echo "  Write (Python): $(format_duration "$test3_duration")s"
+            if [ "$total_python" != "N/A" ]; then
+                echo "  Total (Python): $(format_duration "$total_python")s"
+            fi
+            echo ""
+        fi
+        
+        if [ "$test2_status" = "PASSED" ] && [ "$test4_status" = "PASSED" ] && [ "$test2_num" != "0" ] && [ "$test4_num" != "0" ]; then
+            local total_rust=$(echo "scale=2; $test2_num + $test4_num" | bc 2>/dev/null || echo "N/A")
+            echo "End-to-End Pipeline (CSV -> Iceberg -> CSV) with Rust:"
+            echo "  Read (Rust):  $(format_duration "$test2_duration")s"
+            echo "  Write (Rust): $(format_duration "$test4_duration")s"
+            if [ "$total_rust" != "N/A" ]; then
+                echo "  Total (Rust): $(format_duration "$total_rust")s"
+            fi
+            echo ""
+            
+            # Compare total pipelines
+            local total_python=$(echo "scale=2; $test1_num + $test3_num" | bc 2>/dev/null || echo "0")
+            if [ "$total_python" != "0" ] && [ "$total_python" != "N/A" ] && [ "$total_rust" != "N/A" ]; then
+                local pipeline_speedup=$(calculate_speedup "$total_python" "$total_rust")
+                if [ "$pipeline_speedup" != "N/A" ]; then
+                    echo "Pipeline Speedup: ${pipeline_speedup}x faster with Rust plugins"
+                fi
+            fi
+        fi
+        
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "SUMMARY"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        local passed_count=0
+        local failed_count=0
+        local skipped_count=0
+        
+        for test_name in "performance_test_1_csv_python_to_iceberg" "performance_test_2_csv_rust_to_iceberg" "performance_test_3_iceberg_to_csv_python" "performance_test_4_iceberg_to_csv_rust"; do
+            local result=$(get_test_result "$test_name")
+            local status=$(echo "$result" | cut -d'|' -f1)
+            case "$status" in
+                PASSED) passed_count=$((passed_count + 1)) ;;
+                FAILED) failed_count=$((failed_count + 1)) ;;
+                *) skipped_count=$((skipped_count + 1)) ;;
+            esac
+        done
+        
+        echo "Tests Passed: $passed_count"
+        echo "Tests Failed: $failed_count"
+        echo "Tests Skipped: $skipped_count"
+        echo ""
+        echo "Detailed logs available in: $RESULTS_DIR"
+        
+    } > "$stats_file"
+    
+    echo -e "${GREEN}✅ Statistics written to: $stats_file${NC}"
+}
+
 # Function to print results summary
 print_results() {
     print_section "Performance Test Results Summary"
@@ -378,17 +599,109 @@ print_results() {
         local duration=$(echo "$result" | cut -d'|' -f2)
         
         if [ "$status" = "PASSED" ]; then
-            printf "%-50s ${GREEN}%-15s${NC} %-15s\n" "$test_name" "$status" "$duration"
+            printf "%-50s ${GREEN}%-15s${NC} %-15s\n" "$test_name" "$status" "$(format_duration "$duration")"
         elif [ "$status" = "FAILED" ]; then
-            printf "%-50s ${RED}%-15s${NC} %-15s\n" "$test_name" "$status" "$duration"
+            printf "%-50s ${RED}%-15s${NC} %-15s\n" "$test_name" "$status" "$(format_duration "$duration")"
         else
-            printf "%-50s ${YELLOW}%-15s${NC} %-15s\n" "$test_name" "$status" "$duration"
+            printf "%-50s ${YELLOW}%-15s${NC} %-15s\n" "$test_name" "$status" "$(format_duration "$duration")"
         fi
     done
     
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
+    
+    # Performance Comparisons
+    print_section "Performance Comparisons"
+    
+    local test1_result=$(get_test_result "performance_test_1_csv_python_to_iceberg")
+    local test1_status=$(echo "$test1_result" | cut -d'|' -f1)
+    local test1_duration=$(echo "$test1_result" | cut -d'|' -f2)
+    local test1_num=$(get_numeric_duration "$test1_duration")
+    
+    local test2_result=$(get_test_result "performance_test_2_csv_rust_to_iceberg")
+    local test2_status=$(echo "$test2_result" | cut -d'|' -f1)
+    local test2_duration=$(echo "$test2_result" | cut -d'|' -f2)
+    local test2_num=$(get_numeric_duration "$test2_duration")
+    
+    local test3_result=$(get_test_result "performance_test_3_iceberg_to_csv_python")
+    local test3_status=$(echo "$test3_result" | cut -d'|' -f1)
+    local test3_duration=$(echo "$test3_result" | cut -d'|' -f2)
+    local test3_num=$(get_numeric_duration "$test3_duration")
+    
+    local test4_result=$(get_test_result "performance_test_4_iceberg_to_csv_rust")
+    local test4_status=$(echo "$test4_result" | cut -d'|' -f1)
+    local test4_duration=$(echo "$test4_result" | cut -d'|' -f2)
+    local test4_num=$(get_numeric_duration "$test4_duration")
+    
+    # CSV Reading Comparison
+    if [ "$test1_status" = "PASSED" ] && [ "$test2_status" = "PASSED" ] && [ "$test1_num" != "0" ] && [ "$test2_num" != "0" ]; then
+        local csv_speedup=$(calculate_speedup "$test1_num" "$test2_num")
+        echo ""
+        echo -e "${CYAN}CSV Reading Performance Comparison:${NC}"
+        echo "  Python CSV Reader: $(format_duration "$test1_duration")s"
+        echo "  Rust CSV Reader:   $(format_duration "$test2_duration")s"
+        if [ "$csv_speedup" != "N/A" ]; then
+            echo -e "  ${GREEN}Speedup: ${csv_speedup}x${NC} (Rust is $(format_duration "$csv_speedup")x faster)"
+            local improvement
+            if command -v bc >/dev/null 2>&1; then
+                improvement=$(echo "scale=1; ($test1_num - $test2_num) * 100 / $test1_num" | bc 2>/dev/null || echo "N/A")
+            else
+                improvement=$(awk "BEGIN {printf \"%.1f\", ($test1_num - $test2_num) * 100 / $test1_num}" 2>/dev/null || echo "N/A")
+            fi
+            if [ "$improvement" != "N/A" ]; then
+                echo -e "  ${GREEN}Improvement: ${improvement}% faster with Rust${NC}"
+            fi
+        fi
+    fi
+    
+    # CSV Writing Comparison
+    if [ "$test3_status" = "PASSED" ] && [ "$test4_status" = "PASSED" ] && [ "$test3_num" != "0" ] && [ "$test4_num" != "0" ]; then
+        local write_speedup=$(calculate_speedup "$test3_num" "$test4_num")
+        echo ""
+        echo -e "${CYAN}CSV Writing Performance Comparison:${NC}"
+        echo "  Python CSV Writer: $(format_duration "$test3_duration")s"
+        echo "  Rust CSV Writer:   $(format_duration "$test4_duration")s"
+        if [ "$write_speedup" != "N/A" ]; then
+            echo -e "  ${GREEN}Speedup: ${write_speedup}x${NC} (Rust is $(format_duration "$write_speedup")x faster)"
+            local improvement
+            if command -v bc >/dev/null 2>&1; then
+                improvement=$(echo "scale=1; ($test3_num - $test4_num) * 100 / $test3_num" | bc 2>/dev/null || echo "N/A")
+            else
+                improvement=$(awk "BEGIN {printf \"%.1f\", ($test3_num - $test4_num) * 100 / $test3_num}" 2>/dev/null || echo "N/A")
+            fi
+            if [ "$improvement" != "N/A" ]; then
+                echo -e "  ${GREEN}Improvement: ${improvement}% faster with Rust${NC}"
+            fi
+        fi
+    fi
+    
+    # End-to-end pipeline comparison
+    if [ "$test1_status" = "PASSED" ] && [ "$test3_status" = "PASSED" ] && [ "$test2_status" = "PASSED" ] && [ "$test4_status" = "PASSED" ] && \
+       [ "$test1_num" != "0" ] && [ "$test2_num" != "0" ] && [ "$test3_num" != "0" ] && [ "$test4_num" != "0" ]; then
+        local total_python=$(echo "scale=2; $test1_num + $test3_num" | bc 2>/dev/null || echo "0")
+        local total_rust=$(echo "scale=2; $test2_num + $test4_num" | bc 2>/dev/null || echo "0")
+        if [ "$total_python" != "0" ] && [ "$total_rust" != "0" ] && [ "$total_python" != "N/A" ] && [ "$total_rust" != "N/A" ]; then
+            local pipeline_speedup=$(calculate_speedup "$total_python" "$total_rust")
+            echo ""
+            echo -e "${CYAN}End-to-End Pipeline Comparison (CSV -> Iceberg -> CSV):${NC}"
+            echo "  Python (Read + Write): $(format_duration "$total_python")s"
+            echo "  Rust (Read + Write):   $(format_duration "$total_rust")s"
+            if [ "$pipeline_speedup" != "N/A" ]; then
+                echo -e "  ${GREEN}Pipeline Speedup: ${pipeline_speedup}x${NC} faster with Rust plugins"
+            fi
+        fi
+    fi
+    
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    
+    # Write detailed statistics to file
+    write_statistics_file
+    
+    echo ""
     echo "Detailed logs available in: $RESULTS_DIR"
+    echo "Statistics file: $RESULTS_DIR/performance_statistics.txt"
 }
 
 # Main execution
