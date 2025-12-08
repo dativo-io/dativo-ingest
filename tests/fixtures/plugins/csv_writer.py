@@ -66,11 +66,21 @@ class CSVWriter(BaseWriter):
         self.bucket = expand_env_variable(s3_config.get("bucket"))
         self.endpoint = expand_env_variable(s3_config.get("endpoint"))
         region_expanded = expand_env_variable(s3_config.get("region"))
-        self.region = region_expanded if region_expanded else os.getenv("AWS_REGION", "us-east-1")
+        self.region = (
+            region_expanded if region_expanded else os.getenv("AWS_REGION", "us-east-1")
+        )
         access_key_expanded = expand_env_variable(s3_config.get("access_key_id"))
-        self.access_key_id = access_key_expanded if access_key_expanded else os.getenv("AWS_ACCESS_KEY_ID")
+        self.access_key_id = (
+            access_key_expanded
+            if access_key_expanded
+            else os.getenv("AWS_ACCESS_KEY_ID")
+        )
         secret_key_expanded = expand_env_variable(s3_config.get("secret_access_key"))
-        self.secret_access_key = secret_key_expanded if secret_key_expanded else os.getenv("AWS_SECRET_ACCESS_KEY")
+        self.secret_access_key = (
+            secret_key_expanded
+            if secret_key_expanded
+            else os.getenv("AWS_SECRET_ACCESS_KEY")
+        )
 
         # Initialize S3 client if bucket is configured
         self.s3_client = None

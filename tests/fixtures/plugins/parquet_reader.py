@@ -49,31 +49,57 @@ class ParquetReader(BaseReader):
         # Get S3 configuration
         connection = source_config.connection or {}
         s3_config = connection.get("s3", {})
-        
+
         # Expand environment variables in config values
         # Handle both dict access (Pydantic model) and direct dict access
-        if hasattr(s3_config, 'get'):
+        if hasattr(s3_config, "get"):
             bucket_val = s3_config.get("bucket")
             endpoint_val = s3_config.get("endpoint")
             region_val = s3_config.get("region")
             access_key_val = s3_config.get("access_key_id")
             secret_key_val = s3_config.get("secret_access_key")
         else:
-            bucket_val = s3_config.get("bucket") if isinstance(s3_config, dict) else None
-            endpoint_val = s3_config.get("endpoint") if isinstance(s3_config, dict) else None
-            region_val = s3_config.get("region") if isinstance(s3_config, dict) else None
-            access_key_val = s3_config.get("access_key_id") if isinstance(s3_config, dict) else None
-            secret_key_val = s3_config.get("secret_access_key") if isinstance(s3_config, dict) else None
-        
+            bucket_val = (
+                s3_config.get("bucket") if isinstance(s3_config, dict) else None
+            )
+            endpoint_val = (
+                s3_config.get("endpoint") if isinstance(s3_config, dict) else None
+            )
+            region_val = (
+                s3_config.get("region") if isinstance(s3_config, dict) else None
+            )
+            access_key_val = (
+                s3_config.get("access_key_id") if isinstance(s3_config, dict) else None
+            )
+            secret_key_val = (
+                s3_config.get("secret_access_key")
+                if isinstance(s3_config, dict)
+                else None
+            )
+
         self.bucket = expand_env_variable(bucket_val)
         self.endpoint = expand_env_variable(endpoint_val)
         region_expanded = expand_env_variable(region_val)
-        self.region = region_expanded if region_expanded else os.getenv("AWS_REGION", "us-east-1")
+        self.region = (
+            region_expanded if region_expanded else os.getenv("AWS_REGION", "us-east-1")
+        )
         access_key_expanded = expand_env_variable(access_key_val)
-        self.access_key_id = access_key_expanded if access_key_expanded else os.getenv("AWS_ACCESS_KEY_ID")
+        self.access_key_id = (
+            access_key_expanded
+            if access_key_expanded
+            else os.getenv("AWS_ACCESS_KEY_ID")
+        )
         secret_key_expanded = expand_env_variable(secret_key_val)
-        self.secret_access_key = secret_key_expanded if secret_key_expanded else os.getenv("AWS_SECRET_ACCESS_KEY")
-        self.path_style_access = s3_config.get("path_style_access", False) if isinstance(s3_config, dict) else False
+        self.secret_access_key = (
+            secret_key_expanded
+            if secret_key_expanded
+            else os.getenv("AWS_SECRET_ACCESS_KEY")
+        )
+        self.path_style_access = (
+            s3_config.get("path_style_access", False)
+            if isinstance(s3_config, dict)
+            else False
+        )
 
         # Get files configuration
         self.files = source_config.files or []
@@ -96,7 +122,7 @@ class ParquetReader(BaseReader):
 
             # Ensure region is expanded and not None
             region = self.region or "us-east-1"
-            
+
             # Ensure endpoint is expanded (can be None for AWS S3)
             endpoint = self.endpoint if self.endpoint else None
 
