@@ -41,16 +41,17 @@ class MetricsCollector:
         self.metrics["records_extracted"] = records_count
         self.metrics["files_processed"] = files_count
 
-        self.logger.info(
-            "Extraction metrics recorded",
-            extra={
-                "event_type": "metrics_extraction",
-                "records_count": records_count,
-                "files_count": files_count,
-                "job_name": self.job_name,
-                "tenant_id": self.tenant_id,
-            },
-        )
+        # Build extra dict - exclude tenant_id and job_name to avoid conflicts with log factory
+        # These are set by setup_logging() if tenant_id is provided, so don't duplicate them
+        extra = {
+            "event_type": "metrics_extraction",
+            "records_count": records_count,
+            "files_count": files_count,
+        }
+        # Note: tenant_id and job_name are omitted from extra to avoid KeyError
+        # if they're already set by the log record factory (from setup_logging)
+
+        self.logger.info("Extraction metrics recorded", extra=extra)
 
     def record_validation(
         self, valid_records: int, invalid_records: int, total_records: int
@@ -70,18 +71,18 @@ class MetricsCollector:
             (valid_records / total_records * 100) if total_records > 0 else 0
         )
 
-        self.logger.info(
-            "Validation metrics recorded",
-            extra={
-                "event_type": "metrics_validation",
-                "valid_records": valid_records,
-                "invalid_records": invalid_records,
-                "total_records": total_records,
-                "validation_rate_percent": validation_rate,
-                "job_name": self.job_name,
-                "tenant_id": self.tenant_id,
-            },
-        )
+        # Build extra dict - exclude tenant_id and job_name to avoid conflicts with log factory
+        extra = {
+            "event_type": "metrics_validation",
+            "valid_records": valid_records,
+            "invalid_records": invalid_records,
+            "total_records": total_records,
+            "validation_rate_percent": validation_rate,
+        }
+        # Note: tenant_id and job_name are omitted from extra to avoid KeyError
+        # if they're already set by the log record factory (from setup_logging)
+
+        self.logger.info("Validation metrics recorded", extra=extra)
 
     def record_writing(
         self, files_written: int, total_bytes: int, file_sizes: Optional[list] = None
@@ -99,17 +100,17 @@ class MetricsCollector:
 
         total_mb = total_bytes / (1024 * 1024) if total_bytes > 0 else 0
 
-        self.logger.info(
-            "Writing metrics recorded",
-            extra={
-                "event_type": "metrics_writing",
-                "files_written": files_written,
-                "bytes_written": total_bytes,
-                "total_mb": total_mb,
-                "job_name": self.job_name,
-                "tenant_id": self.tenant_id,
-            },
-        )
+        # Build extra dict - exclude tenant_id and job_name to avoid conflicts with log factory
+        extra = {
+            "event_type": "metrics_writing",
+            "files_written": files_written,
+            "bytes_written": total_bytes,
+            "total_mb": total_mb,
+        }
+        # Note: tenant_id and job_name are omitted from extra to avoid KeyError
+        # if they're already set by the log record factory (from setup_logging)
+
+        self.logger.info("Writing metrics recorded", extra=extra)
 
     def record_api_calls(self, api_calls: int, api_type: Optional[str] = None) -> None:
         """Record API call metrics.
@@ -125,16 +126,16 @@ class MetricsCollector:
         else:
             self.metrics["api_calls"]["total"] = api_calls
 
-        self.logger.info(
-            "API call metrics recorded",
-            extra={
-                "event_type": "metrics_api_calls",
-                "api_calls": api_calls,
-                "api_type": api_type,
-                "job_name": self.job_name,
-                "tenant_id": self.tenant_id,
-            },
-        )
+        # Build extra dict - exclude tenant_id and job_name to avoid conflicts with log factory
+        extra = {
+            "event_type": "metrics_api_calls",
+            "api_calls": api_calls,
+            "api_type": api_type,
+        }
+        # Note: tenant_id and job_name are omitted from extra to avoid KeyError
+        # if they're already set by the log record factory (from setup_logging)
+
+        self.logger.info("API call metrics recorded", extra=extra)
 
     def record_error(self, error_type: str, error_count: int = 1) -> None:
         """Record error metrics.
@@ -149,16 +150,16 @@ class MetricsCollector:
             self.metrics["errors"].get(error_type, 0) + error_count
         )
 
-        self.logger.warning(
-            "Error metrics recorded",
-            extra={
-                "event_type": "metrics_error",
-                "error_type": error_type,
-                "error_count": error_count,
-                "job_name": self.job_name,
-                "tenant_id": self.tenant_id,
-            },
-        )
+        # Build extra dict - exclude tenant_id and job_name to avoid conflicts with log factory
+        extra = {
+            "event_type": "metrics_error",
+            "error_type": error_type,
+            "error_count": error_count,
+        }
+        # Note: tenant_id and job_name are omitted from extra to avoid KeyError
+        # if they're already set by the log record factory (from setup_logging)
+
+        self.logger.warning("Error metrics recorded", extra=extra)
 
     def record_retry(self, attempt: int, exit_code: Optional[int] = None) -> None:
         """Record retry metrics.
@@ -174,17 +175,17 @@ class MetricsCollector:
             {"attempt": attempt, "exit_code": exit_code}
         )
 
-        self.logger.info(
-            "Retry metrics recorded",
-            extra={
-                "event_type": "metrics_retry",
-                "retry_count": self.metrics["retries"]["count"],
-                "attempt": attempt,
-                "exit_code": exit_code,
-                "job_name": self.job_name,
-                "tenant_id": self.tenant_id,
-            },
-        )
+        # Build extra dict - exclude tenant_id and job_name to avoid conflicts with log factory
+        extra = {
+            "event_type": "metrics_retry",
+            "retry_count": self.metrics["retries"]["count"],
+            "attempt": attempt,
+            "exit_code": exit_code,
+        }
+        # Note: tenant_id and job_name are omitted from extra to avoid KeyError
+        # if they're already set by the log record factory (from setup_logging)
+
+        self.logger.info("Retry metrics recorded", extra=extra)
 
     def finish(self, status: str = "success") -> Dict[str, Any]:
         """Finish metrics collection and return summary.
@@ -218,21 +219,21 @@ class MetricsCollector:
             )
             self.metrics["records_per_second"] = records_per_second
 
-        # Emit final metrics
-        self.logger.info(
-            "Job execution metrics",
-            extra={
-                "event_type": "metrics_complete",
-                "job_name": self.job_name,
-                "tenant_id": self.tenant_id,
-                "status": status,
-                "execution_time_seconds": execution_time,
-                **{
-                    k: v
-                    for k, v in self.metrics.items()
-                    if k not in ["start_time", "end_time"]
-                },
+        # Build extra dict - exclude tenant_id and job_name to avoid conflicts with log factory
+        extra = {
+            "event_type": "metrics_complete",
+            "status": status,
+            "execution_time_seconds": execution_time,
+            **{
+                k: v
+                for k, v in self.metrics.items()
+                if k not in ["start_time", "end_time", "tenant_id", "job_name"]
             },
-        )
+        }
+        # Note: tenant_id and job_name are omitted from extra to avoid KeyError
+        # if they're already set by the log record factory (from setup_logging)
+
+        # Emit final metrics
+        self.logger.info("Job execution metrics", extra=extra)
 
         return self.metrics

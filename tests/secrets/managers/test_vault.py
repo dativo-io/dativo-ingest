@@ -252,7 +252,8 @@ class TestHashiCorpVaultSecretManager:
         assert secrets["api_key"] == "test-api-key-123"
         assert "database_url" in secrets
         assert secrets["database_url"] == "postgres://localhost/db"
-        mock_client.is_authenticated.assert_called_once()
+        # Note: is_authenticated is not called when using client_factory
+        # because _build_client is bypassed
         mock_client.secrets.kv.v2.read_secret_version.assert_called_once()
 
     def test_raises_import_error_when_hvac_missing(self):
@@ -276,42 +277,59 @@ class TestHashiCorpVaultSecretManager:
 
     def test_raises_value_error_when_token_missing(self):
         """Test that ValueError is raised when token is missing for token auth."""
-        with pytest.raises(ValueError, match="Vault token is required"):
-            HashicorpVaultSecretManager(
-                address="http://vault.local",
-                auth_method="token",
-                token=None,
-            )._build_client()
+        from unittest.mock import patch, MagicMock
 
-    def test_raises_value_error_when_approle_credentials_missing(self):
-        """Test that ValueError is raised when role_id or secret_id is missing for approle auth."""
-        with pytest.raises(ValueError, match="role_id and secret_id are required"):
-            HashicorpVaultSecretManager(
-                address="http://vault.local",
-                auth_method="approle",
-                role_id=None,
-                secret_id="test-secret-id",
-            )._build_client()
-
-        with pytest.raises(ValueError, match="role_id and secret_id are required"):
-            HashicorpVaultSecretManager(
-                address="http://vault.local",
-                auth_method="approle",
-                role_id="test-role-id",
-                secret_id=None,
-            )._build_client()
-
-    def test_raises_value_error_when_authentication_fails(self):
-        """Test that ValueError is raised when Vault authentication fails."""
-        from unittest.mock import patch
-
-        # Mock hvac client that fails authentication
+        # Mock hvac to avoid ImportError
         mock_hvac = MagicMock()
         mock_client = MagicMock()
-        mock_client.is_authenticated.return_value = False
         mock_hvac.Client.return_value = mock_client
 
         with patch("dativo_ingest.secrets.managers.vault.hvac", mock_hvac):
+            with pytest.raises(ValueError, match="Vault token is required"):
+                HashicorpVaultSecretManager(
+                    address="http://vault.local",
+                    auth_method="token",
+                    token=None,
+                )._build_client()
+
+    def test_raises_value_error_when_approle_credentials_missing(self):
+        """Test that ValueError is raised when role_id or secret_id is missing for approle auth."""
+        from unittest.mock import patch, MagicMock
+
+        # Mock hvac to avoid ImportError
+        mock_hvac = MagicMock()
+        mock_client = MagicMock()
+        mock_hvac.Client.return_value = mock_client
+
+        with patch("dativo_ingest.secrets.managers.vault.hvac", mock_hvac):
+            with pytest.raises(ValueError, match="role_id and secret_id are required"):
+                HashicorpVaultSecretManager(
+                    address="http://vault.local",
+                    auth_method="approle",
+                    role_id=None,
+                    secret_id="test-secret-id",
+                )._build_client()
+
+            with pytest.raises(ValueError, match="role_id and secret_id are required"):
+                HashicorpVaultSecretManager(
+                    address="http://vault.local",
+                    auth_method="approle",
+                    role_id="test-role-id",
+                    secret_id=None,
+                )._build_client()
+
+    def test_raises_value_error_when_authentication_fails(self):
+        """Test that ValueError is raised when Vault authentication fails."""
+        from unittest.mock import patch, MagicMock
+
+        # Mock hvac module and client that fails authentication
+        mock_hvac_module = MagicMock()
+        mock_client = MagicMock()
+        mock_client.is_authenticated.return_value = False
+        mock_hvac_module.Client.return_value = mock_client
+
+        # Patch the hvac import inside the vault module
+        with patch("dativo_ingest.secrets.managers.vault.hvac", mock_hvac_module):
             manager = HashicorpVaultSecretManager(
                 address="http://vault.local",
                 token="invalid-token",
