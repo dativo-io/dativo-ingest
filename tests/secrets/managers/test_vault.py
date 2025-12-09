@@ -277,31 +277,44 @@ class TestHashiCorpVaultSecretManager:
 
     def test_raises_value_error_when_token_missing(self):
         """Test that ValueError is raised when token is missing for token auth."""
-        from unittest.mock import patch, MagicMock
+        import sys
+        from unittest.mock import MagicMock
 
-        # Mock hvac to avoid ImportError
+        # Mock hvac module to avoid ImportError
         mock_hvac = MagicMock()
         mock_client = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("dativo_ingest.secrets.managers.vault.hvac", mock_hvac):
+        # Temporarily add hvac to sys.modules so the import succeeds
+        hvac_backup = sys.modules.get("hvac")
+        sys.modules["hvac"] = mock_hvac
+        try:
             with pytest.raises(ValueError, match="Vault token is required"):
                 HashicorpVaultSecretManager(
                     address="http://vault.local",
                     auth_method="token",
                     token=None,
                 )._build_client()
+        finally:
+            if hvac_backup:
+                sys.modules["hvac"] = hvac_backup
+            elif "hvac" in sys.modules:
+                del sys.modules["hvac"]
 
     def test_raises_value_error_when_approle_credentials_missing(self):
         """Test that ValueError is raised when role_id or secret_id is missing for approle auth."""
-        from unittest.mock import patch, MagicMock
+        import sys
+        from unittest.mock import MagicMock
 
-        # Mock hvac to avoid ImportError
+        # Mock hvac module to avoid ImportError
         mock_hvac = MagicMock()
         mock_client = MagicMock()
         mock_hvac.Client.return_value = mock_client
 
-        with patch("dativo_ingest.secrets.managers.vault.hvac", mock_hvac):
+        # Temporarily add hvac to sys.modules so the import succeeds
+        hvac_backup = sys.modules.get("hvac")
+        sys.modules["hvac"] = mock_hvac
+        try:
             with pytest.raises(ValueError, match="role_id and secret_id are required"):
                 HashicorpVaultSecretManager(
                     address="http://vault.local",
@@ -317,10 +330,16 @@ class TestHashiCorpVaultSecretManager:
                     role_id="test-role-id",
                     secret_id=None,
                 )._build_client()
+        finally:
+            if hvac_backup:
+                sys.modules["hvac"] = hvac_backup
+            elif "hvac" in sys.modules:
+                del sys.modules["hvac"]
 
     def test_raises_value_error_when_authentication_fails(self):
         """Test that ValueError is raised when Vault authentication fails."""
-        from unittest.mock import patch, MagicMock
+        import sys
+        from unittest.mock import MagicMock
 
         # Mock hvac module and client that fails authentication
         mock_hvac_module = MagicMock()
@@ -328,8 +347,10 @@ class TestHashiCorpVaultSecretManager:
         mock_client.is_authenticated.return_value = False
         mock_hvac_module.Client.return_value = mock_client
 
-        # Patch the hvac import inside the vault module
-        with patch("dativo_ingest.secrets.managers.vault.hvac", mock_hvac_module):
+        # Temporarily add hvac to sys.modules so the import succeeds
+        hvac_backup = sys.modules.get("hvac")
+        sys.modules["hvac"] = mock_hvac_module
+        try:
             manager = HashicorpVaultSecretManager(
                 address="http://vault.local",
                 token="invalid-token",
@@ -337,6 +358,11 @@ class TestHashiCorpVaultSecretManager:
 
             with pytest.raises(ValueError, match="Vault authentication failed"):
                 manager._build_client()
+        finally:
+            if hvac_backup:
+                sys.modules["hvac"] = hvac_backup
+            elif "hvac" in sys.modules:
+                del sys.modules["hvac"]
 
     def test_handles_missing_secret_path_gracefully(self):
         """Test that missing secret paths return empty dict rather than raising exception."""
