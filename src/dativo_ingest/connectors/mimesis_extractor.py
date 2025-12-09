@@ -518,14 +518,6 @@ class MimesisExtractor:
             },
         )
 
-        # Create Mimesis schema
-        schema = Schema(
-            schema=lambda: {
-                field_name: generator()
-                for field_name, generator in self.schema_fields.items()
-            }
-        )
-
         # Generate data in batches
         batch_size = self.options["batch_size"]
         total_generated = 0
@@ -534,8 +526,18 @@ class MimesisExtractor:
         while total_generated < self.options["row_count"]:
             batch_count = min(batch_size, self.options["row_count"] - total_generated)
 
-            # Generate batch
-            batch_data = schema.create(iterations=batch_count)
+            # Create Mimesis schema for this batch with the correct number of iterations
+            # In mimesis 18.0.0+, iterations is set at Schema initialization, not in create()
+            schema = Schema(
+                schema=lambda: {
+                    field_name: generator()
+                    for field_name, generator in self.schema_fields.items()
+                },
+                iterations=batch_count,
+            )
+
+            # Generate batch - create() returns a list of batch_count records
+            batch_data = schema.create()
 
             # Add ingest_date column to all records (always present)
             for record in batch_data:
