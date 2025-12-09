@@ -46,6 +46,15 @@ connectors:
     incremental_strategy_default: file_modified_time
     objects_supported: ["file"]
 
+  mimesis:
+    roles: [source]  # Source only - synthetic data generation
+    category: synthetic
+    default_engine: native
+    engines_supported: [native]
+    allowed_in_cloud: true
+    supports_incremental: false
+    objects_supported: ["synthetic"]
+
   markdown_kv:
     roles: [source, target]  # Bidirectional - can read and write Markdown-KV files
     category: files

@@ -1,55 +1,22 @@
 # Mimesis Synthetic Data Connector
 
-The Mimesis connector generates realistic synthetic data using the [Mimesis](https://github.com/lk-geimfari/mimesis) Python library. This connector is ideal for:
+Generate realistic synthetic data for testing, development, and demonstrations using the [Mimesis](https://github.com/lk-geimfari/mimesis) library.
 
-- Testing and development
-- Performance benchmarking
-- Demonstrations and training
-- Data privacy compliance (replacing real data with synthetic data)
+## Overview
 
-## Features
+The Mimesis connector creates schema-driven synthetic data that automatically matches your asset definitions. It's ideal for:
 
-- **Realistic Data**: Generates human-readable names, emails, addresses, dates, and more
-- **Schema-Driven**: Uses Dativo asset definitions to determine fields and types
-- **Reproducible**: Optional seed parameter for consistent results
-- **Flexible**: Configurable row counts and batch sizes
-- **Offline**: Runs completely offline with no external dependencies
+- **Testing & Development**: Generate realistic test data without exposing production data
+- **Performance Benchmarking**: Create large datasets for performance testing
+- **Demonstrations & Training**: Populate demos with human-readable synthetic data
+- **Data Privacy**: Replace sensitive data with realistic synthetic alternatives
 
-## Configuration
+## Quick Start
 
-### Connector Recipe
-
-The connector recipe is located at `connectors/examples/mimesis.yaml`:
+### 1. Define Your Schema
 
 ```yaml
-name: mimesis
-type: mimesis
-roles: [source]
-description: "Mimesis synthetic data generator connector"
-default_engine:
-  type: native
-  options:
-    row_count: 1000    # Number of rows to generate
-    batch_size: 1000   # Rows per batch
-    locale: "en"       # Locale for generated data
-    seed: null         # Optional random seed
-credentials:
-  type: none
-incremental:
-  strategy: none       # Synthetic data doesn't support incremental
-```
-
-### Asset Definition
-
-Define your schema in an asset YAML file. The connector will generate data matching this schema:
-
-```yaml
-$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
-apiVersion: v3.0.2
-kind: DataContract
-name: mimesis_customers
-version: "1.0"
-source_type: mimesis
+# tests/fixtures/assets/mimesis/v1.0/customers.yaml
 schema:
   - name: customer_id
     type: integer
@@ -68,137 +35,202 @@ schema:
     required: true
 ```
 
-See `tests/fixtures/assets/mimesis/v1.0/customers.yaml` for a complete example.
-
-### Job Configuration
-
-Create a job config that references the mimesis connector:
+### 2. Create Job Configuration
 
 ```yaml
-tenant_id: demo_tenant
-environment: production
-
+# examples/jobs/mimesis_customers.yaml
 source_connector: mimesis
 source_connector_path: connectors/examples/mimesis.yaml
-target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
-
-asset: mimesis_customers
 asset_path: tests/fixtures/assets/mimesis/v1.0/customers.yaml
 
 source:
   type: mimesis
   engine:
     options:
-      row_count: 10000    # Generate 10k rows
-      batch_size: 1000
-      locale: "en"
-      seed: 42            # Optional: for reproducible data
-
-target:
-  connection:
-    s3:
-      endpoint: "${S3_ENDPOINT}"
-      bucket: "${S3_BUCKET}"
-      # ... other S3 config
+      row_count: 10000
+      seed: 42  # Optional: for reproducible data
 ```
 
-See `examples/jobs/mimesis_customers.yaml` for a complete example.
-
-## Field Mapping
-
-The connector intelligently maps Dativo field types and names to appropriate Mimesis generators:
-
-### Integer Fields
-
-| Field Name Pattern | Generated Data |
-|-------------------|----------------|
-| Contains "id" | Sequential incrementing numbers (1, 2, 3, ...) |
-| Contains "age" | Random ages between 18-65 |
-| Contains "salary" | Random salaries between 30,000-200,000 |
-| Other | Random integers between 1-100,000 |
-
-### String Fields
-
-| Field Name Pattern | Generated Data |
-|-------------------|----------------|
-| Contains "email" | Realistic email addresses |
-| Contains "phone" | Phone numbers |
-| Contains "first_name" | First names |
-| Contains "last_name" | Last names |
-| Contains "name" (not company) | Full names |
-| Contains "company" | Company names |
-| Contains "address" | Street addresses |
-| Contains "city" | City names |
-| Contains "country" | Country names |
-| Contains "state" or "province" | State/province names |
-| Contains "zip" or "postal" | ZIP/postal codes |
-| Contains "department" | Department names (Engineering, Sales, etc.) |
-| Contains "status" | Status values (active, inactive, etc.) |
-| Contains "job" | Job titles/occupations |
-| Contains "title" | Titles |
-| Contains "description" | Sentences |
-| Contains "url" or "website" | URLs |
-| Other | Random words |
-
-### Numeric Fields (double/float/decimal)
-
-| Field Name Pattern | Generated Data |
-|-------------------|----------------|
-| Contains "salary", "balance", "amount" | Random floats 0-100,000 (2 decimal places) |
-| Contains "commission", "pct", "percentage" | Random floats 0-1 (4 decimal places) |
-| Other | Random floats 0-10,000 (2 decimal places) |
-
-### Date and Timestamp Fields
-
-| Type | Generated Data |
-|------|----------------|
-| `date` | Random dates between 2015-2025 |
-| `timestamp` | Random timestamps between 2015-2025 |
-
-### Nullable Fields
-
-Fields with `required: false` have a 10% chance of being `null`.
-
-## Usage Examples
-
-### Generate Test Data
+### 3. Run the Job
 
 ```bash
-# Generate synthetic customer data
 python -m dativo_ingest.cli execute examples/jobs/mimesis_customers.yaml
 ```
 
+## Configuration Options
+
+### Engine Options
+
+All options go in `source.engine.options`:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `row_count` | int | 1000 | Number of rows to generate |
+| `batch_size` | int | 10000 | Rows per batch (memory efficiency) |
+| `locale` | string | "en" | Data locale (en, es, fr, de, etc.) |
+| `seed` | int | null | Random seed for reproducibility |
+| `integer_start` | int | 1 | Min value for integer fields |
+| `integer_end` | int | 100000 | Max value for integer fields |
+| `float_start` | float | 0.0 | Min value for float fields |
+| `float_end` | float | 10000.0 | Max value for float fields |
+| `float_precision` | int | 2 | Decimal places for floats |
+| `null_probability` | float | 0.1 | Probability of null for optional fields |
+
+### Example Configuration
+
+```yaml
+source:
+  type: mimesis
+  engine:
+    options:
+      row_count: 100000      # Generate 100k rows
+      batch_size: 10000      # Process in 10k batches
+      locale: "fr"           # French locale
+      seed: 42               # Reproducible data
+      integer_start: 1000    # IDs start at 1000
+      float_precision: 3     # 3 decimal places
+      null_probability: 0.2  # 20% nulls for optional fields
+```
+
+## Field Mapping
+
+The connector intelligently maps field names and types to appropriate generators:
+
+### Integer Fields
+
+| Pattern | Generated Data | Example |
+|---------|---------------|---------|
+| `*_id` | Sequential (1, 2, 3...) | `customer_id: 1` |
+| `age` | Ages 18-65 | `age: 42` |
+| `salary` | 30,000-200,000 | `salary: 75000` |
+| Other | Configurable range | `quantity: 523` |
+
+### String Fields
+
+| Pattern | Generated Data | Example |
+|---------|---------------|---------|
+| `email` | Email addresses | `john.doe@example.com` |
+| `phone*` | Phone numbers | `+1-555-123-4567` |
+| `name` | Full names | `Jane Smith` |
+| `first_name` | First names | `John` |
+| `last_name` | Last names | `Doe` |
+| `company` | Company names | `Acme Corporation` |
+| `city` | City names | `New York` |
+| `country` | Countries | `United States` |
+| `address` | Street addresses | `123 Main St` |
+| `department` | Departments | `Engineering` |
+| `status` | Status values | `active` |
+
+### Numeric Fields (double/float)
+
+| Pattern | Generated Data |
+|---------|---------------|
+| `salary`, `balance`, `amount` | 0-100,000 |
+| `commission`, `pct`, `percentage` | 0-1.0 |
+| Other | Configurable range |
+
+### Date & Timestamp
+
+| Type | Generated Data |
+|------|---------------|
+| `date` | Random dates 2015-2025 |
+| `timestamp` | Random timestamps 2015-2025 |
+
+## Special Features
+
+### Automatic ingest_date
+
+All records automatically include an `ingest_date` field:
+
+```python
+# If schema defines ingest_date with type 'date'
+{"ingest_date": date(2024, 12, 10)}
+
+# If schema defines ingest_date with type 'string'  
+{"ingest_date": "2024-12-10"}
+
+# If not defined in schema (default)
+{"ingest_date": date(2024, 12, 10)}
+```
+
+### Nullable Fields
+
+Fields with `required: false` get null values based on `null_probability`:
+
+```yaml
+schema:
+  - name: phone_number
+    type: string
+    required: false  # Will be null ~10% of the time
+```
+
+### Reproducible Data
+
+Use `seed` for deterministic generation:
+
+```yaml
+source:
+  engine:
+    options:
+      seed: 42  # Same seed = same data every time
+```
+
+## Common Use Cases
+
 ### Performance Testing
 
-```bash
-# Generate 1 million rows for performance testing
-python -m dativo_ingest.cli execute tests/fixtures/jobs/mimesis_perf_test.yaml
+```yaml
+# tests/fixtures/jobs/mimesis_perf_test.yaml
+source:
+  engine:
+    options:
+      row_count: 1000000  # 1 million rows
+      batch_size: 10000
+      seed: 42
 ```
 
-### Reproducible Data (with seed)
+### International Data
 
 ```yaml
 source:
-  type: mimesis
   engine:
     options:
-      row_count: 1000
-      seed: 42  # Same seed = same data
+      locale: "fr"  # French names, addresses, phone numbers
 ```
 
-### Custom Locale
+Available locales: `en`, `es`, `fr`, `de`, `it`, `pt`, `ru`, `zh`, `ja`, `ko`, [and more](https://mimesis.name/en/master/locales.html)
+
+### Reproducible Demos
 
 ```yaml
 source:
-  type: mimesis
   engine:
     options:
       row_count: 1000
-      locale: "fr"  # French names, addresses, etc.
+      seed: 12345  # Always same demo data
 ```
 
-Available locales: `en`, `es`, `fr`, `de`, `it`, `pt`, `ru`, `zh`, `ja`, `ko`, and many more. See [Mimesis documentation](https://mimesis.name/en/master/locales.html) for full list.
+## Connector Registry
+
+Registered in `registry/connectors.yaml`:
+
+```yaml
+mimesis:
+  roles: [source]
+  category: synthetic
+  default_engine: native
+  engines_supported: [native]
+  allowed_in_cloud: true
+  supports_incremental: false
+  objects_supported: ["synthetic"]
+```
+
+## Limitations
+
+- **Source only**: Cannot be used as a target connector
+- **No incremental support**: Generates fresh data each run
+- **Schema required**: Must have an asset definition with schema
+- **No custom patterns**: Uses built-in field mapping logic
 
 ## Testing
 
@@ -208,37 +240,9 @@ Run the test suite:
 pytest tests/test_mimesis_connector.py -v
 ```
 
-## Migration from Legacy Scripts
-
-The Mimesis connector replaces legacy synthetic data generation scripts:
-
-**Before:**
-```bash
-python tests/scripts/generate_perf_test_data.py --size-gb 1.0
-```
-
-**After:**
-```bash
-python -m dativo_ingest.cli execute tests/fixtures/jobs/mimesis_perf_test.yaml
-```
-
-Benefits of the new approach:
-- More realistic data (Mimesis vs. hardcoded patterns)
-- Schema-driven (automatically matches your asset definition)
-- Consistent with other connectors
-- Better logging and monitoring
-- Reproducible with seeds
-
-## Limitations
-
-1. **No Incremental Support**: Synthetic data generation doesn't support incremental extraction
-2. **No Custom Reader**: Mimesis is a native connector only
-3. **Schema Required**: Must have an asset definition with schema
-4. **Target Required**: Data must be written somewhere (typically Iceberg/Parquet or CSV)
-
 ## See Also
 
 - [Mimesis Documentation](https://mimesis.name/)
+- [Quick Start Guide](../../MIMESIS_QUICKSTART.md)
 - [Asset Definition Schema](../schemas/)
-- [Job Configuration Guide](../job-config.md)
 - [Performance Testing Guide](../../tests/PERFORMANCE_TESTS.md)

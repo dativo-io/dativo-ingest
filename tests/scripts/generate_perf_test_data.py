@@ -1,17 +1,31 @@
 #!/usr/bin/env python3
-"""Generate 1GB CSV file for performance testing.
+"""Generate CSV file for performance testing.
 
-**DEPRECATED**: This script has been replaced by the Mimesis connector.
-Use the job config instead:
-    python -m dativo_ingest.cli execute tests/fixtures/jobs/mimesis_perf_test.yaml
+========================================================================
+⚠️  DEPRECATED - Use Mimesis connector instead
+========================================================================
 
-To generate a specific number of rows, edit the row_count in the job config or use:
-    tests/fixtures/assets/mimesis/v1.0/perf_test_data.yaml
+This legacy script has been superseded by the Mimesis connector, which provides:
+  • More realistic synthetic data (names, emails, addresses vs "User_123")
+  • Schema-driven generation matching your actual asset definitions
+  • Better integration with Dativo platform (logging, monitoring, validation)
+  • Reproducible data with seed parameter
+  • Configurable locales for internationalization
 
-This legacy script is kept for backwards compatibility but may be removed in a future version.
+RECOMMENDED APPROACH:
+  python -m dativo_ingest.cli execute tests/fixtures/jobs/mimesis_perf_test.yaml
 
-Legacy Usage:
+To customize row count or schema:
+  • Edit row_count in tests/fixtures/jobs/mimesis_perf_test.yaml
+  • Modify schema in tests/fixtures/assets/mimesis/v1.0/perf_test_data.yaml
+
+This legacy script is kept for backwards compatibility only and may be
+removed in a future version. New performance tests should use the Mimesis
+connector.
+
+Legacy Usage (not recommended):
     python tests/scripts/generate_perf_test_data.py [--size-gb SIZE] [--output OUTPUT]
+========================================================================
 """
 
 import argparse

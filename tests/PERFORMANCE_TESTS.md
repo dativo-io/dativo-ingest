@@ -52,32 +52,49 @@ make performance-test
 ./tests/run_performance_tests.sh
 ```
 
-## Test Data
+## Test Data Generation
 
-Performance tests use synthetic data generated via the **Mimesis connector**:
+### Recommended: Mimesis Connector (Standard Approach)
+
+Performance tests should use synthetic data generated via the **Mimesis connector**:
 
 ```bash
-# Generate test data using Mimesis connector (recommended)
+# Generate 1 million rows of realistic test data
 python -m dativo_ingest.cli execute tests/fixtures/jobs/mimesis_perf_test.yaml
+```
 
-# Or use legacy script (deprecated)
-python tests/scripts/generate_perf_test_data.py
+**Why Mimesis?**
+- ✅ **Realistic synthetic data** (names, emails, addresses vs "User_123")
+- ✅ **Reproducible results** (with seed parameter for consistent benchmarks)
+- ✅ **Schema-driven** (automatically matches your asset definitions)
+- ✅ **Platform integrated** (structured logging, monitoring, validation)
+- ✅ **Configurable** (row count, batch size, locales, numeric ranges)
 
-# Custom row count: Edit row_count in tests/fixtures/jobs/mimesis_perf_test.yaml
-# or legacy script with custom size:
+**Customization:**
+```yaml
+# Edit tests/fixtures/jobs/mimesis_perf_test.yaml
+source:
+  engine:
+    options:
+      row_count: 1000000  # Adjust as needed
+      batch_size: 10000
+      seed: 42            # For reproducible benchmarks
+```
+
+**Output location:**
+- Configured in job's target section (typically S3/MinIO)
+- Parquet format for Iceberg performance tests
+
+### Legacy: Python Script (Deprecated)
+
+The legacy script `tests/scripts/generate_perf_test_data.py` is **deprecated** and kept only for backwards compatibility:
+
+```bash
+# Not recommended - use Mimesis connector instead
 python tests/scripts/generate_perf_test_data.py --size-gb 0.5
 ```
 
-The Mimesis connector provides:
-- **Realistic synthetic data** (names, emails, addresses, etc.)
-- **Reproducible results** (with seed parameter)
-- **Flexible schema** (via asset definitions)
-- **Better performance** than legacy script
-
-Generated files are stored at:
-- Mimesis output: As configured in job target (e.g., S3/MinIO)
-- Legacy CSV: `tests/fixtures/seeds/perf_test_data_1gb.csv`
-- Configurable via `PERF_TEST_CSV_FILE` environment variable
+**Migration:** Replace any CI/automation scripts that use `generate_perf_test_data.py` with the Mimesis job above.
 
 ## Running Tests
 

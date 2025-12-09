@@ -1,250 +1,216 @@
-# Mimesis Synthetic Data Connector Implementation Summary
+# Mimesis Connector Implementation Summary
 
 ## Overview
 
-Successfully implemented a comprehensive synthetic data source connector for the Dativo ingestion platform using the [Mimesis](https://github.com/lk-geimfari/mimesis) Python library.
+Comprehensive synthetic data source connector for Dativo using the [Mimesis](https://github.com/lk-geimfari/mimesis) library.
 
-## Deliverables Completed
+## Design Principles
 
-### 1. Core Implementation
+1. **Schema-Driven**: Automatically generates data matching asset definitions
+2. **Memory-Efficient**: Batch-based generation for large datasets
+3. **Reproducible**: Deterministic with seed parameter
+4. **Type-Safe**: Proper validation and error handling
+5. **Platform-Integrated**: Full integration with Dativo infrastructure
 
-#### Source Connector Module
+## Core Components
+
+### Source Connector
 - **File**: `src/dativo_ingest/connectors/mimesis_extractor.py`
+- **Class**: `MimesisExtractor(source_config, asset_path)`
 - **Features**:
-  - Generates realistic tabular data conforming to asset definitions
-  - Intelligent field mapping based on type and name patterns
-  - Support for all Dativo field types (integer, string, double, date, timestamp)
-  - Nullable field support (10% null probability for non-required fields)
-  - Batch processing for efficient memory usage
-  - Reproducible data generation with optional seed parameter
-  - Configurable locale support (en, es, fr, de, etc.)
+  - Intelligent field mapping (20+ patterns)
+  - Configurable batch processing
+  - Automatic ingest_date enrichment
+  - Deterministic RNG for reproducibility
+  - Comprehensive error handling
 
-#### Factory Integration
+### Asset Schema Loader
+- **Class**: `AssetSchemaLoader`
+- **Purpose**: Robust YAML loading with validation
+- **Features**:
+  - Clear error messages for invalid schemas
+  - Field-level validation
+  - Environment variable expansion
+
+### Factory Integration
 - **File**: `src/dativo_ingest/connectors/factory.py`
-- Updated `ExtractorFactory` to register both `mimesis` and `synthetic` source types
-- Properly passes asset_path to extractor for schema inference
+- **Types**: `mimesis` and `synthetic`
+- **Integration**: Passes asset_path from job_config
 
-### 2. Configuration Files
+### Registry
+- **File**: `registry/connectors.yaml`
+- **Entry**: `mimesis` source connector
+- **Category**: `synthetic`
 
-#### Connector Recipe
-- **File**: `connectors/examples/mimesis.yaml`
-- Defines connector type, roles, and default options
-- Configurable row_count, batch_size, locale, and seed
+## Configuration Files
 
-#### Asset Definitions
-- **Customer Dataset**: `tests/fixtures/assets/mimesis/v1.0/customers.yaml`
-  - 10 fields including customer_id, name, email, phone_number, signup_date, account_balance, status, company, city, country
-  - PII classification for sensitive fields
-  - Comprehensive metadata
+### Connector Recipe
+- `connectors/examples/mimesis.yaml`
 
-- **Performance Test Dataset**: `tests/fixtures/assets/mimesis/v1.0/perf_test_data.yaml`
-  - Matches legacy perf_test_data schema
-  - Designed for large-scale performance testing
+### Asset Definitions
+- `tests/fixtures/assets/mimesis/v1.0/customers.yaml` - Customer schema
+- `tests/fixtures/assets/mimesis/v1.0/perf_test_data.yaml` - Performance test schema
 
-#### Job Configurations
-- **Example Job**: `examples/jobs/mimesis_customers.yaml`
-  - Generates 10,000 synthetic customers
-  - Production-ready configuration template
+### Job Configurations
+- `examples/jobs/mimesis_customers.yaml` - Production example
+- `tests/fixtures/jobs/mimesis_customers_to_iceberg.yaml` - Test job
+- `tests/fixtures/jobs/mimesis_perf_test.yaml` - Performance test
 
-- **Test Job**: `tests/fixtures/jobs/mimesis_customers_to_iceberg.yaml`
-  - Test configuration with 1,000 rows
-  - Uses seed for reproducibility
+## Key Features
 
-- **Performance Test Job**: `tests/fixtures/jobs/mimesis_perf_test.yaml`
-  - Generates 1 million rows for performance testing
-  - Replacement for legacy `generate_perf_test_data.py` script
+### 1. Automatic ingest_date Enrichment
+All records automatically include `ingest_date` with proper type handling:
+- If schema defines `ingest_date`: respects the type (date/string/timestamp)
+- If not defined: adds as date type
+- Always uses current UTC date/time
 
-### 3. Dependencies
-
-#### Updated Files
-- **File**: `requirements.txt`
-- Added: `mimesis>=11.0.0`
-
-### 4. Orchestration
-
-#### Runner Configuration
-- **File**: `configs/runner.yaml`
-- Added scheduled job: `mimesis_customers_daily`
-- Configured for daily execution at 2:00 AM UTC
-- Disabled by default (enable as needed)
-- Tagged with environment: "development" and data_type: "synthetic"
-
-### 5. Legacy Script Replacement
-
-#### Deprecated Script
-- **File**: `tests/scripts/generate_perf_test_data.py`
-- Updated with deprecation notice
-- Points users to new Mimesis connector job
-
-#### Updated Documentation
-- **File**: `tests/PERFORMANCE_TESTS.md`
-- Added Mimesis connector instructions
-- Documented migration path from legacy script
-- Updated all relevant sections with new approach
-
-### 6. Documentation
-
-#### Connector Documentation
-- **File**: `docs/connectors/mimesis.md`
-- Comprehensive guide covering:
-  - Features and use cases
-  - Configuration examples
-  - Field mapping logic (complete reference table)
-  - Usage examples
-  - Migration guide from legacy scripts
-  - Limitations and best practices
-
-### 7. Testing
-
-#### Test Suite
-- **File**: `tests/test_mimesis_connector.py`
-- 9 comprehensive test cases covering:
-  - Extractor initialization
-  - Asset schema loading
-  - Field type mapping
-  - Data extraction
-  - Record count estimation
-  - Metadata extraction
-  - Reproducibility with seeds
-  - Error handling
-- **Status**: All tests passing ✅
-
-#### Integration Testing
-- Verified factory integration
-- Validated end-to-end data generation
-- Confirmed schema conformance
-- Tested with JobConfig pipeline
-
-## Field Mapping Logic
-
-The connector implements sophisticated field mapping:
-
-### By Type + Name Pattern
-
+### 2. Memory-Efficient Generation
+Generates data in configurable batches (default 10k rows) to handle large datasets:
 ```python
-# Integer IDs → Sequential increment (1, 2, 3, ...)
-type: integer + name contains "id"
-
-# String emails → Realistic email addresses
-type: string + name contains "email"
-
-# String names → Full names
-type: string + name contains "name"
-
-# Date fields → Random dates 2015-2025
-type: date
-
-# Timestamp fields → Random timestamps 2015-2025
-type: timestamp
-
-# Double/Float → Appropriate numeric ranges based on name
-type: double + name contains "salary" → 0-100,000
-type: double + name contains "commission" → 0-1.0
-
-# Nullable fields → 10% chance of None
-required: false
+while remaining_rows > 0:
+    batch = Schema(iterations=min(batch_size, remaining_rows)).create()
+    yield batch
 ```
 
-### Smart Defaults
+### 3. Configurable Options
 
-Fallback to sensible defaults when no pattern matches:
-- Integer → Random 1-100,000
-- String → Random word
-- Double → Random 0-10,000
-- Date/Timestamp → Random 2015-2025
+**Core Options:**
+- `row_count`, `batch_size`, `locale`, `seed`
+
+**Numeric Ranges:**
+- `integer_start`, `integer_end`
+- `float_start`, `float_end`, `float_precision`
+
+**Nullability:**
+- `null_probability` (default 0.1)
+- Deterministic with seed
+
+### 4. Field Mapping Logic
+
+Maps based on type + name pattern:
+- Integer IDs → sequential increment
+- Email fields → realistic emails
+- Name fields → full names
+- Date fields → dates 2015-2025
+- Nullable fields → controlled null probability
+
+### 5. Robust Error Handling
+
+Clear, actionable error messages:
+- Missing asset path
+- Invalid YAML
+- Missing schema field
+- Invalid field definitions
+
+## Testing
+
+**Test Suite**: `tests/test_mimesis_connector.py`
+- 23 comprehensive tests
+- 100% pass rate
+- Coverage includes:
+  - Asset loading & validation
+  - Field mapping
+  - Data generation
+  - Memory efficiency
+  - Reproducibility
+  - Error handling
+  - Configuration options
+
+## Documentation
+
+### User Documentation
+- **Quick Start**: `MIMESIS_QUICKSTART.md` - Get running in 30 seconds
+- **Full Guide**: `docs/connectors/mimesis.md` - Complete reference
+
+### Technical Documentation
+- **This File**: Implementation details for maintainers
+- **Tests**: Comprehensive examples of all features
+- **Code Comments**: Inline documentation in source
+
+## Migration from Legacy
+
+### Deprecated
+- `tests/scripts/generate_perf_test_data.py` - Legacy CSV generator
+
+### Replacement
+- `tests/fixtures/jobs/mimesis_perf_test.yaml` - Mimesis-based perf test
+
+### Benefits
+- More realistic data
+- Platform-integrated
+- Schema-driven
+- Reproducible
+- Better logging
+
+## Dependencies
+
+- `mimesis>=11.0.0` - Synthetic data generation
+- `pyyaml>=6.0` - YAML parsing
+- `pandas>=2.0.0` - Already in requirements
+- `pyarrow>=14.0.0` - Already in requirements
 
 ## Usage Examples
 
-### Generate Synthetic Test Data
+### Basic Generation
 ```bash
 python -m dativo_ingest.cli execute examples/jobs/mimesis_customers.yaml
 ```
 
-### Performance Testing (1M rows)
+### Performance Testing
 ```bash
 python -m dativo_ingest.cli execute tests/fixtures/jobs/mimesis_perf_test.yaml
 ```
 
-### Reproducible Data (with seed)
+### Custom Configuration
 ```yaml
 source:
   engine:
     options:
-      row_count: 1000
-      seed: 42  # Same seed = same data
+      row_count: 100000
+      batch_size: 10000
+      seed: 42
+      locale: "fr"
 ```
 
-## Key Features Implemented
+## Future Enhancements (Potential)
 
-✅ **Schema-Driven**: Automatically generates data matching asset definitions
-✅ **Realistic Data**: Uses Mimesis library for human-readable synthetic data
-✅ **Flexible Configuration**: Row count, batch size, locale, and seed options
-✅ **Type-Safe**: Proper type conversion for all Dativo field types
-✅ **Nullable Support**: Honors required flag with probabilistic null values
-✅ **Efficient**: Batch processing for memory efficiency
-✅ **Reproducible**: Optional seed for consistent results
-✅ **Well-Tested**: Comprehensive test suite with 100% pass rate
-✅ **Documented**: Complete user and developer documentation
-✅ **Integrated**: Full integration with Dativo factory and job executor
+- [ ] Support for custom field mapping rules
+- [ ] More specialized field patterns
+- [ ] Cross-field dependencies (e.g., state matches city)
+- [ ] Time-series data generation
+- [ ] Custom Mimesis provider plugins
 
-## Migration from Legacy
+## Maintenance Notes
 
-**Old Approach** (deprecated):
-```bash
-python tests/scripts/generate_perf_test_data.py --size-gb 1.0
-```
+### Code Structure
+- Single file implementation (`mimesis_extractor.py`)
+- Clear separation of concerns (loader, mapper, generator)
+- Well-documented public interfaces
+- Comprehensive error handling
 
-**New Approach** (recommended):
-```bash
-python -m dativo_ingest.cli execute tests/fixtures/jobs/mimesis_perf_test.yaml
-```
+### Testing Strategy
+- Unit tests for all major features
+- Integration tests with factory
+- Error case coverage
+- Performance test validation
 
-### Benefits of New Approach
-- More realistic data (names, emails, addresses vs. "User_123")
-- Schema-driven (matches your actual asset definitions)
-- Consistent with other Dativo connectors
-- Better logging and monitoring
-- Reproducible with seeds
-- Locale support for internationalization
-- Type-safe with validation
-
-## Testing Results
-
-```bash
-$ pytest tests/test_mimesis_connector.py -v
-
-tests/test_mimesis_connector.py::test_extractor_initialization PASSED
-tests/test_mimesis_connector.py::test_load_asset_schema PASSED
-tests/test_mimesis_connector.py::test_field_mapping PASSED
-tests/test_mimesis_connector.py::test_extract_data PASSED
-tests/test_mimesis_connector.py::test_get_total_records_estimate PASSED
-tests/test_mimesis_connector.py::test_extract_metadata PASSED
-tests/test_mimesis_connector.py::test_reproducibility_with_seed PASSED
-tests/test_mimesis_connector.py::test_missing_asset_path_error PASSED
-tests/test_mimesis_connector.py::test_invalid_asset_path_error PASSED
-
-========================= 9 passed =========================
-```
-
-## Next Steps for Users
-
-1. **Review Documentation**: Read `docs/connectors/mimesis.md`
-2. **Try Example**: Run `examples/jobs/mimesis_customers.yaml`
-3. **Create Custom Schema**: Define your own asset with desired fields
-4. **Configure Job**: Create job config with row count and options
-5. **Execute**: Run job to generate synthetic data
-6. **Schedule** (optional): Enable job in `configs/runner.yaml` for recurring generation
-
-## Technical Notes
-
-- **Compatibility**: Works in both orchestrated and oneshot modes
-- **Docker-Ready**: Fully compatible with containerized deployments
-- **Offline**: No external services required
-- **Dependencies**: Only Mimesis, pandas, and pyarrow (already in requirements.txt)
-- **Exit Codes**: Follows standard Dativo exit code conventions
-- **Logging**: Structured logging with appropriate event types
-- **Metadata**: Supports tag derivation and source metadata extraction
+### Documentation Updates
+When updating:
+1. Update inline code comments
+2. Update `docs/connectors/mimesis.md`
+3. Update examples if config changes
+4. Update tests for new features
+5. Update this summary for major changes
 
 ## Summary
 
-This implementation provides a production-ready synthetic data generator that seamlessly integrates with the Dativo platform. It replaces legacy ad-hoc scripts with a proper connector that follows all platform conventions, provides realistic data, and offers extensive configurability while maintaining simplicity for end users.
+The Mimesis connector provides production-ready synthetic data generation that:
+- ✅ Seamlessly integrates with Dativo platform
+- ✅ Generates realistic, schema-driven data
+- ✅ Handles large datasets efficiently
+- ✅ Provides reproducible results
+- ✅ Offers extensive configuration options
+- ✅ Has comprehensive test coverage
+- ✅ Includes clear documentation
+
+It successfully replaces legacy ad-hoc scripts with a proper connector following all platform conventions.
