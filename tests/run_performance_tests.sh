@@ -55,9 +55,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Configuration
-PERF_TEST_CSV_FILE="${PERF_TEST_CSV_FILE:-tests/fixtures/seeds/perf_test_data_1gb.csv}"
+PERF_TEST_CSV_FILE="${PERF_TEST_CSV_FILE:-/data/synthetic_perf.csv}"
 TENANT_ID="perf_test_tenant"
 RESULTS_DIR="/tmp/dativo_perf_test_results"
+MIMESIS_JOB_CONFIG="$SCRIPT_DIR/fixtures/jobs/mimesis_perf_test.yaml"
 mkdir -p "$RESULTS_DIR"
 
 # Track whether we generated the test data file (so we only delete files we created)
@@ -180,7 +181,7 @@ generate_test_data() {
         echo "ℹ️  Skipping data generation (--skip-data-generation flag)"
         if [ ! -f "$PERF_TEST_CSV_FILE" ]; then
             echo -e "${RED}❌ Test data file not found: $PERF_TEST_CSV_FILE${NC}"
-            echo "   Generate it with: python tests/scripts/generate_perf_test_data.py"
+            echo "   Generate it with: python3 -m dativo_ingest.cli run --config $MIMESIS_JOB_CONFIG --mode self_hosted"
             exit 1
         fi
         echo -e "${GREEN}✅ Using existing test data: $PERF_TEST_CSV_FILE${NC}"
@@ -206,11 +207,19 @@ generate_test_data() {
         fi
     fi
     
-    echo "Generating 1GB CSV file..."
-    if [ -f "$SCRIPT_DIR/scripts/generate_perf_test_data.py" ]; then
-        python3 "$SCRIPT_DIR/scripts/generate_perf_test_data.py" --output "$PERF_TEST_CSV_FILE"
-    else
-        echo -e "${RED}❌ Data generation script not found${NC}"
+    echo "Generating 1GB CSV file with synthetic connector..."
+    if [ ! -f "$MIMESIS_JOB_CONFIG" ]; then
+        echo -e "${RED}❌ Mimesis job config not found: $MIMESIS_JOB_CONFIG${NC}"
+        exit 1
+    fi
+
+    mkdir -p "$(dirname "$PERF_TEST_CSV_FILE")" 2>/dev/null || true
+
+    if ! (cd "$PROJECT_ROOT" && python3 -m dativo_ingest.cli run \
+        --config "$MIMESIS_JOB_CONFIG" \
+        --secrets-dir "$SCRIPT_DIR/fixtures/secrets" \
+        --mode self_hosted); then
+        echo -e "${RED}❌ Synthetic data job failed${NC}"
         exit 1
     fi
     

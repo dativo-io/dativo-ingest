@@ -498,6 +498,7 @@ For more examples, see [tests/fixtures/jobs/](tests/fixtures/jobs/) and [docs/MI
 - **Google Drive CSV** - CSV files from Google Drive
 - **Google Sheets** - Spreadsheet data
 - **CSV** - Local CSV files
+- **Mimesis (Synthetic)** - Schema-driven synthetic data generator for demos/tests
 - **Markdown-KV** - Markdown-KV files for LLM-optimized ingestion
 - **PostgreSQL** - Database (self-hosted only)
 - **MySQL** - Database (self-hosted only)
@@ -508,6 +509,8 @@ For more examples, see [tests/fixtures/jobs/](tests/fixtures/jobs/) and [docs/MI
 - **MinIO** - MinIO object storage
 
 See [docs/connectors.md](docs/connectors.md) for complete connector reference.
+
+> Need sample data fast? The `mimesis` connector ships with an example job at `configs/jobs/mimesis.yaml` that generates governed synthetic customer records and writes them to Iceberg/S3. Large CSV fixtures (1M+ rows) can be reproduced with `tests/fixtures/jobs/mimesis_perf_test.yaml`, which materializes `/data/synthetic_perf.csv` for the performance suite.
 
 ## Plugin System
 

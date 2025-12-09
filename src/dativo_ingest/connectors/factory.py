@@ -166,6 +166,10 @@ class ExtractorFactory:
             extractor = GoogleSheetsExtractor(
                 source_config, connector_recipe, tenant_id
             )
+        elif source_config.type in ["mimesis", "synthetic"]:
+            from .mimesis import MimesisExtractor
+
+            extractor = MimesisExtractor(source_config, job_config)
         else:
             raise ValueError(
                 f"Unsupported source type: {source_config.type}. "

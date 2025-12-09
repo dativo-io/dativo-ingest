@@ -1,0 +1,46 @@
+tenant_id: synthetic_demo
+environment: dev
+
+source_connector: mimesis
+source_connector_path: connectors/examples/mimesis.yaml
+
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+
+asset: mimesis_customers
+asset_path: configs/assets/mimesis_customers.yaml
+
+source:
+  object: synthetic_customers
+  engine:
+    type: native
+    options:
+      native:
+        row_count: 5000
+        batch_size: 10000
+        locale: "en"
+        null_probability: 0.05
+        start_year: 2012
+        end_year: 2025
+
+target:
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: "${SYNTHETIC_BUCKET:-test-bucket}"
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION:-us-east-1}"
+      path_style_access: true
+
+catalog:
+  type: nessie
+  connection:
+    uri: "${NESSIE_URI}"
+  database: synthetic_demo
+  table_name: mimesis_customers
+
+schema_validation_mode: strict
+logging:
+  level: INFO
+  redaction: false

@@ -1,0 +1,46 @@
+tenant_id: perf_test_tenant
+environment: test
+
+source_connector: mimesis
+source_connector_path: connectors/examples/mimesis.yaml
+
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+
+asset: perf_test_data_mimesis
+asset_path: tests/fixtures/assets/mimesis/v1.0/perf_test_data.yaml
+
+source:
+  object: perf_test_data
+  engine:
+    type: native
+    options:
+      native:
+        row_count: 1000000
+        batch_size: 100000
+        locale: "en"
+        null_probability: 0.05
+        start_year: 2010
+        end_year: 2025
+
+target:
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+
+catalog:
+  type: nessie
+  connection:
+    uri: "${NESSIE_URI}"
+  database: perf_test_db
+  table_name: perf_test_data_seed
+
+schema_validation_mode: strict
+logging:
+  redaction: false
+  level: INFO

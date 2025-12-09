@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Recovery from checkpoints on job restart
   - Configurable checkpoint intervals
   - See [docs/WAL_CHECKPOINTING.md](docs/WAL_CHECKPOINTING.md) for details
+- **Synthetic Mimesis Connector**: New native source type for schema-driven synthetic data
+  - Added `connectors/examples/mimesis.yaml` recipe and registry entry
+  - Example configs at `configs/jobs/mimesis.yaml` and `configs/assets/mimesis_customers.yaml`
+  - Performance seed job `tests/fixtures/jobs/mimesis_perf_test.yaml` now generates `/data/synthetic_perf.csv`
+  - Includes automated Parquet/CSV materialization via pandas and ingest_date enrichment
 - **Documentation Reorganization**: Comprehensive documentation restructure for public release
   - Added `docs/index.md` - Documentation index with organized links to all documentation
   - Added `docs/connectors.md` - Complete connector reference with capabilities matrix
@@ -76,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `DOCUMENTATION_UPDATE_SUMMARY.md`
   - `DOCS_UPDATE_SUMMARY.md`
   - `FIXES_APPLIED.md`
+- Removed legacy `tests/scripts/generate_perf_test_data.py` helper in favor of the `mimesis_perf_test` job
   - `DATA_FLOW_SUMMARY.txt`
 
 ## [0.3.1] - 2025-12-02

@@ -1,0 +1,16 @@
+name: mimesis
+type: mimesis
+roles: [source]
+description: "Synthetic data connector powered by Mimesis"
+default_engine:
+  type: native
+  options:
+    native:
+      row_count: 1000
+      batch_size: 10000
+      locale: "en"
+      null_probability: 0.1
+      start_year: 2015
+      end_year: 2025
+credentials:
+  type: none
