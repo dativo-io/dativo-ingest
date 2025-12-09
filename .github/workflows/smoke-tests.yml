@@ -102,6 +102,9 @@ jobs:
             sleep 2
           done
           
+          # Create root role to fix potential connection errors
+          PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -c "CREATE ROLE root WITH LOGIN SUPERUSER PASSWORD 'root';" || true
+          
           # Load minimal test data
           PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d Adventureworks <<'EOF'
           CREATE SCHEMA IF NOT EXISTS person;
@@ -255,14 +258,18 @@ jobs:
           echo "✅ AdventureWorks test data loaded"
 
       - name: Load MySQL test data
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
+          # Stop and remove any conflicting local MySQL server
+          sudo systemctl stop mysql 2>/dev/null || true
+          sudo apt-get remove -y mysql-server mysql-server-8.0 2>/dev/null || true
+          
           # Install MySQL client and netcat for port checking
-          sudo apt-get install -y mysql-client netcat-openbsd
+          sudo apt-get install -y --no-install-recommends mysql-client netcat-openbsd
           
           # Wait for MySQL to be ready (with timeout and better diagnostics)
           echo "Waiting for MySQL to be ready..."
-          MAX_WAIT=120  # Maximum wait time in seconds (increased for slow startup)
+          MAX_WAIT=300  # Maximum wait time in seconds (increased for slow startup)
           WAIT_COUNT=0
           
           # First, wait for MySQL port to be accessible
