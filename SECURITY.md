@@ -93,6 +93,12 @@ pip-audit --format json --output report.json
 - **Log Redaction**: The logging system includes automatic secret redaction to prevent credentials from appearing in logs. Enable this feature via the `logging.redaction` configuration option in job configs or `--log-redaction` CLI flag.
 - **State Files**: State files may contain sensitive metadata; ensure proper file permissions
 - **Network Access**: Plugins may make external network calls; review plugin code and use network restrictions where possible
+- **Dagster UI Security**: The Dagster web UI (port 3000) does not include built-in authentication. **For production deployments, you MUST secure the Dagster UI** by:
+  - Deploying behind a reverse proxy (Nginx, Apache) with authentication (OAuth, SAML, LDAP, or basic auth)
+  - Placing behind a VPN or private network
+  - Enabling HTTPS/TLS encryption
+  - Restricting access via firewall rules or network policies
+  - See [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) for detailed guidance
 
 ### Encryption at Rest
 

@@ -254,7 +254,9 @@ docker run --rm -p 3000:3000 \
 
 > Omit the `/app/secrets` volume and `--secrets-dir` flag when using non-filesystem secret managers.
 
-**Production Security Note**: For production deployments, ensure that volumes mounted for `/app/state` and `/app/wal` are stored on encrypted filesystems. State and WAL files are not encrypted at rest by default. See [SECURITY.md](SECURITY.md) for detailed encryption-at-rest guidance.
+**Production Security Notes**:
+- **State/WAL Encryption**: Ensure that volumes mounted for `/app/state` and `/app/wal` are stored on encrypted filesystems. State and WAL files are not encrypted at rest by default. See [SECURITY.md](SECURITY.md) for detailed encryption-at-rest guidance.
+- **Dagster UI Security**: The Dagster web UI (port 3000) does not include built-in authentication. **For production deployments, you MUST secure the Dagster UI** by deploying behind a reverse proxy with authentication (OAuth, SAML, LDAP, or basic auth), placing behind a VPN, and enabling HTTPS/TLS. See [SECURITY.md](SECURITY.md) and [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) for detailed guidance.
 
 ## Demo Environment
 
