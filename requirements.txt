@@ -29,6 +29,25 @@ pynessie>=0.60.0
 # Storage access
 boto3>=1.28.0
 
+# Database connectors
+psycopg2-binary>=2.9.0
+mysql-connector-python>=8.0.0
+
+# API connectors
+stripe>=7.0.0
+google-api-python-client>=2.0.0
+google-auth>=2.0.0
+
+# Secret management
+hvac>=2.1.0
+google-cloud-secret-manager>=2.20.0
+
+# Infrastructure
+docker>=6.0.0
+
+# Testing & Mocks
+vcrpy>=5.0.0
+
 # Synthetic data generation
 mimesis>=18.0.0
 
