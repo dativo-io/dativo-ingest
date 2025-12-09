@@ -666,6 +666,28 @@ environment: prod
 
 See [docs/RUNNER_AND_ORCHESTRATION.md](docs/RUNNER_AND_ORCHESTRATION.md) for orchestration details.
 
+### Access Control & RBAC
+
+**Current Limitations**: Dativo does not currently provide multi-user RBAC (Role-Based Access Control). Each deployment is effectively **single-tenant in practice**, with access to jobs and configurations scoped by:
+
+- **File System Structure**: Access control is managed through folder/branch structure in your repository
+- **Git-Based Access**: Use Git repository permissions and branch protection rules to control who can modify job configs
+- **Infrastructure-Level Controls**: Rely on your deployment infrastructure (Kubernetes RBAC, IAM policies, etc.) for access control
+
+**Workarounds for Multi-User Scenarios**:
+- Use separate Git repositories or branches per tenant/team
+- Implement access control at the infrastructure layer (Kubernetes namespaces, IAM roles)
+- Use CI/CD pipelines with branch protection and approval workflows
+- Deploy separate Dativo instances per tenant/team if strict isolation is required
+
+**Roadmap**: RBAC and user isolation features are planned for a future release. This will include:
+- User authentication and authorization
+- Role-based permissions (viewer, operator, admin)
+- Per-tenant user management
+- API-level access controls
+
+Until native RBAC is available, production deployments should implement access control using external layers (Git permissions, infrastructure RBAC, API gateways) as described above.
+
 ## Performance & Scaling
 
 ### Current Performance Characteristics

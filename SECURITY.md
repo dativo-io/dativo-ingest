@@ -62,6 +62,30 @@ When using Dativo-Ingest in production:
 8. **Rotate credentials**: Regularly rotate API keys and database passwords
 9. **Use least privilege**: Grant plugins only the minimum permissions needed
 
+### Vulnerability Scanning
+
+**Automated Scanning**: Vulnerability scanning is integrated into our CI/CD pipeline:
+
+- **Python Dependencies**: All Python dependencies are automatically scanned using `pip-audit` on every commit and pull request
+- **Docker Images**: Plugin container images (e.g., Airbyte connectors) are scanned using Trivy for known vulnerabilities
+- **Build Failures**: CI builds fail if critical or high-severity vulnerabilities are detected in dependencies
+- **Dependabot**: GitHub Dependabot is active and automatically creates pull requests for dependency updates and security patches
+
+**Manual Scanning**: You can also scan dependencies locally:
+
+```bash
+# Install pip-audit
+pip install pip-audit
+
+# Scan dependencies
+pip-audit --desc
+
+# Scan with JSON output
+pip-audit --format json --output report.json
+```
+
+**Reporting Vulnerabilities**: If you discover a vulnerability in Dativo-Ingest or its dependencies, please report it following our [vulnerability reporting process](#reporting-a-vulnerability).
+
 ### Known Security Considerations
 
 - **Python Plugin Sandboxing**: Python plugins run in Docker containers in cloud mode with resource limits and network isolation
