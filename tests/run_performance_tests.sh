@@ -254,11 +254,14 @@ generate_test_data() {
         return
     fi
     
-    # Mark that we generated this file (so cleanup knows it's safe to delete)
-    DATA_FILE_GENERATED=true
-    
-    local file_size=$(du -h "$PERF_TEST_CSV_FILE" | cut -f1)
-    echo -e "${GREEN}✅ Test data generated: $PERF_TEST_CSV_FILE ($file_size)${NC}"
+    # Only mark as generated and report success if file actually exists
+    if [ -f "$PERF_TEST_CSV_FILE" ]; then
+        # Mark that we generated this file (so cleanup knows it's safe to delete)
+        DATA_FILE_GENERATED=true
+        
+        local file_size=$(du -h "$PERF_TEST_CSV_FILE" | cut -f1)
+        echo -e "${GREEN}✅ Test data generated: $PERF_TEST_CSV_FILE ($file_size)${NC}"
+    fi
 }
 
 # Function to build Rust plugins
