@@ -317,6 +317,15 @@ class RustPluginSandbox:
                     retryable=False,
                 )
         else:
+            # Try to load shared seccomp.json file, fall back to default if not found
+            shared_profile_path = Path(__file__).parent / "seccomp.json"
+            if shared_profile_path.exists():
+                try:
+                    with open(shared_profile_path, "r") as f:
+                        return json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    # If file is corrupted or unreadable, fall back to default
+                    pass
             # Return default restrictive profile for security
             # If the Docker environment doesn't support seccomp profiles (e.g., some colima setups),
             # the try/except in _build_container_config will catch the error and continue without it
