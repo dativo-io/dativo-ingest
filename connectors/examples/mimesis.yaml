@@ -8,7 +8,7 @@ default_engine:
   options:
     native:
       library: "mimesis"
-      library_version: "14.0.0"
+      library_version: "18.0.0"
       row_count: 1000  # Default number of rows to generate
       batch_size: 10000  # Batch size for generation
       locale: "en"  # Locale for data generation (en, ru, de, es, fr, etc.)
