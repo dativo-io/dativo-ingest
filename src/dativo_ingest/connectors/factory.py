@@ -110,32 +110,6 @@ class ExtractorFactory:
                 raise ValueError(
                     "HubSpot connector requires connector_recipe for Airbyte engine"
                 )
-        elif source_config.type == "synthetic":
-            # Deprecated: "synthetic" type is deprecated in favor of "mimesis"
-            logger.warning(
-                'Connector type "synthetic" is deprecated. Use "mimesis" instead.',
-                extra={
-                    "deprecated_type": "synthetic",
-                    "recommended_type": "mimesis",
-                    "event_type": "deprecated_connector_type",
-                },
-            )
-            # Treat "synthetic" as "mimesis"
-            from ..config import AssetDefinition
-            from .mimesis_extractor import MimesisExtractor
-
-            # Validate asset_definition is present and correct type
-            if asset_definition is None:
-                raise ValueError(
-                    "Mimesis connector requires asset_definition. "
-                    "Ensure asset is loaded before initializing extractor."
-                )
-            if not isinstance(asset_definition, AssetDefinition):
-                raise ValueError(
-                    f"asset_definition must be AssetDefinition instance, got {type(asset_definition)}"
-                )
-
-            extractor = MimesisExtractor(source_config, asset_definition)
         elif source_config.type == "mimesis":
             from ..config import AssetDefinition
             from .mimesis_extractor import MimesisExtractor
