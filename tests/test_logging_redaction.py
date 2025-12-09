@@ -358,3 +358,64 @@ class TestSecretPatterns:
 
         assert "[REDACTED]" in log_data["message"]
         assert secret_value not in log_data["message"]
+
+    def test_redacts_secrets_in_list_of_dicts(self):
+        """Test that secrets in lists of dictionaries are redacted."""
+        formatter = StructuredJSONFormatter(redact_secrets=True)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="Test message",
+            args=(),
+            exc_info=None,
+        )
+        record.extra_data = {
+            "credentials": [
+                {"username": "user1", "password": "secret123"},
+                {"username": "user2", "api_key": "sk_live_1234567890"},
+            ],
+            "tokens": ["token1", "token2"],
+        }
+
+        result = formatter.format(record)
+        log_data = json.loads(result)
+
+        # Verify secrets in list of dicts are redacted
+        assert log_data["credentials"][0]["password"] == "[REDACTED]"
+        assert log_data["credentials"][0]["username"] == "user1"
+        assert log_data["credentials"][1]["api_key"] == "[REDACTED]"
+        assert log_data["credentials"][1]["username"] == "user2"
+        assert "secret123" not in result
+        assert "sk_live_1234567890" not in result
+
+    def test_redacts_secrets_in_nested_lists(self):
+        """Test that secrets in nested lists are redacted."""
+        formatter = StructuredJSONFormatter(redact_secrets=True)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="Test message",
+            args=(),
+            exc_info=None,
+        )
+        record.extra_data = {
+            "configs": [
+                [
+                    {"password": "secret123"},
+                    {"api_key": "sk_live_1234567890"},
+                ]
+            ],
+        }
+
+        result = formatter.format(record)
+        log_data = json.loads(result)
+
+        # Verify secrets in nested lists are redacted
+        assert log_data["configs"][0][0]["password"] == "[REDACTED]"
+        assert log_data["configs"][0][1]["api_key"] == "[REDACTED]"
+        assert "secret123" not in result
+        assert "sk_live_1234567890" not in result

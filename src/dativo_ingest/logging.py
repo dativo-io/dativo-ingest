@@ -3,7 +3,33 @@
 import json
 import logging
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+
+def _redact_list_values(data: List[Any]) -> List[Any]:
+    """Recursively redact secret values in a list.
+
+    Args:
+        data: List that may contain secrets
+
+    Returns:
+        List with secret values redacted
+    """
+    redacted = []
+    for item in data:
+        if isinstance(item, dict):
+            redacted.append(_redact_dict_values(item))
+        elif isinstance(item, list):
+            redacted.append(_redact_list_values(item))
+        elif isinstance(item, str) and len(item) >= 20:
+            # Redact long strings that look like secrets (base64-like)
+            if re.match(r"^[A-Za-z0-9+/=]{20,}$", item):
+                redacted.append("[REDACTED]")
+            else:
+                redacted.append(item)
+        else:
+            redacted.append(item)
+    return redacted
 
 
 def _redact_dict_values(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -37,6 +63,8 @@ def _redact_dict_values(data: Dict[str, Any]) -> Dict[str, Any]:
 
         if isinstance(value, dict):
             redacted[key] = _redact_dict_values(value)
+        elif isinstance(value, list):
+            redacted[key] = _redact_list_values(value)
         elif isinstance(value, str) and is_secret_key:
             # Redact string values in secret keys
             redacted[key] = "[REDACTED]"
