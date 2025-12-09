@@ -35,6 +35,11 @@ def _redact_list_values(data: List[Any]) -> List[Any]:
 def _redact_dict_values(data: Dict[str, Any]) -> Dict[str, Any]:
     """Recursively redact secret values in a dictionary.
 
+    This function processes dictionaries recursively, handling:
+    - Nested dictionaries (recursively processed)
+    - List values (delegated to _redact_list_values for recursive processing)
+    - String values (redacted if they match secret key patterns or look like secrets)
+
     Args:
         data: Dictionary that may contain secrets
 
