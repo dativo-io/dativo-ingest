@@ -251,6 +251,7 @@ generate_test_data() {
     if [ ! -f "$PERF_TEST_CSV_FILE" ]; then
         echo -e "${YELLOW}⚠️  CSV file not generated. Tests may need to be updated to use Parquet.${NC}"
         # Don't fail here - let tests handle missing file
+        return
     fi
     
     # Mark that we generated this file (so cleanup knows it's safe to delete)
