@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Generate 1GB CSV file for performance testing.
 
+DEPRECATED: This script is deprecated in favor of the mimesis connector.
+            Use configs/jobs/mimesis_perf_test.yaml instead.
+            
+            This script is kept for backward compatibility with existing
+            test infrastructure that expects CSV files.
+
 This script generates a CSV file of approximately 1GB in size for use in
 performance benchmarking tests.
 

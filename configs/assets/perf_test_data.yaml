@@ -1,0 +1,54 @@
+# Performance test data asset definition
+# Matches the schema used by legacy generate_perf_test_data.py script
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: perf_test_data
+version: "1.0"
+source_type: mimesis
+object: perf_test
+
+# Schema definition matching legacy perf test data
+schema:
+  - name: id
+    type: integer
+    required: true
+  - name: name
+    type: string
+    required: true
+  - name: email
+    type: string
+    required: true
+  - name: department
+    type: string
+    required: false
+  - name: salary
+    type: double
+    required: false
+  - name: age
+    type: integer
+    required: false
+  - name: city
+    type: string
+    required: false
+  - name: country
+    type: string
+    required: false
+  - name: status
+    type: string
+    required: false
+  - name: created_at
+    type: timestamp
+    required: false
+
+# Target configuration
+target:
+  file_format: csv
+  partitioning: []
+
+# Governance (required)
+team:
+  owner: data-engineering@example.com
+
+compliance:
+  classification: []  # Synthetic test data

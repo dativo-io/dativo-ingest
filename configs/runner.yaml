@@ -36,5 +36,15 @@ runner:
         cron: "10 1 * * *"
         enabled: false                # Disabled - won't run
         timezone: "UTC"
+      
+      # Synthetic data generation using Mimesis
+      - name: mimesis_customers_daily
+        config: /app/configs/jobs/mimesis.yaml
+        cron: "0 2 * * *"            # 2:00 AM daily
+        enabled: true
+        timezone: "UTC"
+        tags:
+          environment: "dev"
+          priority: "low"
     
     concurrency_per_tenant: 1         # Serialize per-tenant to protect Nessie commits

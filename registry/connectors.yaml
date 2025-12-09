@@ -104,3 +104,12 @@ connectors:
     roles: [source, target]  # Bidirectional - can read and write from MinIO
     default_engine: native
     engines_supported: [native]
+
+  mimesis:
+    roles: [source]  # Source only - synthetic data generation
+    category: synthetic
+    default_engine: native
+    engines_supported: [native]
+    allowed_in_cloud: true
+    supports_incremental: false  # Synthetic data doesn't support incremental
+    objects_supported: ["synthetic"]

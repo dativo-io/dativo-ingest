@@ -1,0 +1,51 @@
+# Performance test: Mimesis synthetic data generation (1M rows) to Parquet
+# This replaces the legacy generate_perf_test_data.py script
+# Generates large dataset for performance benchmarking
+# Note: Writes to Parquet format (CSV writing can be added via custom writer if needed)
+
+tenant_id: acme
+environment: test
+
+# Source connector
+source_connector: mimesis
+source_connector_path: connectors/examples/mimesis.yaml
+
+# Target connector - using Iceberg/Parquet for performance tests
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+
+# Asset definition for performance test
+asset: perf_test_data
+asset_path: configs/assets/perf_test_data.yaml
+
+# Source configuration - generate 1 million rows
+source:
+  type: mimesis
+  object: perf_test
+  engine:
+    type: native
+    options:
+      native:
+        row_count: 1000000  # 1 million rows for performance testing
+
+# Target configuration - write to Parquet (can be converted to CSV if needed)
+target:
+  type: iceberg
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: "${S3_BUCKET}"
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+  # Optional: omit catalog for S3-only writes
+  partitioning: [ingest_date]
+
+# Execution configuration
+schema_validation_mode: warn
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO

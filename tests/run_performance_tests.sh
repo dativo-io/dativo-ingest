@@ -180,7 +180,8 @@ generate_test_data() {
         echo "ℹ️  Skipping data generation (--skip-data-generation flag)"
         if [ ! -f "$PERF_TEST_CSV_FILE" ]; then
             echo -e "${RED}❌ Test data file not found: $PERF_TEST_CSV_FILE${NC}"
-            echo "   Generate it with: python tests/scripts/generate_perf_test_data.py"
+            echo "   Generate it with: python tests/scripts/generate_perf_test_data.py (legacy)"
+            echo "   Or use mimesis connector: dativo_ingest run --config configs/jobs/mimesis_perf_test.yaml"
             exit 1
         fi
         echo -e "${GREEN}✅ Using existing test data: $PERF_TEST_CSV_FILE${NC}"
@@ -206,12 +207,48 @@ generate_test_data() {
         fi
     fi
     
-    echo "Generating 1GB CSV file..."
-    if [ -f "$SCRIPT_DIR/scripts/generate_perf_test_data.py" ]; then
-        python3 "$SCRIPT_DIR/scripts/generate_perf_test_data.py" --output "$PERF_TEST_CSV_FILE"
+    echo "Generating test data using Mimesis connector..."
+    echo "Note: Legacy generate_perf_test_data.py script is deprecated."
+    echo "      Using mimesis connector job: configs/jobs/mimesis_perf_test.yaml"
+    
+    # Use mimesis connector job to generate data
+    # Note: This generates Parquet files. If CSV is needed, convert or update tests.
+    MIAMESIS_JOB_CONFIG="$PROJECT_ROOT/configs/jobs/mimesis_perf_test.yaml"
+    
+    if [ ! -f "$MIAMESIS_JOB_CONFIG" ]; then
+        echo -e "${YELLOW}⚠️  Mimesis job config not found, falling back to legacy script${NC}"
+        if [ -f "$SCRIPT_DIR/scripts/generate_perf_test_data.py" ]; then
+            python3 "$SCRIPT_DIR/scripts/generate_perf_test_data.py" --output "$PERF_TEST_CSV_FILE"
+        else
+            echo -e "${RED}❌ Neither mimesis job config nor legacy script found${NC}"
+            exit 1
+        fi
     else
-        echo -e "${RED}❌ Data generation script not found${NC}"
-        exit 1
+        # Run mimesis job (generates Parquet)
+        # TODO: Convert Parquet to CSV if needed, or update tests to use Parquet
+        echo "Running mimesis connector job..."
+        PYTHONPATH=src python3 -m dativo_ingest.cli run \
+            --config "$MIAMESIS_JOB_CONFIG" \
+            --secrets-dir "$SCRIPT_DIR/fixtures/secrets" \
+            --mode self_hosted || {
+            echo -e "${YELLOW}⚠️  Mimesis job failed, falling back to legacy script${NC}"
+            if [ -f "$SCRIPT_DIR/scripts/generate_perf_test_data.py" ]; then
+                python3 "$SCRIPT_DIR/scripts/generate_perf_test_data.py" --output "$PERF_TEST_CSV_FILE"
+            else
+                echo -e "${RED}❌ Failed to generate test data${NC}"
+                exit 1
+            fi
+        }
+        
+        # For now, if CSV is still needed, use legacy script as fallback
+        # In the future, add Parquet-to-CSV conversion or update tests to use Parquet
+        if [ ! -f "$PERF_TEST_CSV_FILE" ]; then
+            echo -e "${YELLOW}⚠️  Mimesis generates Parquet format. Tests expect CSV.${NC}"
+            echo "   Using legacy script to generate CSV for now..."
+            if [ -f "$SCRIPT_DIR/scripts/generate_perf_test_data.py" ]; then
+                python3 "$SCRIPT_DIR/scripts/generate_perf_test_data.py" --output "$PERF_TEST_CSV_FILE"
+            fi
+        fi
     fi
     
     if [ ! -f "$PERF_TEST_CSV_FILE" ]; then

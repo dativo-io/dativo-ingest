@@ -16,6 +16,7 @@ class ExtractorFactory:
         job_config: JobConfig,
         tenant_id: Optional[str] = None,
         mode: str = "self_hosted",
+        asset_definition: Optional[Any] = None,
     ) -> Tuple[Any, Optional[Dict[str, Any]]]:
         """Create extractor instance based on source configuration.
 
@@ -24,6 +25,7 @@ class ExtractorFactory:
             job_config: Job configuration
             tenant_id: Optional tenant ID
             mode: Execution mode (default: self_hosted)
+            asset_definition: Optional asset definition (required for mimesis connector)
 
         Returns:
             Tuple of (extractor, source_tags). source_tags may be None.
@@ -108,6 +110,20 @@ class ExtractorFactory:
                 raise ValueError(
                     "HubSpot connector requires connector_recipe for Airbyte engine"
                 )
+        elif source_config.type == "mimesis" or source_config.type == "synthetic":
+            from .mimesis_extractor import MimesisExtractor
+            from ..config import AssetDefinition
+
+            if asset_definition is None:
+                raise ValueError(
+                    "Mimesis connector requires asset_definition. "
+                    "Ensure asset is loaded before initializing extractor."
+                )
+            if not isinstance(asset_definition, AssetDefinition):
+                raise ValueError(
+                    f"asset_definition must be AssetDefinition instance, got {type(asset_definition)}"
+                )
+            extractor = MimesisExtractor(source_config, asset_definition)
         elif source_config.type == "csv":
             from .csv_extractor import CSVExtractor
 
