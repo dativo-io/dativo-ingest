@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-01-XX
+
+### Added
+- **Security Audit Documentation**: Comprehensive security audit report
+  - Added `docs/SECURITY_AUDIT.md` with detailed security findings and recommendations
+  - Documented secret management practices and hardcoded credential analysis
+  - Web-facing component security analysis (Dagster UI)
+  - Production deployment security recommendations
+- **Enhanced SECURITY.md**: Comprehensive vulnerability disclosure policy
+  - Clear responsible disclosure instructions with multiple reporting channels
+  - Detailed response timeline (48 hours acknowledgment, 7 days status update)
+  - Versioning policy for security updates (patch versions with backporting)
+  - Coordinated Vulnerability Disclosure practices
+  - Supported versions table with security update status
+  - GitHub Security Advisory integration
+- **Unified Seccomp Profile**: Shared security profile for Python and Rust sandboxes
+  - Created `src/dativo_ingest/seccomp.json` with unified seccomp profile
+  - Based on more permissive Rust profile (includes safe syscalls like `madvise`, `readlink`, `readlinkat`)
+  - Both Python and Rust sandboxes now use the same security profile by default
+  - Improved consistency and reduced maintenance overhead
+- **Dagster Security Logging**: Version and security posture logging
+  - Logs Dagster version on orchestrator startup
+  - Security note about UI authentication requirements in production
+  - Structured logging with event type and security metadata
+
+### Changed
+- **Sandbox Security Profiles**: Unified seccomp profile loading
+  - `sandbox.py` and `rust_sandbox.py` now load from shared `seccomp.json` by default
+  - Fallback to programmatic default if file is missing or corrupted
+  - Improved error handling for seccomp profile loading
+- **Security Documentation**: Enhanced production security guidance
+  - Updated `SECURITY.md` with Dagster UI security warnings
+  - Updated `docs/RUNNER_AND_ORCHESTRATION.md` with security warnings
+  - Updated `README.md` with production security notes
+  - All documentation now emphasizes need for external authentication for Dagster UI
+
+### Fixed
+- Fixed `TypeError` in `sandbox.py` exception handling (`ImageNotFound` not inheriting from `BaseException`)
+- Fixed vulnerability scanning in CI/CD pipeline
+  - `pip-audit` now correctly scans project dependencies from `pyproject.toml`
+  - Added dependency installation step before vulnerability scanning
+
+### Security
+- **[SECURITY]** Enhanced vulnerability disclosure process
+- **[SECURITY]** Added comprehensive security audit documentation
+- **[SECURITY]** Improved sandbox security profile consistency
+- **[SECURITY]** Added Dagster UI security warnings and recommendations
+
+## [Unreleased]
+
 ### Added
 - **WAL Checkpointing**: Write-Ahead Log checkpointing for improved reliability and recovery
   - Automatic checkpoint creation during job execution
@@ -271,4 +321,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.2.0**: Plugin sandboxing and enhanced security
 - **0.3.0**: Unified incremental sync framework
 - **0.3.1**: Major CLI refactoring for maintainability
+- **0.4.0**: Security enhancements, unified seccomp profiles, comprehensive security audit documentation
 - **Unreleased**: Documentation reorganization, demo infrastructure, connector reorganization, and public release preparation

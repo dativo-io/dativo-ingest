@@ -1,6 +1,6 @@
 [project]
 name = "dativo-ingest"
-version = "0.3.1"
+version = "0.4.0"
 description = "Dativo ingestion runner - config-driven data ingestion engine"
 readme = "README.md"
 requires-python = ">=3.10"

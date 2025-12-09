@@ -388,8 +388,19 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
     # In a real deployment, this would use dagster-webserver
     # For now, we'll use the programmatic API
     try:
+        import dagster
         from dagster._core.instance import DagsterInstance
         from dagster._daemon import daemon
+
+        # Log Dagster version and security posture
+        logger.info(
+            f"Dagster version: {dagster.__version__}",
+            extra={
+                "event_type": "dagster_version",
+                "dagster_version": dagster.__version__,
+                "security_note": "Dagster UI requires external authentication (reverse proxy/VPN) for production",
+            },
+        )
 
         instance = DagsterInstance.ephemeral()
         logger.info(

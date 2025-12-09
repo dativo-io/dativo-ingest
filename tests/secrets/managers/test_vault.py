@@ -226,3 +226,157 @@ class TestHashiCorpVaultSecretManager:
         secrets = manager.load_secrets("tenant1")
 
         assert secrets["host"] == "localhost"
+
+    def test_smoke_test_load_secret_successfully(self):
+        """Smoke test: Validate that Vault manager can successfully load a secret at runtime."""
+        mock_client = MagicMock()
+        mock_client.is_authenticated.return_value = True
+        mock_client.secrets.kv.v2.read_secret_version.return_value = {
+            "data": {
+                "data": {
+                    "api_key": "test-api-key-123",
+                    "database_url": "postgres://localhost/db",
+                }
+            }
+        }
+
+        manager = HashicorpVaultSecretManager(
+            address="http://vault.local",
+            token="test-token",
+            client_factory=lambda: mock_client,
+        )
+
+        secrets = manager.load_secrets("tenant1")
+
+        assert "api_key" in secrets
+        assert secrets["api_key"] == "test-api-key-123"
+        assert "database_url" in secrets
+        assert secrets["database_url"] == "postgres://localhost/db"
+        # Note: is_authenticated is not called when using client_factory
+        # because _build_client is bypassed
+        mock_client.secrets.kv.v2.read_secret_version.assert_called_once()
+
+    def test_raises_import_error_when_hvac_missing(self):
+        """Test that ImportError is raised when hvac is not installed."""
+        import sys
+        from unittest.mock import patch
+
+        # Temporarily remove hvac from sys.modules if present
+        hvac_backup = sys.modules.pop("hvac", None)
+        try:
+            with patch.dict("sys.modules", {"hvac": None}):
+                manager = HashicorpVaultSecretManager(
+                    address="http://vault.local",
+                    token="test-token",
+                )
+                with pytest.raises(ImportError, match="hvac is required"):
+                    manager._build_client()
+        finally:
+            if hvac_backup:
+                sys.modules["hvac"] = hvac_backup
+
+    def test_raises_value_error_when_token_missing(self):
+        """Test that ValueError is raised when token is missing for token auth."""
+        import sys
+        from unittest.mock import MagicMock
+
+        # Mock hvac module to avoid ImportError
+        mock_hvac = MagicMock()
+        mock_client = MagicMock()
+        mock_hvac.Client.return_value = mock_client
+
+        # Temporarily add hvac to sys.modules so the import succeeds
+        hvac_backup = sys.modules.get("hvac")
+        sys.modules["hvac"] = mock_hvac
+        try:
+            with pytest.raises(ValueError, match="Vault token is required"):
+                HashicorpVaultSecretManager(
+                    address="http://vault.local",
+                    auth_method="token",
+                    token=None,
+                )._build_client()
+        finally:
+            if hvac_backup:
+                sys.modules["hvac"] = hvac_backup
+            elif "hvac" in sys.modules:
+                del sys.modules["hvac"]
+
+    def test_raises_value_error_when_approle_credentials_missing(self):
+        """Test that ValueError is raised when role_id or secret_id is missing for approle auth."""
+        import sys
+        from unittest.mock import MagicMock
+
+        # Mock hvac module to avoid ImportError
+        mock_hvac = MagicMock()
+        mock_client = MagicMock()
+        mock_hvac.Client.return_value = mock_client
+
+        # Temporarily add hvac to sys.modules so the import succeeds
+        hvac_backup = sys.modules.get("hvac")
+        sys.modules["hvac"] = mock_hvac
+        try:
+            with pytest.raises(ValueError, match="role_id and secret_id are required"):
+                HashicorpVaultSecretManager(
+                    address="http://vault.local",
+                    auth_method="approle",
+                    role_id=None,
+                    secret_id="test-secret-id",
+                )._build_client()
+
+            with pytest.raises(ValueError, match="role_id and secret_id are required"):
+                HashicorpVaultSecretManager(
+                    address="http://vault.local",
+                    auth_method="approle",
+                    role_id="test-role-id",
+                    secret_id=None,
+                )._build_client()
+        finally:
+            if hvac_backup:
+                sys.modules["hvac"] = hvac_backup
+            elif "hvac" in sys.modules:
+                del sys.modules["hvac"]
+
+    def test_raises_value_error_when_authentication_fails(self):
+        """Test that ValueError is raised when Vault authentication fails."""
+        import sys
+        from unittest.mock import MagicMock
+
+        # Mock hvac module and client that fails authentication
+        mock_hvac_module = MagicMock()
+        mock_client = MagicMock()
+        mock_client.is_authenticated.return_value = False
+        mock_hvac_module.Client.return_value = mock_client
+
+        # Temporarily add hvac to sys.modules so the import succeeds
+        hvac_backup = sys.modules.get("hvac")
+        sys.modules["hvac"] = mock_hvac_module
+        try:
+            manager = HashicorpVaultSecretManager(
+                address="http://vault.local",
+                token="invalid-token",
+            )
+
+            with pytest.raises(ValueError, match="Vault authentication failed"):
+                manager._build_client()
+        finally:
+            if hvac_backup:
+                sys.modules["hvac"] = hvac_backup
+            elif "hvac" in sys.modules:
+                del sys.modules["hvac"]
+
+    def test_handles_missing_secret_path_gracefully(self):
+        """Test that missing secret paths return empty dict rather than raising exception."""
+        mock_client = MagicMock()
+        mock_client.is_authenticated.return_value = True
+        # Simulate path not found - Vault returns None or empty response
+        mock_client.secrets.kv.v2.read_secret_version.return_value = None
+
+        manager = HashicorpVaultSecretManager(
+            address="http://vault.local",
+            token="test-token",
+            client_factory=lambda: mock_client,
+        )
+
+        secrets = manager.load_secrets("tenant1")
+
+        assert secrets == {}

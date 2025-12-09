@@ -254,6 +254,10 @@ docker run --rm -p 3000:3000 \
 
 > Omit the `/app/secrets` volume and `--secrets-dir` flag when using non-filesystem secret managers.
 
+**Production Security Notes**:
+- **State/WAL Encryption**: Ensure that volumes mounted for `/app/state` and `/app/wal` are stored on encrypted filesystems. State and WAL files are not encrypted at rest by default. See [SECURITY.md](SECURITY.md) for detailed encryption-at-rest guidance.
+- **Dagster UI Security**: The Dagster web UI (port 3000) does not include built-in authentication. **For production deployments, you MUST secure the Dagster UI** by deploying behind a reverse proxy with authentication (OAuth, SAML, LDAP, or basic auth), placing behind a VPN, and enabling HTTPS/TLS. See [SECURITY.md](SECURITY.md) and [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) for detailed guidance.
+
 ## Demo Environment
 
 **NEW!** One-command demo environment:
@@ -663,6 +667,28 @@ environment: prod
 - **Resource Quotas**: (Future) Tenant-level resource limits
 
 See [docs/RUNNER_AND_ORCHESTRATION.md](docs/RUNNER_AND_ORCHESTRATION.md) for orchestration details.
+
+### Access Control & RBAC
+
+**Current Limitations**: Dativo does not currently provide multi-user RBAC (Role-Based Access Control). Each deployment is effectively **single-tenant in practice**, with access to jobs and configurations scoped by:
+
+- **File System Structure**: Access control is managed through folder/branch structure in your repository
+- **Git-Based Access**: Use Git repository permissions and branch protection rules to control who can modify job configs
+- **Infrastructure-Level Controls**: Rely on your deployment infrastructure (Kubernetes RBAC, IAM policies, etc.) for access control
+
+**Workarounds for Multi-User Scenarios**:
+- Use separate Git repositories or branches per tenant/team
+- Implement access control at the infrastructure layer (Kubernetes namespaces, IAM roles)
+- Use CI/CD pipelines with branch protection and approval workflows
+- Deploy separate Dativo instances per tenant/team if strict isolation is required
+
+**Roadmap**: RBAC and user isolation features are planned for a future release. This will include:
+- User authentication and authorization
+- Role-based permissions (viewer, operator, admin)
+- Per-tenant user management
+- API-level access controls
+
+Until native RBAC is available, production deployments should implement access control using external layers (Git permissions, infrastructure RBAC, API gateways) as described above.
 
 ## Performance & Scaling
 

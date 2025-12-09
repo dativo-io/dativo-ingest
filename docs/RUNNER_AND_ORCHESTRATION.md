@@ -155,6 +155,12 @@ docker run --rm -p 3000:3000 \
 - URL: `http://localhost:3000`
 - View job schedules, execution history, and logs
 
+**⚠️ Security Warning**: The Dagster UI does not include built-in authentication. For production deployments:
+- **MUST** be placed behind a reverse proxy with authentication (OAuth, SAML, LDAP, or basic auth)
+- **MUST** be placed behind a VPN or private network
+- **MUST** use HTTPS/TLS encryption
+- See [SECURITY.md](../SECURITY.md) and [docs/SECURITY_AUDIT.md](SECURITY_AUDIT.md) for production security guidance
+
 ### Oneshot Mode
 
 Run a single job:
