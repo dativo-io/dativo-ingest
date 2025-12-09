@@ -27,6 +27,10 @@ source:
     options:
       native:
         row_count: 1000000  # 1 million rows for performance testing
+        batch_size: 50000  # Larger batch size for performance
+        locale: "en"
+        seed: null  # No seed for performance testing (faster)
+        null_probability: 0.1
 
 # Target configuration - write to Parquet (can be converted to CSV if needed)
 target:

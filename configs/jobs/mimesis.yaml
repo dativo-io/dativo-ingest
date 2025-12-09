@@ -26,6 +26,10 @@ source:
     options:
       native:
         row_count: 1000  # Number of rows to generate (default: 1000)
+        batch_size: 10000  # Batch size for generation (default: 10000)
+        locale: "en"  # Locale for data generation (default: "en")
+        seed: 42  # Optional seed for reproducible generation
+        null_probability: 0.1  # Probability of None for optional fields (default: 0.1)
 
 # Target configuration
 target:

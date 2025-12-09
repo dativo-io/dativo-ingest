@@ -10,6 +10,15 @@ default_engine:
       library: "mimesis"
       library_version: "14.0.0"
       row_count: 1000  # Default number of rows to generate
+      batch_size: 10000  # Batch size for generation
+      locale: "en"  # Locale for data generation (en, ru, de, es, fr, etc.)
+      seed: null  # Optional seed for reproducible generation (int or string)
+      null_probability: 0.1  # Probability of None for optional fields (0.0-1.0)
+      integer_start: 1  # Start range for integer fields
+      integer_end: 1000000  # End range for integer fields
+      float_start: 0.0  # Start range for float fields
+      float_end: 10000.0  # End range for float fields
+      float_precision: 2  # Decimal precision for float fields
 credentials:
   type: none  # No credentials needed for synthetic data
 incremental:
