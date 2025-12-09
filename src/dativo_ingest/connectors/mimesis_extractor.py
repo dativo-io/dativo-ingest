@@ -40,6 +40,15 @@ class MimesisExtractor:
         mimesis_seed = seed_value  # Use same canonicalized seed for Mimesis
         self.field = Field(locale=locale, seed=mimesis_seed)
 
+        # Initialize ID counter with seed-based offset for deterministic but seed-dependent IDs
+        # This ensures sequential IDs that differ based on seed
+        if seed_value is not None:
+            # Use seed to determine starting ID (modulo to keep it reasonable)
+            self._id_counter = (abs(seed_value) % 1000000) + 1
+        else:
+            # No seed - start from 1
+            self._id_counter = 1
+
         # Check if ingest_date is in schema
         self.ingest_date_field = self._find_ingest_date_field()
 
@@ -210,15 +219,18 @@ class MimesisExtractor:
         # Priority: more specific patterns first
         if field_type == "integer":
             if "id" in field_name:
-                # Sequential ID (most specific)
-                def gen_increment():
-                    return self.field("increment")
+                # Sequential ID with seed-based starting offset
+                # This ensures sequential IDs that differ based on seed
+                def gen_id():
+                    current_id = self._id_counter
+                    self._id_counter += 1
+                    return current_id
 
-                generator = gen_increment
+                generator = gen_id
             elif "age" in field_name:
-                # Age (18-80)
+                # Age (18-80) - use numeric.integer_number since person.age doesn't exist
                 def gen_age():
-                    return self.field("person.age", minimum=18, maximum=80)
+                    return self.field("numeric.integer_number", start=18, end=80)
 
                 generator = gen_age
             elif "salary" in field_name:
@@ -334,9 +346,22 @@ class MimesisExtractor:
 
                 generator = gen_job
             elif "department" in field_name:
-
+                # Department - use choice with common department names
+                # business.company_type doesn't exist in Mimesis
                 def gen_department():
-                    return self.field("business.company_type")
+                    return self.field(
+                        "choice",
+                        items=[
+                            "Engineering",
+                            "Sales",
+                            "Marketing",
+                            "HR",
+                            "Finance",
+                            "Operations",
+                            "Support",
+                            "Product",
+                        ],
+                    )
 
                 generator = gen_department
             elif "status" in field_name:
