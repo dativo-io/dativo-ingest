@@ -110,11 +110,22 @@ class ExtractorFactory:
                 raise ValueError(
                     "HubSpot connector requires connector_recipe for Airbyte engine"
                 )
-        elif source_config.type == "mimesis":
-            # Note: "synthetic" is deprecated, use "mimesis" instead
+        elif source_config.type in ("mimesis", "synthetic"):
+            # Handle both "mimesis" (canonical) and "synthetic" (deprecated alias)
+            if source_config.type == "synthetic":
+                logger.warning(
+                    "Connector type 'synthetic' is deprecated. Use 'mimesis' instead.",
+                    extra={
+                        "event_type": "deprecated_connector_type",
+                        "old_type": "synthetic",
+                        "new_type": "mimesis",
+                    },
+                )
+
             from .mimesis_extractor import MimesisExtractor
             from ..config import AssetDefinition
 
+            # Validate asset_definition is present and correct type
             if asset_definition is None:
                 raise ValueError(
                     "Mimesis connector requires asset_definition. "
@@ -124,30 +135,7 @@ class ExtractorFactory:
                 raise ValueError(
                     f"asset_definition must be AssetDefinition instance, got {type(asset_definition)}"
                 )
-            extractor = MimesisExtractor(source_config, asset_definition)
-        elif source_config.type == "synthetic":
-            # Deprecated: "synthetic" is an alias for "mimesis"
-            # Use "mimesis" in new configurations
-            logger.warning(
-                "Connector type 'synthetic' is deprecated. Use 'mimesis' instead.",
-                extra={
-                    "event_type": "deprecated_connector_type",
-                    "old_type": "synthetic",
-                    "new_type": "mimesis",
-                },
-            )
-            from .mimesis_extractor import MimesisExtractor
-            from ..config import AssetDefinition
 
-            if asset_definition is None:
-                raise ValueError(
-                    "Mimesis connector requires asset_definition. "
-                    "Ensure asset is loaded before initializing extractor."
-                )
-            if not isinstance(asset_definition, AssetDefinition):
-                raise ValueError(
-                    f"asset_definition must be AssetDefinition instance, got {type(asset_definition)}"
-                )
             extractor = MimesisExtractor(source_config, asset_definition)
         elif source_config.type == "csv":
             from .csv_extractor import CSVExtractor

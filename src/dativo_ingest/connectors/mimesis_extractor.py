@@ -2,7 +2,7 @@
 
 import random
 from datetime import date, datetime, timezone
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from mimesis import Field, Schema
 from mimesis.locales import Locale
@@ -25,28 +25,19 @@ class MimesisExtractor:
         self.asset_definition = asset_definition
         self.logger = get_logger()
 
-        # Parse engine options with defaults
+        # Parse engine options with defaults and validation
         self.options = self._parse_engine_options()
 
-        # Initialize random seed if provided
-        if self.options["seed"] is not None:
-            seed_value = (
-                int(self.options["seed"])
-                if isinstance(self.options["seed"], (int, str)) and str(self.options["seed"]).isdigit()
-                else hash(str(self.options["seed"]))
-            )
-            random.seed(seed_value)
+        # Initialize instance-based RNG (not global random)
+        seed_value = self._canonicalize_seed(self.options["seed"])
+        if seed_value is not None:
+            self.random = random.Random(seed_value)
+        else:
+            self.random = random.Random()
 
         # Initialize Mimesis field generator with locale and seed
         locale = self._get_locale(self.options["locale"])
-        mimesis_seed = self.options["seed"]
-        if mimesis_seed is not None:
-            # Convert seed to int for Mimesis
-            mimesis_seed = (
-                int(mimesis_seed)
-                if isinstance(mimesis_seed, (int, str)) and str(mimesis_seed).isdigit()
-                else hash(str(mimesis_seed))
-            )
+        mimesis_seed = seed_value  # Use same canonicalized seed for Mimesis
         self.field = Field(locale=locale, seed=mimesis_seed)
 
         # Check if ingest_date is in schema
@@ -55,11 +46,32 @@ class MimesisExtractor:
         # Build schema mapping
         self.schema_fields = self._build_schema_fields()
 
+    def _canonicalize_seed(self, seed: Any) -> Optional[int]:
+        """Canonicalize seed value to integer or None.
+
+        Args:
+            seed: Seed value (int, string, or None)
+
+        Returns:
+            Canonicalized integer seed or None
+        """
+        if seed is None:
+            return None
+        if isinstance(seed, int):
+            return seed
+        if isinstance(seed, str) and seed.isdigit():
+            return int(seed)
+        # Hash string seeds to integer
+        return hash(str(seed))
+
     def _parse_engine_options(self) -> Dict[str, Any]:
-        """Parse engine options from source config with defaults.
+        """Parse engine options from source config with defaults and validation.
 
         Returns:
             Dictionary of parsed options with defaults applied
+
+        Raises:
+            ValueError: If any option has an invalid value
         """
         defaults = {
             "row_count": 1000,
@@ -93,7 +105,7 @@ class MimesisExtractor:
 
         # Type conversions
         if options["seed"] is not None:
-            # Keep as-is (can be int or string)
+            # Keep as-is for canonicalization later
             pass
         options["row_count"] = int(options["row_count"])
         options["batch_size"] = int(options["batch_size"])
@@ -103,6 +115,28 @@ class MimesisExtractor:
         options["float_start"] = float(options["float_start"])
         options["float_end"] = float(options["float_end"])
         options["float_precision"] = int(options["float_precision"])
+
+        # Validation
+        if options["row_count"] < 0:
+            raise ValueError(
+                f"row_count must be >= 0, got {options['row_count']}"
+            )
+        if options["batch_size"] <= 0:
+            raise ValueError(
+                f"batch_size must be > 0, got {options['batch_size']}"
+            )
+        if not (0.0 <= options["null_probability"] <= 1.0):
+            raise ValueError(
+                f"null_probability must be between 0.0 and 1.0, got {options['null_probability']}"
+            )
+        if options["integer_end"] < options["integer_start"]:
+            raise ValueError(
+                f"integer_end ({options['integer_end']}) must be >= integer_start ({options['integer_start']})"
+            )
+        if options["float_end"] < options["float_start"]:
+            raise ValueError(
+                f"float_end ({options['float_end']}) must be >= float_start ({options['float_start']})"
+            )
 
         return options
 
@@ -141,14 +175,30 @@ class MimesisExtractor:
                 return field
         return None
 
-    def _map_field_to_mimesis(self, field: Dict[str, Any]) -> Any:
+    def _map_field_to_mimesis(self, field: Dict[str, Any]) -> Optional[Callable[[], Any]]:
         """Map Dativo field definition to Mimesis field generator.
+
+        Field mapping priority (most specific first):
+        - Integer: id → sequential, age → 18-80, salary → 30k-200k, else → configured range
+        - Float: salary/amount/balance → monetary (0-100k, 2 decimals),
+                commission/pct/percentage → 0-1 (4 decimals),
+                else → configured range/precision
+        - String: email → email, first_name/last_name → name parts,
+                  full_name/name → full name, company → company,
+                  job/role/title → occupation, department → company_type,
+                  status → choice, phone/mobile/telephone → phone,
+                  street/address → address, city → city,
+                  state/province → state, country → country,
+                  zip/postal → zip_code, else → word
+        - Date: → ISO date string
+        - Timestamp/Datetime: → ISO datetime string
+        - Boolean: → True/False choice
 
         Args:
             field: Field definition from asset schema
 
         Returns:
-            Mimesis field generator function
+            Mimesis field generator function, or None if field should be skipped
         """
         field_name = field.get("name", "").lower()
         field_type = field.get("type", "string").lower()
@@ -162,7 +212,7 @@ class MimesisExtractor:
         # Priority: more specific patterns first
         if field_type == "integer":
             if "id" in field_name:
-                # Sequential ID
+                # Sequential ID (most specific)
                 def gen_increment():
                     return self.field("increment")
 
@@ -182,7 +232,7 @@ class MimesisExtractor:
 
                 generator = gen_salary
             else:
-                # Random integer with configured range
+                # Random integer with configured range (fallback)
                 def gen_integer():
                     return self.field(
                         "numeric.integer_number",
@@ -194,7 +244,7 @@ class MimesisExtractor:
 
         elif field_type in ("double", "float", "decimal"):
             if "salary" in field_name or "amount" in field_name or "balance" in field_name:
-                # Monetary values (0-100k, 2 decimals)
+                # Monetary values (0-100k, 2 decimals) - most specific
                 def gen_monetary():
                     value = self.field(
                         "numeric.float_number", start=0.0, end=100_000.0
@@ -210,7 +260,7 @@ class MimesisExtractor:
 
                 generator = gen_percentage
             else:
-                # Random float with configured range and precision
+                # Random float with configured range and precision (fallback)
                 def gen_float():
                     value = self.field(
                         "numeric.float_number",
@@ -234,23 +284,32 @@ class MimesisExtractor:
             generator = gen_datetime
 
         elif field_type == "string":
-            # String patterns - most specific first
+            # String patterns - most specific first to avoid shadowing
             if "email" in field_name:
                 def gen_email():
                     return self.field("person.email")
 
                 generator = gen_email
             elif "first_name" in field_name or field_name == "firstname":
+                # More specific than "name"
                 def gen_first_name():
                     return self.field("person.first_name")
 
                 generator = gen_first_name
             elif "last_name" in field_name or field_name == "lastname":
+                # More specific than "name"
                 def gen_last_name():
                     return self.field("person.last_name")
 
                 generator = gen_last_name
-            elif "full_name" in field_name or "name" in field_name:
+            elif "full_name" in field_name:
+                # More specific than just "name"
+                def gen_full_name():
+                    return self.field("person.full_name")
+
+                generator = gen_full_name
+            elif "name" in field_name:
+                # Generic name (after first_name, last_name, full_name)
                 def gen_name():
                     return self.field("person.full_name")
 
@@ -280,7 +339,13 @@ class MimesisExtractor:
                     return self.field("person.telephone")
 
                 generator = gen_phone
-            elif "street" in field_name or "address" in field_name:
+            elif "street" in field_name:
+                # More specific than "address"
+                def gen_street():
+                    return self.field("address.address")
+
+                generator = gen_street
+            elif "address" in field_name:
                 def gen_address():
                     return self.field("address.address")
 
@@ -306,7 +371,7 @@ class MimesisExtractor:
 
                 generator = gen_zip
             else:
-                # Default: random word
+                # Default: random word (fallback)
                 def gen_word():
                     return self.field("text.word")
 
@@ -325,13 +390,14 @@ class MimesisExtractor:
             generator = gen_word_fallback
 
         # Wrap with nullability if not required
+        # Use instance-based RNG (self.random) instead of global random
         if not required:
             original_generator = generator
             null_prob = self.options["null_probability"]
 
             def optional_generator():
-                # Use configured null_probability
-                if random.random() < null_prob:
+                # Use configured null_probability with instance RNG
+                if self.random.random() < null_prob:
                     return None
                 return original_generator()
 
@@ -339,7 +405,7 @@ class MimesisExtractor:
 
         return generator
 
-    def _build_schema_fields(self) -> Dict[str, Any]:
+    def _build_schema_fields(self) -> Dict[str, Callable[[], Any]]:
         """Build Mimesis schema fields from asset definition.
 
         Returns:
@@ -367,13 +433,17 @@ class MimesisExtractor:
 
         Returns:
             ingest_date value (date object, ISO string, or timestamp)
+            - If schema defines ingest_date as date → Python date object
+            - If schema defines ingest_date as string → ISO date string (YYYY-MM-DD)
+            - If schema defines ingest_date as timestamp/datetime → ISO datetime string with UTC
+            - If not in schema → Python date object (default)
         """
         current_date = datetime.now(timezone.utc).date()
 
         if self.ingest_date_field:
             field_type = self.ingest_date_field.get("type", "date").lower()
-            if field_type == "timestamp" or field_type == "datetime":
-                # Return datetime as ISO string
+            if field_type in ("timestamp", "datetime"):
+                # Return datetime as ISO string with UTC timezone
                 return datetime.combine(current_date, datetime.min.time()).replace(
                     tzinfo=timezone.utc
                 ).isoformat()
@@ -381,7 +451,7 @@ class MimesisExtractor:
                 # Return as ISO date string
                 return current_date.isoformat()
             else:
-                # Default: date object
+                # Default: date object (for type: date or unknown)
                 return current_date
         else:
             # Not in schema, add as date object
@@ -401,6 +471,17 @@ class MimesisExtractor:
         Yields:
             Batches of records as dictionaries
         """
+        # Handle edge case: row_count == 0
+        if self.options["row_count"] == 0:
+            self.logger.info(
+                "row_count is 0, skipping data generation",
+                extra={
+                    "row_count": 0,
+                    "event_type": "mimesis_generation_skipped",
+                },
+            )
+            return
+
         self.logger.info(
             f"Generating {self.options['row_count']} synthetic records using Mimesis",
             extra={
@@ -432,7 +513,7 @@ class MimesisExtractor:
             # Generate batch
             batch_data = schema.create(iterations=batch_count)
 
-            # Add ingest_date column to all records
+            # Add ingest_date column to all records (always present)
             for record in batch_data:
                 record["ingest_date"] = ingest_date_value
 
@@ -472,6 +553,8 @@ class MimesisExtractor:
         Returns:
             Dictionary with "tags" key containing field metadata.
             For synthetic data, fields are marked as "synthetic".
+            Note: ingest_date is included if present in schema, but is always
+            generated regardless of schema presence.
         """
         source_tags = {}
         for field in self.asset_definition.schema:

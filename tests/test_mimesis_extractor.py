@@ -68,14 +68,17 @@ class TestMimesisExtractorBasic:
         assert len(batches[2]) == 5
 
     def test_seed_reproducibility(self):
-        """Test that same seed produces identical output."""
-        schema = [{"name": "id", "type": "integer", "required": True}]
+        """Test that same seed produces identical output using instance-based RNG."""
+        schema = [
+            {"name": "id", "type": "integer", "required": True},
+            {"name": "name", "type": "string", "required": False},  # Optional field uses RNG
+        ]
         asset = create_minimal_asset_definition(schema)
         source_config1 = create_source_config(
-            {"native": {"row_count": 5, "seed": 42}}
+            {"native": {"row_count": 10, "seed": 42, "null_probability": 0.3}}
         )
         source_config2 = create_source_config(
-            {"native": {"row_count": 5, "seed": 42}}
+            {"native": {"row_count": 10, "seed": 42, "null_probability": 0.3}}
         )
 
         extractor1 = MimesisExtractor(source_config1, asset)
@@ -84,6 +87,7 @@ class TestMimesisExtractorBasic:
         batches1 = list(extractor1.extract())
         batches2 = list(extractor2.extract())
 
+        # Should be identical with same seed (including nullability decisions)
         assert batches1 == batches2
 
     def test_different_seeds_produce_different_output(self):
@@ -537,3 +541,128 @@ class TestMimesisExtractorConfiguration:
         assert "tags" in metadata
         assert metadata["tags"]["id"] == "synthetic"
         assert metadata["tags"]["name"] == "synthetic"
+
+    def test_row_count_zero(self):
+        """Test that row_count=0 yields no batches."""
+        schema = [{"name": "id", "type": "integer", "required": True}]
+        asset = create_minimal_asset_definition(schema)
+        source_config = create_source_config({"native": {"row_count": 0}})
+
+        extractor = MimesisExtractor(source_config, asset)
+        batches = list(extractor.extract())
+
+        assert len(batches) == 0
+
+    def test_engine_options_validation_negative_row_count(self):
+        """Test that negative row_count raises ValueError."""
+        schema = [{"name": "id", "type": "integer", "required": True}]
+        asset = create_minimal_asset_definition(schema)
+        source_config = create_source_config({"native": {"row_count": -1}})
+
+        with pytest.raises(ValueError, match="row_count must be >= 0"):
+            MimesisExtractor(source_config, asset)
+
+    def test_engine_options_validation_zero_batch_size(self):
+        """Test that batch_size=0 raises ValueError."""
+        schema = [{"name": "id", "type": "integer", "required": True}]
+        asset = create_minimal_asset_definition(schema)
+        source_config = create_source_config(
+            {"native": {"row_count": 10, "batch_size": 0}}
+        )
+
+        with pytest.raises(ValueError, match="batch_size must be > 0"):
+            MimesisExtractor(source_config, asset)
+
+    def test_engine_options_validation_invalid_null_probability(self):
+        """Test that null_probability outside [0,1] raises ValueError."""
+        schema = [{"name": "id", "type": "integer", "required": True}]
+        asset = create_minimal_asset_definition(schema)
+
+        # Test > 1.0
+        source_config1 = create_source_config(
+            {"native": {"null_probability": 2.0}}
+        )
+        with pytest.raises(ValueError, match="null_probability must be between"):
+            MimesisExtractor(source_config1, asset)
+
+        # Test < 0.0
+        source_config2 = create_source_config(
+            {"native": {"null_probability": -0.1}}
+        )
+        with pytest.raises(ValueError, match="null_probability must be between"):
+            MimesisExtractor(source_config2, asset)
+
+    def test_engine_options_validation_invalid_integer_range(self):
+        """Test that integer_end < integer_start raises ValueError."""
+        schema = [{"name": "id", "type": "integer", "required": True}]
+        asset = create_minimal_asset_definition(schema)
+        source_config = create_source_config(
+            {"native": {"integer_start": 100, "integer_end": 50}}
+        )
+
+        with pytest.raises(ValueError, match="integer_end.*must be >= integer_start"):
+            MimesisExtractor(source_config, asset)
+
+    def test_engine_options_validation_invalid_float_range(self):
+        """Test that float_end < float_start raises ValueError."""
+        schema = [{"name": "value", "type": "double", "required": True}]
+        asset = create_minimal_asset_definition(schema)
+        source_config = create_source_config(
+            {"native": {"float_start": 100.0, "float_end": 50.0}}
+        )
+
+        with pytest.raises(ValueError, match="float_end.*must be >= float_start"):
+            MimesisExtractor(source_config, asset)
+
+    def test_field_mapping_priority_first_name_before_name(self):
+        """Test that first_name is more specific than name."""
+        schema = [
+            {"name": "first_name", "type": "string", "required": True},
+            {"name": "name", "type": "string", "required": True},
+        ]
+        asset = create_minimal_asset_definition(schema)
+        source_config = create_source_config({"native": {"row_count": 5}})
+
+        extractor = MimesisExtractor(source_config, asset)
+        batches = list(extractor.extract())
+
+        for record in batches[0]:
+            # first_name should be a single name (not full name)
+            assert isinstance(record["first_name"], str)
+            assert " " not in record["first_name"]  # Should not contain space
+            # name should be full name (contains space)
+            assert isinstance(record["name"], str)
+            assert " " in record["name"]  # Full name contains space
+
+    def test_field_mapping_fallback_generic_string(self):
+        """Test that unknown string fields use generic word generator."""
+        schema = [{"name": "foo_bar", "type": "string", "required": True}]
+        asset = create_minimal_asset_definition(schema)
+        source_config = create_source_config({"native": {"row_count": 5}})
+
+        extractor = MimesisExtractor(source_config, asset)
+        batches = list(extractor.extract())
+
+        for record in batches[0]:
+            # Should be non-empty string (generic word generator)
+            assert isinstance(record["foo_bar"], str)
+            assert len(record["foo_bar"]) > 0
+
+    def test_ingest_date_optional_but_always_present(self):
+        """Test that ingest_date is always present even if optional in schema."""
+        schema = [
+            {"name": "id", "type": "integer", "required": True},
+            {"name": "ingest_date", "type": "date", "required": False},
+        ]
+        asset = create_minimal_asset_definition(schema)
+        source_config = create_source_config({"native": {"row_count": 5}})
+
+        extractor = MimesisExtractor(source_config, asset)
+        batches = list(extractor.extract())
+
+        for batch in batches:
+            for record in batch:
+                # Should always be present even if optional
+                assert "ingest_date" in record
+                assert record["ingest_date"] is not None
+                assert isinstance(record["ingest_date"], date)

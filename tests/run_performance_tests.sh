@@ -230,8 +230,9 @@ generate_test_data() {
     }
     
     # Note: Mimesis generates Parquet files, not CSV
+    # Future work: Migrate tests to read Parquet directly, removing CSV fallback
     # If CSV is specifically needed for tests, consider:
-    # 1. Updating tests to read Parquet instead
+    # 1. Updating tests to read Parquet instead (preferred)
     # 2. Adding a Parquet-to-CSV conversion step
     # 3. Using a custom CSV writer plugin
     
