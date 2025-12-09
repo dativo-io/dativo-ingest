@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Generate 1GB CSV file for performance testing.
 
-This script generates a CSV file of approximately 1GB in size for use in
-performance benchmarking tests.
+**DEPRECATED**: This script has been replaced by the Mimesis connector.
+Use the job config instead:
+    python -m dativo_ingest.cli execute tests/fixtures/jobs/mimesis_perf_test.yaml
 
-Usage:
+To generate a specific number of rows, edit the row_count in the job config or use:
+    tests/fixtures/assets/mimesis/v1.0/perf_test_data.yaml
+
+This legacy script is kept for backwards compatibility but may be removed in a future version.
+
+Legacy Usage:
     python tests/scripts/generate_perf_test_data.py [--size-gb SIZE] [--output OUTPUT]
 """
 

@@ -1,0 +1,76 @@
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+id: 550e8400-e29b-41d4-a716-446655440100
+name: mimesis_perf_test_data
+version: "1.0"
+status: active
+domain: dativo
+dataProduct: performance_test
+tenant: perf_test_tenant
+description:
+  purpose: "Synthetic performance test dataset generated with Mimesis"
+  limitations: "Generated test data - not for production use"
+  usage: "Used for performance benchmarking and testing"
+tags: [performance, test-data, benchmark, synthetic]
+# Dativo extensions
+source_type: mimesis
+object: PerformanceTestData
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+  mode: warn
+schema:
+  - name: id
+    type: integer
+    required: true
+    description: "Unique record identifier"
+  - name: name
+    type: string
+    required: true
+    description: "Person name"
+  - name: email
+    type: string
+    required: true
+    description: "Email address"
+  - name: department
+    type: string
+    required: true
+    description: "Department name"
+  - name: salary
+    type: integer
+    required: true
+    description: "Annual salary"
+  - name: age
+    type: integer
+    required: true
+    description: "Person age"
+  - name: city
+    type: string
+    required: true
+    description: "City name"
+  - name: country
+    type: string
+    required: true
+    description: "Country name"
+  - name: status
+    type: string
+    required: true
+    description: "Status"
+  - name: created_at
+    type: timestamp
+    required: true
+    description: "Creation timestamp"
+data_quality:
+  expectations: []
+  monitoring:
+    enabled: false
+team:
+  owner: test-team@company.com
+compliance:
+  classification: []
+  regulations: []
+  retention_days: 1
+  security:
+    access_control: public
+    encryption_required: false

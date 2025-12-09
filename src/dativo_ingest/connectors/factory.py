@@ -120,6 +120,12 @@ class ExtractorFactory:
             from .mysql_extractor import MySQLExtractor
 
             extractor = MySQLExtractor(source_config)
+        elif source_config.type in ("mimesis", "synthetic"):
+            from .mimesis_extractor import MimesisExtractor
+
+            # Pass asset_path from job_config if available
+            asset_path = getattr(job_config, "asset_path", None)
+            extractor = MimesisExtractor(source_config, asset_path=asset_path)
         elif engine_type == "airbyte":
             from .engine_framework import AirbyteExtractor
 

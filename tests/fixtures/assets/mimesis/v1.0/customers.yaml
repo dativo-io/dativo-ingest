@@ -1,0 +1,80 @@
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+id: 550e8400-e29b-41d4-a716-446655440099
+name: mimesis_customers
+version: "1.0"
+status: active
+domain: dativo
+dataProduct: synthetic_customers
+tenant: test_tenant
+description:
+  purpose: "Synthetic customer dataset generated with Mimesis"
+  limitations: "Generated test data - not real customer information"
+  usage: "Used for testing, development, and demonstrations"
+tags: [customers, synthetic, test-data]
+# Dativo extensions
+source_type: mimesis
+object: SyntheticCustomers
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+  mode: strict
+schema:
+  - name: customer_id
+    type: integer
+    required: true
+    description: "Unique customer identifier"
+  - name: name
+    type: string
+    required: true
+    description: "Customer full name"
+    classification: PII
+  - name: email
+    type: string
+    required: true
+    description: "Customer email address"
+    classification: PII
+  - name: phone_number
+    type: string
+    required: false
+    description: "Customer phone number"
+    classification: PII
+  - name: signup_date
+    type: date
+    required: true
+    description: "Date when customer signed up"
+  - name: account_balance
+    type: double
+    required: true
+    description: "Current account balance"
+  - name: status
+    type: string
+    required: true
+    description: "Account status"
+  - name: company
+    type: string
+    required: false
+    description: "Company name if business customer"
+  - name: city
+    type: string
+    required: true
+    description: "Customer city"
+  - name: country
+    type: string
+    required: true
+    description: "Customer country"
+data_quality:
+  expectations: []
+  monitoring:
+    enabled: false
+team:
+  owner: data-team@company.com
+compliance:
+  classification: [PII]
+  regulations: []
+  retention_days: 30
+  security:
+    access_control: role_based
+    encryption_required: false
+  user_consent_required: false

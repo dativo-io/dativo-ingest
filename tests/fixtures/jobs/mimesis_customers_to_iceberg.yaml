@@ -1,0 +1,44 @@
+# Mimesis Synthetic Customers to Iceberg job
+tenant_id: test_tenant
+environment: test
+
+# Source connector
+source_connector: mimesis
+source_connector_path: connectors/examples/mimesis.yaml
+
+# Target connector
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+
+# Asset definition
+asset: mimesis_customers
+asset_path: tests/fixtures/assets/mimesis/v1.0/customers.yaml
+
+# Source configuration
+source:
+  type: mimesis
+  engine:
+    options:
+      row_count: 1000  # Generate 1000 customers
+      batch_size: 1000
+      locale: "en"
+      seed: 42  # For reproducible data
+
+# Target configuration - Iceberg table configuration
+target:
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"
+      bucket: test-bucket
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      region: "${AWS_REGION}"
+      path_style_access: true
+
+# Execution configuration
+schema_validation_mode: strict
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO

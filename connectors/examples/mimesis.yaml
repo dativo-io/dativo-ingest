@@ -1,0 +1,16 @@
+# Mimesis connector - synthetic data generation
+name: mimesis
+type: mimesis
+roles: [source]  # Can only generate (source) data
+description: "Mimesis synthetic data generator connector"
+default_engine:
+  type: native
+  options:
+    row_count: 1000  # Number of rows to generate
+    batch_size: 1000  # Rows per batch
+    locale: "en"  # Locale for generated data (en, es, fr, de, etc.)
+    seed: null  # Optional random seed for reproducibility
+credentials:
+  type: none  # No credentials needed for synthetic data generation
+incremental:
+  strategy: none  # Synthetic data doesn't support incremental

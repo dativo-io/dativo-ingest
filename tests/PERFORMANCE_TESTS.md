@@ -7,7 +7,8 @@ Performance tests for dativo-ingest measure end-to-end performance of CSV and Ic
 Performance tests follow the same **config-driven approach** as smoke tests:
 - Job configurations in `tests/fixtures/jobs/performance_test_*.yaml`
 - Asset definitions in `tests/fixtures/assets/csv/v1.0/perf_test_data.yaml`
-- Test data generation script: `tests/scripts/generate_perf_test_data.py`
+- Synthetic data generation: `tests/fixtures/jobs/mimesis_perf_test.yaml` (using Mimesis connector)
+- Legacy script (deprecated): `tests/scripts/generate_perf_test_data.py`
 - CSV writer plugin: `tests/fixtures/plugins/csv_writer.py`
 
 ## Test Scenarios
@@ -53,21 +54,29 @@ make performance-test
 
 ## Test Data
 
-Performance tests use a **1GB CSV file** generated automatically:
+Performance tests use synthetic data generated via the **Mimesis connector**:
 
 ```bash
-# Generate test data manually
+# Generate test data using Mimesis connector (recommended)
+python -m dativo_ingest.cli execute tests/fixtures/jobs/mimesis_perf_test.yaml
+
+# Or use legacy script (deprecated)
 python tests/scripts/generate_perf_test_data.py
 
-# Custom size (e.g., 500MB)
+# Custom row count: Edit row_count in tests/fixtures/jobs/mimesis_perf_test.yaml
+# or legacy script with custom size:
 python tests/scripts/generate_perf_test_data.py --size-gb 0.5
-
-# Custom output location
-python tests/scripts/generate_perf_test_data.py --output /path/to/data.csv
 ```
 
-The generated CSV file is stored at:
-- Default: `tests/fixtures/seeds/perf_test_data_1gb.csv`
+The Mimesis connector provides:
+- **Realistic synthetic data** (names, emails, addresses, etc.)
+- **Reproducible results** (with seed parameter)
+- **Flexible schema** (via asset definitions)
+- **Better performance** than legacy script
+
+Generated files are stored at:
+- Mimesis output: As configured in job target (e.g., S3/MinIO)
+- Legacy CSV: `tests/fixtures/seeds/perf_test_data_1gb.csv`
 - Configurable via `PERF_TEST_CSV_FILE` environment variable
 
 ## Running Tests
@@ -180,13 +189,16 @@ docker compose -f docker-compose.dev.yml up -d
 
 ### Test Data Generation Fails
 
-If CSV generation fails:
+If data generation fails:
 
 ```bash
-# Check Python dependencies
+# Check Python dependencies (including Mimesis)
 pip install -e ".[dev]"
 
-# Generate with verbose output
+# Generate using Mimesis connector (recommended)
+python -m dativo_ingest.cli execute tests/fixtures/jobs/mimesis_perf_test.yaml
+
+# Or use legacy script
 python tests/scripts/generate_perf_test_data.py --size-gb 0.1
 ```
 
