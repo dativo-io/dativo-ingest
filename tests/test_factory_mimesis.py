@@ -1,7 +1,8 @@
 """Tests for Mimesis connector factory registration."""
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from dativo_ingest.config import AssetDefinition, SourceConfig
 from dativo_ingest.connectors.factory import ExtractorFactory
@@ -33,39 +34,24 @@ def test_factory_mimesis_connector():
 
     assert extractor is not None
     from dativo_ingest.connectors.mimesis_extractor import MimesisExtractor
+
     assert isinstance(extractor, MimesisExtractor)
 
 
-def test_factory_synthetic_connector_deprecated(caplog):
-    """Test that synthetic connector type logs deprecation warning."""
-    import logging
-    caplog.set_level(logging.WARNING)
-
+def test_factory_synthetic_connector_not_supported():
+    """Test that synthetic connector type is not supported (not in registry)."""
     source_config = SourceConfig(type="synthetic")
     job_config = Mock()
     asset_definition = create_minimal_asset_definition()
 
-    extractor, source_tags = ExtractorFactory.create(
-        source_config=source_config,
-        job_config=job_config,
-        asset_definition=asset_definition,
-    )
-
-    # Should still create extractor
-    assert extractor is not None
-    from dativo_ingest.connectors.mimesis_extractor import MimesisExtractor
-    assert isinstance(extractor, MimesisExtractor)
-
-    # Should log deprecation warning
-    assert any(
-        "deprecated" in record.message.lower() and "synthetic" in record.message.lower()
-        for record in caplog.records
-    )
-    assert any(
-        record.extra.get("event_type") == "deprecated_connector_type"
-        for record in caplog.records
-        if hasattr(record, "extra")
-    )
+    # Synthetic type is not supported - factory should raise ValueError
+    # (In practice, validation would fail earlier, but this tests factory behavior)
+    with pytest.raises(ValueError, match="Unsupported source type"):
+        ExtractorFactory.create(
+            source_config=source_config,
+            job_config=job_config,
+            asset_definition=asset_definition,
+        )
 
 
 def test_factory_mimesis_requires_asset_definition():

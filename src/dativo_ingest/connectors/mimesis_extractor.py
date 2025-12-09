@@ -118,13 +118,9 @@ class MimesisExtractor:
 
         # Validation
         if options["row_count"] < 0:
-            raise ValueError(
-                f"row_count must be >= 0, got {options['row_count']}"
-            )
+            raise ValueError(f"row_count must be >= 0, got {options['row_count']}")
         if options["batch_size"] <= 0:
-            raise ValueError(
-                f"batch_size must be > 0, got {options['batch_size']}"
-            )
+            raise ValueError(f"batch_size must be > 0, got {options['batch_size']}")
         if not (0.0 <= options["null_probability"] <= 1.0):
             raise ValueError(
                 f"null_probability must be between 0.0 and 1.0, got {options['null_probability']}"
@@ -175,7 +171,9 @@ class MimesisExtractor:
                 return field
         return None
 
-    def _map_field_to_mimesis(self, field: Dict[str, Any]) -> Optional[Callable[[], Any]]:
+    def _map_field_to_mimesis(
+        self, field: Dict[str, Any]
+    ) -> Optional[Callable[[], Any]]:
         """Map Dativo field definition to Mimesis field generator.
 
         Field mapping priority (most specific first):
@@ -243,16 +241,22 @@ class MimesisExtractor:
                 generator = gen_integer
 
         elif field_type in ("double", "float", "decimal"):
-            if "salary" in field_name or "amount" in field_name or "balance" in field_name:
+            if (
+                "salary" in field_name
+                or "amount" in field_name
+                or "balance" in field_name
+            ):
                 # Monetary values (0-100k, 2 decimals) - most specific
                 def gen_monetary():
-                    value = self.field(
-                        "numeric.float_number", start=0.0, end=100_000.0
-                    )
+                    value = self.field("numeric.float_number", start=0.0, end=100_000.0)
                     return round(value, 2)
 
                 generator = gen_monetary
-            elif "commission" in field_name or "pct" in field_name or "percentage" in field_name:
+            elif (
+                "commission" in field_name
+                or "pct" in field_name
+                or "percentage" in field_name
+            ):
                 # Percentage (0-1, 4 decimals)
                 def gen_percentage():
                     value = self.field("numeric.float_number", start=0.0, end=1.0)
@@ -272,12 +276,14 @@ class MimesisExtractor:
                 generator = gen_float
 
         elif field_type == "date":
+
             def gen_date():
                 return self.field("datetime.date", start=2015, end=2025).isoformat()
 
             generator = gen_date
 
         elif field_type in ("timestamp", "datetime"):
+
             def gen_datetime():
                 return self.field("datetime.datetime", start=2015, end=2025).isoformat()
 
@@ -286,6 +292,7 @@ class MimesisExtractor:
         elif field_type == "string":
             # String patterns - most specific first to avoid shadowing
             if "email" in field_name:
+
                 def gen_email():
                     return self.field("person.email")
 
@@ -315,26 +322,35 @@ class MimesisExtractor:
 
                 generator = gen_name
             elif "company" in field_name:
+
                 def gen_company():
                     return self.field("business.company")
 
                 generator = gen_company
             elif "job" in field_name or "role" in field_name or "title" in field_name:
+
                 def gen_job():
                     return self.field("person.occupation")
 
                 generator = gen_job
             elif "department" in field_name:
+
                 def gen_department():
                     return self.field("business.company_type")
 
                 generator = gen_department
             elif "status" in field_name:
+
                 def gen_status():
                     return self.field("choice", items=["active", "inactive", "pending"])
 
                 generator = gen_status
-            elif "phone" in field_name or "mobile" in field_name or "telephone" in field_name:
+            elif (
+                "phone" in field_name
+                or "mobile" in field_name
+                or "telephone" in field_name
+            ):
+
                 def gen_phone():
                     return self.field("person.telephone")
 
@@ -346,26 +362,31 @@ class MimesisExtractor:
 
                 generator = gen_street
             elif "address" in field_name:
+
                 def gen_address():
                     return self.field("address.address")
 
                 generator = gen_address
             elif "city" in field_name:
+
                 def gen_city():
                     return self.field("address.city")
 
                 generator = gen_city
             elif "state" in field_name or "province" in field_name:
+
                 def gen_state():
                     return self.field("address.state")
 
                 generator = gen_state
             elif "country" in field_name:
+
                 def gen_country():
                     return self.field("address.country")
 
                 generator = gen_country
             elif "zip" in field_name or "postal" in field_name:
+
                 def gen_zip():
                     return self.field("address.zip_code")
 
@@ -378,6 +399,7 @@ class MimesisExtractor:
                 generator = gen_word
 
         elif field_type == "boolean":
+
             def gen_boolean():
                 return self.field("choice", items=[True, False])
 
@@ -444,9 +466,11 @@ class MimesisExtractor:
             field_type = self.ingest_date_field.get("type", "date").lower()
             if field_type in ("timestamp", "datetime"):
                 # Return datetime as ISO string with UTC timezone
-                return datetime.combine(current_date, datetime.min.time()).replace(
-                    tzinfo=timezone.utc
-                ).isoformat()
+                return (
+                    datetime.combine(current_date, datetime.min.time())
+                    .replace(tzinfo=timezone.utc)
+                    .isoformat()
+                )
             elif field_type == "string":
                 # Return as ISO date string
                 return current_date.isoformat()

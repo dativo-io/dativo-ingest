@@ -1,8 +1,9 @@
 """Unit tests for Mimesis extractor connector."""
 
-import pytest
 from datetime import date, datetime, timezone
 from unittest.mock import Mock
+
+import pytest
 
 from dativo_ingest.config import AssetDefinition, SourceConfig
 from dativo_ingest.connectors.mimesis_extractor import MimesisExtractor
@@ -71,7 +72,11 @@ class TestMimesisExtractorBasic:
         """Test that same seed produces identical output using instance-based RNG."""
         schema = [
             {"name": "id", "type": "integer", "required": True},
-            {"name": "name", "type": "string", "required": False},  # Optional field uses RNG
+            {
+                "name": "name",
+                "type": "string",
+                "required": False,
+            },  # Optional field uses RNG
         ]
         asset = create_minimal_asset_definition(schema)
         source_config1 = create_source_config(
@@ -94,12 +99,8 @@ class TestMimesisExtractorBasic:
         """Test that different seeds produce different output."""
         schema = [{"name": "id", "type": "integer", "required": True}]
         asset = create_minimal_asset_definition(schema)
-        source_config1 = create_source_config(
-            {"native": {"row_count": 5, "seed": 42}}
-        )
-        source_config2 = create_source_config(
-            {"native": {"row_count": 5, "seed": 99}}
-        )
+        source_config1 = create_source_config({"native": {"row_count": 5, "seed": 42}})
+        source_config2 = create_source_config({"native": {"row_count": 5, "seed": 99}})
 
         extractor1 = MimesisExtractor(source_config1, asset)
         extractor2 = MimesisExtractor(source_config2, asset)
@@ -507,7 +508,9 @@ class TestMimesisExtractorConfiguration:
         """Test locale configuration."""
         schema = [{"name": "name", "type": "string", "required": True}]
         asset = create_minimal_asset_definition(schema)
-        source_config = create_source_config({"native": {"locale": "ru", "row_count": 5}})
+        source_config = create_source_config(
+            {"native": {"locale": "ru", "row_count": 5}}
+        )
 
         extractor = MimesisExtractor(source_config, asset)
         batches = list(extractor.extract())
@@ -579,16 +582,12 @@ class TestMimesisExtractorConfiguration:
         asset = create_minimal_asset_definition(schema)
 
         # Test > 1.0
-        source_config1 = create_source_config(
-            {"native": {"null_probability": 2.0}}
-        )
+        source_config1 = create_source_config({"native": {"null_probability": 2.0}})
         with pytest.raises(ValueError, match="null_probability must be between"):
             MimesisExtractor(source_config1, asset)
 
         # Test < 0.0
-        source_config2 = create_source_config(
-            {"native": {"null_probability": -0.1}}
-        )
+        source_config2 = create_source_config({"native": {"null_probability": -0.1}})
         with pytest.raises(ValueError, match="null_probability must be between"):
             MimesisExtractor(source_config2, asset)
 

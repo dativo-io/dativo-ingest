@@ -258,10 +258,9 @@ The `null_probability` option controls the likelihood of `None` values:
 
 ## Connector Type
 
-- **Canonical type**: `mimesis`
-- **Deprecated alias**: `synthetic` (use `mimesis` in new configurations)
+- **Type**: `mimesis`
 
-The `synthetic` type is still supported but will log a deprecation warning. Use `mimesis` for all new configurations.
+Use `type: mimesis` in your source configuration. The `synthetic` type is not supported and will fail validation.
 
 ## Troubleshooting
 
