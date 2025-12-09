@@ -254,6 +254,8 @@ docker run --rm -p 3000:3000 \
 
 > Omit the `/app/secrets` volume and `--secrets-dir` flag when using non-filesystem secret managers.
 
+**Production Security Note**: For production deployments, ensure that volumes mounted for `/app/state` and `/app/wal` are stored on encrypted filesystems. State and WAL files are not encrypted at rest by default. See [SECURITY.md](SECURITY.md) for detailed encryption-at-rest guidance.
+
 ## Demo Environment
 
 **NEW!** One-command demo environment:

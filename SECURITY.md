@@ -70,6 +70,40 @@ When using Dativo-Ingest in production:
 - **State Files**: State files may contain sensitive metadata; ensure proper file permissions
 - **Network Access**: Plugins may make external network calls; review plugin code and use network restrictions where possible
 
+### Encryption at Rest
+
+**Current Status**: State files (`/state/`) and WAL (Write-Ahead Log) files (`/wal/`) are **not encrypted at rest by default**. These files may contain sensitive metadata such as:
+
+- Incremental state cursors (e.g., `last_updated_at` timestamps)
+- Checkpoint information (chunk numbers, offsets, record counts)
+- Job run metadata and status information
+
+**Production Recommendations**:
+
+1. **Use Encrypted Volumes**: Store state and WAL directories on encrypted volumes/filesystems:
+   - **AWS**: Use EBS volumes with encryption enabled or EFS with encryption at rest
+   - **GCP**: Use Persistent Disks with customer-managed encryption keys (CMEK)
+   - **Azure**: Use Azure Disk Encryption or Azure Files with encryption
+   - **On-Premises**: Use LUKS, BitLocker, or filesystem-level encryption (e.g., ZFS encryption)
+
+2. **File Permissions**: Ensure proper file permissions are set:
+   ```bash
+   chmod 700 /app/state /app/wal  # Restrict access to owner only
+   ```
+
+3. **Network Storage**: If using network storage (NFS, S3, etc.), ensure:
+   - Network encryption (TLS/SSL) is enabled
+   - Access controls are properly configured
+   - Storage provider encryption is enabled
+
+**Roadmap**: Native encryption support for state and WAL files is planned for a future release. This will include:
+- Transparent encryption/decryption of state and WAL files
+- Support for multiple encryption backends (AWS KMS, GCP KMS, HashiCorp Vault)
+- Key rotation capabilities
+- Performance-optimized encryption for high-throughput scenarios
+
+Until native encryption is available, production deployments should rely on encrypted volumes/filesystems as described above.
+
 ### Security Updates
 
 Security updates are released as patch versions (e.g., 1.3.1 → 1.3.2). We recommend:
