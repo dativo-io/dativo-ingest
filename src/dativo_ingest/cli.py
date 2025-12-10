@@ -11,6 +11,11 @@ from .cli_commands import (
     format_check_output,
     format_discovery_output,
 )
+from .cli_connectors import (
+    connectors_inspect_command,
+    connectors_list_command,
+    connectors_sync_command,
+)
 from .config import JobConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import setup_logging
@@ -538,6 +543,85 @@ Examples:
         help="Enable verbose output with additional details",
     )
 
+    # Connectors command group
+    connectors_parser = subparsers.add_parser(
+        "connectors",
+        help="Manage connector registry and catalogs",
+        description="Inspect, list, and sync connector metadata from external catalogs.",
+    )
+    connectors_subparsers = connectors_parser.add_subparsers(
+        dest="connectors_command", help="Connector subcommand"
+    )
+
+    # Connectors list
+    list_parser = connectors_subparsers.add_parser(
+        "list",
+        help="List all connectors with resolved metadata",
+        description="Show all connectors from the registry with resolved docker images, "
+        "versions, and capabilities from catalogs.",
+    )
+    list_parser.add_argument(
+        "--registry-path",
+        help="Path to connectors.yaml registry file (default: registry/connectors.yaml)",
+    )
+    list_parser.add_argument(
+        "--catalog-dir",
+        help="Path to catalog directory (default: registry/catalogs)",
+    )
+    list_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+
+    # Connectors sync
+    sync_parser = connectors_subparsers.add_parser(
+        "sync",
+        help="Sync external connector catalogs",
+        description="Download and update external connector catalogs (e.g., Airbyte).",
+    )
+    sync_parser.add_argument(
+        "source",
+        choices=["airbyte", "singer", "meltano", "all"],
+        help="Catalog source to sync",
+    )
+    sync_parser.add_argument(
+        "--catalog-dir",
+        help="Path to catalog directory (default: registry/catalogs)",
+    )
+    sync_parser.add_argument(
+        "--catalog-url",
+        help="Custom catalog URL (for airbyte source)",
+    )
+    sync_parser.add_argument(
+        "--output",
+        help="Output file path (default: catalog_dir/{source}.json)",
+    )
+
+    # Connectors inspect
+    inspect_parser = connectors_subparsers.add_parser(
+        "inspect",
+        help="Inspect a specific connector",
+        description="Show detailed resolved metadata for a specific connector.",
+    )
+    inspect_parser.add_argument(
+        "name",
+        help="Connector name to inspect",
+    )
+    inspect_parser.add_argument(
+        "--registry-path",
+        help="Path to connectors.yaml registry file (default: registry/connectors.yaml)",
+    )
+    inspect_parser.add_argument(
+        "--catalog-dir",
+        help="Path to catalog directory (default: registry/catalogs)",
+    )
+    inspect_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -552,6 +636,19 @@ Examples:
         return check_command(args)
     elif args.command == "discover":
         return discover_command(args)
+    elif args.command == "connectors":
+        if not args.connectors_command:
+            connectors_parser.print_help()
+            return 2
+        if args.connectors_command == "list":
+            return connectors_list_command(args)
+        elif args.connectors_command == "sync":
+            return connectors_sync_command(args)
+        elif args.connectors_command == "inspect":
+            return connectors_inspect_command(args)
+        else:
+            connectors_parser.print_help()
+            return 2
     else:
         parser.print_help()
         return 2

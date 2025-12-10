@@ -67,7 +67,14 @@
           "items": { "type": "string", "enum": ["parquet", "orc", "csv", "json", "markdown_kv"] },
           "minItems": 1
         },
-        "supports_schema_evolution": { "type": "boolean" }
+        "supports_schema_evolution": { "type": "boolean" },
+        "external_id": { "type": "string", "minLength": 1 },
+        "docker_image_default": { "type": "string", "minLength": 1 },
+        "version_default": { "type": "string", "minLength": 1 },
+        "source_of_truth": {
+          "type": "string",
+          "enum": ["native", "airbyte", "singer", "meltano"]
+        }
       },
       "additionalProperties": false
     },
@@ -91,7 +98,14 @@
           "minItems": 1
         },
         "requires_tables": { "type": "boolean" },
-        "supports_queries": { "type": "boolean" }
+        "supports_queries": { "type": "boolean" },
+        "external_id": { "type": "string", "minLength": 1 },
+        "docker_image_default": { "type": "string", "minLength": 1 },
+        "version_default": { "type": "string", "minLength": 1 },
+        "source_of_truth": {
+          "type": "string",
+          "enum": ["native", "airbyte", "singer", "meltano"]
+        }
       },
       "additionalProperties": false
     },

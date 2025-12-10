@@ -15,6 +15,11 @@ connectors:
     supports_incremental: true
     incremental_strategy_default: updated_after
     objects_supported: ["contacts", "deals", "companies"]
+    # Optional external catalog metadata
+    external_id: airbyte/source-hubspot  # Example external catalog ID
+    docker_image_default: airbyte/source-hubspot  # Default Docker image (can be overridden by catalog)
+    version_default: latest  # Default version (can be overridden by catalog)
+    source_of_truth: airbyte  # native | airbyte | singer | meltano
 
   stripe:
     roles: [source]  # Source only - API connector
@@ -25,6 +30,11 @@ connectors:
     supports_incremental: true
     incremental_strategy_default: created
     objects_supported: ["charges", "customers", "invoices"]
+    # Optional external catalog metadata
+    external_id: airbyte/source-stripe  # Example external catalog ID
+    docker_image_default: airbyte/source-stripe  # Default Docker image (can be overridden by catalog)
+    version_default: latest  # Default version (can be overridden by catalog)
+    source_of_truth: airbyte  # native | airbyte | singer | meltano
 
   gdrive_csv:
     roles: [source]  # Source only - file reading

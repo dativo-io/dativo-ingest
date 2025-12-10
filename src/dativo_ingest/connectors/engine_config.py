@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ..config import ConnectorRecipe, SourceConfig
+from .resolver import ConnectorResolver
 
 
 class EngineConfigParser:
@@ -29,6 +30,7 @@ class EngineConfigParser:
         self.tenant_id = tenant_id
         self.engine_type = self._get_engine_type()
         self.engine_options = self._get_engine_options()
+        self.resolver = ConnectorResolver()
 
     def _get_engine_type(self) -> str:
         """Extract engine type from connector recipe.
@@ -204,12 +206,61 @@ class EngineConfigParser:
     def get_docker_image(self) -> Optional[str]:
         """Get Docker image for Airbyte connector.
 
+        Uses connector resolver to check catalog, recipe, and job overrides.
+
         Returns:
             Docker image name or None
         """
         if self.engine_type == "airbyte":
-            airbyte_opts = self.engine_options.get("airbyte", {})
-            return airbyte_opts.get("docker_image")
+            # Check for job-level override first
+            job_override = None
+            if hasattr(self.source_config, "connection") and self.source_config.connection:
+                job_override = self.source_config.connection.get("docker_image")
+
+            # Use resolver to get docker image with proper priority
+            docker_image = self.resolver.resolve_docker_image(
+                connector_name=self.source_config.type,
+                engine_type=self.engine_type,
+                connector_recipe=self.connector_recipe,
+                job_override=job_override,
+            )
+
+            # Fallback to old behavior if resolver returns None
+            if docker_image is None:
+                airbyte_opts = self.engine_options.get("airbyte", {})
+                docker_image = airbyte_opts.get("docker_image")
+
+            return docker_image
+        return None
+
+    def get_version(self) -> Optional[str]:
+        """Get version for Airbyte connector.
+
+        Uses connector resolver to check catalog, recipe, and job overrides.
+
+        Returns:
+            Version string or None
+        """
+        if self.engine_type == "airbyte":
+            # Check for job-level override first
+            job_override = None
+            if hasattr(self.source_config, "connection") and self.source_config.connection:
+                job_override = self.source_config.connection.get("version")
+
+            # Use resolver to get version with proper priority
+            version = self.resolver.resolve_version(
+                connector_name=self.source_config.type,
+                engine_type=self.engine_type,
+                connector_recipe=self.connector_recipe,
+                job_override=job_override,
+            )
+
+            # Fallback to old behavior if resolver returns None
+            if version is None:
+                airbyte_opts = self.engine_options.get("airbyte", {})
+                version = airbyte_opts.get("version")
+
+            return version
         return None
 
     def get_incremental_config(self) -> Dict[str, Any]:
