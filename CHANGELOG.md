@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- **Connector Ecosystem v0.5**:
+  - External catalog loader with optional Airbyte sync stored under `registry/catalogs/`
+  - Extended connector registry schema supporting external IDs, docker defaults, and source-of-truth metadata
+  - New `dativo connectors` CLI (`list`, `inspect`, `sync`) for registry introspection and catalog refresh
+  - Connector template schema + validation for `registry/templates/*.yaml`
+### Changed
+- Engine resolution now honors job-level overrides, consumes catalog metadata automatically, and falls back to registry defaults without breaking existing jobs
+- Airbyte connector recipes rely on registry/catalog metadata for docker image/version selection
 
 ## [0.4.1] - 2025-12-10
 

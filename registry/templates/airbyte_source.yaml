@@ -1,0 +1,21 @@
+version: 1
+template: airbyte_source_default
+engine: airbyte
+description: "Base metadata template for Airbyte-powered source connectors."
+metadata:
+  docker_image_default: airbyte/source-template
+  version_default: latest
+  pagination:
+    supported: true
+    modes: ["cursor", "limit_offset"]
+    notes: "Cursor pagination preferred; limit/offset available for legacy APIs."
+  incremental:
+    supported: true
+    default_strategy: updated_after
+    cursor_field_hint: updatedAt
+    lookback_days_hint: 1
+  capabilities:
+    - full_refresh
+    - incremental
+    - schema_discovery
+  notes: "Override docker_image_default/version_default per connector during registry sync."

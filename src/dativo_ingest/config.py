@@ -11,6 +11,8 @@ import jsonschema
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .registry import get_connector_registry
+
 
 class ConnectorRecipe(BaseModel):
     """Unified connector recipe - supports both source and target roles."""
@@ -609,8 +611,10 @@ class JobConfig(BaseModel):
             "rate_limits": rate_limits,
         }
 
+        job_engine_override = None
         # Apply job-specific source configuration (overrides/extends recipe)
         if self.source:
+            job_engine_override = self.source.get("engine")
             # Deep merge for nested dicts
             for key, value in self.source.items():
                 if key == "incremental":
@@ -656,6 +660,7 @@ class JobConfig(BaseModel):
                             source_data[key] = merged_incremental
                         else:
                             source_data[key] = value
+
                     else:
                         source_data[key] = value
                 elif (
@@ -666,6 +671,12 @@ class JobConfig(BaseModel):
                     source_data[key] = {**source_data[key], **value}
                 else:
                     source_data[key] = value
+
+        source_data["engine"] = self._resolve_engine_with_registry(
+            recipe.type,
+            source_data.get("engine"),
+            job_engine_override,
+        )
 
         # Add tenant-specific state_path if incremental is enabled (not None and not empty)
         incremental_config = source_data.get("incremental")
@@ -729,7 +740,9 @@ class JobConfig(BaseModel):
             target_data["connection"] = connection_template.copy()
 
         # Apply job-specific target configuration (overrides/extends recipe)
+        job_engine_override = None
         if self.target:
+            job_engine_override = self.target.get("engine")
             # Deep merge for nested dicts
             for key, value in self.target.items():
                 if (
@@ -747,7 +760,30 @@ class JobConfig(BaseModel):
         ):
             target_data["branch"] = self.tenant_id
 
+        target_data["engine"] = self._resolve_engine_with_registry(
+            recipe.type,
+            target_data.get("engine"),
+            job_engine_override,
+        )
+
         return TargetConfig(**target_data)
+
+    def _resolve_engine_with_registry(
+        self,
+        connector_type: str,
+        engine_config: Any,
+        job_override: Optional[Dict[str, Any]],
+    ) -> Any:
+        """Resolve engine metadata using connector registry and catalogs."""
+        if not isinstance(engine_config, dict):
+            return engine_config
+
+        registry = get_connector_registry()
+        return registry.resolve_engine_defaults(
+            connector_type,
+            engine_config,
+            job_override,
+        )
 
     def _resolve_source(self) -> SourceConfig:
         """Resolve source config from connector recipe."""

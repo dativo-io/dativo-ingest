@@ -83,7 +83,12 @@ class ExtractorFactory:
 
         # Check engine type if connector recipe is available
         engine_type = None
-        if connector_recipe:
+        if source_config.engine:
+            if isinstance(source_config.engine, dict):
+                engine_type = source_config.engine.get("type")
+            elif isinstance(source_config.engine, str):
+                engine_type = source_config.engine
+        if not engine_type and connector_recipe:
             default_engine = connector_recipe.default_engine
             if isinstance(default_engine, dict):
                 engine_type = default_engine.get("type")

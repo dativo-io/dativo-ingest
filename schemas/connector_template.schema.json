@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dativo.io/schemas/connector_template.schema.json",
+  "title": "Connector Template Metadata",
+  "description": "Schema for connector metadata templates stored under registry/templates.",
+  "type": "object",
+  "required": ["template", "engine", "metadata"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "template": {
+      "type": "string",
+      "minLength": 1
+    },
+    "engine": {
+      "type": "string",
+      "enum": ["airbyte", "singer", "meltano", "native"]
+    },
+    "description": { "type": "string" },
+    "metadata": {
+      "type": "object",
+      "description": "Engine-specific metadata payload"
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "airbytePagination": {
+      "type": "object",
+      "required": ["supported"],
+      "additionalProperties": false,
+      "properties": {
+        "supported": { "type": "boolean" },
+        "modes": { "$ref": "#/$defs/stringArray" },
+        "notes": { "type": "string" }
+      }
+    },
+    "airbyteIncremental": {
+      "type": "object",
+      "required": ["supported"],
+      "additionalProperties": false,
+      "properties": {
+        "supported": { "type": "boolean" },
+        "default_strategy": { "type": "string" },
+        "cursor_field_hint": { "type": "string" },
+        "lookback_days_hint": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "airbyteMetadata": {
+      "type": "object",
+      "required": ["pagination", "incremental"],
+      "additionalProperties": false,
+      "properties": {
+        "docker_image_default": { "type": "string" },
+        "version_default": { "type": "string" },
+        "pagination": { "$ref": "#/$defs/airbytePagination" },
+        "incremental": { "$ref": "#/$defs/airbyteIncremental" },
+        "capabilities": { "$ref": "#/$defs/stringArray" },
+        "notes": { "type": "string" }
+      }
+    },
+    "singerStreamDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "replication_method": { "type": "string" },
+        "key_properties": { "$ref": "#/$defs/stringArray" },
+        "bookmark_field": { "type": "string" }
+      }
+    },
+    "singerMetadata": {
+      "type": "object",
+      "required": ["executable_path"],
+      "additionalProperties": false,
+      "properties": {
+        "executable_path": { "type": "string" },
+        "stream_defaults": { "$ref": "#/$defs/singerStreamDefaults" },
+        "capabilities": { "$ref": "#/$defs/stringArray" },
+        "notes": { "type": "string" }
+      }
+    },
+    "nativeHints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "supports_pushdown": { "type": "boolean" },
+        "supports_threading": { "type": "boolean" },
+        "supports_partitioning": { "type": "boolean" }
+      }
+    },
+    "nativeMetadata": {
+      "type": "object",
+      "required": ["hints"],
+      "additionalProperties": false,
+      "properties": {
+        "hints": { "$ref": "#/$defs/nativeHints" },
+        "capabilities": { "$ref": "#/$defs/stringArray" },
+        "notes": { "type": "string" }
+      }
+    },
+    "meltanoMetadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "plugin_name": { "type": "string" },
+        "capabilities": { "$ref": "#/$defs/stringArray" },
+        "notes": { "type": "string" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "engine": { "const": "airbyte" } } },
+      "then": { "properties": { "metadata": { "$ref": "#/$defs/airbyteMetadata" } } }
+    },
+    {
+      "if": { "properties": { "engine": { "const": "singer" } } },
+      "then": { "properties": { "metadata": { "$ref": "#/$defs/singerMetadata" } } }
+    },
+    {
+      "if": { "properties": { "engine": { "const": "native" } } },
+      "then": { "properties": { "metadata": { "$ref": "#/$defs/nativeMetadata" } } }
+    },
+    {
+      "if": { "properties": { "engine": { "const": "meltano" } } },
+      "then": { "properties": { "metadata": { "$ref": "#/$defs/meltanoMetadata" } } }
+    }
+  ]
+}

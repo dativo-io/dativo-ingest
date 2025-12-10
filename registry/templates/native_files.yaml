@@ -1,0 +1,14 @@
+version: 1
+template: native_files_default
+engine: native
+description: "Template metadata for native file-based connectors."
+metadata:
+  hints:
+    supports_pushdown: false
+    supports_threading: true
+    supports_partitioning: true
+  capabilities:
+    - batch
+    - schema_evolution
+    - file_discovery
+  notes: "Native connectors rely on engine-specific options defined in connector recipes."

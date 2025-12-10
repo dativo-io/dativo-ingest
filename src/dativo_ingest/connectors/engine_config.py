@@ -1,5 +1,6 @@
 """Engine configuration parser for Airbyte/Meltano/Singer connectors."""
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -36,6 +37,14 @@ class EngineConfigParser:
         Returns:
             Engine type (airbyte, meltano, singer, native)
         """
+        job_engine = getattr(self.source_config, "engine", None)
+        if isinstance(job_engine, dict):
+            override_type = job_engine.get("type")
+            if override_type:
+                return str(override_type)
+        elif isinstance(job_engine, str):
+            return job_engine
+
         default_engine = self.connector_recipe.default_engine
         if isinstance(default_engine, dict):
             return default_engine.get("type", "native")
@@ -47,10 +56,33 @@ class EngineConfigParser:
         Returns:
             Dictionary of engine options
         """
+        options: Dict[str, Any] = {}
         default_engine = self.connector_recipe.default_engine
         if isinstance(default_engine, dict):
-            return default_engine.get("options", {})
-        return {}
+            options = copy.deepcopy(default_engine.get("options", {}))
+
+        job_engine = getattr(self.source_config, "engine", None)
+        if isinstance(job_engine, dict):
+            override_options = job_engine.get("options")
+            if isinstance(override_options, dict):
+                return self._deep_merge(options, override_options)
+
+        return options
+
+    @staticmethod
+    def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """Deep merge dictionaries with override precedence."""
+        result = copy.deepcopy(base)
+        for key, value in override.items():
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(value, dict)
+            ):
+                result[key] = EngineConfigParser._deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
 
     def build_airbyte_config(self) -> Dict[str, Any]:
         """Build Airbyte connector configuration.

@@ -7,7 +7,6 @@ default_engine:
   type: airbyte
   options:
     airbyte:
-      docker_image: "airbyte/source-hubspot:0.2.0"
       streams_default: ["contacts", "deals", "companies"]
       start_date_default: "2024-01-01"
 credentials:

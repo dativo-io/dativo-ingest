@@ -31,6 +31,10 @@
       "type": "string",
       "enum": ["airbyte", "singer", "meltano", "native", "jdbc", "spark"]
     },
+    "sourceOfTruth": {
+      "type": "string",
+      "enum": ["native", "airbyte", "singer", "meltano"]
+    },
     "incrementalStrategy": {
       "type": "string",
       "enum": ["updated_after", "updated_at", "created", "file_modified_time", "spreadsheet_modified_time", "cdc"]
@@ -67,7 +71,11 @@
           "items": { "type": "string", "enum": ["parquet", "orc", "csv", "json", "markdown_kv"] },
           "minItems": 1
         },
-        "supports_schema_evolution": { "type": "boolean" }
+        "supports_schema_evolution": { "type": "boolean" },
+        "external_id": { "type": "string" },
+        "docker_image_default": { "type": "string" },
+        "version_default": { "type": "string" },
+        "source_of_truth": { "$ref": "#/$defs/sourceOfTruth" }
       },
       "additionalProperties": false
     },
@@ -91,7 +99,11 @@
           "minItems": 1
         },
         "requires_tables": { "type": "boolean" },
-        "supports_queries": { "type": "boolean" }
+        "supports_queries": { "type": "boolean" },
+        "external_id": { "type": "string" },
+        "docker_image_default": { "type": "string" },
+        "version_default": { "type": "string" },
+        "source_of_truth": { "$ref": "#/$defs/sourceOfTruth" }
       },
       "additionalProperties": false
     },
@@ -110,7 +122,11 @@
           "items": { "type": "string", "enum": ["parquet", "orc", "csv", "json", "markdown_kv"] },
           "minItems": 1
         },
-        "supports_schema_evolution": { "type": "boolean" }
+        "supports_schema_evolution": { "type": "boolean" },
+        "external_id": { "type": "string" },
+        "docker_image_default": { "type": "string" },
+        "version_default": { "type": "string" },
+        "source_of_truth": { "$ref": "#/$defs/sourceOfTruth" }
       },
       "additionalProperties": false
     }

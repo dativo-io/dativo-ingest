@@ -82,6 +82,32 @@ class TestJobConfigLoading:
         assert config.source_connector_path == "connectors/examples/stripe.yaml"
         assert config.target_connector_path == "connectors/examples/iceberg.yaml"
 
+    def test_airbyte_engine_defaults_from_registry(
+        self, temp_dir, valid_asset_file
+    ):
+        """Ensure Airbyte docker image is resolved from registry metadata."""
+        job_path = temp_dir / "job.yaml"
+        config_data = {
+            "tenant_id": "test_tenant",
+            "source_connector_path": "connectors/examples/stripe.yaml",
+            "target_connector_path": "connectors/examples/iceberg.yaml",
+            "asset_path": str(valid_asset_file),
+            "source": {"object": "customers"},
+        }
+        with open(job_path, "w", encoding="utf-8") as handle:
+            yaml.safe_dump(config_data, handle)
+
+        config = JobConfig.from_yaml(job_path)
+        source_config = config.get_source()
+        airbyte_opts = (
+            source_config.engine.get("options", {}).get("airbyte", {})
+            if source_config.engine
+            else {}
+        )
+        assert (
+            airbyte_opts.get("docker_image") == "airbyte/source-stripe:latest"
+        )
+
     def test_load_missing_config_file(self, temp_dir):
         """Test error when config file doesn't exist."""
         config_path = temp_dir / "nonexistent.yaml"

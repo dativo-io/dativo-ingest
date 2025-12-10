@@ -29,6 +29,7 @@ The connector registry (`/registry/connectors.yaml`) is validated against a JSON
 ### What We Validate
 
 - `/registry/connectors.yaml` → `/schemas/connectors.schema.json`
+- `/registry/templates/*.yaml` → `/schemas/connector_template.schema.json`
 
 The schema ensures:
 - All connectors have required fields (roles, category, default_engine, etc.)
@@ -55,8 +56,9 @@ make schema-validate
 
 This command:
 1. Validates `registry/connectors.yaml` against `schemas/connectors.schema.json`
-2. Reports any validation errors with line numbers
-3. Exits with error code if validation fails
+2. Validates every template in `registry/templates/` against `schemas/connector_template.schema.json`
+3. Reports any validation errors with line numbers
+4. Exits with error code if validation fails
 
 ### Schema Structure
 

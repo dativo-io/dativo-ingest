@@ -1,0 +1,15 @@
+version: 1
+template: singer_source_default
+engine: singer
+description: "Baseline Singer tap metadata template."
+metadata:
+  executable_path: "/usr/local/bin/tap-template"
+  stream_defaults:
+    replication_method: INCREMENTAL
+    key_properties: ["id"]
+    bookmark_field: updated_at
+  capabilities:
+    - discovery
+    - replication
+    - state_management
+  notes: "Override executable_path per tap when packaging custom binaries."

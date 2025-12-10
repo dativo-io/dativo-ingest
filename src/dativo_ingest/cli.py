@@ -11,6 +11,7 @@ from .cli_commands import (
     format_check_output,
     format_discovery_output,
 )
+from .cli_connectors import inspect_connector, list_connectors, sync_catalogs
 from .config import JobConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import setup_logging
@@ -323,6 +324,30 @@ def discover_command(args: argparse.Namespace) -> int:
         return 2
 
 
+def connectors_command(args: argparse.Namespace) -> int:
+    """Handle connector metadata commands."""
+    if args.connectors_command == "list":
+        return list_connectors(
+            registry_path=args.registry_path,
+            catalog_dir=args.catalog_dir,
+            output_json=getattr(args, "json", False),
+        )
+    if args.connectors_command == "inspect":
+        return inspect_connector(
+            name=args.name,
+            registry_path=args.registry_path,
+            catalog_dir=args.catalog_dir,
+            output_json=getattr(args, "json", False),
+        )
+    if args.connectors_command == "sync":
+        return sync_catalogs(
+            catalog_dir=args.catalog_dir,
+            airbyte_url=args.airbyte_url,
+        )
+    print("Unknown connectors subcommand", file=sys.stderr)
+    return 2
+
+
 def start_command(args: argparse.Namespace) -> int:
     """Start orchestrated mode with Dagster.
 
@@ -538,6 +563,54 @@ Examples:
         help="Enable verbose output with additional details",
     )
 
+    # Connectors command
+    connectors_parser = subparsers.add_parser(
+        "connectors",
+        help="Inspect connector registry metadata and sync external catalogs",
+    )
+    connectors_subparsers = connectors_parser.add_subparsers(
+        dest="connectors_command", required=True
+    )
+
+    connectors_list = connectors_subparsers.add_parser(
+        "list", help="List connectors with resolved metadata"
+    )
+    connectors_list.add_argument(
+        "--registry-path", help="Override path to registry/connectors.yaml"
+    )
+    connectors_list.add_argument(
+        "--catalog-dir", help="Override connector catalog directory"
+    )
+    connectors_list.add_argument(
+        "--json", action="store_true", help="Return machine-readable JSON output"
+    )
+
+    connectors_inspect = connectors_subparsers.add_parser(
+        "inspect", help="Inspect a single connector"
+    )
+    connectors_inspect.add_argument("name", help="Connector name")
+    connectors_inspect.add_argument(
+        "--registry-path", help="Override path to registry/connectors.yaml"
+    )
+    connectors_inspect.add_argument(
+        "--catalog-dir", help="Override connector catalog directory"
+    )
+    connectors_inspect.add_argument(
+        "--json", action="store_true", help="Return machine-readable JSON output"
+    )
+
+    connectors_sync = connectors_subparsers.add_parser(
+        "sync", help="Download external connector catalogs"
+    )
+    connectors_sync.add_argument(
+        "--catalog-dir",
+        help="Directory to write catalog files (defaults to registry/catalogs)",
+    )
+    connectors_sync.add_argument(
+        "--airbyte-url",
+        help="Override Airbyte registry URL (defaults to official OSS registry)",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -552,6 +625,8 @@ Examples:
         return check_command(args)
     elif args.command == "discover":
         return discover_command(args)
+    elif args.command == "connectors":
+        return connectors_command(args)
     else:
         parser.print_help()
         return 2

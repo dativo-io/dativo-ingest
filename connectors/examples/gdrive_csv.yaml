@@ -10,7 +10,6 @@ default_engine:
       api_version: "v3"
       mime_type: "text/csv"
     airbyte:
-      docker_image: "airbyte/source-google-drive:latest"
       streams_default: ["files"]
       start_date_default: "2024-01-01"
     meltano:

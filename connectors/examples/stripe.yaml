@@ -7,7 +7,6 @@ default_engine:
   type: airbyte
   options:
     airbyte:
-      docker_image: "airbyte/source-stripe:latest"
       streams_default: ["customers", "charges", "invoices"]
       start_date_default: "2024-01-01"
 credentials:

@@ -1,6 +1,6 @@
-.PHONY: schema-validate schema-connectors schema-odcs test-unit test-integration test-smoke test-workflows test-plugin test-performance test format format-check lint clean clean-state clean-temp build-plugin-images
+.PHONY: schema-validate schema-connectors schema-templates schema-odcs test-unit test-integration test-smoke test-workflows test-plugin test-performance test format format-check lint clean clean-state clean-temp build-plugin-images
 
-schema-validate: schema-connectors schema-odcs
+schema-validate: schema-connectors schema-templates schema-odcs
 
 schema-connectors:
 	@echo "🔍 Validating connector registry schema..."
@@ -10,6 +10,17 @@ schema-connectors:
 		PYTHONPATH=src python3 -c "import yaml, json, sys; data = yaml.safe_load(open('registry/connectors.yaml')); json.dump(data, open('/tmp/connectors.json', 'w'), indent=2)"; \
 	fi
 	@npx ajv-cli validate -s schemas/connectors.schema.json -d /tmp/connectors.json --strict=false && rm -f /tmp/connectors.json || (rm -f /tmp/connectors.json && exit 1)
+
+schema-templates:
+	@echo "🔍 Validating connector template schemas..."
+	@if ls registry/templates/*.yaml >/dev/null 2>&1; then \
+		for file in registry/templates/*.yaml; do \
+			echo "  • $$file"; \
+			yq -o=json '. ' $$file | npx ajv-cli validate -s schemas/connector_template.schema.json -d /dev/stdin --strict=false || exit 1; \
+		done; \
+	else \
+		echo "⚠️  No templates found under registry/templates. Skipping."; \
+	fi
 
 schema-odcs:
 	@echo "🔍 Validating ODCS compliance..."

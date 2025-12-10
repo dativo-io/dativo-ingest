@@ -317,6 +317,25 @@ dativo discover --config jobs/acme/stripe_customers.yaml [--json] [--verbose]
 - `--secret-manager-config`: Path to YAML/JSON (or inline JSON string) with manager-specific settings. Defaults to `DATIVO_SECRET_MANAGER_CONFIG`.
 - `--secrets-dir`: Path to secrets directory (used only when `--secret-manager filesystem`)
 
+### Connector Registry CLI
+
+Inspect registry metadata and external catalog defaults:
+
+```bash
+# List connectors with resolved docker images and catalog metadata
+dativo connectors list [--json] [--registry-path <file>] [--catalog-dir <dir>]
+
+# Inspect a single connector
+dativo connectors inspect hubspot [--json]
+
+# Sync external catalogs (Airbyte OSS by default)
+dativo connectors sync [--catalog-dir <dir>] [--airbyte-url <url>]
+```
+
+- Registry metadata lives in `registry/connectors.yaml`
+- External catalogs are cached under `registry/catalogs/`
+- Jobs automatically pick up updated Airbyte docker images/versions from synced catalogs (job-level overrides still win)
+
 **Examples:**
 ```bash
 # Single job

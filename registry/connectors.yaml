@@ -11,6 +11,10 @@ connectors:
     category: crm
     default_engine: airbyte
     engines_supported: [airbyte, singer, native]
+    source_of_truth: airbyte
+    external_id: source-hubspot
+    docker_image_default: airbyte/source-hubspot
+    version_default: "0.2.0"
     allowed_in_cloud: true
     supports_incremental: true
     incremental_strategy_default: updated_after
@@ -21,6 +25,10 @@ connectors:
     category: payments
     default_engine: airbyte
     engines_supported: [airbyte, singer, native]
+    source_of_truth: airbyte
+    external_id: source-stripe
+    docker_image_default: airbyte/source-stripe
+    version_default: latest
     allowed_in_cloud: true
     supports_incremental: true
     incremental_strategy_default: created
@@ -31,6 +39,10 @@ connectors:
     category: files
     default_engine: native
     engines_supported: [native, airbyte, meltano]
+    source_of_truth: native
+    external_id: source-google-drive
+    docker_image_default: airbyte/source-google-drive
+    version_default: latest
     allowed_in_cloud: true
     supports_incremental: true
     incremental_strategy_default: file_modified_time
@@ -41,6 +53,7 @@ connectors:
     category: files
     default_engine: native
     engines_supported: [native]
+    source_of_truth: native
     allowed_in_cloud: true
     supports_incremental: true
     incremental_strategy_default: file_modified_time
@@ -51,6 +64,7 @@ connectors:
     category: files
     default_engine: native
     engines_supported: [native]
+    source_of_truth: native
     allowed_in_cloud: true
     supports_incremental: true
     incremental_strategy_default: file_modified_time
@@ -61,6 +75,10 @@ connectors:
     category: files
     default_engine: native
     engines_supported: [native, airbyte, meltano]
+    source_of_truth: native
+    external_id: source-google-sheets
+    docker_image_default: airbyte/source-google-sheets
+    version_default: latest
     allowed_in_cloud: true
     supports_incremental: true
     incremental_strategy_default: spreadsheet_modified_time
@@ -71,6 +89,7 @@ connectors:
     category: database
     default_engine: meltano
     engines_supported: [meltano, airbyte, jdbc]
+    source_of_truth: meltano
     allowed_in_cloud: false                            # blocked in SaaS
     supports_incremental: true
     incremental_strategy_default: updated_at
@@ -82,6 +101,7 @@ connectors:
     category: database
     default_engine: meltano
     engines_supported: [meltano, airbyte, jdbc]
+    source_of_truth: meltano
     allowed_in_cloud: false
     supports_incremental: true
     incremental_strategy_default: updated_at
@@ -92,6 +112,7 @@ connectors:
     roles: [target]  # Target only - data lake format
     default_engine: native
     engines_supported: [native, spark]
+    source_of_truth: native
     file_formats: [parquet, markdown_kv]  # markdown_kv stored as STRING in Parquet
     supports_schema_evolution: true
 
@@ -99,17 +120,20 @@ connectors:
     roles: [source, target]  # Bidirectional - can read and write from S3
     default_engine: native
     engines_supported: [native]
+    source_of_truth: native
 
   minio:
     roles: [source, target]  # Bidirectional - can read and write from MinIO
     default_engine: native
     engines_supported: [native]
+    source_of_truth: native
 
   mimesis:
     roles: [source]  # Source only - synthetic data generation
     category: synthetic
     default_engine: native
     engines_supported: [native]
+    source_of_truth: native
     allowed_in_cloud: true
     supports_incremental: false  # Synthetic data doesn't support incremental
     objects_supported: ["synthetic"]
