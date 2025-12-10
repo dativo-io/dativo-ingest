@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ..config import ConnectorRecipe, SourceConfig
+from ..registry import ConnectorRegistry
 
 
 class EngineConfigParser:
@@ -202,14 +203,35 @@ class EngineConfigParser:
         return credentials
 
     def get_docker_image(self) -> Optional[str]:
-        """Get Docker image for Airbyte connector.
+        """Get Docker image for Airbyte connector with catalog resolution.
+
+        Resolution priority:
+        1. Airbyte options in connector recipe
+        2. Connector registry with catalog lookup
+        3. None
 
         Returns:
             Docker image name or None
         """
         if self.engine_type == "airbyte":
             airbyte_opts = self.engine_options.get("airbyte", {})
-            return airbyte_opts.get("docker_image")
+            docker_image = airbyte_opts.get("docker_image")
+            
+            # If docker_image not in recipe, try registry resolution
+            if not docker_image:
+                try:
+                    registry = ConnectorRegistry()
+                    resolved = registry.resolve_connector(
+                        self.source_config.type,
+                        engine=self.engine_type
+                    )
+                    if resolved:
+                        docker_image = resolved.docker_image
+                except Exception:
+                    # If registry resolution fails, continue without it
+                    pass
+            
+            return docker_image
         return None
 
     def get_incremental_config(self) -> Dict[str, Any]:

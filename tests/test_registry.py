@@ -1,0 +1,423 @@
+"""Tests for connector registry and catalog loading."""
+
+import json
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from src.dativo_ingest.registry import (
+    CatalogLoader,
+    ConnectorRegistry,
+    ExternalConnector,
+    ResolvedConnector,
+)
+
+
+class TestCatalogLoader:
+    """Test external catalog loading."""
+
+    def test_catalog_loader_no_catalogs(self, tmp_path):
+        """Test catalog loader with no catalog files."""
+        loader = CatalogLoader(catalogs_dir=tmp_path)
+        assert loader.catalogs == {}
+        assert not loader.has_catalogs()
+        assert loader.get_catalog_names() == []
+
+    def test_catalog_loader_airbyte_format(self, tmp_path):
+        """Test loading Airbyte catalog format."""
+        catalog_data = {
+            "sources": [
+                {
+                    "sourceDefinitionId": "test-id-123",
+                    "name": "Test Connector",
+                    "dockerRepository": "airbyte/source-test",
+                    "dockerImageTag": "1.0.0",
+                    "documentationUrl": "https://example.com",
+                    "supportLevel": "certified",
+                }
+            ]
+        }
+
+        catalog_file = tmp_path / "airbyte.json"
+        with open(catalog_file, "w") as f:
+            json.dump(catalog_data, f)
+
+        loader = CatalogLoader(catalogs_dir=tmp_path)
+        assert loader.has_catalogs()
+        assert "airbyte" in loader.get_catalog_names()
+
+        connectors = loader.list_connectors("airbyte")
+        assert len(connectors) == 1
+        assert connectors[0].name == "test_connector"
+        assert connectors[0].external_id == "test-id-123"
+        assert connectors[0].docker_image_default == "airbyte/source-test:1.0.0"
+        assert connectors[0].version_default == "1.0.0"
+
+    def test_catalog_loader_generic_format(self, tmp_path):
+        """Test loading generic catalog format."""
+        catalog_data = {
+            "connectors": [
+                {
+                    "name": "test_connector",
+                    "external_id": "test-123",
+                    "docker_image_default": "custom/connector:1.0",
+                    "version_default": "1.0",
+                    "capabilities": ["incremental", "cdc"],
+                }
+            ]
+        }
+
+        catalog_file = tmp_path / "custom.json"
+        with open(catalog_file, "w") as f:
+            json.dump(catalog_data, f)
+
+        loader = CatalogLoader(catalogs_dir=tmp_path)
+        assert loader.has_catalogs()
+
+        connector = loader.get_connector("test_connector", "custom")
+        assert connector is not None
+        assert connector.name == "test_connector"
+        assert connector.external_id == "test-123"
+        assert "incremental" in connector.capabilities
+
+    def test_catalog_loader_invalid_json(self, tmp_path):
+        """Test catalog loader with invalid JSON."""
+        catalog_file = tmp_path / "invalid.json"
+        with open(catalog_file, "w") as f:
+            f.write("invalid json content {")
+
+        # Should not raise, just warn
+        loader = CatalogLoader(catalogs_dir=tmp_path)
+        assert not loader.has_catalogs()
+
+    def test_get_connector_by_name(self, tmp_path):
+        """Test getting connector by name."""
+        catalog_data = {
+            "connectors": [
+                {
+                    "name": "stripe",
+                    "external_id": "stripe-123",
+                    "docker_image_default": "airbyte/source-stripe:4.0.0",
+                }
+            ]
+        }
+
+        catalog_file = tmp_path / "airbyte.json"
+        with open(catalog_file, "w") as f:
+            json.dump(catalog_data, f)
+
+        loader = CatalogLoader(catalogs_dir=tmp_path)
+
+        # Find in specific catalog
+        connector = loader.get_connector("stripe", "airbyte")
+        assert connector is not None
+        assert connector.name == "stripe"
+
+        # Find in all catalogs
+        connector = loader.get_connector("stripe")
+        assert connector is not None
+
+        # Not found
+        connector = loader.get_connector("nonexistent")
+        assert connector is None
+
+    def test_list_connectors_all(self, tmp_path):
+        """Test listing all connectors from multiple catalogs."""
+        # Create two catalog files
+        catalog1 = {"connectors": [{"name": "connector1", "external_id": "id1"}]}
+        catalog2 = {"connectors": [{"name": "connector2", "external_id": "id2"}]}
+
+        with open(tmp_path / "catalog1.json", "w") as f:
+            json.dump(catalog1, f)
+        with open(tmp_path / "catalog2.json", "w") as f:
+            json.dump(catalog2, f)
+
+        loader = CatalogLoader(catalogs_dir=tmp_path)
+        connectors = loader.list_connectors()
+
+        assert len(connectors) == 2
+        names = [c.name for c in connectors]
+        assert "connector1" in names
+        assert "connector2" in names
+
+
+class TestConnectorRegistry:
+    """Test connector registry with catalog integration."""
+
+    def test_registry_loading(self):
+        """Test loading the actual registry file."""
+        registry = ConnectorRegistry()
+        assert registry.registry_data is not None
+        assert "version" in registry.registry_data
+
+    def test_get_connector_entry(self):
+        """Test getting connector entry from registry."""
+        registry = ConnectorRegistry()
+
+        # Test unified format
+        entry = registry.get_connector_entry("hubspot", role="source")
+        assert entry is not None
+        assert "roles" in entry or "category" in entry
+
+        # Test non-existent
+        entry = registry.get_connector_entry("nonexistent")
+        assert entry is None
+
+    def test_list_connectors(self):
+        """Test listing connectors."""
+        registry = ConnectorRegistry()
+
+        # List all
+        all_connectors = registry.list_connectors()
+        assert len(all_connectors) > 0
+
+        # List sources
+        sources = registry.list_connectors(role="source")
+        assert len(sources) > 0
+        assert "hubspot" in sources or "stripe" in sources
+
+        # List targets
+        targets = registry.list_connectors(role="target")
+        assert len(targets) > 0
+
+    def test_resolve_connector_basic(self):
+        """Test basic connector resolution without catalog."""
+        registry = ConnectorRegistry()
+
+        resolved = registry.resolve_connector("hubspot")
+        assert resolved is not None
+        assert resolved.name == "hubspot"
+        assert "source" in resolved.roles
+        assert resolved.default_engine in ["airbyte", "native", "singer", "meltano"]
+
+    def test_resolve_connector_with_catalog(self, tmp_path):
+        """Test connector resolution with catalog integration."""
+        # Create a test catalog
+        catalog_data = {
+            "connectors": [
+                {
+                    "name": "hubspot",
+                    "external_id": "airbyte/source-hubspot",
+                    "docker_image_default": "airbyte/source-hubspot:2.5.0",
+                    "version_default": "2.5.0",
+                }
+            ]
+        }
+
+        catalog_file = tmp_path / "airbyte.json"
+        with open(catalog_file, "w") as f:
+            json.dump(catalog_data, f)
+
+        # Create loader with test catalog
+        loader = CatalogLoader(catalogs_dir=tmp_path)
+        registry = ConnectorRegistry(catalog_loader=loader)
+
+        # Resolve with airbyte engine - should use catalog
+        resolved = registry.resolve_connector("hubspot", engine="airbyte")
+        assert resolved is not None
+        assert resolved.docker_image == "airbyte/source-hubspot:2.5.0"
+        assert resolved.version == "2.5.0"
+        assert resolved.catalog_entry is not None
+
+    def test_resolve_connector_with_overrides(self, tmp_path):
+        """Test connector resolution with job-level overrides."""
+        catalog_data = {
+            "connectors": [
+                {
+                    "name": "stripe",
+                    "external_id": "airbyte/source-stripe",
+                    "docker_image_default": "airbyte/source-stripe:4.0.0",
+                }
+            ]
+        }
+
+        catalog_file = tmp_path / "airbyte.json"
+        with open(catalog_file, "w") as f:
+            json.dump(catalog_data, f)
+
+        loader = CatalogLoader(catalogs_dir=tmp_path)
+        registry = ConnectorRegistry(catalog_loader=loader)
+
+        # Job override should take precedence
+        overrides = {"docker_image": "custom/stripe:5.0.0", "version": "5.0.0"}
+        resolved = registry.resolve_connector("stripe", engine="airbyte", job_overrides=overrides)
+
+        assert resolved.docker_image == "custom/stripe:5.0.0"
+        assert resolved.version == "5.0.0"
+
+    def test_validate_connector(self):
+        """Test connector validation."""
+        registry = ConnectorRegistry()
+
+        # Valid connector
+        entry = registry.validate_connector("hubspot", "source", "self_hosted")
+        assert entry is not None
+
+        # Invalid connector - should exit
+        with pytest.raises(SystemExit):
+            registry.validate_connector("nonexistent", "source", "self_hosted")
+
+
+class TestResolvedConnector:
+    """Test resolved connector object."""
+
+    def test_resolved_connector_basic(self):
+        """Test basic resolved connector properties."""
+        registry_entry = {
+            "roles": ["source"],
+            "default_engine": "native",
+            "engines_supported": ["native", "airbyte"],
+            "category": "files",
+            "allowed_in_cloud": True,
+            "supports_incremental": True,
+            "incremental_strategy_default": "updated_after",
+        }
+
+        resolved = ResolvedConnector(
+            name="test_connector",
+            connector_type="test",
+            registry_entry=registry_entry,
+        )
+
+        assert resolved.name == "test_connector"
+        assert resolved.roles == ["source"]
+        assert resolved.default_engine == "native"
+        assert resolved.category == "files"
+        assert resolved.allowed_in_cloud is True
+        assert resolved.supports_incremental is True
+        assert "incremental" in resolved.capabilities
+
+    def test_resolved_connector_with_catalog(self):
+        """Test resolved connector with catalog entry."""
+        registry_entry = {
+            "roles": ["source"],
+            "default_engine": "airbyte",
+            "engines_supported": ["airbyte"],
+        }
+
+        catalog_entry = ExternalConnector(
+            name="test",
+            external_id="airbyte/source-test",
+            docker_image_default="airbyte/source-test:1.0.0",
+            version_default="1.0.0",
+            capabilities=["certified"],
+            source_of_truth="airbyte",
+        )
+
+        resolved = ResolvedConnector(
+            name="test",
+            connector_type="test",
+            registry_entry=registry_entry,
+            catalog_entry=catalog_entry,
+        )
+
+        # Catalog values should be used
+        assert resolved.docker_image == "airbyte/source-test:1.0.0"
+        assert resolved.version == "1.0.0"
+        assert resolved.external_id == "airbyte/source-test"
+        assert "certified" in resolved.capabilities
+
+    def test_resolved_connector_override_priority(self):
+        """Test that job overrides take precedence."""
+        registry_entry = {
+            "roles": ["source"],
+            "default_engine": "airbyte",
+            "engines_supported": ["airbyte"],
+            "docker_image_default": "airbyte/source-test:1.0.0",
+        }
+
+        catalog_entry = ExternalConnector(
+            name="test",
+            external_id="airbyte/source-test",
+            docker_image_default="airbyte/source-test:2.0.0",
+            version_default="2.0.0",
+        )
+
+        job_overrides = {
+            "docker_image": "custom/test:3.0.0",
+            "version": "3.0.0",
+            "engine": "native",
+        }
+
+        resolved = ResolvedConnector(
+            name="test",
+            connector_type="test",
+            registry_entry=registry_entry,
+            catalog_entry=catalog_entry,
+            job_overrides=job_overrides,
+        )
+
+        # Job overrides should win
+        assert resolved.docker_image == "custom/test:3.0.0"
+        assert resolved.version == "3.0.0"
+        assert resolved.default_engine == "native"
+
+    def test_resolved_connector_to_dict(self):
+        """Test converting resolved connector to dict."""
+        registry_entry = {
+            "roles": ["source"],
+            "default_engine": "native",
+            "engines_supported": ["native"],
+            "category": "files",
+        }
+
+        resolved = ResolvedConnector(
+            name="test",
+            connector_type="test",
+            registry_entry=registry_entry,
+        )
+
+        result = resolved.to_dict()
+        assert result["name"] == "test"
+        assert result["type"] == "test"
+        assert result["roles"] == ["source"]
+        assert result["default_engine"] == "native"
+        assert result["category"] == "files"
+
+
+class TestConnectorResolutionIntegration:
+    """Integration tests for connector resolution with real registry."""
+
+    def test_stripe_connector_resolution(self):
+        """Test Stripe connector resolution."""
+        registry = ConnectorRegistry()
+        resolved = registry.resolve_connector("stripe")
+
+        assert resolved is not None
+        assert "source" in resolved.roles
+        assert resolved.default_engine in ["airbyte", "singer", "native"]
+        assert resolved.supports_incremental is True
+
+    def test_postgres_connector_resolution(self):
+        """Test Postgres connector resolution."""
+        registry = ConnectorRegistry()
+        resolved = registry.resolve_connector("postgres")
+
+        assert resolved is not None
+        assert "source" in resolved.roles or "target" in resolved.roles
+        assert resolved.allowed_in_cloud is False  # Database connectors blocked in cloud
+
+    def test_csv_connector_resolution(self):
+        """Test CSV connector (native) resolution."""
+        registry = ConnectorRegistry()
+        resolved = registry.resolve_connector("csv")
+
+        assert resolved is not None
+        assert resolved.default_engine == "native"
+        assert "source" in resolved.roles
+        assert "target" in resolved.roles
+
+    def test_mimesis_connector_resolution(self):
+        """Test Mimesis connector resolution."""
+        registry = ConnectorRegistry()
+        resolved = registry.resolve_connector("mimesis")
+
+        assert resolved is not None
+        assert resolved.default_engine == "native"
+        assert "source" in resolved.roles
+        assert resolved.supports_incremental is False
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

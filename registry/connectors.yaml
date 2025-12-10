@@ -11,6 +11,10 @@ connectors:
     category: crm
     default_engine: airbyte
     engines_supported: [airbyte, singer, native]
+    external_id: "airbyte/source-hubspot"
+    docker_image_default: "airbyte/source-hubspot:2.0.0"
+    version_default: "2.0.0"
+    source_of_truth: airbyte
     allowed_in_cloud: true
     supports_incremental: true
     incremental_strategy_default: updated_after
@@ -21,6 +25,10 @@ connectors:
     category: payments
     default_engine: airbyte
     engines_supported: [airbyte, singer, native]
+    external_id: "airbyte/source-stripe"
+    docker_image_default: "airbyte/source-stripe:4.0.0"
+    version_default: "4.0.0"
+    source_of_truth: airbyte
     allowed_in_cloud: true
     supports_incremental: true
     incremental_strategy_default: created
@@ -71,6 +79,8 @@ connectors:
     category: database
     default_engine: meltano
     engines_supported: [meltano, airbyte, jdbc]
+    external_id: "airbyte/source-postgres"
+    source_of_truth: meltano
     allowed_in_cloud: false                            # blocked in SaaS
     supports_incremental: true
     incremental_strategy_default: updated_at

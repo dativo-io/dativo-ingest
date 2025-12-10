@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 from .config import JobConfig
+from .registry import ConnectorRegistry
 
 
 class ConnectorValidator:
@@ -20,71 +21,25 @@ class ConnectorValidator:
         Args:
             registry_path: Path to connectors.yaml (defaults to /app/registry/connectors.yaml)
         """
-        if registry_path is None:
-            # Try multiple possible paths
-            possible_paths = [
-                Path("/app/registry/connectors.yaml"),
-                Path("registry/connectors.yaml"),
-                Path(__file__).parent.parent.parent / "registry" / "connectors.yaml",
-            ]
-            for path in possible_paths:
-                if path.exists():
-                    registry_path = path
-                    break
-
-        if registry_path is None or not registry_path.exists():
-            possible_paths_str = [
-                str(p)
-                for p in [
-                    Path("/app/registry/connectors.yaml"),
-                    Path("registry/connectors.yaml"),
-                    Path(__file__).parent.parent.parent
-                    / "registry"
-                    / "connectors.yaml",
-                ]
-            ]
-            raise FileNotFoundError(
-                f"Connector registry not found. Tried: {possible_paths_str}"
-            )
-
-        self.registry_path = registry_path
-        self.registry: Dict[str, Any] = self._load_registry()
+        # Use new ConnectorRegistry for enhanced functionality
+        self.registry = ConnectorRegistry(registry_path=registry_path)
+        # Keep old interface for backward compatibility
+        self.registry_path = self.registry.registry_path
+        
+        # Legacy attribute for compatibility
+        # This is the raw YAML data
+        self.registry_data = self.registry.registry_data
 
     def _load_registry(self) -> Dict[str, Any]:
         """Load connector registry from YAML.
 
+        DEPRECATED: This method is kept for backward compatibility.
+        Use self.registry instead.
+
         Returns:
             Registry data as dictionary
-
-        Raises:
-            SystemExit: Exit code 2 if registry cannot be loaded
         """
-        try:
-            with open(self.registry_path, "r") as f:
-                data = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            print(
-                f"ERROR: Failed to parse connector registry: {self.registry_path}\n"
-                f"YAML Error: {e}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-        except Exception as e:
-            print(
-                f"ERROR: Failed to read connector registry: {self.registry_path}\n"
-                f"Error: {e}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-
-        if data is None:
-            print(
-                f"ERROR: Connector registry is empty: {self.registry_path}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-
-        return data
+        return self.registry.registry_data
 
     def validate_connector_type(
         self, connector_type: str, role: str = "source"
@@ -101,43 +56,18 @@ class ConnectorValidator:
         Raises:
             SystemExit: Exit code 2 if connector not found or doesn't support role
         """
-        # Support both old (sources/targets) and new (connectors) registry formats
-        connectors = self.registry.get("connectors", {})
-        sources = self.registry.get("sources", {})
-        targets = self.registry.get("targets", {})
-
-        # Try unified format first
-        if connectors and connector_type in connectors:
-            connector_def = connectors[connector_type]
-            roles = connector_def.get("roles", [])
-            if role not in roles:
-                print(
-                    f"ERROR: Connector type '{connector_type}' does not support '{role}' role.\n"
-                    f"Supported roles: {roles}",
-                    file=sys.stderr,
-                )
-                sys.exit(2)
-            return connector_def
-
-        # Fall back to legacy format
-        if role == "source":
-            if connector_type in sources:
-                return sources[connector_type]
+        # Use enhanced registry for validation
+        entry = self.registry.get_connector_entry(connector_type, role)
+        if not entry:
+            available = self.registry.list_connectors(role)
             print(
                 f"ERROR: Connector type '{connector_type}' not found in registry.\n"
-                f"Available source connectors: {', '.join(sources.keys())}",
+                f"Available {role} connectors: {', '.join(available)}",
                 file=sys.stderr,
             )
-        else:  # role == "target"
-            if connector_type in targets:
-                return targets[connector_type]
-            print(
-                f"ERROR: Connector type '{connector_type}' not found in registry.\n"
-                f"Available target connectors: {', '.join(targets.keys())}",
-                file=sys.stderr,
-            )
-
-        sys.exit(2)
+            sys.exit(2)
+        
+        return entry
 
     def validate_mode_restriction(
         self, connector_type: str, mode: str, connector_def: Dict[str, Any]
@@ -152,12 +82,17 @@ class ConnectorValidator:
         Raises:
             SystemExit: Exit code 2 if connector blocked in cloud mode
         """
-        if mode == "cloud" and not connector_def.get("allowed_in_cloud", True):
-            print(
-                f"ERROR: Connector '{connector_type}' is not allowed in cloud mode.\n"
-                f"Database connectors can only run in self_hosted mode.",
-                file=sys.stderr,
-            )
+        # Use registry method for validation
+        try:
+            self.registry.validate_connector(connector_type, "source", mode)
+        except SystemExit:
+            # Re-raise with original error message format
+            if mode == "cloud" and not connector_def.get("allowed_in_cloud", True):
+                print(
+                    f"ERROR: Connector '{connector_type}' is not allowed in cloud mode.\n"
+                    f"Database connectors can only run in self_hosted mode.",
+                    file=sys.stderr,
+                )
             sys.exit(2)
 
     def validate_incremental_strategy(
