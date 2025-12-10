@@ -62,6 +62,7 @@ jobs:
         run: |
           docker pull python:3.10
           docker pull minio/minio:latest
+          docker pull projectnessie/nessie:latest
           
       - name: Start MinIO
         run: |
@@ -85,6 +86,27 @@ jobs:
             sleep 2
           done
 
+      - name: Start Nessie
+        run: |
+          # Start Nessie in background
+          docker run -d \
+            --name nessie \
+            -p 19120:19120 \
+            -e QUARKUS_HTTP_PORT=19120 \
+            -e QUARKUS_HTTP_CORS_ORIGINS=* \
+            projectnessie/nessie:latest
+          
+          # Wait for Nessie to be ready
+          echo "Waiting for Nessie to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:19120/api/v1/config 2>/dev/null; then
+              echo "✅ Nessie is ready"
+              break
+            fi
+            echo "Attempt $i/30: Nessie not ready yet, waiting..."
+            sleep 2
+          done
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
@@ -93,7 +115,7 @@ jobs:
 
       - name: Load AdventureWorks test data
         run: |
-          # Install PostgreSQL client
+          # Install PostgreSQL client (lightweight, doesn't pull in server)
           sudo apt-get install -y postgresql-client
           
           # Wait for Postgres to be ready
@@ -101,6 +123,18 @@ jobs:
             echo "Waiting for Postgres..."
             sleep 2
           done
+          
+          # Create root role early to prevent connection errors from health checks or other tools
+          # Use DO block to avoid error if role already exists
+          PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres <<'EOF'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'root') THEN
+              CREATE ROLE root WITH LOGIN SUPERUSER PASSWORD 'root';
+            END IF;
+          END
+          $$;
+          EOF
           
           # Load minimal test data
           PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres -d Adventureworks <<'EOF'
@@ -255,41 +289,29 @@ jobs:
           echo "✅ AdventureWorks test data loaded"
 
       - name: Load MySQL test data
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
-          # Install MySQL client and netcat for port checking
-          sudo apt-get install -y mysql-client netcat-openbsd
+          # Use Docker exec to run MySQL commands instead of installing mysql-client
+          # This avoids pulling in mysql-server packages which take too long to install
           
-          # Wait for MySQL to be ready (with timeout and better diagnostics)
+          # Get MySQL container name/ID
+          MYSQL_CONTAINER=$(docker ps --filter "ancestor=mysql:8.0" --format "{{.ID}}" | head -1)
+          if [ -z "$MYSQL_CONTAINER" ]; then
+            echo "❌ MySQL container not found"
+            docker ps -a | grep mysql || echo "No MySQL containers found"
+            exit 1
+          fi
+          
+          # Wait for MySQL to be ready using docker exec (avoids needing mysql-client installed)
           echo "Waiting for MySQL to be ready..."
-          MAX_WAIT=120  # Maximum wait time in seconds (increased for slow startup)
+          MAX_WAIT=120  # Maximum wait time in seconds
           WAIT_COUNT=0
           
-          # First, wait for MySQL port to be accessible
-          echo "Checking if MySQL port 3306 is accessible..."
-          while ! nc -z localhost 3306 2>/dev/null; do
-            if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
-              echo "❌ MySQL port 3306 did not become accessible within $MAX_WAIT seconds"
-              echo "Checking MySQL service status..."
-              docker ps -a | grep mysql || echo "No MySQL container found"
-              exit 1
-            fi
-            echo "Waiting for MySQL port... ($WAIT_COUNT/$MAX_WAIT seconds)"
-            sleep 2
-            WAIT_COUNT=$((WAIT_COUNT + 2))
-          done
-          echo "✅ MySQL port 3306 is accessible"
-          
-          # Then wait for MySQL to accept connections (use TCP, not Unix socket)
-          echo "Waiting for MySQL to accept connections..."
-          WAIT_COUNT=0
-          while ! mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot --silent 2>/dev/null; do
+          while ! docker exec "$MYSQL_CONTAINER" mysqladmin ping -h 127.0.0.1 -u root -proot --silent 2>/dev/null; do
             if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
               echo "❌ MySQL did not become ready within $MAX_WAIT seconds"
-              echo "Attempting diagnostic connection..."
-              mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot 2>&1 || true
-              echo "Checking MySQL error log..."
-              docker logs $(docker ps -q --filter "ancestor=mysql:8.0") 2>&1 | tail -20 || echo "Could not retrieve logs"
+              echo "Checking MySQL container logs..."
+              docker logs "$MYSQL_CONTAINER" 2>&1 | tail -20 || echo "Could not retrieve logs"
               exit 1
             fi
             echo "Waiting for MySQL connection... ($WAIT_COUNT/$MAX_WAIT seconds)"
@@ -298,10 +320,8 @@ jobs:
           done
           echo "✅ MySQL is ready and accepting connections"
           
-          # Create minimal test schema and data (instead of loading full employees database)
-          # This is much faster and sufficient for smoke tests
-          # Use 127.0.0.1 instead of localhost to force TCP connection (not Unix socket)
-          mysql -h 127.0.0.1 -P 3306 -u root -proot <<'EOF'
+          # Create minimal test schema and data using docker exec
+          docker exec -i "$MYSQL_CONTAINER" mysql -u root -proot <<'EOF'
           CREATE DATABASE IF NOT EXISTS employees;
           USE employees;
           
@@ -340,8 +360,8 @@ jobs:
           FLUSH PRIVILEGES;
           EOF
           
-          # Verify MySQL data loaded
-          mysql -h 127.0.0.1 -P 3306 -u test -ptest -e "USE employees; SELECT COUNT(*) as dept_count FROM departments;" || echo "⚠️  Could not verify MySQL data"
+          # Verify MySQL data loaded using docker exec
+          docker exec "$MYSQL_CONTAINER" mysql -u test -ptest -e "USE employees; SELECT COUNT(*) as dept_count FROM departments;" || echo "⚠️  Could not verify MySQL data"
           
           echo "✅ MySQL test data loaded (minimal dataset)"
 

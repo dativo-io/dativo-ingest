@@ -1,0 +1,38 @@
+# Synthetic customer data asset definition using Mimesis
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: mimesis_customers
+version: "1.0"
+source_type: mimesis
+object: customers
+
+# Schema definition - fields will be generated using Mimesis
+schema:
+  - name: customer_id
+    type: integer
+    required: true
+  - name: name
+    type: string
+    required: true
+  - name: email
+    type: string
+    required: true
+  - name: signup_date
+    type: date
+    required: true
+  - name: account_balance
+    type: double
+    required: false
+
+# Target configuration
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+
+# Governance (required)
+team:
+  owner: data-engineering@example.com
+
+compliance:
+  classification: []  # Synthetic data - no PII concerns

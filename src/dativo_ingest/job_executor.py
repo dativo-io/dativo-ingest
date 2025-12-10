@@ -260,6 +260,7 @@ class JobExecutor:
                 job_config=self.job_config,
                 tenant_id=self.tenant_id,
                 mode=self.mode,
+                asset_definition=self.asset_definition,  # Pass asset_definition for mimesis connector
             )
         except ValueError as e:
             self.logger.error(
