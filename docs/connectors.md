@@ -20,6 +20,7 @@ Connectors are tenant-agnostic, reusable YAML recipes that define how to connect
 | `google_sheets` | source, target | files | ✅ | ✅ | native | sheet |
 | `csv` | source, target | files | ✅ | ✅ | native | file |
 | `markdown_kv` | source, target | files | ✅ | ✅ | native | file |
+| `mimesis` | source | synthetic | ✅ | ❌ | native | synthetic |
 | `postgres` | source, target | database | ❌ | ✅ | meltano | tables |
 | `mysql` | source, target | database | ❌ | ✅ | meltano | tables |
 | `iceberg` | target | lake | ✅ | N/A | native | tables |
@@ -237,6 +238,47 @@ source:
 3. **Structured storage**: Parse and store as structured data
 
 See [Markdown-KV Storage](MARKDOWN_KV_STORAGE.md) for detailed documentation.
+
+---
+
+### Mimesis
+
+**Type**: `mimesis`  
+**Category**: Synthetic  
+**Roles**: Source only  
+**Cloud Mode**: ✅ Supported  
+**Incremental**: ❌ Not supported (synthetic data generation)
+
+**Description**: Generate realistic synthetic data conforming to asset definition schemas. Useful for performance testing, development environments, and generating test datasets.
+
+**Supported Objects**:
+- `synthetic` - Schema-driven synthetic data generation
+
+**Engines**:
+- `native` (default) - Native Python implementation using Mimesis library
+
+**Features**:
+- Schema-driven data generation
+- Automatic field type mapping
+- Configurable row counts and batch sizes
+- Locale and seed support for reproducible data
+- Field-level customization options
+
+**Configuration Example**:
+```yaml
+source_connector: mimesis
+source_connector_path: connectors/examples/mimesis.yaml
+source:
+  type: mimesis
+  options:
+    row_count: 1000
+    batch_size: 100
+    locale: en
+    seed: 42
+```
+
+**See Also**:
+- [Mimesis Connector Documentation](connectors/mimesis.md) - Complete guide with examples and field mapping reference
 
 ---
 

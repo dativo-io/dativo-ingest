@@ -5,12 +5,12 @@ Welcome to the comprehensive testing guide for dativo-ingest! This index helps y
 ## 📚 Documentation Overview
 
 ### 1. **[TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md)** - Complete Testing Guide
-**START HERE!** Comprehensive playbook with 20 detailed test cases covering all dativo-ingest capabilities.
+**START HERE!** Comprehensive playbook with 21 detailed test cases covering all dativo-ingest capabilities.
 
 **What's Inside:**
 - Prerequisites & environment setup
 - Test account setup for Stripe & HubSpot (with test data generation)
-- 20 real-world test cases with step-by-step instructions
+- 21 real-world test cases with step-by-step instructions
 - Advanced testing scenarios
 - Complete capability coverage
 
@@ -35,6 +35,7 @@ Welcome to the comprehensive testing guide for dativo-ingest! This index helps y
 18. Orchestration with Dagster
 19. Error Handling and Retry Logic
 20. End-to-End Production Simulation
+21. Mimesis Synthetic Data Generation to Iceberg
 
 ---
 
@@ -187,11 +188,12 @@ Open [TESTING_PLAYBOOK.md](TESTING_PLAYBOOK.md) and work through test cases 1-20
 | HubSpot API | Test Case 4 | ⭐⭐ Intermediate |
 | Google Sheets | Test Case 12 | ⭐⭐⭐ Advanced |
 | Google Drive | Test Case 13 | ⭐⭐⭐ Advanced |
+| Mimesis (Synthetic) | Test Case 21 | ⭐ Beginner |
 
 ### Data Targets
 | Target | Test Cases | Difficulty |
 |--------|-----------|------------|
-| Iceberg/Parquet | Test Cases 1, 3-8 | ⭐ Beginner |
+| Iceberg/Parquet | Test Cases 1, 3-8, 21 | ⭐ Beginner |
 | Markdown-KV | Test Case 9 | ⭐⭐ Intermediate |
 | S3/MinIO | All test cases | ⭐ Beginner |
 
@@ -221,6 +223,7 @@ Use this checklist to track your testing progress:
 - [ ] Test Case 2: Incremental Sync with State
 - [ ] Test Case 5: Schema Validation - Strict Mode
 - [ ] Test Case 6: Schema Validation - Warn Mode
+- [ ] Test Case 21: Mimesis Synthetic Data Generation
 
 ### API Integrations (⭐⭐ Intermediate)
 - [ ] Test Case 3: Stripe Customer Ingestion

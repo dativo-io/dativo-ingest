@@ -14,10 +14,11 @@
      ↳ Your starting point - navigation hub for all testing resources
      ↳ Test case checklist, learning path, troubleshooting
 
-  2. TESTING_PLAYBOOK.md (2,399 lines)
-     ↳ 20 detailed test cases with step-by-step instructions
+  2. TESTING_PLAYBOOK.md (2,399+ lines)
+     ↳ 21 detailed test cases with step-by-step instructions
      ↳ Copy-paste ready commands and configurations
      ↳ Stripe & HubSpot test account setup guides
+     ↳ Mimesis synthetic data generation examples
 
   3. TESTING_QUICK_REFERENCE.md (416 lines)
      ↳ Command cheat sheet and quick lookup guide
@@ -38,14 +39,15 @@
     ↳ Loads PostgreSQL test tables (if available)
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ 🎯 TOP 20 TEST CASES                                                         │
+│ 🎯 TOP 21 TEST CASES                                                         │
 └──────────────────────────────────────────────────────────────────────────────┘
 
   BASIC FEATURES (⭐ Beginner)
   ├─ 1. Basic CSV to Iceberg Ingestion
   ├─ 2. Incremental Sync with State Persistence
   ├─ 5. Schema Validation - Strict Mode
-  └─ 6. Schema Validation - Warn Mode
+  ├─ 6. Schema Validation - Warn Mode
+  └─ 21. Mimesis Synthetic Data Generation to Iceberg
 
   API INTEGRATIONS (⭐⭐ Intermediate)
   ├─ 3. Stripe Customer Ingestion
@@ -223,10 +225,11 @@
 │ ✅ WHAT YOU HAVE NOW                                                         │
 └──────────────────────────────────────────────────────────────────────────────┘
 
-  ✓ 3,222 lines of comprehensive testing documentation
-  ✓ 20 detailed test cases covering 100% of capabilities
+  ✓ 3,222+ lines of comprehensive testing documentation
+  ✓ 21 detailed test cases covering 100% of capabilities
   ✓ Step-by-step instructions (copy-paste ready)
   ✓ Test account setup guides (Stripe, HubSpot, Google)
+  ✓ Synthetic data generation examples (Mimesis connector)
   ✓ Automated environment validation script
   ✓ Automated test data generation script
   ✓ Quick reference command cheat sheet
@@ -252,8 +255,9 @@
      $ dativo run --job-dir tests/fixtures/jobs \
          --secrets-dir tests/fixtures/secrets --mode self_hosted
 
-  5. Follow Test Cases 1-20
+  5. Follow Test Cases 1-21
      → Open TESTING_PLAYBOOK.md and work through progressively
+     → Start with Test Case 21 for synthetic data generation (no external dependencies)
 
   6. Set Up Test Accounts
      → Stripe (2 min) + HubSpot (3 min) for API testing

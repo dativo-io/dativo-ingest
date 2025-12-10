@@ -1,14 +1,14 @@
 # Dativo-Ingest Testing Playbook
 ## Comprehensive Guide for Real-World Testing
 
-This playbook covers 20 real-world test cases to validate all capabilities of dativo-ingest, including setup instructions for Stripe and HubSpot test accounts.
+This playbook covers 21 real-world test cases to validate all capabilities of dativo-ingest, including setup instructions for Stripe and HubSpot test accounts.
 
 ---
 
 ## Table of Contents
 1. [Prerequisites & Setup](#prerequisites--setup)
 2. [Test Account Setup (Stripe & HubSpot)](#test-account-setup)
-3. [Top 20 Test Cases](#top-20-test-cases)
+3. [Top 21 Test Cases](#top-21-test-cases)
 4. [Advanced Testing Scenarios](#advanced-testing-scenarios)
 
 ---
@@ -197,7 +197,7 @@ curl -X POST "https://api.hubapi.com/crm/v3/objects/companies" \
 
 ---
 
-## Top 20 Test Cases
+## Top 21 Test Cases
 
 ### Test Case 1: Basic CSV to Iceberg Ingestion
 **Purpose:** Validate basic ETL pipeline with Parquet writing and Iceberg integration
@@ -2272,6 +2272,246 @@ mc ls local/test-bucket/production/ --recursive
 
 ---
 
+### Test Case 21: Mimesis Synthetic Data Generation to Iceberg
+**Purpose:** Generate realistic synthetic data using Mimesis connector and write to Iceberg tables
+
+**Use Cases:**
+- Performance testing with large datasets
+- Development and testing environments
+- Generating test data without external dependencies
+- Schema validation testing
+
+**Steps:**
+```bash
+# 1. Create asset definition for synthetic customer data
+mkdir -p assets/examples/mimesis/v1.0
+cat > assets/examples/mimesis/v1.0/customers.yaml << 'EOF'
+$schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: mimesis_customers
+version: "1.0"
+source_type: mimesis
+object: customers
+
+# Schema definition - fields will be generated using Mimesis
+schema:
+  - name: customer_id
+    type: integer
+    required: true
+  - name: name
+    type: string
+    required: true
+  - name: email
+    type: string
+    required: true
+  - name: phone
+    type: string
+    required: false
+  - name: signup_date
+    type: date
+    required: true
+  - name: account_balance
+    type: double
+    required: false
+  - name: is_active
+    type: boolean
+    required: true
+  - name: country
+    type: string
+    required: false
+
+# Target configuration
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+
+# Governance
+team:
+  owner: test@example.com
+
+compliance:
+  classification: []  # Synthetic data - no PII concerns
+EOF
+
+# 2. Create job configuration
+mkdir -p jobs/testcase21
+cat > jobs/testcase21/mimesis_customers_to_iceberg.yaml << 'EOF'
+tenant_id: testcase21
+source_connector: mimesis
+source_connector_path: connectors/examples/mimesis.yaml
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+asset: mimesis_customers
+asset_path: assets/examples/mimesis/v1.0/customers.yaml
+
+# Source configuration - Mimesis synthetic data generation
+source:
+  type: mimesis
+  object: customers
+  engine:
+    type: native
+    options:
+      native:
+        row_count: 10000  # Generate 10,000 synthetic records
+        batch_size: 1000   # Process in batches of 1,000
+        locale: "en"       # English locale for names, addresses, etc.
+        seed: 42           # Fixed seed for reproducible data
+        null_probability: 0.1  # 10% chance of null for optional fields
+
+# Target configuration
+target:
+  type: iceberg
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+  catalog:
+    type: nessie
+    uri: "${NESSIE_URI}"
+    database: test_db
+    table: synthetic_customers
+  partitioning: [ingest_date]
+
+# Schema validation
+schema_validation_mode: warn
+EOF
+
+# 3. Create secrets (reuse from previous test cases)
+mkdir -p secrets/testcase21
+cat > secrets/testcase21/iceberg.env << 'EOF'
+S3_ENDPOINT=http://localhost:9000
+AWS_ACCESS_KEY_ID=minioadmin
+AWS_SECRET_ACCESS_KEY=minioadmin
+AWS_REGION=us-east-1
+S3_BUCKET=test-bucket
+NESSIE_URI=http://localhost:19120/api/v1
+EOF
+
+# 4. Run the job
+dativo run \
+  --config jobs/testcase21/mimesis_customers_to_iceberg.yaml \
+  --secret-manager filesystem \
+  --secrets-dir secrets \
+  --mode self_hosted
+
+# 5. Verify results
+# Check Parquet files in MinIO
+mc ls local/test-bucket/testcase21/synthetic_customers/ --recursive
+
+# Verify file count and sizes
+mc stat local/test-bucket/testcase21/synthetic_customers/ingest_date=*/part-*.parquet
+
+# 6. Generate larger dataset for performance testing
+# Update job config to generate 100K records
+cat > jobs/testcase21/mimesis_performance_test.yaml << 'EOF'
+tenant_id: testcase21
+source_connector: mimesis
+source_connector_path: connectors/examples/mimesis.yaml
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+asset: mimesis_customers
+asset_path: assets/examples/mimesis/v1.0/customers.yaml
+source:
+  type: mimesis
+  object: customers
+  engine:
+    type: native
+    options:
+      native:
+        row_count: 100000  # 100K records for performance testing
+        batch_size: 10000  # Larger batches for better performance
+        locale: "en"
+        seed: 42
+target:
+  type: iceberg
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+  partitioning: [ingest_date]
+schema_validation_mode: warn
+EOF
+
+# Run performance test
+time dativo run \
+  --config jobs/testcase21/mimesis_performance_test.yaml \
+  --secret-manager filesystem \
+  --secrets-dir secrets \
+  --mode self_hosted
+
+# 7. Test with different locales
+cat > jobs/testcase21/mimesis_multilocale.yaml << 'EOF'
+tenant_id: testcase21
+source_connector: mimesis
+source_connector_path: connectors/examples/mimesis.yaml
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+asset: mimesis_customers
+asset_path: assets/examples/mimesis/v1.0/customers.yaml
+source:
+  type: mimesis
+  object: customers
+  engine:
+    type: native
+    options:
+      native:
+        row_count: 5000
+        locale: "ru"  # Russian locale for Cyrillic names
+        seed: 123
+target:
+  type: iceberg
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+  partitioning: [ingest_date]
+EOF
+
+# Run with different locale
+dativo run \
+  --config jobs/testcase21/mimesis_multilocale.yaml \
+  --secret-manager filesystem \
+  --secrets-dir secrets \
+  --mode self_hosted
+
+# 8. Verify data quality
+# Check that generated data matches schema
+# All required fields should be present
+# Optional fields may be null based on null_probability
+# Data types should match schema definitions
+```
+
+**Success Criteria:**
+- ✅ Exit code 0
+- ✅ Synthetic data generated successfully
+- ✅ Parquet files created in MinIO at `testcase21/synthetic_customers/ingest_date=YYYY-MM-DD/`
+- ✅ Generated data matches asset schema
+- ✅ Required fields are always present
+- ✅ Optional fields respect null_probability setting
+- ✅ Data types match schema definitions (integer, string, date, double, boolean)
+- ✅ Locale settings affect generated names/addresses appropriately
+- ✅ Seed ensures reproducible data generation
+- ✅ Performance test completes in reasonable time (100K records)
+- ✅ Iceberg table registered in Nessie catalog (if catalog enabled)
+
+**Key Features Demonstrated:**
+- Schema-driven synthetic data generation
+- Automatic field type mapping (email → email addresses, name → names, etc.)
+- Configurable row counts and batch sizes
+- Locale support for internationalized data
+- Seed-based reproducibility
+- Null probability control for optional fields
+- Integration with Iceberg target connector
+- Performance testing capabilities
+
+**Tips:**
+- Use `seed` parameter for reproducible test data across runs
+- Adjust `row_count` based on your testing needs (1000 for quick tests, 100K+ for performance)
+- Use different `locale` values to generate data in different languages/regions
+- Set `null_probability: 0.0` if you want all optional fields populated
+- Increase `batch_size` for better performance with large datasets
+- See [docs/connectors/mimesis.md](docs/connectors/mimesis.md) for complete field mapping reference
+
+---
+
 ## Advanced Testing Scenarios
 
 ### Scenario A: Disaster Recovery
@@ -2345,7 +2585,7 @@ dativo run --config jobs/large_scale_job.yaml ...
 This playbook covers:
 
 ### ✅ Core Capabilities Tested
-1. **Data Sources:** CSV, PostgreSQL, MySQL, Stripe, HubSpot, Google Sheets, Google Drive
+1. **Data Sources:** CSV, PostgreSQL, MySQL, Stripe, HubSpot, Google Sheets, Google Drive, Mimesis (synthetic)
 2. **Data Targets:** Iceberg, S3, MinIO, Markdown-KV
 3. **ETL Features:** Extraction, validation, transformation, loading
 4. **Schema Validation:** Strict vs warn modes
@@ -2357,16 +2597,18 @@ This playbook covers:
 10. **Catalog Integration:** OpenMetadata lineage and metadata
 11. **Multi-Tenancy:** Tenant isolation and parallel execution
 12. **Error Handling:** Retry logic, partial success, failure modes
-13. **Performance:** Rust plugins for high-performance processing
+13. **Performance:** Rust plugins for high-performance processing, synthetic data generation
 14. **Production Patterns:** End-to-end multi-source pipelines
+15. **Synthetic Data:** Mimesis connector for testing and development
 
 ### 🎯 Next Steps
 1. Start with Test Cases 1-2 (basic CSV ingestion)
 2. Set up Stripe and HubSpot accounts (Test Cases 3-4)
 3. Progress through database connectors (Test Cases 7-9)
 4. Experiment with custom plugins (Test Cases 10-11)
-5. Test advanced features (Test Cases 12-20)
-6. Simulate production scenarios (Test Case 20)
+5. Test synthetic data generation (Test Case 21) - great for performance testing
+6. Test advanced features (Test Cases 12-20)
+7. Simulate production scenarios (Test Case 20)
 
 ### 📚 Additional Resources
 - [README.md](README.md) - Platform overview

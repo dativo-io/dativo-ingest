@@ -503,6 +503,7 @@ For more examples, see [tests/fixtures/jobs/](tests/fixtures/jobs/) and [docs/MI
 - **Google Sheets** - Spreadsheet data
 - **CSV** - Local CSV files
 - **Markdown-KV** - Markdown-KV files for LLM-optimized ingestion
+- **Mimesis** - Synthetic data generation for testing and development
 - **PostgreSQL** - Database (self-hosted only)
 - **MySQL** - Database (self-hosted only)
 
