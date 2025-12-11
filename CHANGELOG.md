@@ -54,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extended registry entries for `hubspot`, `stripe`, and `postgres` with new metadata fields
 
 ### Fixed
-- N/A (new feature release)
+- **Duplicate error messages in connector validation**: Fixed `validate_mode_restriction` method that was printing duplicate error messages when connectors were blocked in cloud mode. The method now correctly delegates error handling to `ConnectorRegistry.validate_connector()`, which prints the error message once and exits.
 
 ### Deprecated
 - N/A

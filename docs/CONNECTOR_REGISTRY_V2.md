@@ -368,6 +368,11 @@ The registry integration is encapsulated in a simple helper method (`_resolve_ai
 
 The `ConnectorValidator` (`validator.py`) now uses the enhanced registry internally while maintaining backward compatibility. It uses `ConnectorRegistry.from_default_paths()` and raises clear errors (`RegistryNotFoundError`, `RegistryLoadError`) when the registry cannot be loaded.
 
+**Error Handling:**
+- Validation errors are printed exactly once (no duplicate messages)
+- Mode restriction errors (e.g., cloud mode blocking) are handled by `ConnectorRegistry.validate_connector()` which prints clear error messages and exits with code 2
+- All validation methods delegate error handling to the registry to ensure consistent error messages
+
 ## Backward Compatibility
 
 ✅ **Full backward compatibility maintained:**
@@ -640,6 +645,7 @@ For issues or questions:
 - Extended registry schema with optional fields
 - Implemented enhanced connector resolution
 - Added connector management CLI commands
+- Fixed duplicate error messages in connector validation
 - Full backward compatibility maintained
 - Comprehensive test coverage added
 
