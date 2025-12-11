@@ -116,10 +116,11 @@ class TestModeRestrictionValidation:
         config = JobConfig.from_yaml(config_path)
         validator = ConnectorValidator(registry_file)
         with pytest.raises((ValueError, SystemExit)):
+            connector_def = validator.validate_connector_type("postgres", role="source")
             validator.validate_mode_restriction(
                 "postgres",
                 "cloud",
-                validator.registry["sources"]["postgres"],
+                connector_def,
             )
 
     def test_validate_mode_restriction_self_hosted_allowed(
@@ -141,10 +142,11 @@ class TestModeRestrictionValidation:
         config = JobConfig.from_yaml(config_path)
         validator = ConnectorValidator(registry_file)
         # Should not raise
+        connector_def = validator.validate_connector_type("postgres", role="source")
         validator.validate_mode_restriction(
             "postgres",
             "self_hosted",
-            validator.registry["sources"]["postgres"],
+            connector_def,
         )
 
 
