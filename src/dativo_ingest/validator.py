@@ -91,17 +91,8 @@ class ConnectorValidator:
             SystemExit: Exit code 2 if connector blocked in cloud mode
         """
         # Use registry method for validation
-        try:
-            self.registry.validate_connector(connector_type, "source", mode)
-        except SystemExit:
-            # Re-raise with original error message format
-            if mode == "cloud" and not connector_def.get("allowed_in_cloud", True):
-                print(
-                    f"ERROR: Connector '{connector_type}' is not allowed in cloud mode.\n"
-                    f"Database connectors can only run in self_hosted mode.",
-                    file=sys.stderr,
-                )
-            sys.exit(2)
+        # validate_connector already prints error messages and exits on failure
+        self.registry.validate_connector(connector_type, "source", mode)
 
     def validate_incremental_strategy(
         self, job_config: JobConfig, connector_def: Dict[str, Any]
