@@ -77,23 +77,26 @@ hubspot:
 
 ### 3. Enhanced Connector Resolution
 
-Connector resolution now follows this priority order:
+Connector resolution follows a clear, centralized precedence order:
 
 1. **Job-level overrides** (highest priority)
    - Docker image, version, engine specified in job config or connector recipe
 2. **External catalog entries**
    - If engine is `airbyte`/`singer`/`meltano` and matching catalog entry exists
 3. **Registry defaults**
-   - Fallback to `connectors.yaml` values
+   - Fallback to `connectors.yaml` values (`docker_image_default`, `version_default`)
 4. **No resolution** (lowest priority)
    - Returns None for missing values
+
+The resolution logic is implemented in a single, testable helper function (`resolve_image_and_version`) to ensure consistency across all code paths.
 
 #### Resolution Example
 
 ```python
 from dativo_ingest.registry import ConnectorRegistry
 
-registry = ConnectorRegistry()
+# Recommended: use from_default_paths() for standard usage
+registry = ConnectorRegistry.from_default_paths()
 
 # Basic resolution
 resolved = registry.resolve_connector("stripe")
@@ -204,6 +207,12 @@ External Catalog Entry:
 
 Sync external connector catalogs.
 
+**Currently Supported:**
+- `--catalog-file <path>`: Copy a local JSON catalog file to the catalogs directory
+
+**Not Yet Implemented:**
+- `--catalog-url`: URL-based catalog sync (will error clearly if attempted)
+
 ```bash
 # Show current catalogs
 dativo connectors sync
@@ -217,6 +226,11 @@ dativo connectors sync --json
 # Verbose output
 dativo connectors sync --verbose
 ```
+
+**Error Handling:**
+- Returns exit code 0 on success
+- Returns exit code 2 on errors (missing file, invalid arguments, etc.)
+- Error messages are clear and consistent, with JSON output when `--json` is used
 
 **Example Output:**
 ```
@@ -269,10 +283,12 @@ connectors = loader.list_connectors()
 
 Enhanced registry with catalog support and resolution logic.
 
+**Recommended Usage:**
 ```python
 from dativo_ingest.registry import ConnectorRegistry
 
-registry = ConnectorRegistry()
+# Use from_default_paths() for standard usage
+registry = ConnectorRegistry.from_default_paths()
 
 # Resolve connector with catalog lookup
 resolved = registry.resolve_connector(
@@ -282,10 +298,31 @@ resolved = registry.resolve_connector(
 )
 
 # Access resolved properties
-print(resolved.docker_image)
-print(resolved.version)
-print(resolved.capabilities)
+print(resolved.docker_image)  # Resolved with precedence: job > catalog > registry
+print(resolved.version)       # Resolved with precedence: job > catalog > registry
+print(resolved.allowed_in_cloud)
 print(resolved.to_dict())
+```
+
+**Error Handling:**
+```python
+from dativo_ingest.registry import ConnectorRegistry, RegistryNotFoundError, RegistryLoadError
+
+try:
+    registry = ConnectorRegistry.from_default_paths()
+except RegistryNotFoundError as e:
+    # Registry file not found in any default location
+    print(f"Registry not found: {e}")
+except RegistryLoadError as e:
+    # Registry file exists but cannot be loaded/parsed
+    print(f"Failed to load registry: {e}")
+```
+
+**Advanced Usage (for testing):**
+```python
+# For testing, you can provide explicit paths
+from pathlib import Path
+registry = ConnectorRegistry(registry_path=Path("/custom/path/connectors.yaml"))
 ```
 
 #### `ResolvedConnector`
@@ -321,12 +358,15 @@ The `EngineConfigParser` (`connectors/engine_config.py`) now uses registry resol
 parser = EngineConfigParser(source_config, connector_recipe, tenant_id)
 
 # Automatically resolves from registry + catalog
+# Falls back gracefully if registry is missing (backward compatibility)
 docker_image = parser.get_docker_image()
 ```
 
+The registry integration is encapsulated in a simple helper method (`_resolve_airbyte_image_from_registry`) that handles errors gracefully, logging warnings for expected errors (missing registry) and re-raising unexpected errors.
+
 ### Validator Integration
 
-The `ConnectorValidator` (`validator.py`) now uses the enhanced registry internally while maintaining backward compatibility.
+The `ConnectorValidator` (`validator.py`) now uses the enhanced registry internally while maintaining backward compatibility. It uses `ConnectorRegistry.from_default_paths()` and raises clear errors (`RegistryNotFoundError`, `RegistryLoadError`) when the registry cannot be loaded.
 
 ## Backward Compatibility
 
@@ -525,29 +565,36 @@ stripe:
 
 ### Python API
 
+**Public API (Recommended):**
 ```python
-# Import classes
 from dativo_ingest.registry import (
-    CatalogLoader,
     ConnectorRegistry,
-    ExternalConnector,
     ResolvedConnector,
+    RegistryNotFoundError,
+    RegistryLoadError,
 )
 
-# Load catalogs
-loader = CatalogLoader()
-connector = loader.get_connector("stripe")
-
-# Use registry
-registry = ConnectorRegistry()
+# Use registry (recommended)
+registry = ConnectorRegistry.from_default_paths()
 resolved = registry.resolve_connector("stripe", engine="airbyte")
 
 # Access properties
-print(resolved.docker_image)
-print(resolved.version)
-print(resolved.capabilities)
+print(resolved.docker_image)  # Resolved with precedence
+print(resolved.version)        # Resolved with precedence
+print(resolved.allowed_in_cloud)
 print(resolved.to_dict())
 ```
+
+**Internal APIs (for advanced use/testing):**
+```python
+from dativo_ingest.registry import (
+    CatalogLoader,      # Internal catalog loading (not needed for normal use)
+    ExternalConnector,  # Internal catalog entry representation
+    resolve_image_and_version,  # Resolution helper (used internally)
+)
+```
+
+**Note:** `CatalogLoader` and related classes are implementation details. For normal usage, you only need `ConnectorRegistry` and `ResolvedConnector`.
 
 ### CLI API
 

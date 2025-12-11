@@ -10,7 +10,10 @@ from src.dativo_ingest.registry import (
     CatalogLoader,
     ConnectorRegistry,
     ExternalConnector,
+    RegistryLoadError,
+    RegistryNotFoundError,
     ResolvedConnector,
+    resolve_image_and_version,
 )
 
 
@@ -142,18 +145,93 @@ class TestCatalogLoader:
         assert "connector2" in names
 
 
+class TestResolveImageAndVersion:
+    """Test unified resolution precedence helper."""
+
+    def test_job_override_takes_precedence(self):
+        """Test that job overrides have highest priority."""
+        image, version = resolve_image_and_version(
+            job_image="custom/image:1.0",
+            job_version="1.0",
+            catalog_image="catalog/image:2.0",
+            catalog_version="2.0",
+            registry_image_default="registry/image:3.0",
+            registry_version_default="3.0",
+        )
+        assert image == "custom/image:1.0"
+        assert version == "1.0"
+
+    def test_catalog_takes_precedence_over_registry(self):
+        """Test that catalog values override registry defaults."""
+        image, version = resolve_image_and_version(
+            catalog_image="catalog/image:2.0",
+            catalog_version="2.0",
+            registry_image_default="registry/image:3.0",
+            registry_version_default="3.0",
+        )
+        assert image == "catalog/image:2.0"
+        assert version == "2.0"
+
+    def test_registry_defaults_used_when_no_override(self):
+        """Test that registry defaults are used when nothing else set."""
+        image, version = resolve_image_and_version(
+            registry_image_default="registry/image:3.0",
+            registry_version_default="3.0",
+        )
+        assert image == "registry/image:3.0"
+        assert version == "3.0"
+
+    def test_none_when_nothing_set(self):
+        """Test that None is returned when no values provided."""
+        image, version = resolve_image_and_version()
+        assert image is None
+        assert version is None
+
+    def test_partial_resolution(self):
+        """Test that image and version can be resolved independently."""
+        image, version = resolve_image_and_version(
+            job_image="custom/image:1.0",
+            registry_version_default="3.0",
+        )
+        assert image == "custom/image:1.0"
+        assert version == "3.0"
+
+
 class TestConnectorRegistry:
     """Test connector registry with catalog integration."""
 
     def test_registry_loading(self):
         """Test loading the actual registry file."""
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
         assert registry.registry_data is not None
         assert "version" in registry.registry_data
 
+    def test_from_default_paths(self):
+        """Test from_default_paths class method."""
+        registry = ConnectorRegistry.from_default_paths()
+        assert registry.registry_path.exists()
+        assert registry.registry_data is not None
+
+    def test_registry_not_found_error(self, tmp_path):
+        """Test that RegistryNotFoundError is raised when registry not found."""
+        # Create a non-existent path
+        non_existent = tmp_path / "nonexistent.yaml"
+        with pytest.raises(RegistryNotFoundError) as exc_info:
+            ConnectorRegistry(registry_path=non_existent)
+        error_msg = str(exc_info.value).lower()
+        assert "does not exist" in error_msg or "not found" in error_msg
+        assert "mount" in error_msg or "docker" in error_msg or "env var" in error_msg
+
+    def test_registry_load_error(self, tmp_path):
+        """Test that RegistryLoadError is raised for invalid YAML."""
+        invalid_yaml = tmp_path / "invalid.yaml"
+        invalid_yaml.write_text("invalid: yaml: content: [")
+        with pytest.raises(RegistryLoadError):
+            ConnectorRegistry(registry_path=invalid_yaml)
+
     def test_get_connector_entry(self):
         """Test getting connector entry from registry."""
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
 
         # Test unified format
         entry = registry.get_connector_entry("hubspot", role="source")
@@ -166,7 +244,7 @@ class TestConnectorRegistry:
 
     def test_list_connectors(self):
         """Test listing connectors."""
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
 
         # List all
         all_connectors = registry.list_connectors()
@@ -183,7 +261,7 @@ class TestConnectorRegistry:
 
     def test_resolve_connector_basic(self):
         """Test basic connector resolution without catalog."""
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
 
         resolved = registry.resolve_connector("hubspot")
         assert resolved is not None
@@ -193,6 +271,23 @@ class TestConnectorRegistry:
 
     def test_resolve_connector_with_catalog(self, tmp_path):
         """Test connector resolution with catalog integration."""
+        # Create a minimal registry file
+        registry_data = {
+            "version": "1.0",
+            "connectors": {
+                "hubspot": {
+                    "roles": ["source"],
+                    "default_engine": "airbyte",
+                    "engines_supported": ["airbyte"],
+                }
+            },
+        }
+        registry_file = tmp_path / "connectors.yaml"
+        import yaml
+
+        with open(registry_file, "w") as f:
+            yaml.dump(registry_data, f)
+
         # Create a test catalog
         catalog_data = {
             "connectors": [
@@ -209,9 +304,9 @@ class TestConnectorRegistry:
         with open(catalog_file, "w") as f:
             json.dump(catalog_data, f)
 
-        # Create loader with test catalog
+        # Create registry with test catalog
         loader = CatalogLoader(catalogs_dir=tmp_path)
-        registry = ConnectorRegistry(catalog_loader=loader)
+        registry = ConnectorRegistry(registry_path=registry_file, catalog_loader=loader)
 
         # Resolve with airbyte engine - should use catalog
         resolved = registry.resolve_connector("hubspot", engine="airbyte")
@@ -222,6 +317,23 @@ class TestConnectorRegistry:
 
     def test_resolve_connector_with_overrides(self, tmp_path):
         """Test connector resolution with job-level overrides."""
+        # Create a minimal registry file
+        registry_data = {
+            "version": "1.0",
+            "connectors": {
+                "stripe": {
+                    "roles": ["source"],
+                    "default_engine": "airbyte",
+                    "engines_supported": ["airbyte"],
+                }
+            },
+        }
+        registry_file = tmp_path / "connectors.yaml"
+        import yaml
+
+        with open(registry_file, "w") as f:
+            yaml.dump(registry_data, f)
+
         catalog_data = {
             "connectors": [
                 {
@@ -237,18 +349,20 @@ class TestConnectorRegistry:
             json.dump(catalog_data, f)
 
         loader = CatalogLoader(catalogs_dir=tmp_path)
-        registry = ConnectorRegistry(catalog_loader=loader)
+        registry = ConnectorRegistry(registry_path=registry_file, catalog_loader=loader)
 
         # Job override should take precedence
         overrides = {"docker_image": "custom/stripe:5.0.0", "version": "5.0.0"}
-        resolved = registry.resolve_connector("stripe", engine="airbyte", job_overrides=overrides)
+        resolved = registry.resolve_connector(
+            "stripe", engine="airbyte", job_overrides=overrides
+        )
 
         assert resolved.docker_image == "custom/stripe:5.0.0"
         assert resolved.version == "5.0.0"
 
     def test_validate_connector(self):
         """Test connector validation."""
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
 
         # Valid connector
         entry = registry.validate_connector("hubspot", "source", "self_hosted")
@@ -381,7 +495,7 @@ class TestConnectorResolutionIntegration:
 
     def test_stripe_connector_resolution(self):
         """Test Stripe connector resolution."""
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
         resolved = registry.resolve_connector("stripe")
 
         assert resolved is not None
@@ -391,16 +505,18 @@ class TestConnectorResolutionIntegration:
 
     def test_postgres_connector_resolution(self):
         """Test Postgres connector resolution."""
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
         resolved = registry.resolve_connector("postgres")
 
         assert resolved is not None
         assert "source" in resolved.roles or "target" in resolved.roles
-        assert resolved.allowed_in_cloud is False  # Database connectors blocked in cloud
+        assert (
+            resolved.allowed_in_cloud is False
+        )  # Database connectors blocked in cloud
 
     def test_csv_connector_resolution(self):
         """Test CSV connector (native) resolution."""
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
         resolved = registry.resolve_connector("csv")
 
         assert resolved is not None
@@ -410,7 +526,7 @@ class TestConnectorResolutionIntegration:
 
     def test_mimesis_connector_resolution(self):
         """Test Mimesis connector resolution."""
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
         resolved = registry.resolve_connector("mimesis")
 
         assert resolved is not None

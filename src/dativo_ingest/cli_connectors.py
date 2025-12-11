@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .logging import get_logger
-from .registry import CatalogLoader, ConnectorRegistry
+from .registry import (
+    CatalogLoader,
+    ConnectorRegistry,
+    RegistryLoadError,
+    RegistryNotFoundError,
+)
 
 
 def format_connector_list(
@@ -57,9 +62,7 @@ def format_connector_list(
                     print(f"  External ID: {resolved.external_id}")
                 print(f"  Source of Truth: {resolved.source_of_truth}")
                 print(f"  Cloud Mode: {'✓' if resolved.allowed_in_cloud else '✗'}")
-                print(
-                    f"  Incremental: {'✓' if resolved.supports_incremental else '✗'}"
-                )
+                print(f"  Incremental: {'✓' if resolved.supports_incremental else '✗'}")
                 if resolved.capabilities:
                     print(f"  Capabilities: {', '.join(resolved.capabilities)}")
 
@@ -153,7 +156,7 @@ def connectors_list_command(
         Exit code (0=success, 2=failure)
     """
     try:
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
         connectors = registry.list_connectors(role=role)
 
         if not connectors:
@@ -166,6 +169,12 @@ def connectors_list_command(
         format_connector_list(connectors, registry, json_output, verbose)
         return 0
 
+    except (RegistryNotFoundError, RegistryLoadError) as e:
+        if json_output:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print(f"ERROR: {e}", file=sys.stderr)
+        return 2
     except Exception as e:
         if json_output:
             print(json.dumps({"error": str(e)}, indent=2))
@@ -190,12 +199,18 @@ def connectors_inspect_command(
         Exit code (0=success, 2=failure)
     """
     try:
-        registry = ConnectorRegistry()
+        registry = ConnectorRegistry.from_default_paths()
         resolved = registry.resolve_connector(name, engine=engine)
 
         format_connector_inspect(name, resolved, json_output)
         return 0
 
+    except (RegistryNotFoundError, RegistryLoadError) as e:
+        if json_output:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print(f"ERROR: {e}", file=sys.stderr)
+        return 2
     except Exception as e:
         if json_output:
             print(json.dumps({"error": str(e)}, indent=2))
@@ -261,21 +276,14 @@ def connectors_sync_command(
 
         # Handle URL sync
         if catalog_url:
+            error_msg = (
+                "URL sync not implemented. "
+                "Use --catalog-file to sync from a local JSON file."
+            )
             if json_output:
-                print(
-                    json.dumps(
-                        {
-                            "error": "URL sync not implemented yet. Please download the catalog manually."
-                        },
-                        indent=2,
-                    )
-                )
+                print(json.dumps({"error": error_msg}, indent=2))
             else:
-                print("ERROR: URL sync not implemented yet", file=sys.stderr)
-                print(
-                    "Please download the catalog manually and use --catalog-file",
-                    file=sys.stderr,
-                )
+                print(f"ERROR: {error_msg}", file=sys.stderr)
             return 2
 
         # Handle file copy
@@ -284,14 +292,31 @@ def connectors_sync_command(
 
             source_path = Path(catalog_file)
             if not source_path.exists():
+                error_msg = f"Catalog file not found: {catalog_file}"
                 if json_output:
-                    print(json.dumps({"error": f"File not found: {catalog_file}"}, indent=2))
+                    print(json.dumps({"error": error_msg}, indent=2))
                 else:
-                    print(f"ERROR: File not found: {catalog_file}", file=sys.stderr)
+                    print(f"ERROR: {error_msg}", file=sys.stderr)
+                return 2
+
+            if not source_path.is_file():
+                error_msg = f"Not a file: {catalog_file}"
+                if json_output:
+                    print(json.dumps({"error": error_msg}, indent=2))
+                else:
+                    print(f"ERROR: {error_msg}", file=sys.stderr)
                 return 2
 
             dest_path = catalogs_dir / source_path.name
-            shutil.copy2(source_path, dest_path)
+            try:
+                shutil.copy2(source_path, dest_path)
+            except OSError as e:
+                error_msg = f"Failed to copy catalog file: {e}"
+                if json_output:
+                    print(json.dumps({"error": error_msg}, indent=2))
+                else:
+                    print(f"ERROR: {error_msg}", file=sys.stderr)
+                return 2
 
             logger.info(
                 f"Copied catalog: {source_path.name}",
@@ -326,9 +351,7 @@ def connectors_sync_command(
                         print(f"  - {catalog_name}: {len(connectors)} connectors")
                 else:
                     print("No catalogs found. Catalogs are optional.")
-                    print(
-                        f"To add a catalog, place a JSON file in: {catalogs_dir}"
-                    )
+                    print(f"To add a catalog, place a JSON file in: {catalogs_dir}")
 
             return 0
 

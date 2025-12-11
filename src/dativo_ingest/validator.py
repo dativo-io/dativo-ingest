@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 from .config import JobConfig
-from .registry import ConnectorRegistry
+from .registry import ConnectorRegistry, RegistryLoadError, RegistryNotFoundError
 
 
 class ConnectorValidator:
@@ -19,13 +19,21 @@ class ConnectorValidator:
         """Initialize validator with registry path.
 
         Args:
-            registry_path: Path to connectors.yaml (defaults to /app/registry/connectors.yaml)
+            registry_path: Path to connectors.yaml (if None, uses default paths)
+
+        Raises:
+            RegistryNotFoundError: If registry file not found
+            RegistryLoadError: If registry file cannot be loaded
         """
         # Use new ConnectorRegistry for enhanced functionality
-        self.registry = ConnectorRegistry(registry_path=registry_path)
+        if registry_path is None:
+            self.registry = ConnectorRegistry.from_default_paths()
+        else:
+            self.registry = ConnectorRegistry(registry_path=registry_path)
+
         # Keep old interface for backward compatibility
         self.registry_path = self.registry.registry_path
-        
+
         # Legacy attribute for compatibility
         # This is the raw YAML data
         self.registry_data = self.registry.registry_data
@@ -66,7 +74,7 @@ class ConnectorValidator:
                 file=sys.stderr,
             )
             sys.exit(2)
-        
+
         return entry
 
     def validate_mode_restriction(

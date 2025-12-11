@@ -2,11 +2,48 @@
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
 from .catalog_loader import CatalogLoader, ExternalConnector
+
+
+def resolve_image_and_version(
+    *,
+    job_image: Optional[str] = None,
+    job_version: Optional[str] = None,
+    catalog_image: Optional[str] = None,
+    catalog_version: Optional[str] = None,
+    registry_image_default: Optional[str] = None,
+    registry_version_default: Optional[str] = None,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Resolve docker image and version with explicit precedence.
+
+    Resolution precedence:
+    1. Job override (highest priority)
+    2. Catalog metadata
+    3. Registry defaults
+    4. None (lowest priority)
+
+    Args:
+        job_image: Job-level docker image override
+        job_version: Job-level version override
+        catalog_image: Catalog docker image default
+        catalog_version: Catalog version default
+        registry_image_default: Registry docker image default
+        registry_version_default: Registry version default
+
+    Returns:
+        Tuple of (resolved_image, resolved_version)
+    """
+    # Image resolution
+    resolved_image = job_image or catalog_image or registry_image_default
+
+    # Version resolution
+    resolved_version = job_version or catalog_version or registry_version_default
+
+    return resolved_image, resolved_version
 
 
 class ResolvedConnector:
@@ -55,39 +92,27 @@ class ResolvedConnector:
 
     @property
     def docker_image(self) -> Optional[str]:
-        """Get Docker image with resolution priority:
-        1. Job-level override
-        2. Catalog entry
-        3. Registry entry
-        """
-        # Job override
-        if "docker_image" in self.job_overrides:
-            return self.job_overrides["docker_image"]
-
-        # Catalog entry
-        if self.catalog_entry and self.catalog_entry.docker_image_default:
-            return self.catalog_entry.docker_image_default
-
-        # Registry entry
-        return self.registry_entry.get("docker_image_default")
+        """Get Docker image with resolution priority."""
+        image, _ = resolve_image_and_version(
+            job_image=self.job_overrides.get("docker_image"),
+            catalog_image=(
+                self.catalog_entry.docker_image_default if self.catalog_entry else None
+            ),
+            registry_image_default=self.registry_entry.get("docker_image_default"),
+        )
+        return image
 
     @property
     def version(self) -> Optional[str]:
-        """Get version with resolution priority:
-        1. Job-level override
-        2. Catalog entry
-        3. Registry entry
-        """
-        # Job override
-        if "version" in self.job_overrides:
-            return self.job_overrides["version"]
-
-        # Catalog entry
-        if self.catalog_entry and self.catalog_entry.version_default:
-            return self.catalog_entry.version_default
-
-        # Registry entry
-        return self.registry_entry.get("version_default")
+        """Get version with resolution priority."""
+        _, version = resolve_image_and_version(
+            job_version=self.job_overrides.get("version"),
+            catalog_version=(
+                self.catalog_entry.version_default if self.catalog_entry else None
+            ),
+            registry_version_default=self.registry_entry.get("version_default"),
+        )
+        return version
 
     @property
     def external_id(self) -> Optional[str]:
@@ -165,8 +190,68 @@ class ResolvedConnector:
         }
 
 
+class RegistryNotFoundError(Exception):
+    """Raised when connector registry file cannot be found."""
+
+    pass
+
+
+class RegistryLoadError(Exception):
+    """Raised when connector registry file cannot be loaded or parsed."""
+
+    pass
+
+
 class ConnectorRegistry:
     """Enhanced connector registry with catalog support."""
+
+    @classmethod
+    def _get_default_registry_paths(cls) -> List[Path]:
+        """Get list of default paths to search for registry file.
+
+        Returns:
+            List of paths to try, in order of precedence
+        """
+        return [
+            Path("/app/registry/connectors.yaml"),
+            Path("registry/connectors.yaml"),
+            Path(__file__).parent.parent.parent.parent / "registry" / "connectors.yaml",
+        ]
+
+    @classmethod
+    def _find_registry_path(cls) -> Optional[Path]:
+        """Find registry file in default locations.
+
+        Returns:
+            Path to registry file if found, None otherwise
+        """
+        for path in cls._get_default_registry_paths():
+            if path.exists():
+                return path
+        return None
+
+    @classmethod
+    def from_default_paths(cls) -> "ConnectorRegistry":
+        """Create registry instance using default paths.
+
+        This is the recommended way to create a registry instance.
+        It searches standard locations and raises clear errors if not found.
+
+        Returns:
+            ConnectorRegistry instance
+
+        Raises:
+            RegistryNotFoundError: If registry file not found in any default location
+            RegistryLoadError: If registry file exists but cannot be loaded
+        """
+        registry_path = cls._find_registry_path()
+        if registry_path is None:
+            possible_paths_str = [str(p) for p in cls._get_default_registry_paths()]
+            raise RegistryNotFoundError(
+                f"Connector registry not found. Tried: {possible_paths_str}\n"
+                f"Mount registry/connectors.yaml in Docker image or set DATIVO_REGISTRY_PATH env var."
+            )
+        return cls(registry_path=registry_path)
 
     def __init__(
         self,
@@ -176,70 +261,63 @@ class ConnectorRegistry:
         """Initialize connector registry.
 
         Args:
-            registry_path: Path to connectors.yaml
-            catalog_loader: Optional catalog loader instance
+            registry_path: Path to connectors.yaml (if None, searches default paths)
+            catalog_loader: Optional catalog loader instance (for testing)
+
+        Raises:
+            RegistryNotFoundError: If registry file not found
+            RegistryLoadError: If registry file cannot be loaded
         """
         if registry_path is None:
-            # Try multiple possible paths
-            possible_paths = [
-                Path("/app/registry/connectors.yaml"),
-                Path("registry/connectors.yaml"),
-                Path(__file__).parent.parent.parent.parent
-                / "registry"
-                / "connectors.yaml",
-            ]
-            for path in possible_paths:
-                if path.exists():
-                    registry_path = path
-                    break
-
-        if registry_path is None or not registry_path.exists():
-            possible_paths_str = [
-                str(p)
-                for p in [
-                    Path("/app/registry/connectors.yaml"),
-                    Path("registry/connectors.yaml"),
-                    Path(__file__).parent.parent.parent.parent
-                    / "registry"
-                    / "connectors.yaml",
+            registry_path = self._find_registry_path()
+            if registry_path is None:
+                possible_paths_str = [
+                    str(p) for p in self._get_default_registry_paths()
                 ]
-            ]
-            raise FileNotFoundError(
-                f"Connector registry not found. Tried: {possible_paths_str}"
+                raise RegistryNotFoundError(
+                    f"Connector registry not found. Tried: {possible_paths_str}\n"
+                    f"Mount registry/connectors.yaml in Docker image or set DATIVO_REGISTRY_PATH env var."
+                )
+
+        if not registry_path.exists():
+            raise RegistryNotFoundError(
+                f"Connector registry file does not exist: {registry_path}\n"
+                f"Mount registry/connectors.yaml in Docker image or set DATIVO_REGISTRY_PATH env var."
             )
 
         self.registry_path = registry_path
         self.registry_data = self._load_registry()
 
-        # Initialize catalog loader
-        self.catalog_loader = catalog_loader or CatalogLoader()
+        # Initialize catalog loader (internal implementation detail)
+        self._catalog_loader = catalog_loader or CatalogLoader()
 
     def _load_registry(self) -> Dict[str, Any]:
-        """Load connector registry from YAML."""
+        """Load connector registry from YAML.
+
+        Returns:
+            Registry data as dictionary
+
+        Raises:
+            RegistryLoadError: If file cannot be read or parsed
+        """
         try:
             with open(self.registry_path, "r") as f:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
-            print(
-                f"ERROR: Failed to parse connector registry: {self.registry_path}\n"
-                f"YAML Error: {e}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
-        except Exception as e:
-            print(
-                f"ERROR: Failed to read connector registry: {self.registry_path}\n"
-                f"Error: {e}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+            raise RegistryLoadError(
+                f"Failed to parse connector registry YAML: {self.registry_path}\n"
+                f"YAML Error: {e}"
+            ) from e
+        except OSError as e:
+            raise RegistryLoadError(
+                f"Failed to read connector registry file: {self.registry_path}\n"
+                f"Error: {e}"
+            ) from e
 
         if data is None:
-            print(
-                f"ERROR: Connector registry is empty: {self.registry_path}",
-                file=sys.stderr,
+            raise RegistryLoadError(
+                f"Connector registry file is empty: {self.registry_path}"
             )
-            sys.exit(2)
 
         return data
 
@@ -317,18 +395,18 @@ class ConnectorRegistry:
         # Determine effective engine
         effective_engine = engine or registry_entry.get("default_engine", "native")
 
-        # Get catalog entry if using external engine
+        # Get catalog entry if using external engine (internal implementation detail)
         catalog_entry = None
         if effective_engine in ["airbyte", "singer", "meltano"]:
             # Try to find connector in catalog
             catalog_name = effective_engine
-            catalog_entry = self.catalog_loader.get_connector(
+            catalog_entry = self._catalog_loader.get_connector(
                 connector_name, catalog_name
             )
 
             # If not found in specific catalog, try all catalogs
             if not catalog_entry:
-                catalog_entry = self.catalog_loader.get_connector(connector_name)
+                catalog_entry = self._catalog_loader.get_connector(connector_name)
 
         return ResolvedConnector(
             name=connector_name,

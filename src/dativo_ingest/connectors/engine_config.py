@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ..config import ConnectorRecipe, SourceConfig
-from ..registry import ConnectorRegistry
+from ..logging import get_logger
+from ..registry import ConnectorRegistry, RegistryLoadError, RegistryNotFoundError
 
 
 class EngineConfigParser:
@@ -216,22 +217,53 @@ class EngineConfigParser:
         if self.engine_type == "airbyte":
             airbyte_opts = self.engine_options.get("airbyte", {})
             docker_image = airbyte_opts.get("docker_image")
-            
+
             # If docker_image not in recipe, try registry resolution
             if not docker_image:
-                try:
-                    registry = ConnectorRegistry()
-                    resolved = registry.resolve_connector(
-                        self.source_config.type,
-                        engine=self.engine_type
-                    )
-                    if resolved:
-                        docker_image = resolved.docker_image
-                except Exception:
-                    # If registry resolution fails, continue without it
-                    pass
-            
+                docker_image = self._resolve_airbyte_image_from_registry()
+
             return docker_image
+        return None
+
+    def _resolve_airbyte_image_from_registry(self) -> Optional[str]:
+        """Resolve Airbyte docker image from registry.
+
+        This helper encapsulates registry resolution logic for EngineConfigParser.
+        It handles registry errors gracefully, logging warnings but not crashing.
+
+        Returns:
+            Docker image name if resolved, None otherwise
+        """
+        logger = get_logger()
+        try:
+            registry = ConnectorRegistry.from_default_paths()
+            resolved = registry.resolve_connector(
+                self.source_config.type, engine=self.engine_type
+            )
+            if resolved:
+                return resolved.docker_image
+        except (RegistryNotFoundError, RegistryLoadError) as e:
+            # Expected errors: registry missing or malformed
+            # Log warning but continue - backward compatibility
+            logger.warning(
+                f"Could not resolve docker image from registry: {e}",
+                extra={
+                    "connector": self.source_config.type,
+                    "engine": self.engine_type,
+                },
+            )
+        except Exception as e:
+            # Unexpected errors: log and re-raise
+            logger.error(
+                f"Unexpected error resolving docker image from registry: {e}",
+                extra={
+                    "connector": self.source_config.type,
+                    "engine": self.engine_type,
+                },
+                exc_info=True,
+            )
+            raise
+
         return None
 
     def get_incremental_config(self) -> Dict[str, Any]:
