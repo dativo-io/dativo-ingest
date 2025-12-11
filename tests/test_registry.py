@@ -360,6 +360,46 @@ class TestConnectorRegistry:
         assert resolved.docker_image == "custom/stripe:5.0.0"
         assert resolved.version == "5.0.0"
 
+    def test_resolve_connector_does_not_mutate_job_overrides(self, tmp_path):
+        """Test that resolve_connector does not mutate the caller's job_overrides dict."""
+        # Create a minimal registry file
+        registry_data = {
+            "version": "1.0",
+            "connectors": {
+                "stripe": {
+                    "roles": ["source"],
+                    "default_engine": "airbyte",
+                    "engines_supported": ["airbyte"],
+                }
+            },
+        }
+        registry_file = tmp_path / "connectors.yaml"
+        import yaml
+
+        with open(registry_file, "w") as f:
+            yaml.dump(registry_data, f)
+
+        registry = ConnectorRegistry(registry_path=registry_file)
+
+        # Create job_overrides dict that should NOT be mutated
+        original_overrides = {"docker_image": "custom/stripe:5.0.0"}
+        original_overrides_id = id(original_overrides)
+        original_overrides_keys = set(original_overrides.keys())
+
+        # Call resolve_connector with engine parameter
+        resolved = registry.resolve_connector(
+            "stripe", engine="singer", job_overrides=original_overrides
+        )
+
+        # Verify the original dict was NOT mutated
+        assert id(original_overrides) == original_overrides_id
+        assert set(original_overrides.keys()) == original_overrides_keys
+        assert "engine" not in original_overrides
+        assert original_overrides["docker_image"] == "custom/stripe:5.0.0"
+
+        # Verify the resolved connector has the engine set correctly
+        assert resolved.default_engine == "singer"
+
     def test_validate_connector(self):
         """Test connector validation."""
         registry = ConnectorRegistry.from_default_paths()

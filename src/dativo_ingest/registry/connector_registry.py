@@ -387,8 +387,8 @@ class ConnectorRegistry:
         if not registry_entry:
             return None
 
-        # Prepare job overrides
-        overrides = job_overrides or {}
+        # Prepare job overrides (copy to avoid mutating caller's dict)
+        overrides = dict(job_overrides) if job_overrides else {}
         if engine:
             overrides["engine"] = engine
 
