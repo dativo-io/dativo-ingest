@@ -11,6 +11,11 @@ from .cli_commands import (
     format_check_output,
     format_discovery_output,
 )
+from .cli_connectors import (
+    connectors_inspect_command,
+    connectors_list_command,
+    connectors_sync_command,
+)
 from .config import JobConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import setup_logging
@@ -538,6 +543,86 @@ Examples:
         help="Enable verbose output with additional details",
     )
 
+    # Connectors command (with subcommands)
+    connectors_parser = subparsers.add_parser(
+        "connectors",
+        help="Manage connector registry and catalogs",
+        description="List, inspect, and sync connector registry with external catalogs",
+    )
+    connectors_subparsers = connectors_parser.add_subparsers(
+        dest="connectors_command", help="Connectors subcommand"
+    )
+
+    # connectors list
+    list_parser = connectors_subparsers.add_parser(
+        "list",
+        help="List all registered connectors",
+        description="Display all connectors from the registry with their metadata",
+    )
+    list_parser.add_argument(
+        "--role",
+        choices=["source", "target"],
+        help="Filter by role (source or target)",
+    )
+    list_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    list_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with additional details",
+    )
+
+    # connectors inspect
+    inspect_parser = connectors_subparsers.add_parser(
+        "inspect",
+        help="Inspect a specific connector",
+        description="Show detailed information about a connector including resolved "
+        "engine configuration, docker images, versions, and catalog entries",
+    )
+    inspect_parser.add_argument(
+        "name",
+        help="Connector name to inspect",
+    )
+    inspect_parser.add_argument(
+        "--engine",
+        choices=["airbyte", "singer", "meltano", "native", "jdbc", "spark"],
+        help="Override engine for resolution",
+    )
+    inspect_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+
+    # connectors sync
+    sync_parser = connectors_subparsers.add_parser(
+        "sync",
+        help="Sync external connector catalogs",
+        description="Refresh external catalogs (Airbyte, Singer, Meltano) and write to "
+        "/registry/catalogs/. Can fetch from URL or copy from local file.",
+    )
+    sync_parser.add_argument(
+        "--catalog-url",
+        help="URL to fetch catalog from",
+    )
+    sync_parser.add_argument(
+        "--catalog-file",
+        help="Local catalog file to copy",
+    )
+    sync_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    sync_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with additional details",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -552,6 +637,29 @@ Examples:
         return check_command(args)
     elif args.command == "discover":
         return discover_command(args)
+    elif args.command == "connectors":
+        if args.connectors_command == "list":
+            return connectors_list_command(
+                role=args.role,
+                json_output=args.json,
+                verbose=args.verbose,
+            )
+        elif args.connectors_command == "inspect":
+            return connectors_inspect_command(
+                name=args.name,
+                engine=args.engine,
+                json_output=args.json,
+            )
+        elif args.connectors_command == "sync":
+            return connectors_sync_command(
+                catalog_url=args.catalog_url,
+                catalog_file=args.catalog_file,
+                json_output=args.json,
+                verbose=args.verbose,
+            )
+        else:
+            connectors_parser.print_help()
+            return 2
     else:
         parser.print_help()
         return 2

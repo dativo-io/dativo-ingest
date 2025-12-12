@@ -62,10 +62,16 @@ def test_airbyte_extractor_initialization(
 @patch("dativo_ingest.connectors.engine_framework.docker")
 @patch("dativo_ingest.connectors.engine_framework.subprocess")
 @patch("dativo_ingest.connectors.engine_framework.DOCKER_AVAILABLE", True)
+@patch("dativo_ingest.connectors.engine_config.ConnectorRegistry.from_default_paths")
 def test_airbyte_extractor_missing_docker_image(
-    mock_subprocess, mock_docker, source_config
+    mock_registry, mock_subprocess, mock_docker, source_config
 ):
     """Test AirbyteExtractor raises error when docker_image is missing."""
+    # Mock registry to not resolve docker_image (returns None)
+    mock_registry_instance = Mock()
+    mock_registry_instance.resolve_connector.return_value = None
+    mock_registry.return_value = mock_registry_instance
+
     recipe = ConnectorRecipe(
         name="test",
         type="test",

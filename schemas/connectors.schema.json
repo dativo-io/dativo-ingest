@@ -52,6 +52,13 @@
           "items": { "$ref": "#/$defs/engineType" },
           "minItems": 1
         },
+        "external_id": { "type": "string", "minLength": 1 },
+        "docker_image_default": { "type": "string", "minLength": 1 },
+        "version_default": { "type": "string", "minLength": 1 },
+        "source_of_truth": {
+          "type": "string",
+          "enum": ["native", "airbyte", "singer", "meltano"]
+        },
         "allowed_in_cloud": { "type": "boolean" },
         "supports_incremental": { "type": "boolean" },
         "incremental_strategy_default": { "$ref": "#/$defs/incrementalStrategy" },
@@ -82,6 +89,13 @@
           "items": { "$ref": "#/$defs/engineType" },
           "minItems": 1
         },
+        "external_id": { "type": "string", "minLength": 1 },
+        "docker_image_default": { "type": "string", "minLength": 1 },
+        "version_default": { "type": "string", "minLength": 1 },
+        "source_of_truth": {
+          "type": "string",
+          "enum": ["native", "airbyte", "singer", "meltano"]
+        },
         "allowed_in_cloud": { "type": "boolean" },
         "supports_incremental": { "type": "boolean" },
         "incremental_strategy_default": { "$ref": "#/$defs/incrementalStrategy" },
@@ -104,6 +118,13 @@
           "type": "array",
           "items": { "$ref": "#/$defs/engineType" },
           "minItems": 1
+        },
+        "external_id": { "type": "string", "minLength": 1 },
+        "docker_image_default": { "type": "string", "minLength": 1 },
+        "version_default": { "type": "string", "minLength": 1 },
+        "source_of_truth": {
+          "type": "string",
+          "enum": ["native", "airbyte", "singer", "meltano"]
         },
         "file_formats": {
           "type": "array",

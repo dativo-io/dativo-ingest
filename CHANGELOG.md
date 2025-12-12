@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-12-10
+
+### Added
+- **Connector Registry v2**: External connector catalog support and enhanced resolution
+  - External connector catalog loading from JSON files (Airbyte, Singer, Meltano formats)
+  - Support for `/registry/catalogs/*.json` catalog storage
+  - Catalog loader with normalized internal format (connector name, external_id, docker_image_default, version_default, capabilities)
+  - System operates without catalogs (optional feature)
+- **Extended Connector Schema**: New optional fields in `connectors.yaml`
+  - `external_id`: External connector identifier
+  - `docker_image_default`: Default Docker image
+  - `version_default`: Default version
+  - `source_of_truth`: Source indicator (native, airbyte, singer, meltano)
+  - Updated `schemas/connectors.schema.json` with validation
+  - CI schema validation continues to pass
+- **Enhanced Connector Resolution Logic**:
+  - Priority-based resolution: Job overrides > Catalog > Registry
+  - Automatic Docker image/version resolution from catalogs
+  - Engine-specific catalog lookup (airbyte/singer/meltano)
+  - Integrated with `connectors/engine_config.py` and `connectors/factory.py`
+  - Backward compatible with existing connector behavior
+- **Connector Management CLI**:
+  - `dativo connectors list`: Show registry entries with resolved metadata
+  - `dativo connectors inspect <name>`: Display resolved engine, docker image, version, capabilities
+  - `dativo connectors sync`: Refresh external catalogs (manual file copy supported)
+  - JSON and verbose output options for all commands
+  - Works in Docker and local dev environments
+- **Comprehensive Documentation**:
+  - New `docs/CONNECTOR_REGISTRY_V2.md` with complete feature guide
+  - Usage examples for CLI commands
+  - Integration guide and API reference
+  - Migration guide (no breaking changes)
+- **Test Coverage**:
+  - Complete test suite in `tests/test_registry.py`
+  - Tests for catalog loading (Airbyte and generic formats)
+  - Tests for connector resolution priority
+  - Integration tests with real registry
+- **Sample Airbyte Catalog**:
+  - Example catalog in `registry/catalogs/airbyte.json`
+  - Includes popular connectors (Stripe, HubSpot, Postgres, MySQL, Google Sheets)
+
+### Changed
+- Enhanced `ConnectorValidator` to use new `ConnectorRegistry` internally
+- Updated `EngineConfigParser.get_docker_image()` to support catalog resolution
+- Extended registry entries for `hubspot`, `stripe`, and `postgres` with new metadata fields
+
+### Fixed
+- **Duplicate error messages in connector validation**: Fixed `validate_mode_restriction` method that was printing duplicate error messages when connectors were blocked in cloud mode. The method now correctly delegates error handling to `ConnectorRegistry.validate_connector()`, which prints the error message once and exits.
+
+### Deprecated
+- N/A
+
+### Security
+- Catalog files loaded from local filesystem only (no automatic downloads)
+- Job-level overrides maintain priority for security
+
+### Breaking Changes
+- None - full backward compatibility maintained
+
 ## [0.4.1] - 2025-12-10
 
 ### Added
@@ -262,3 +321,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.3.1**: Major CLI refactoring for maintainability
 - **0.4.0**: Security enhancements, unified seccomp profiles, comprehensive security audit documentation
 - **0.4.1**: Mimesis synthetic data connector implementation
+- **0.5.0**: Connector ecosystem & registry v2 with external catalog support
