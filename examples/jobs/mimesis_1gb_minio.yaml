@@ -1,0 +1,53 @@
+# Generate 1GB of synthetic data to MinIO
+# Uses Mimesis connector to generate data and writes to MinIO via Iceberg/Parquet
+
+tenant_id: acme
+environment: dev
+
+# Source connector
+source_connector: mimesis
+source_connector_path: connectors/examples/mimesis.yaml
+
+# Target connector - writes Parquet files to MinIO
+target_connector: iceberg
+target_connector_path: connectors/examples/iceberg.yaml
+
+# Asset definition
+asset: perf_test_data
+asset_path: configs/assets/perf_test_data.yaml
+
+# Source configuration - generate ~7 million rows (~1GB compressed)
+source:
+  type: mimesis
+  object: perf_test
+  engine:
+    type: native
+    options:
+      native:
+        row_count: 7000000  # ~7M rows generates approximately 1GB in Parquet
+        batch_size: 100000  # Larger batches for better performance
+        locale: "en"
+        seed: null  # No seed for faster generation
+        null_probability: 0.1
+
+# Target configuration - MinIO connection
+target:
+  type: iceberg
+  connection:
+    s3:
+      endpoint: "${S3_ENDPOINT}"  # e.g., "http://localhost:9000" or "minio:9000"
+      bucket: "${S3_BUCKET}"  # Your MinIO bucket name
+      access_key_id: "${AWS_ACCESS_KEY_ID}"  # MinIO access key
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"  # MinIO secret key
+      region: "${AWS_REGION}"  # e.g., "us-east-1"
+      path_style_access: true  # REQUIRED for MinIO
+  # Omit catalog for direct S3/MinIO writes (no Nessie catalog needed)
+  partitioning: [ingest_date]
+
+# Execution configuration
+schema_validation_mode: warn
+
+# Logging configuration
+logging:
+  redaction: false
+  level: INFO

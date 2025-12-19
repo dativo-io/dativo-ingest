@@ -43,8 +43,8 @@ schema:
 
 # Target configuration
 target:
-  file_format: csv
-  partitioning: []
+  file_format: parquet
+  partitioning: [ingest_date]
 
 # Governance (required)
 team:
