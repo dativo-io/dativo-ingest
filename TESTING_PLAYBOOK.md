@@ -15,6 +15,85 @@ This playbook covers 20 real-world test cases to validate all capabilities of da
 
 ## Prerequisites & Setup
 
+### Step 0: Verify Python Version (CRITICAL)
+
+**⚠️ CRITICAL:** Dativo-ingest requires **Python 3.10 or higher**. Python 3.9 and below will **NOT work** and will cause installation failures.
+
+#### Quick Check
+
+```bash
+python3 --version
+```
+
+**Expected Output:**
+```
+Python 3.10.0
+```
+or higher (3.10.x, 3.11.x, 3.12.x, etc.)
+
+**If you see Python 3.9.x or below:**
+You **must** upgrade before proceeding. Installation will fail with:
+```
+ERROR: Package 'dativo-ingest' requires a different Python: 3.9.x not in '>=3.10'
+```
+
+#### Upgrade Options
+
+**Option 1: Conda (Recommended - Works on all platforms)**
+```bash
+# Create new environment with Python 3.10
+conda create -n dativo python=3.10 -y
+
+# Activate the environment
+conda activate dativo
+
+# Verify version
+python --version  # Should show 3.10.x or higher
+```
+
+**Option 2: Homebrew (macOS)**
+```bash
+# Install Python 3.10
+brew install python@3.10
+
+# Create virtual environment
+python3.10 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Verify version
+python --version  # Should show 3.10.x
+```
+
+**Option 3: pyenv (All platforms)**
+```bash
+# Install Python 3.10
+pyenv install 3.10.13
+
+# Set local version
+pyenv local 3.10.13
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Verify version
+python --version  # Should show 3.10.x
+```
+
+#### Verify Before Proceeding
+
+After upgrading, verify your Python version again:
+```bash
+python3 --version
+python --version  # If using virtual environment
+```
+
+**Only proceed to Step 1 once you have Python 3.10+ confirmed.**
+
+---
+
 ### 1. Environment Setup (5 minutes)
 
 ```bash
