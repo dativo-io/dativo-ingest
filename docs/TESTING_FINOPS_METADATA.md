@@ -54,7 +54,7 @@ catalog:
 ## Step 2: Run the Job
 
 ```bash
-dativo run \
+dativo ingest \
   --config jobs/testcase3/stripe_customers_with_catalog.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets

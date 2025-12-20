@@ -32,7 +32,7 @@ logging:
 Use the `--log-redaction` flag (if available) or configure in job config:
 
 ```bash
-dativo run --config job.yaml --log-redaction
+dativo ingest --config job.yaml --log-redaction
 ```
 
 ### Programmatically

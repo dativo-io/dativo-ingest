@@ -163,7 +163,7 @@ export NESSIE_URI=http://localhost:19120/api/v1
 ### Run Job
 
 ```bash
-dativo run --config path/to/job.yaml --mode self_hosted
+dativo ingest --config path/to/job.yaml --mode self_hosted
 ```
 
 ## Spark Configuration Options

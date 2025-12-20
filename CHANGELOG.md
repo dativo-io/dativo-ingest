@@ -246,7 +246,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Iceberg table format support
   - Markdown-KV transformation for LLM-optimized data
 - **CLI Commands**:
-  - `dativo run` - Execute single job or batch jobs
+  - `dativo ingest` - Execute single job or batch jobs (recommended)
+  - `dativo run` - Execute single job or batch jobs (alias for ingest)
   - `dativo start orchestrated` - Start Dagster orchestrator
   - `dativo check` - Test connections
   - `dativo discover` - Discover available streams

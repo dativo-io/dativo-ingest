@@ -433,7 +433,7 @@ target:
 Run the job to test the new infrastructure:
 
 ```bash
-dativo run \
+dativo ingest \
   --config jobs/{tenant_id}/new_connector_object_to_iceberg.yaml \
   --secrets-dir secrets \
   --mode self_hosted
@@ -943,10 +943,10 @@ cat secrets/{tenant_id}/postgres.env
 
 ```bash
 # Run single job
-dativo run --config jobs/acme/stripe_customers_to_iceberg.yaml --secrets-dir secrets --mode self_hosted
+dativo ingest --config jobs/acme/stripe_customers_to_iceberg.yaml --secrets-dir secrets --mode self_hosted
 
 # Run all jobs in directory
-dativo run --job-dir jobs/acme --secrets-dir secrets --mode self_hosted
+dativo ingest --job-dir jobs/acme --secrets-dir secrets --mode self_hosted
 
 # Start orchestrated mode
 dativo start orchestrated --runner-config configs/runner.yaml

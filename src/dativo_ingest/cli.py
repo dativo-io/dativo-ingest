@@ -371,7 +371,10 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run a single job
+  # Ingest data from source to target (recommended)
+  dativo ingest --config /app/configs/jobs/stripe.yaml --mode self_hosted
+
+  # Run a single job (alias for ingest)
   dativo run --config /app/configs/jobs/stripe.yaml --mode self_hosted
 
   # Start orchestrated mode
@@ -419,6 +422,51 @@ Examples:
         "Falls back to DATIVO_SECRET_MANAGER_CONFIG when omitted.",
     )
     run_parser.add_argument(
+        "--mode",
+        choices=["self_hosted", "cloud"],
+        default="self_hosted",
+        help="Execution mode (default: self_hosted). Database connectors are only "
+        "allowed in self_hosted mode.",
+    )
+
+    # Ingest command (alias for run)
+    ingest_parser = subparsers.add_parser(
+        "ingest",
+        help="Ingest data from source to target (alias for 'run')",
+        description="Execute a single ingestion job and exit. This is an alias for 'run'. "
+        "Validates configuration, schema presence, and connector restrictions before execution.",
+    )
+    ingest_config_group = ingest_parser.add_mutually_exclusive_group(required=True)
+    ingest_config_group.add_argument(
+        "--config",
+        help="Path to job configuration YAML file",
+    )
+    ingest_config_group.add_argument(
+        "--job-dir",
+        help="Path to directory containing job YAML files (mutually exclusive with --config)",
+    )
+    ingest_parser.add_argument(
+        "--secrets-dir",
+        default="/secrets",
+        help="Path to secrets directory (default: /secrets, used by filesystem secret manager)",
+    )
+    ingest_parser.add_argument(
+        "--tenant-id",
+        help="Tenant ID override (optional; if not provided, inferred from job configurations). "
+        "If provided, validates all jobs belong to this tenant.",
+    )
+    ingest_parser.add_argument(
+        "--secret-manager",
+        choices=["env", "filesystem", "vault", "aws", "gcp"],
+        default=os.getenv("DATIVO_SECRET_MANAGER", "env"),
+        help="Secret backend to use (default: env or DATIVO_SECRET_MANAGER env var).",
+    )
+    ingest_parser.add_argument(
+        "--secret-manager-config",
+        help="Path to YAML/JSON file or inline JSON blob with secret manager configuration. "
+        "Falls back to DATIVO_SECRET_MANAGER_CONFIG when omitted.",
+    )
+    ingest_parser.add_argument(
         "--mode",
         choices=["self_hosted", "cloud"],
         default="self_hosted",
@@ -544,7 +592,7 @@ Examples:
         parser.print_help()
         return 2
 
-    if args.command == "run":
+    if args.command == "run" or args.command == "ingest":
         return run_command(args)
     elif args.command == "start":
         return start_command(args)

@@ -57,9 +57,9 @@ These fixtures are used by smoke tests. The tests can validate CSV to Iceberg in
 To test with AdventureWorks data:
 ```bash
 # Run all jobs
-dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
+dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 
 # Or run a specific AdventureWorks job
-dativo_ingest run --config tests/fixtures/jobs/adventureworks_person_to_iceberg.yaml --secrets-dir tests/fixtures/secrets
+dativo ingest --config tests/fixtures/jobs/adventureworks_person_to_iceberg.yaml --secrets-dir tests/fixtures/secrets
 ```
 

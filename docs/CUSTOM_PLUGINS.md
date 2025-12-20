@@ -685,7 +685,7 @@ Run a full job with your custom plugin:
 export MY_API_KEY="your-api-key"
 
 # Run job
-dativo run --config /app/jobs/my_custom_job.yaml --mode self_hosted
+dativo ingest --config /app/jobs/my_custom_job.yaml --mode self_hosted
 ```
 
 ## Troubleshooting

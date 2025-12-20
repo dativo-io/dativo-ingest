@@ -222,7 +222,7 @@ export OPENMETADATA_AUTH_TOKEN="your-token-here"
 export OPENMETADATA_API_URL="http://localhost:8585/api"
 
 # Run job with catalog
-dativo run --config jobs/acme/employees_with_catalog.yaml
+dativo ingest --config jobs/acme/employees_with_catalog.yaml
 ```
 
 ## Error Handling

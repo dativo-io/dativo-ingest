@@ -56,7 +56,7 @@ Generate job configurations before running smoke tests:
 python tests/fixtures/jobs/generate_example_jobs.py
 
 # Then run smoke tests
-dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
+dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 ```
 
 ## E2E Smoke Test Startup
@@ -65,7 +65,7 @@ For E2E smoke tests, you can run jobs from this directory using:
 
 ```bash
 # Run a specific job
-dativo_ingest run --config tests/fixtures/jobs/adventureworks_person_to_iceberg.yaml --mode self_hosted
+dativo ingest --config tests/fixtures/jobs/adventureworks_person_to_iceberg.yaml --mode self_hosted
 
 # Or use a runner config to load all jobs
 dativo_ingest start orchestrated --runner-config tests/fixtures/runner.yaml

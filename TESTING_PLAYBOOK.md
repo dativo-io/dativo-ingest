@@ -278,7 +278,7 @@ NESSIE_URI=http://localhost:19120/api/v1
 EOF
 
 # 5. Run the job
-dativo run \
+dativo ingest \
   --config jobs/testcase1/employees_to_iceberg.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -375,7 +375,7 @@ cp data/test_case_2/orders_initial.csv data/test_case_2/orders.csv
 mkdir -p secrets/testcase2
 cp secrets/testcase1/iceberg.env secrets/testcase2/
 
-dativo run \
+dativo ingest \
   --config jobs/testcase2/orders_incremental.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -392,7 +392,7 @@ cat >> data/test_case_2/orders.csv << 'EOF'
 EOF
 
 # 8. Second run (incremental sync - will process file again since it was modified)
-dativo run \
+dativo ingest \
   --config jobs/testcase2/orders_incremental.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -470,7 +470,7 @@ dativo discover \
   --verbose
 
 # 6. Run ingestion
-dativo run \
+dativo ingest \
   --config jobs/testcase3/stripe_customers.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -563,7 +563,7 @@ dativo check \
   --verbose
 
 # 6. Run all HubSpot jobs
-dativo run \
+dativo ingest \
   --job-dir jobs/testcase4 \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -654,7 +654,7 @@ EOF
 cp secrets/testcase1/iceberg.env secrets/testcase5/
 
 # 4. Run job (expect failure)
-dativo run \
+dativo ingest \
   --config jobs/testcase5/products_strict.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -676,7 +676,7 @@ EOF
 sed -i 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml
 
 # 7. Run again
-dativo run \
+dativo ingest \
   --config jobs/testcase5/products_strict.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -756,7 +756,7 @@ EOF
 cp secrets/testcase1/iceberg.env secrets/testcase6/
 
 # 3. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase6/products_warn.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -871,7 +871,7 @@ target:
 EOF
 
 # 6. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase7/postgres_employees.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -966,7 +966,7 @@ cp secrets/testcase7/postgres.env secrets/testcase8/
 cp secrets/testcase7/iceberg.env secrets/testcase8/
 
 # 4. First run (full sync)
-dativo run \
+dativo ingest \
   --config jobs/testcase8/postgres_employees_incremental.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -989,7 +989,7 @@ WHERE email = 'alice@example.com';
 EOF
 
 # 8. Second run (incremental)
-dativo run \
+dativo ingest \
   --config jobs/testcase8/postgres_employees_incremental.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1036,7 +1036,7 @@ cp secrets/testcase7/postgres.env secrets/testcase9/
 cp secrets/testcase7/iceberg.env secrets/testcase9/
 
 # 2. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase9/postgres_to_markdown_kv.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1174,7 +1174,7 @@ EOF
 cp secrets/testcase1/iceberg.env secrets/testcase10/
 
 # 5. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase10/custom_reader_job.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1288,14 +1288,14 @@ cp secrets/testcase1/iceberg.env secrets/testcase11/
 # Modify job to use native CSV reader
 sed 's/custom_reader:.*//' jobs/testcase11/rust_csv_reader.yaml > jobs/testcase11/python_csv_reader.yaml
 
-time dativo run \
+time dativo ingest \
   --config jobs/testcase11/python_csv_reader.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
 # 6. Run with Rust reader (compare performance)
-time dativo run \
+time dativo ingest \
   --config jobs/testcase11/rust_csv_reader.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1398,7 +1398,7 @@ target:
 EOF
 
 # 6. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase12/google_sheets_job.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1463,7 +1463,7 @@ target:
 EOF
 
 # 4. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase13/gdrive_csv_job.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1522,19 +1522,19 @@ EOF
 done
 
 # 2. Run all tenant jobs
-dativo run \
+dativo ingest \
   --job-dir jobs/tenant_a \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted &
 
-dativo run \
+dativo ingest \
   --job-dir jobs/tenant_b \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted &
 
-dativo run \
+dativo ingest \
   --job-dir jobs/tenant_c \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1592,13 +1592,13 @@ target:
 EOF
 
 # 3. Run job with env secret manager (default)
-dativo run \
+dativo ingest \
   --config jobs/testcase15/env_secrets_job.yaml \
   --secret-manager env \
   --mode self_hosted
 
 # OR just omit --secret-manager (env is default)
-dativo run \
+dativo ingest \
   --config jobs/testcase15/env_secrets_job.yaml \
   --mode self_hosted
 
@@ -1759,7 +1759,7 @@ done
 
 # 3. Run all strategies
 for strategy in by_region multi_partition date_partition; do
-  dativo run \
+  dativo ingest \
     --config jobs/testcase16/sales_${strategy}.yaml \
     --secret-manager filesystem \
     --secrets-dir secrets \
@@ -1837,7 +1837,7 @@ OPENMETADATA_AUTH_TOKEN=your_token_here
 EOF
 
 # 3. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase17/catalog_integration_job.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1967,7 +1967,7 @@ target:
 EOF
 
 # Run and expect immediate failure (non-retryable)
-dativo run \
+dativo ingest \
   --config jobs/testcase19/invalid_creds.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2029,7 +2029,7 @@ target:
 EOF
 
 # Run both jobs
-dativo run \
+dativo ingest \
   --job-dir jobs/testcase19_multi \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2230,7 +2230,7 @@ for job in stripe_customers_daily hubspot_contacts_hourly postgres_orders_freque
 done
 
 # 5. Run all jobs once
-dativo run \
+dativo ingest \
   --job-dir jobs/production \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2388,7 +2388,7 @@ NESSIE_URI=http://localhost:19120/api/v1
 EOF
 
 # 4. Run the job
-dativo run \
+dativo ingest \
   --config jobs/testcase21/mimesis_customers_to_iceberg.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2432,7 +2432,7 @@ schema_validation_mode: warn
 EOF
 
 # Run performance test
-time dativo run \
+time dativo ingest \
   --config jobs/testcase21/mimesis_performance_test.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2466,7 +2466,7 @@ target:
 EOF
 
 # Run with different locale
-dativo run \
+dativo ingest \
   --config jobs/testcase21/mimesis_multilocale.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2519,19 +2519,19 @@ dativo run \
 
 ```bash
 # 1. Run a job and capture state
-dativo run --config jobs/testcase2/orders_incremental.yaml ...
+dativo ingest --config jobs/testcase2/orders_incremental.yaml ...
 
 # 2. Simulate failure - stop MinIO
 docker stop $(docker ps -q -f name=minio)
 
 # 3. Attempt to run job (should fail gracefully)
-dativo run --config jobs/testcase2/orders_incremental.yaml ...
+dativo ingest --config jobs/testcase2/orders_incremental.yaml ...
 
 # 4. Restart MinIO
 docker start $(docker ps -a -q -f name=minio)
 
 # 5. Run job again (should resume from last state)
-dativo run --config jobs/testcase2/orders_incremental.yaml ...
+dativo ingest --config jobs/testcase2/orders_incremental.yaml ...
 ```
 
 ### Scenario B: Schema Evolution
@@ -2539,7 +2539,7 @@ dativo run --config jobs/testcase2/orders_incremental.yaml ...
 
 ```bash
 # 1. Run initial ingestion
-dativo run --config jobs/testcase1/employees_to_iceberg.yaml ...
+dativo ingest --config jobs/testcase1/employees_to_iceberg.yaml ...
 
 # 2. Add new column to CSV
 cat >> data/test_case_1/employees.csv << 'EOF'
@@ -2550,7 +2550,7 @@ EOF
 # Edit assets/examples/csv/v1.0/employees.yaml - add "title" field
 
 # 4. Re-run job
-dativo run --config jobs/testcase1/employees_to_iceberg.yaml ...
+dativo ingest --config jobs/testcase1/employees_to_iceberg.yaml ...
 
 # Expected: Schema evolution handled (if catalog supports it)
 ```
@@ -2569,7 +2569,7 @@ for i in range(1000000):
 EOF > data/large_scale_test.csv
 
 # Run with Rust plugin for performance
-dativo run --config jobs/large_scale_job.yaml ...
+dativo ingest --config jobs/large_scale_job.yaml ...
 
 # Monitor:
 # - Memory usage

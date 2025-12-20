@@ -60,7 +60,7 @@ Structure mirrors the prior `/secrets/{tenant}` layout:
 JSON, `.env`, and plaintext files are supported. Enable it via:
 
 ```bash
-dativo run --job-dir jobs/acme \
+dativo ingest --job-dir jobs/acme \
   --secret-manager filesystem \
   --secrets-dir /path/to/secrets
 ```
@@ -91,7 +91,7 @@ paths:
 Invoke:
 
 ```bash
-dativo run --job-dir jobs/acme \
+dativo ingest --job-dir jobs/acme \
   --secret-manager vault \
   --secret-manager-config vault-secrets.yaml
 ```

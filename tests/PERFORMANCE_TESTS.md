@@ -106,7 +106,7 @@ export AWS_REGION=us-east-1
 export NESSIE_URI=http://localhost:19120/api/v1
 
 # Run a specific test
-PYTHONPATH=src python -m dativo_ingest.cli run \
+PYTHONPATH=src python -m dativo_ingest.cli ingest \
   --job-config tests/fixtures/jobs/performance_test_1_csv_python_to_iceberg.yaml \
   --secrets-dir tests/fixtures/secrets \
   --mode self_hosted

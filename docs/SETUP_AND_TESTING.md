@@ -31,7 +31,7 @@ Then source the environment variables and run:
 
 ```bash
 source .env
-dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
 ### Option B: Manual Setup
@@ -48,12 +48,12 @@ For detailed manual setup instructions, see [SETUP_AND_ONBOARDING.md](SETUP_AND_
 export PYTHONPATH=src:$PYTHONPATH
 
 # Run the test
-dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
 **Note:** If the `dativo` command is not available, use:
 ```bash
-python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+python -m dativo_ingest.cli ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
 ## Expected Output

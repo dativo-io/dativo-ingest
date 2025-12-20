@@ -61,7 +61,7 @@ test-integration: build-plugin-images
 # Docker configuration is checked before tests run
 # Infrastructure is automatically stopped after tests complete
 # Uses run_all_smoke_tests.sh which runs both original and custom plugin smoke tests
-# Users can also run: dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
+# Users can also run: dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 test-smoke:
 	@echo "🧪 Running smoke tests..."
 	@bash tests/run_all_smoke_tests.sh

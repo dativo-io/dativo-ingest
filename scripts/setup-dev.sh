@@ -228,7 +228,7 @@ fi
 if [ "$EDITABLE_INSTALL_FAILED" -eq 1 ]; then
     echo "      PYTHONPATH=src python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
 else
-    echo "      dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
+    echo "      dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
     echo "      # or: python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
 fi
 echo ""

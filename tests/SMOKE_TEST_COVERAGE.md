@@ -115,7 +115,7 @@ make test-smoke
 
 ```bash
 # Run a specific job fixture
-PYTHONPATH=src python -m dativo_ingest.cli run \
+PYTHONPATH=src python -m dativo_ingest.cli ingest \
   --job-dir tests/fixtures/jobs \
   --secrets-dir tests/fixtures/secrets \
   --mode self_hosted \
@@ -282,7 +282,7 @@ Update this document with your new test fixture.
 ./tests/smoke_tests.sh
 
 # Run specific job
-PYTHONPATH=src python -m dativo_ingest.cli run \
+PYTHONPATH=src python -m dativo_ingest.cli ingest \
   --job-dir tests/fixtures/jobs \
   --secrets-dir tests/fixtures/secrets \
   --mode self_hosted \

@@ -34,7 +34,7 @@ source .env.example
 ### 3. Run Demo Job
 
 ```bash
-dativo run --config demo/jobs/csv_to_iceberg.yaml --mode self_hosted
+dativo ingest --config demo/jobs/csv_to_iceberg.yaml --mode self_hosted
 ```
 
 ## What's Included

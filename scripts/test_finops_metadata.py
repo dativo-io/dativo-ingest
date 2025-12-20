@@ -323,7 +323,7 @@ def main():
         print()
         print("To fix this:")
         print("1. Ensure the job has a catalog configured")
-        print("2. Run the job with catalog: dativo run --config jobs/testcase3/stripe_customers_with_catalog.yaml")
+        print("2. Run the job with catalog: dativo ingest --config jobs/testcase3/stripe_customers_with_catalog.yaml")
         print("3. Verify the job completed successfully")
         print("4. Check that Iceberg metadata files were created in S3")
         return 1

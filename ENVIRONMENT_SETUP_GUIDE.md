@@ -32,7 +32,7 @@ http://localhost:19120/api/v1
 ### Step 3: Run Your First Test
 
 ```bash
-dativo run \
+dativo ingest \
   --job-dir tests/fixtures/jobs \
   --secret-manager filesystem \
   --secrets-dir tests/fixtures/secrets \
@@ -180,7 +180,7 @@ $ echo $S3_ENDPOINT
 1. **Run specific job instead of all jobs:**
    ```bash
    # Instead of --job-dir (all jobs)
-   dativo run --config tests/fixtures/jobs/csv_employee_to_iceberg.yaml \
+   dativo ingest --config tests/fixtures/jobs/csv_employee_to_iceberg.yaml \
      --mode self_hosted
    ```
 
@@ -229,7 +229,7 @@ Dativo loads variables in this order (later overrides earlier):
 
 1. **.env file** (via `source .env`)
 2. **System environment** (existing variables)
-3. **Command-line** (inline: `S3_ENDPOINT=... dativo run`)
+3. **Command-line** (inline: `S3_ENDPOINT=... dativo ingest`)
 4. **Job config** (specified in YAML files)
 
 **Example:**
@@ -238,7 +238,7 @@ Dativo loads variables in this order (later overrides earlier):
 S3_ENDPOINT=http://localhost:9000
 
 # You can override:
-S3_ENDPOINT=http://other-server:9000 dativo run --config job.yaml
+S3_ENDPOINT=http://other-server:9000 dativo ingest --config job.yaml
 ```
 
 ---

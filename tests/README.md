@@ -52,10 +52,10 @@ make test-unit
 **Run with**:
 ```bash
 # Direct CLI command (recommended)
-dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 
 # Or using Python module (if dativo command not available)
-python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+python -m dativo_ingest.cli ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 
 # Or using Makefile
 make test-smoke
@@ -84,7 +84,7 @@ Simply add new job configurations to `tests/fixtures/jobs/` and run the CLI:
 ```bash
 # Add new job config: tests/fixtures/jobs/new_job.yaml
 # Then run:
-dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
 ## Test Fixtures

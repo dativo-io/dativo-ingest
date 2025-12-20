@@ -67,7 +67,7 @@ source .env
 ### 3. Run End-to-End Test
 
 ```bash
-dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
 ## Expected Output
@@ -170,7 +170,7 @@ S3_BUCKET=test-bucket
 
 4. **Run the job**:
 ```bash
-dativo run --config jobs/mytenant/my_job.yaml --mode self_hosted
+dativo ingest --config jobs/mytenant/my_job.yaml --mode self_hosted
 ```
 
 ## Next Steps

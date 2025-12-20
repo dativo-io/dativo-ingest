@@ -60,5 +60,5 @@ echo "📝 Next steps:"
 echo "   1. Create asset definition: assets/${SOURCE}/v1.0/${JOB_NAME}.yaml"
 echo "   2. Set up secrets: secrets/${TENANT_ID}/iceberg.env"
 echo "   3. Update source file path in job config"
-echo "   4. Run: dativo run --config ${JOB_FILE} --mode self_hosted"
+echo "   4. Run: dativo ingest --config ${JOB_FILE} --mode self_hosted"
 

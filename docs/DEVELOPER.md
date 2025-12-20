@@ -6,7 +6,7 @@ This document describes the initial startup sequence required for running E2E sm
 
 For smoke tests, you would run:
 ```bash
-dativo run --job-dir tests/fixtures/jobs --mode self_hosted
+dativo ingest --job-dir tests/fixtures/jobs --mode self_hosted
 ```
 
 Or for orchestrated mode:
@@ -95,7 +95,7 @@ The `--job-dir` CLI argument loads all YAML files from a directory (recursively 
 
 **Usage**:
 ```bash
-dativo run --job-dir tests/fixtures/jobs --mode self_hosted
+dativo ingest --job-dir tests/fixtures/jobs --mode self_hosted
 ```
 
 **Implementation Details** (`src/dativo_ingest/config.py`):

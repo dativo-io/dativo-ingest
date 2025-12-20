@@ -57,7 +57,7 @@ governance_overrides:
 ### 3. Run Ingestion
 
 ```bash
-dativo run --config my_job.yaml --mode self_hosted
+dativo ingest --config my_job.yaml --mode self_hosted
 ```
 
 ### 4. Query Iceberg Properties
