@@ -1,0 +1,228 @@
+# Dativo-Ingest Codebase Rules for Cloud Cursor
+
+## Project Overview
+
+Dativo-Ingest is a headless, config-driven ELT framework for data ingestion. It's designed for GitOps, CI/CD, and infrastructure-as-code workflows with strong governance and schema validation.
+
+**Key Principles:**
+- One asset per job (simpler governance & isolation)
+- Config-driven (YAML for everything)
+- Multi-tenant first (built-in tenant isolation)
+- Iceberg-native (modern data lake integration)
+- Plugin architecture (Python and Rust support)
+
+## Python Version Requirement
+
+**CRITICAL:** This project requires **Python 3.10 or higher**. Python 3.9 and below will NOT work.
+
+Always check Python version in setup instructions and error messages.
+
+## CLI Command Conventions
+
+**Primary Command:** `dativo` (shortest, preferred)
+**Alternative Command:** `dativo-ingest` (matches package name)
+**Module Invocation:** `python -m dativo_ingest.cli` (fallback when package not installed)
+
+**Available Commands:**
+- `dativo ingest` - Execute ingestion job (primary action, recommended)
+- `dativo run` - Execute ingestion job (alias for `ingest`, legacy)
+- `dativo check` - Validate configuration
+- `dativo discover` - Discover schema from connector
+- `dativo start` - Start orchestrated mode (Dagster)
+- `dativo connectors` - Manage connector registry (list, inspect, sync)
+
+**IMPORTANT:** Never use `dativo_ingest` (with underscore) as a CLI command - that's the Python module name, not a command. Always use `dativo` or `dativo-ingest`.
+
+## Code Structure
+
+```
+src/dativo_ingest/
+├── cli.py                    # Main CLI entry point
+├── cli_commands.py          # CLI command implementations (check, discover)
+├── cli_connectors.py        # Connector management CLI
+├── config.py                 # Configuration models (JobConfig, SourceConfig, etc.)
+├── job_executor.py          # Core job execution logic
+├── validator.py             # Schema and connector validation
+├── connectors/              # Connector implementations
+│   ├── factory.py           # Connector factory
+│   ├── engine_config.py     # Engine configuration parsing
+│   └── *_extractor.py       # Individual connector extractors
+├── registry/                # Connector registry v2
+│   ├── connector_registry.py
+│   └── catalog_loader.py
+├── secrets/                 # Secret management backends
+│   └── managers/            # env, filesystem, vault, aws, gcp
+├── catalog/                 # Data catalog integrations
+│   └── (openmetadata, aws_glue, databricks_unity, nessie)
+├── plugins.py               # Plugin base classes
+├── parquet_writer.py        # Parquet file writing
+├── iceberg_committer.py    # Iceberg table management
+└── incremental/             # Incremental sync strategies
+```
+
+## Configuration Patterns
+
+**Job Configuration:**
+- Located in `configs/jobs/` or `jobs/`
+- References asset definitions in `configs/assets/` or `assets/`
+- References connector definitions in `connectors/examples/`
+
+**Asset Definitions:**
+- Follow ODCS v3.0.2 schema standard
+- Located in `configs/assets/` or `assets/`
+- Must include: schema, team owner, compliance classification
+
+**Connector Definitions:**
+- Located in `connectors/examples/`
+- Define connector capabilities, engines, and connection templates
+
+## Testing Conventions
+
+**Test Structure:**
+- Unit tests: `tests/test_*.py`
+- Integration tests: `tests/integration/test_*.py`
+- Smoke tests: `tests/smoke_tests.sh`
+- Fixtures: `tests/fixtures/`
+
+**Test Commands:**
+- `make test-unit` - Unit tests only
+- `make test-integration` - Integration tests
+- `make test-smoke` - End-to-end smoke tests
+- `make test` - All tests
+
+**Test Data:**
+- Use `tests/fixtures/` for test data
+- Use Mimesis connector for synthetic data generation
+- Test secrets in `tests/fixtures/secrets/`
+
+## Documentation Standards
+
+**Documentation Location:**
+- Main docs: `docs/`
+- README files: Per-directory READMEs for context
+- Testing: `TESTING_PLAYBOOK.md`, `TESTING_GUIDE_INDEX.md`
+
+**When Writing Documentation:**
+- Always use `dativo` as the primary command (not `dativo-ingest` or `dativo_ingest`)
+- Use `dativo ingest` as the primary action command (not `dativo run`)
+- `dativo run` is a legacy alias and should not be mentioned as alternative
+- Include Python version requirement (3.10+)
+- Provide both `--config` and `--job-dir` examples when relevant
+- Include fallback: `python -m dativo_ingest.cli` when command not found
+
+## Code Patterns
+
+**Error Handling:**
+- Use custom exceptions from `exceptions.py`
+- Return exit codes: 0=success, 1=partial, 2=failure
+- Log errors with structured logging (`get_logger()`)
+
+**Logging:**
+- Use structured JSON logging via `logging.py`
+- Include `event_type` in log extras
+- Use `get_logger()` from `logging.py`
+
+**Configuration Loading:**
+- Use Pydantic models from `config.py`
+- Validate against schemas in `schemas/`
+- Use `ConnectorValidator` for connector validation
+
+**Secret Management:**
+- Support multiple backends: env, filesystem, vault, aws, gcp
+- Use `DATIVO_SECRET__{TENANT}__{SECRET_NAME}__[json|env|text]` pattern for env backend
+- Load via `load_secrets_and_set_env()` from `secrets/`
+
+## Common Tasks
+
+**Adding a New Connector:**
+1. Create extractor in `connectors/*_extractor.py`
+2. Register in `connectors/factory.py`
+3. Add to `registry/connectors.yaml`
+4. Create example connector definition in `connectors/examples/`
+5. Add tests in `tests/test_*_extractor.py`
+
+**Adding a New CLI Command:**
+1. Add parser in `cli.py`
+2. Implement command function
+3. Route in `main()` function
+4. Add tests
+5. Update documentation
+
+**Adding a New Secret Manager:**
+1. Create manager in `secrets/managers/`
+2. Inherit from `BaseSecretManager`
+3. Register in `secrets/__init__.py`
+4. Add to CLI choices in `cli.py`
+5. Add tests
+
+## Important Gotchas
+
+1. **Python 3.10+ Required:** Always check version in setup
+2. **One Asset Per Job:** Don't create multi-asset jobs
+3. **CLI Command:** Use `dativo`, not `dativo_ingest` (module name)
+4. **Path Resolution:** Use `Path` from `pathlib`, handle both absolute and relative paths
+5. **Tenant Isolation:** Always consider tenant context in state, secrets, and data paths
+6. **Schema Validation:** Assets must reference ODCS schema in `schemas/`
+7. **Secret Redaction:** Use `setup_logging(redact_secrets=True)` in production
+8. **Docker Images:** Plugin sandboxes require Docker images (`dativo/python-plugin-runner`, `dativo/rust-plugin-runner`)
+
+## File Naming Conventions
+
+- Python files: `snake_case.py`
+- YAML configs: `kebab-case.yaml`
+- Test files: `test_*.py` or `test_*_integration.py`
+- Documentation: `UPPER_SNAKE_CASE.md` or `kebab-case.md`
+
+## Code Style
+
+- Follow Black formatting (88 char line length)
+- Use isort for imports
+- Type hints required for public APIs
+- Use Pydantic models for configuration
+- Structured logging with JSON output
+
+## When Making Changes
+
+1. **Always:**
+   - Run `make format` before committing
+   - Run `make test` to verify
+   - Update relevant documentation
+   - Check Python version requirements
+   - Use correct CLI command names (`dativo`, not `dativo_ingest`)
+   - Use `dativo ingest` as primary action (not `dativo run`)
+
+2. **For Breaking Changes:**
+   - Update CHANGELOG.md
+   - Consider backward compatibility
+   - Update migration guides if needed
+
+3. **For New Features:**
+   - Add to appropriate registry/schema
+   - Add tests (unit + integration)
+   - Update documentation
+   - Consider multi-tenant implications
+
+## Registry and Catalog System
+
+**Connector Registry v2:**
+- Main registry: `registry/connectors.yaml`
+- External catalogs: `registry/catalogs/*.json`
+- Resolution priority: Job overrides > Catalog > Registry defaults
+- Use `ConnectorRegistry.from_default_paths()` to load
+
+**Catalog Formats:**
+- Airbyte format: `sources` array with `dockerRepository`, `dockerImageTag`
+- Generic format: `connectors` array with `name`, `external_id`, `docker_image_default`
+
+## Environment Variables
+
+**Common Variables:**
+- `DATIVO_SECRET_MANAGER` - Secret backend (env, filesystem, vault, aws, gcp)
+- `DATIVO_SECRET_MANAGER_CONFIG` - Secret manager config (JSON or path)
+- `S3_ENDPOINT`, `S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` - S3/MinIO
+- `NESSIE_URI` - Nessie catalog URI
+- `STATE_DIR` - State directory path
+
+**Secret Pattern:**
+- `DATIVO_SECRET__{TENANT}__{SECRET_NAME}__[json|env|text]` for env backend
+- `DATIVO_SECRET__GLOBAL__{SECRET_NAME}__text` for global secrets
