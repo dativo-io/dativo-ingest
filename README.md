@@ -237,7 +237,7 @@ docker run --rm \
   -v $(pwd)/configs:/app/configs \
   -v $(pwd)/secrets:/app/secrets \
   -v $(pwd)/state:/app/state \
-  dativo:1.1.0 run --config /app/jobs/acme/stripe_customers_to_iceberg.yaml --mode self_hosted
+  dativo:1.1.0 ingest --config /app/jobs/acme/stripe_customers_to_iceberg.yaml --mode self_hosted
 ```
 
 3. Start orchestrated mode:

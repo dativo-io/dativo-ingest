@@ -24,8 +24,8 @@ Always check Python version in setup instructions and error messages.
 **Module Invocation:** `python -m dativo_ingest.cli` (fallback when package not installed)
 
 **Available Commands:**
-- `dativo ingest` - Execute ingestion job (primary action, recommended, alias for `run`)
-- `dativo run` - Execute ingestion job (original command, `ingest` is preferred)
+- `dativo ingest` - Execute ingestion job (primary action, recommended)
+- `dativo run` - Execute ingestion job (legacy alias, maintained for backward compatibility)
 - `dativo check` - Validate configuration
 - `dativo discover` - Discover schema from connector
 - `dativo start` - Start orchestrated mode (Dagster)
@@ -226,3 +226,4 @@ src/dativo_ingest/
 **Secret Pattern:**
 - `DATIVO_SECRET__{TENANT}__{SECRET_NAME}__[json|env|text]` for env backend
 - `DATIVO_SECRET__GLOBAL__{SECRET_NAME}__text` for global secrets
+

@@ -374,7 +374,7 @@ Examples:
   # Ingest data from source to target (recommended)
   dativo ingest --config /app/configs/jobs/stripe.yaml --mode self_hosted
 
-  # Run a single job (alias for ingest)
+  # Legacy alias (backward compatibility)
   dativo run --config /app/configs/jobs/stripe.yaml --mode self_hosted
 
   # Start orchestrated mode
@@ -429,11 +429,12 @@ Examples:
         "allowed in self_hosted mode.",
     )
 
-    # Ingest command (alias for run)
+    # Ingest command (primary, recommended)
     ingest_parser = subparsers.add_parser(
         "ingest",
-        help="Ingest data from source to target (alias for 'run')",
-        description="Execute a single ingestion job and exit. This is an alias for 'run'. "
+        help="Ingest data from source to target (primary command, recommended)",
+        description="Execute a single ingestion job and exit. This is the primary command. "
+        "'run' is maintained as a backward-compatible alias. "
         "Validates configuration, schema presence, and connector restrictions before execution.",
     )
     ingest_config_group = ingest_parser.add_mutually_exclusive_group(required=True)

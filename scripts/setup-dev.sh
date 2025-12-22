@@ -226,10 +226,10 @@ else
     echo "   3. Run the end-to-end test:"
 fi
 if [ "$EDITABLE_INSTALL_FAILED" -eq 1 ]; then
-    echo "      PYTHONPATH=src python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
+    echo "      PYTHONPATH=src python -m dativo_ingest.cli ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
 else
     echo "      dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
-    echo "      # or: python -m dativo_ingest.cli run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
+    echo "      # or: python -m dativo_ingest.cli ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted"
 fi
 echo ""
 echo "   5. Or use the Makefile:"
