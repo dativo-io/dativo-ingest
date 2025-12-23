@@ -1,8 +1,8 @@
 tenant_id: testcase2
 source_connector: csv
-source_connector_path: connectors/examples/csv.yaml
+source_connector_path: connectors/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: orders
 asset_path: assets/examples/csv/v1.0/orders.yaml
 source:

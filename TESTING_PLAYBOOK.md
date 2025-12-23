@@ -477,7 +477,7 @@ dativo ingest \
   --mode self_hosted
 
 # 7. Verify data
-mc ls local/test-bucket/testcase3/stripe/customers/ --recursive
+mc ls local/test-bucket/testcase3/stripe_customers/ --recursive
 ```
 
 **Success Criteria:**
@@ -496,12 +496,21 @@ mc ls local/test-bucket/testcase3/stripe/customers/ --recursive
 # 1. Create HubSpot secrets
 mkdir -p secrets/testcase4
 cat > secrets/testcase4/hubspot.env << EOF
-HUBSPOT_API_KEY=pat-na1-YOUR_API_KEY_HERE
+# HubSpot Private App credentials (recommended for testing)
+# Airbyte HubSpot 6.0.15+ supports Private App tokens
+# From HubSpot Settings > Integrations > Private Apps
+HUBSPOT_API_KEY=pat-eu1-YOUR_ACCESS_TOKEN_HERE
+
+# Alternative: OAuth credentials (for production with refresh tokens)
+# HUBSPOT_CLIENT_ID=your_oauth_client_id
+# HUBSPOT_OAUTH_CLIENT_SECRET=your_oauth_client_secret
+# HUBSPOT_REFRESH_TOKEN=your_refresh_token
 EOF
 
 cp secrets/testcase3/iceberg.env secrets/testcase4/
 
-# 2. Create job for contacts
+# 2. Create job directory and job for contacts
+mkdir -p jobs/testcase4
 cat > jobs/testcase4/hubspot_contacts.yaml << 'EOF'
 tenant_id: testcase4
 source_connector: hubspot
@@ -570,7 +579,12 @@ dativo ingest \
   --mode self_hosted
 
 # 7. Verify data
-mc ls local/test-bucket/testcase4/hubspot/ --recursive
+# Verify contacts
+mc ls local/test-bucket/testcase4/hubspot_contacts/ --recursive
+# Verify companies
+mc ls local/test-bucket/testcase4/hubspot_companies/ --recursive
+# Verify deals
+mc ls local/test-bucket/testcase4/hubspot_deals/ --recursive
 ```
 
 **Success Criteria:**
@@ -2339,9 +2353,9 @@ mkdir -p jobs/testcase21
 cat > jobs/testcase21/mimesis_customers_to_iceberg.yaml << 'EOF'
 tenant_id: testcase21
 source_connector: mimesis
-source_connector_path: connectors/examples/mimesis.yaml
+source_connector_path: connectors/mimesis.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: mimesis_customers
 asset_path: assets/examples/mimesis/v1.0/customers.yaml
 
@@ -2406,9 +2420,9 @@ mc stat local/test-bucket/testcase21/synthetic_customers/ingest_date=*/part-*.pa
 cat > jobs/testcase21/mimesis_performance_test.yaml << 'EOF'
 tenant_id: testcase21
 source_connector: mimesis
-source_connector_path: connectors/examples/mimesis.yaml
+source_connector_path: connectors/mimesis.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: mimesis_customers
 asset_path: assets/examples/mimesis/v1.0/customers.yaml
 source:
@@ -2442,9 +2456,9 @@ time dativo ingest \
 cat > jobs/testcase21/mimesis_multilocale.yaml << 'EOF'
 tenant_id: testcase21
 source_connector: mimesis
-source_connector_path: connectors/examples/mimesis.yaml
+source_connector_path: connectors/mimesis.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: mimesis_customers
 asset_path: assets/examples/mimesis/v1.0/customers.yaml
 source:

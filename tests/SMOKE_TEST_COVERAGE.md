@@ -244,10 +244,10 @@ tenant_id: test_tenant
 environment: test
 
 source_connector: your_connector
-source_connector_path: connectors/examples/your_connector.yaml
+source_connector_path: connectors/your_connector.yaml
 
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 asset: your_asset
 asset_path: assets/your_connector/v1.0/your_asset.yaml

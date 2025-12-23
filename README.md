@@ -348,16 +348,16 @@ Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/r
 **Job Config** - Defines source, target, asset, and tenant overrides:
 
 **Path Conventions:**
-- **Local Development**: Use relative paths (e.g., `connectors/examples/stripe.yaml`)
-- **Docker**: Use absolute paths (e.g., `/app/connectors/examples/stripe.yaml`)
+- **Local Development**: Use relative paths (e.g., `connectors/stripe.yaml`)
+- **Docker**: Use absolute paths (e.g., `/app/connectors/stripe.yaml`)
 - **Assets**: Always use versioned paths (e.g., `assets/examples/stripe/v1.0/customers.yaml`)
 
 ```yaml
 tenant_id: acme
 source_connector: stripe
-source_connector_path: connectors/examples/stripe.yaml  # Local: relative, Docker: /app/connectors/examples/stripe.yaml
+source_connector_path: connectors/stripe.yaml  # Local: relative, Docker: /app/connectors/stripe.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml  # Always versioned
 source:
@@ -404,7 +404,7 @@ See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal a
 
 Here's a complete minimal example showing how to ingest a CSV file to S3/Iceberg with all three required config files:
 
-**1. Connector Recipe** (`connectors/examples/csv.yaml`):
+**1. Connector Recipe** (`connectors/csv.yaml`):
 ```yaml
 type: csv
 name: CSV File Connector
@@ -446,9 +446,9 @@ compliance:
 ```yaml
 tenant_id: mytenant
 source_connector: csv
-source_connector_path: connectors/examples/csv.yaml
+source_connector_path: connectors/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: customers
 asset_path: assets/examples/csv/v1.0/customers.yaml
 source:

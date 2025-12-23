@@ -4,11 +4,11 @@ environment: test
 
 # Source connector - HubSpot with Airbyte engine
 source_connector: hubspot
-source_connector_path: connectors/examples/hubspot.yaml
+source_connector_path: connectors/hubspot.yaml
 
 # Target connector - Iceberg with MinIO storage
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 # Asset definition
 asset: hubspot_contacts

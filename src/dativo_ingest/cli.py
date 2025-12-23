@@ -63,7 +63,13 @@ def run_command(args: argparse.Namespace) -> int:
         try:
             job_config = JobConfig.from_yaml(args.config)
         except SystemExit as e:
+            # SystemExit from JobConfig.from_yaml already prints error to stderr
             return e.code if e.code else 2
+        except Exception as e:
+            print(f"ERROR: Failed to load job configuration: {e}", file=sys.stderr)
+            if hasattr(e, "__cause__") and e.__cause__:
+                print(f"  Caused by: {e.__cause__}", file=sys.stderr)
+            return 2
 
         # Set up logging for single job execution (no startup_sequence was called)
         log_level = job_config.logging.level if job_config.logging else "INFO"

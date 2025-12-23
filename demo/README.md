@@ -85,7 +85,7 @@ docker-compose -f docker-compose.demo.yml down -v
 1. **Modify the Job**: Edit `demo/jobs/csv_to_iceberg.yaml`
 2. **Add More Data**: Add CSV files to `demo/data/`
 3. **Create Assets**: Define asset schemas in `assets/examples/`
-4. **Explore Connectors**: See `connectors/examples/` for available connectors
+4. **Explore Connectors**: See `connectors/` for available connectors
 
 ## Troubleshooting
 

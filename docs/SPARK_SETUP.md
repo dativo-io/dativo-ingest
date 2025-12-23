@@ -99,7 +99,7 @@ However, for local development, it's recommended to install Spark directly on yo
 The Iceberg connector supports Spark engine configuration:
 
 ```yaml
-# connectors/examples/iceberg.yaml
+# connectors/iceberg.yaml
 default_engine:
   type: spark  # Use Spark engine instead of native
   options:

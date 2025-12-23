@@ -7,10 +7,10 @@ tenant_id: perf_test_tenant
 environment: test
 
 source_connector: s3
-source_connector_path: connectors/examples/s3.yaml
+source_connector_path: connectors/s3.yaml
 
 target_connector: s3
-target_connector_path: connectors/examples/s3.yaml
+target_connector_path: connectors/s3.yaml
 
 asset: perf_test_data
 asset_path: tests/fixtures/assets/csv/v1.0/perf_test_data.yaml

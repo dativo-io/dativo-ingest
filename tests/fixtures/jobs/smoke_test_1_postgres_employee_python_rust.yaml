@@ -5,11 +5,11 @@ environment: test
 
 # Source connector - CSV files
 source_connector: csv
-source_connector_path: connectors/examples/csv.yaml
+source_connector_path: connectors/csv.yaml
 
 # Target connector - Iceberg with MinIO storage
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 # Asset definition
 asset: csv_employee

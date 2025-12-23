@@ -1,6 +1,7 @@
 """Job executor for running ETL pipelines."""
 
 import os
+import sys
 from typing import Any, Dict, List, Optional
 
 from .config import AssetDefinition, JobConfig, SourceConfig, TargetConfig
@@ -263,8 +264,10 @@ class JobExecutor:
                 asset_definition=self.asset_definition,  # Pass asset_definition for mimesis connector
             )
         except ValueError as e:
+            error_msg = f"Failed to initialize extractor: {e}"
+            print(f"ERROR: {error_msg}", file=sys.stderr)
             self.logger.error(
-                f"Failed to initialize extractor: {e}",
+                error_msg,
                 extra={
                     "event_type": "extractor_error",
                 },
@@ -272,8 +275,12 @@ class JobExecutor:
             )
             return 2
         except Exception as e:
+            error_msg = f"Failed to initialize extractor: {e}"
+            print(f"ERROR: {error_msg}", file=sys.stderr)
+            if hasattr(e, "__cause__") and e.__cause__:
+                print(f"  Caused by: {e.__cause__}", file=sys.stderr)
             self.logger.error(
-                f"Failed to initialize extractor: {e}",
+                error_msg,
                 extra={
                     "event_type": "extractor_error",
                 },
@@ -1048,8 +1055,33 @@ class JobExecutor:
         """
         try:
             # Resolve source and target configs
-            self.source_config = self.job_config.get_source()
-            self.target_config = self.job_config.get_target()
+            try:
+                self.source_config = self.job_config.get_source()
+                self.target_config = self.job_config.get_target()
+            except ValueError as e:
+                error_msg = f"Failed to load connector configuration: {e}"
+                print(f"ERROR: {error_msg}", file=sys.stderr)
+                # Set up logging to log the error
+                self._setup_logging()
+                self.logger.error(
+                    error_msg,
+                    extra={"event_type": "config_error"},
+                    exc_info=True,
+                )
+                return 2
+            except Exception as e:
+                error_msg = f"Failed to resolve source/target configuration: {e}"
+                print(f"ERROR: {error_msg}", file=sys.stderr)
+                if hasattr(e, "__cause__") and e.__cause__:
+                    print(f"  Caused by: {e.__cause__}", file=sys.stderr)
+                # Set up logging to log the error
+                self._setup_logging()
+                self.logger.error(
+                    error_msg,
+                    extra={"event_type": "config_error"},
+                    exc_info=True,
+                )
+                return 2
 
             # Set up logging
             self._setup_logging()

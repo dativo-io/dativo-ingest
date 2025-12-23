@@ -48,10 +48,10 @@ tenant_id: test_tenant
 environment: test
 
 source_connector: mysql
-source_connector_path: connectors/examples/mysql.yaml
+source_connector_path: connectors/mysql.yaml
 
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 asset: mysql_employees_markdown_kv
 asset_path: tests/fixtures/assets/mysql/v1.0/employees_markdown_kv.yaml
@@ -206,10 +206,10 @@ tenant_id: test_tenant
 environment: test
 
 source_connector: mysql
-source_connector_path: connectors/examples/mysql.yaml
+source_connector_path: connectors/mysql.yaml
 
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 asset: mysql_employees_markdown_kv
 asset_path: tests/fixtures/assets/mysql/v1.0/employees_markdown_kv.yaml

@@ -61,9 +61,9 @@ def spark_iceberg_job_config(test_csv_file):
         tenant_id="test_tenant",
         environment="test",
         source_connector="csv",
-        source_connector_path="connectors/examples/csv.yaml",
+        source_connector_path="connectors/csv.yaml",
         target_connector="iceberg",
-        target_connector_path="connectors/examples/iceberg.yaml",
+        target_connector_path="connectors/iceberg.yaml",
         asset="test_spark_iceberg",
         asset_path=str(
             Path(__file__).parent.parent
