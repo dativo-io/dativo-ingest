@@ -610,7 +610,8 @@ product_id,product_name,price,category,in_stock
 4,Widget D,39.99,,true
 EOF
 
-# 2. Create asset with strict validation
+# 2. Create asset definition (validation mode is set in job config, not asset)
+mkdir -p assets/examples/csv/v1.0
 cat > assets/examples/csv/v1.0/products.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
@@ -637,15 +638,13 @@ schema:
 target:
   file_format: parquet
   partitioning: []
-validation:
-  mode: strict  # Fail on any validation error
 team:
   owner: test@example.com
 compliance:
   classification: []
 EOF
 
-# 3. Create job
+# 3. Create job with strict validation mode
 mkdir -p jobs/testcase5 secrets/testcase5
 cat > jobs/testcase5/products_strict.yaml << 'EOF'
 tenant_id: testcase5
@@ -655,6 +654,7 @@ target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products
 asset_path: assets/examples/csv/v1.0/products.yaml
+schema_validation_mode: strict  # Fail on any validation error
 source:
   files:
     - path: data/test_case_5/products_invalid.csv
@@ -687,7 +687,9 @@ product_id,product_name,price,category,in_stock
 EOF
 
 # 6. Update job config to use valid file
-sed -i 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml
+# On macOS, use: sed -i '' 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml
+# On Linux, use: sed -i 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml
+sed -i '' 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml 2>/dev/null || sed -i 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml
 
 # 7. Run again
 dativo ingest \
@@ -712,7 +714,8 @@ dativo ingest \
 
 **Steps:**
 ```bash
-# 1. Create same asset with warn mode
+# 1. Create asset definition (validation mode is set in job config, not asset)
+mkdir -p assets/examples/csv/v1.0
 cat > assets/examples/csv/v1.0/products_warn.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
@@ -739,15 +742,13 @@ schema:
 target:
   file_format: parquet
   partitioning: []
-validation:
-  mode: warn  # Log warnings but continue
 team:
   owner: test@example.com
 compliance:
   classification: []
 EOF
 
-# 2. Create job
+# 2. Create job with warn validation mode
 mkdir -p jobs/testcase6 secrets/testcase6
 cat > jobs/testcase6/products_warn.yaml << 'EOF'
 tenant_id: testcase6
@@ -757,6 +758,7 @@ target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products_warn
 asset_path: assets/examples/csv/v1.0/products_warn.yaml
+schema_validation_mode: warn  # Log warnings but continue processing
 source:
   files:
     - path: data/test_case_5/products_invalid.csv
