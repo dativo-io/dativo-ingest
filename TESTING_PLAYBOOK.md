@@ -15,33 +15,115 @@ This playbook covers 21 real-world test cases to validate all capabilities of da
 
 ## Prerequisites & Setup
 
+### Prerequisites Checklist
+
+Before starting, ensure you have:
+- **Python 3.10 or higher** (Python 3.9 and below will NOT work)
+- Docker and Docker Compose
+- Git
+
+**Check Python version:**
+```bash
+python3 --version  # Should show 3.10.x or higher
+```
+
+If you have Python 3.9 or below, see [docs/python-setup.md](docs/python-setup.md) for upgrade instructions.
+
 ### 1. Environment Setup (5 minutes)
 
 ```bash
-# Clone and navigate to the repository
-cd /workspace
+# 1. Clone and navigate to the repository
+cd /path/to/dativo-ingest
 
-# Run automated setup
+# 2. Run automated setup script
+# This will:
+#   - Create a virtual environment (venv) with Python 3.10+
+#   - Install all dependencies
+#   - Start Docker services (Nessie, MinIO, PostgreSQL)
+#   - Create necessary directories and buckets
 ./scripts/setup-dev.sh
 
-# Source environment variables
+# 3. Activate virtual environment (IMPORTANT!)
+# The setup script activates it, but if you open a new terminal, you need to activate it again:
+source venv/bin/activate
+
+# You should see (venv) in your prompt after activation
+# Example: (venv) user@hostname dativo-ingest %
+
+# 4. Source environment variables
 source .env
 
-# Verify services are running
+# 5. Verify services are running
 docker ps | grep -E '(nessie|minio|postgres)'
 ```
+
+**Important Notes:**
+- The `dativo` command is only available when the virtual environment is activated
+- If you see "command not found: dativo", activate the venv: `source venv/bin/activate`
+- Each new terminal session requires reactivating the venv
 
 ### 2. Verify Installation
 
 ```bash
-# Test CLI
+# 1. Verify virtual environment is activated
+# Check that (venv) appears in your prompt, or:
+which python  # Should show: .../dativo-ingest/venv/bin/python
+python --version  # Should show Python 3.10+ (not 3.9 or below)
+
+# 2. Test CLI command
 dativo --help
 
-# Check infrastructure
+# If "command not found", activate venv:
+# source venv/bin/activate
+
+# Alternative: Use Python module directly (works without venv activation)
+python -m dativo_ingest.cli --help
+
+# 3. Check infrastructure services
 curl http://localhost:19120/api/v1/config  # Nessie
 curl http://localhost:9000/minio/health/live  # MinIO
 
-# MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
+# 4. MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
+```
+
+### 3. Troubleshooting Common Issues
+
+**Issue: "command not found: dativo"**
+
+**Solution:** Activate the virtual environment:
+```bash
+source venv/bin/activate
+```
+
+**Issue: "Python 3.9.x" when running `python --version`**
+
+**Solution:** You're not using the venv's Python. Activate the venv:
+```bash
+source venv/bin/activate
+python --version  # Should now show 3.10+
+```
+
+**Issue: Virtual environment not found**
+
+**Solution:** Run the setup script to create it:
+```bash
+./scripts/setup-dev.sh
+```
+
+**Issue: Services not starting**
+
+**Solution:** Check Docker is running and start services manually:
+```bash
+docker ps  # Verify Docker is running
+docker-compose -f docker-compose.dev.yml up -d
+```
+
+**Alternative: Run without activating venv**
+
+If you prefer not to activate the venv, you can use the Python module directly:
+```bash
+# Instead of: dativo ingest --config ...
+venv/bin/python -m dativo_ingest.cli ingest --config ...
 ```
 
 ---
@@ -198,6 +280,12 @@ curl -X POST "https://api.hubapi.com/crm/v3/objects/companies" \
 ---
 
 ## Top 21 Test Cases
+
+> **⚠️ Important:** Before running any test case, ensure your virtual environment is activated:
+> ```bash
+> source venv/bin/activate
+> ```
+> If you see "command not found: dativo", the venv is not activated. See [Prerequisites & Setup](#prerequisites--setup) for details.
 
 ### Test Case 1: Basic CSV to Iceberg Ingestion
 **Purpose:** Validate basic ETL pipeline with Parquet writing and Iceberg integration
@@ -801,8 +889,13 @@ mc ls local/test-bucket/testcase6/products/ --recursive
 # 1. Verify PostgreSQL is running (from docker-compose)
 docker ps | grep postgres
 
+# Identify the correct container name if you have multiple postgres containers:
+# docker ps --filter "name=postgres" --format "{{.Names}}\t{{.Ports}}"
+# Use the container name that matches your docker-compose setup (typically 'dativo-postgres')
+# If your container has a different name, replace 'dativo-postgres' in the commands below
+
 # 2. Create test table and data
-docker exec -i $(docker ps -q -f name=postgres) psql -U postgres << 'EOF'
+docker exec -i dativo-postgres psql -U postgres << 'EOF'
 CREATE TABLE IF NOT EXISTS employees (
   emp_id SERIAL PRIMARY KEY,
   first_name VARCHAR(50),
@@ -847,7 +940,7 @@ schema:
     type: string
 target:
   file_format: parquet
-  partitioning: [department]
+  partitioning: [department]  # Suggested partitioning (must be set in job config to use)
 team:
   owner: test@example.com
 compliance:
@@ -884,6 +977,10 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
+  # Note: Partitioning can be set here to override asset definition
+  # If not specified, uses connector recipe default (typically [ingest_date])
+  # To partition by department as defined in asset, uncomment:
+  # partitioning: [department]
 EOF
 
 # 6. Run job
@@ -894,15 +991,25 @@ dativo ingest \
   --mode self_hosted
 
 # 7. Verify data
-mc ls local/test-bucket/testcase7/postgres/employees/ --recursive
-# Should see partitions by department (Engineering, Marketing, Sales)
+mc ls local/test-bucket/testcase7/db_employees/ --recursive
+# By default, files are partitioned by ingest_date (e.g., ingest_date=2025-12-29/)
+# If you set partitioning: [department] in job config, you'll see:
+#   department=Engineering/, department=Marketing/, department=Sales/
+# Note: The path uses the asset name 'db_employees', not 'postgres/employees'
 ```
 
 **Success Criteria:**
-- ✅ All 4 employee records extracted
-- ✅ Data partitioned by department
+- ✅ Employee records extracted (check logs for exact count)
+- ✅ Parquet files created in S3/MinIO at `testcase7/db_employees/ingest_date=YYYY-MM-DD/`
 - ✅ Schema correctly mapped from PostgreSQL types
-- ✅ Parquet files created
+- ✅ Files are readable and contain expected data
+
+**Note on Partitioning:**
+- By default, files are partitioned by `ingest_date` (from connector recipe default)
+- The asset definition specifies `partitioning: [department]`, but this is only used if:
+  1. The job config's `target.partitioning` is set to `[department]`, OR
+  2. The connector recipe doesn't have a `partitioning_default`
+- To partition by department, add `partitioning: [department]` to the job's `target` section
 
 ---
 
@@ -912,7 +1019,9 @@ mc ls local/test-bucket/testcase7/postgres/employees/ --recursive
 **Steps:**
 ```bash
 # 1. Add updated_at column to employees table
-docker exec -i $(docker ps -q -f name=postgres) psql -U postgres << 'EOF'
+# Note: Replace 'dativo-postgres' with your actual container name if different
+# To find your container: docker ps --filter "name=postgres" --format "{{.Names}}"
+docker exec -i dativo-postgres psql -U postgres << 'EOF'
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 UPDATE employees SET updated_at = CURRENT_TIMESTAMP;
 EOF
@@ -955,6 +1064,9 @@ compliance:
 EOF
 
 # 3. Create incremental job
+# Note: The 'strategy' field should match the connector's incremental_strategy_default from registry/connectors.yaml
+# For postgres, this is 'updated_at'. Semantic strategy names (updated_at, created, updated_after) are
+# automatically mapped to 'cursor_field' strategy implementation.
 mkdir -p jobs/testcase8 secrets/testcase8
 cat > jobs/testcase8/postgres_employees_incremental.yaml << 'EOF'
 tenant_id: testcase8
@@ -968,9 +1080,11 @@ source:
   tables:
     - name: employees
       schema: public
+      object: employees  # Specify object name for better state file naming
   incremental:
     enabled: true
-    cursor_field: updated_at
+    strategy: updated_at  # Semantic name (automatically mapped to 'cursor_field' strategy)
+    cursor_field: updated_at  # The actual column to track
     lookback_days: 1
 target:
   connection:
@@ -989,16 +1103,19 @@ dativo ingest \
   --mode self_hosted
 
 # 5. Check state
-cat .local/state/testcase8/employees_state.json
+# State file path format: .local/state/{tenant_id}/{connector_type}.{object_name}.state.json
+# If object is not specified in tables config, it defaults to "default"
+cat .local/state/testcase8/postgres.employees.state.json
+# Note: State file may not exist until after first successful incremental sync with changes
 
 # 6. Add new employee
-docker exec -i $(docker ps -q -f name=postgres) psql -U postgres << 'EOF'
+docker exec -i dativo-postgres psql -U postgres << 'EOF'
 INSERT INTO employees (first_name, last_name, email, hire_date, salary, department, updated_at)
 VALUES ('Eve', 'Davis', 'eve@example.com', '2023-05-01', 89000.00, 'Engineering', CURRENT_TIMESTAMP);
 EOF
 
 # 7. Update existing employee
-docker exec -i $(docker ps -q -f name=postgres) psql -U postgres << 'EOF'
+docker exec -i dativo-postgres psql -U postgres << 'EOF'
 UPDATE employees
 SET salary = 98000.00, updated_at = CURRENT_TIMESTAMP
 WHERE email = 'alice@example.com';
@@ -1016,9 +1133,16 @@ dativo ingest \
 
 **Success Criteria:**
 - ✅ First run processes all employees
-- ✅ State file captures max updated_at
-- ✅ Second run processes only changed records
-- ✅ State file updated with new cursor value
+- ✅ State file created at `.local/state/testcase8/postgres.employees.state.json`
+- ✅ State file contains max `updated_at` value: `{"employees.updated_at": {"last_value": "...", "updated_at": "..."}}`
+- ✅ Second run processes only changed records (new inserts + updates)
+- ✅ State file updated with new max cursor value
+
+**Note on State Files:**
+- State file path: `.local/state/{tenant_id}/{connector_type}.{object_name}.state.json`
+- If `object` is not specified in table config, it defaults to "default"
+- State is only written after successfully processing records
+- State format for cursor-based incremental: `{object_name}.{cursor_field} -> {last_value, updated_at}`
 
 ---
 
@@ -1634,6 +1758,43 @@ mc ls local/test-bucket/testcase15/employees/ --recursive
 
 ---
 
+### Understanding Partitioning Configuration
+
+**How Partitioning Works:**
+
+Partitioning can be configured at three levels (in order of precedence):
+
+1. **Job Config** (`target.partitioning`) - Highest priority, overrides everything
+2. **Asset Definition** (`target.partitioning`) - Used if job config doesn't specify
+3. **Connector Recipe** (`partitioning_default`) - Fallback default if neither is set
+
+**Example:**
+```yaml
+# Asset definition (assets/examples/postgres/v1.0/db_employees.yaml)
+target:
+  partitioning: [department]  # Suggested partitioning
+
+# Connector recipe (connectors/iceberg.yaml)
+partitioning_default: [ingest_date]  # Default fallback
+
+# Job config (jobs/testcase7/postgres_employees.yaml)
+target:
+  partitioning: [department]  # This overrides both asset and connector default
+```
+
+**Important Notes:**
+- If you want to use the asset definition's partitioning, you must explicitly set it in the job config
+- The connector recipe's `partitioning_default` is used when neither job nor asset specify partitioning
+- Common partition columns: `ingest_date` (automatic date), custom columns from your data
+- Partition columns must exist in the schema
+
+**Special Case: `ingest_date`**
+- `ingest_date` is a special partition column that's automatically set to the current date
+- It doesn't need to exist in your source data schema
+- It's commonly used as a default for time-based partitioning
+
+---
+
 ### Test Case 16: Data Partitioning Strategies
 **Purpose:** Test different partitioning strategies (date, column, multi-level)
 
@@ -1753,15 +1914,18 @@ EOF
 mkdir -p jobs/testcase16 secrets/testcase16
 cp secrets/testcase1/iceberg.env secrets/testcase16/
 
-for strategy in by_region multi_partition date_partition; do
-  cat > jobs/testcase16/sales_${strategy}.yaml << EOF
+# IMPORTANT: Partitioning must be set in job config to use asset definition's partitioning
+# If omitted, connector recipe default ([ingest_date]) will be used instead
+
+# Job A: Single column partitioning
+cat > jobs/testcase16/sales_by_region.yaml << 'EOF'
 tenant_id: testcase16
 source_connector: csv
 source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
-asset: sales_${strategy}
-asset_path: assets/examples/csv/v1.0/sales_${strategy}.yaml
+asset: sales_by_region
+asset_path: assets/examples/csv/v1.0/sales_by_region.yaml
 source:
   files:
     - path: data/test_case_16/sales_data.csv
@@ -1769,9 +1933,49 @@ source:
 target:
   connection:
     s3:
-      bucket: "\${S3_BUCKET}"
+      bucket: "${S3_BUCKET}"
+  partitioning: [region]  # Must set here to use asset definition's partitioning
 EOF
-done
+
+# Job B: Multi-level partitioning
+cat > jobs/testcase16/sales_multi_partition.yaml << 'EOF'
+tenant_id: testcase16
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: sales_multi_partition
+asset_path: assets/examples/csv/v1.0/sales_multi_partition.yaml
+source:
+  files:
+    - path: data/test_case_16/sales_data.csv
+      object: sales
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+  partitioning: [region, product_category]  # Must set here to use asset definition's partitioning
+EOF
+
+# Job C: Date partitioning
+cat > jobs/testcase16/sales_date_partition.yaml << 'EOF'
+tenant_id: testcase16
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: sales_date_partition
+asset_path: assets/examples/csv/v1.0/sales_date_partition.yaml
+source:
+  files:
+    - path: data/test_case_16/sales_data.csv
+      object: sales
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+  partitioning: [ingest_date]  # Must set here to use asset definition's partitioning
+EOF
 
 # 3. Run all strategies
 for strategy in by_region multi_partition date_partition; do

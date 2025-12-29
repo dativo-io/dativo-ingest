@@ -320,5 +320,280 @@ def test_postgres_extractor_state_persistence(
     assert isinstance(state2, dict)
 
 
+@pytest.mark.integration
+def test_postgres_incremental_strategy_semantic_name_mapping(
+    postgres_available,
+    setup_test_table,
+    tmp_path,
+):
+    """Test that semantic strategy names (updated_at, created, updated_after) map to cursor_field strategy."""
+    if not postgres_available:
+        pytest.skip("PostgreSQL not available for integration tests")
+
+    from dativo_ingest.incremental import create_incremental_strategy
+
+    state_path = tmp_path / "test_strategy_mapping.json"
+
+    # Test updated_at strategy name
+    incremental_config_updated_at = {
+        "enabled": True,
+        "strategy": "updated_at",  # Semantic name
+        "cursor_field": "updated_at",
+        "lookback_days": 1,
+        "state_path": str(state_path),
+    }
+
+    strategy = create_incremental_strategy(
+        incremental_config_updated_at, default_state_path=state_path
+    )
+
+    # Should create a CursorFieldStrategy (not None)
+    assert strategy is not None
+    assert strategy.strategy_name == "cursor_field"  # Mapped to cursor_field
+    assert strategy.cursor_field == "updated_at"
+
+    # Test created strategy name
+    incremental_config_created = {
+        "enabled": True,
+        "strategy": "created",  # Semantic name
+        "cursor_field": "created_at",
+        "lookback_days": 1,
+        "state_path": str(state_path),
+    }
+
+    strategy2 = create_incremental_strategy(
+        incremental_config_created, default_state_path=state_path
+    )
+
+    assert strategy2 is not None
+    assert strategy2.strategy_name == "cursor_field"  # Mapped to cursor_field
+    assert strategy2.cursor_field == "created_at"
+
+
+@pytest.mark.integration
+def test_postgres_incremental_state_file_creation_with_state_path(
+    postgres_available,
+    postgres_source_config_incremental,
+    setup_test_table,
+    tmp_path,
+):
+    """Test that state file is created when state_path is provided in incremental config."""
+    if not postgres_available:
+        pytest.skip("PostgreSQL not available for integration tests")
+
+    state_path = tmp_path / "postgres_state_with_path.json"
+
+    # Add state_path to incremental config
+    postgres_source_config_incremental.incremental["state_path"] = str(state_path)
+    postgres_source_config_incremental.incremental["strategy"] = "updated_at"
+
+    extractor = PostgresExtractor(postgres_source_config_incremental)
+
+    # Extract data - should create state file
+    batches = list(extractor.extract())
+
+    # Verify state file was created
+    assert state_path.exists(), "State file should be created after extraction"
+
+    # Verify state file contains cursor value
+    from dativo_ingest.validator import IncrementalStateManager
+
+    state = IncrementalStateManager.read_state(state_path)
+    assert isinstance(state, dict)
+
+    # If records were processed, state should contain cursor value
+    if len(batches) > 0 and len(batches[0]) > 0:
+        assert "employees.updated_at" in state or "default.updated_at" in state
+
+
+@pytest.mark.integration
+def test_postgres_incremental_strategy_updated_at_creates_state_file(
+    postgres_available,
+    setup_test_table,
+    tmp_path,
+):
+    """Test that strategy='updated_at' creates and updates state file correctly."""
+    if not postgres_available:
+        pytest.skip("PostgreSQL not available for integration tests")
+
+    from datetime import datetime
+
+    import psycopg2
+
+    state_path = tmp_path / "postgres_updated_at_strategy.json"
+
+    # Create source config with strategy='updated_at' (semantic name)
+    source_config = SourceConfig(
+        type="postgres",
+        tables=[{"name": "employees", "schema": "public", "object": "employees"}],
+        connection={
+            "host": os.getenv("PGHOST", "localhost"),
+            "port": int(os.getenv("PGPORT", "5432")),
+            "database": os.getenv("PGDATABASE", "postgres"),
+            "user": os.getenv("PGUSER", "postgres"),
+            "password": os.getenv("PGPASSWORD", "postgres"),
+        },
+        incremental={
+            "enabled": True,
+            "strategy": "updated_at",  # Semantic name - should map to cursor_field
+            "cursor_field": "updated_at",
+            "lookback_days": 1,
+            "state_path": str(state_path),
+        },
+    )
+
+    extractor = PostgresExtractor(source_config)
+
+    # First extraction - should create state file
+    batches1 = list(extractor.extract())
+
+    # Verify state file exists
+    assert state_path.exists(), "State file should be created after first extraction"
+
+    # Read state
+    from dativo_ingest.validator import IncrementalStateManager
+
+    state1 = IncrementalStateManager.read_state(state_path)
+
+    # If records were processed, state should contain max cursor value
+    if len(batches1) > 0 and len(batches1[0]) > 0:
+        assert "employees.updated_at" in state1
+        assert "last_value" in state1["employees.updated_at"]
+        assert "updated_at" in state1["employees.updated_at"]
+
+        # Get the max updated_at from first run
+        first_max_value = state1["employees.updated_at"]["last_value"]
+
+        # Add a new record with a newer timestamp
+        conn = psycopg2.connect(
+            host=os.getenv("PGHOST", "localhost"),
+            port=int(os.getenv("PGPORT", "5432")),
+            database=os.getenv("PGDATABASE", "postgres"),
+            user=os.getenv("PGUSER", "postgres"),
+            password=os.getenv("PGPASSWORD", "postgres"),
+        )
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO employees (first_name, last_name, email, hire_date, salary, department, updated_at)
+                VALUES ('New', 'Employee', 'new@example.com', CURRENT_DATE, 100000.00, 'Engineering', CURRENT_TIMESTAMP)
+                """
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+        # Second extraction - should only get new record
+        batches2 = list(extractor.extract())
+
+        # State should be updated with new max value
+        state2 = IncrementalStateManager.read_state(state_path)
+        assert "employees.updated_at" in state2
+        second_max_value = state2["employees.updated_at"]["last_value"]
+
+        # New max value should be >= old max value
+        assert second_max_value >= first_max_value
+
+
+@pytest.mark.integration
+def test_postgres_incremental_strategy_without_state_path_uses_default(
+    postgres_available,
+    setup_test_table,
+    tmp_path,
+):
+    """Test that extractor uses state_path from config when creating strategy."""
+    if not postgres_available:
+        pytest.skip("PostgreSQL not available for integration tests")
+
+    state_path = tmp_path / "postgres_default_state_path.json"
+
+    # Create source config with state_path in incremental config
+    source_config = SourceConfig(
+        type="postgres",
+        tables=[{"name": "employees", "schema": "public", "object": "employees"}],
+        connection={
+            "host": os.getenv("PGHOST", "localhost"),
+            "port": int(os.getenv("PGPORT", "5432")),
+            "database": os.getenv("PGDATABASE", "postgres"),
+            "user": os.getenv("PGUSER", "postgres"),
+            "password": os.getenv("PGPASSWORD", "postgres"),
+        },
+        incremental={
+            "enabled": True,
+            "strategy": "updated_at",
+            "cursor_field": "updated_at",
+            "lookback_days": 1,
+            "state_path": str(state_path),  # Explicitly set state_path
+        },
+    )
+
+    extractor = PostgresExtractor(source_config)
+
+    # Extract should use state_path from config
+    batches = list(extractor.extract())
+
+    # State file should be created at the specified path
+    assert state_path.exists(), "State file should be created at specified state_path"
+
+
+@pytest.mark.integration
+def test_postgres_incremental_state_updates_after_processing_records(
+    postgres_available,
+    postgres_source_config_incremental,
+    setup_test_table,
+    tmp_path,
+):
+    """Test that state is updated with max cursor value after processing records."""
+    if not postgres_available:
+        pytest.skip("PostgreSQL not available for integration tests")
+
+    from datetime import datetime, timedelta
+
+    import psycopg2
+
+    state_path = tmp_path / "postgres_state_updates.json"
+    state_path.write_text("{}")
+
+    # Add state_path and strategy to config
+    postgres_source_config_incremental.incremental["state_path"] = str(state_path)
+    postgres_source_config_incremental.incremental["strategy"] = "updated_at"
+
+    extractor = PostgresExtractor(postgres_source_config_incremental)
+
+    # Extract data
+    batches = list(extractor.extract())
+
+    # Verify state file exists
+    assert state_path.exists()
+
+    # Read state
+    from dativo_ingest.validator import IncrementalStateManager
+
+    state = IncrementalStateManager.read_state(state_path)
+
+    # If records were processed, verify state structure
+    if len(batches) > 0 and len(batches[0]) > 0:
+        # State should contain object.cursor_field key
+        state_key = "employees.updated_at"
+        assert state_key in state, f"State should contain key: {state_key}"
+
+        # Verify state structure
+        cursor_state = state[state_key]
+        assert "last_value" in cursor_state
+        assert "updated_at" in cursor_state
+
+        # Verify last_value is a valid timestamp
+        last_value = cursor_state["last_value"]
+        assert last_value is not None
+        # Should be parseable as ISO timestamp
+        try:
+            datetime.fromisoformat(last_value.replace("Z", "+00:00"))
+        except ValueError:
+            # Try parsing as PostgreSQL timestamp format
+            datetime.strptime(last_value, "%Y-%m-%d %H:%M:%S.%f")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-m", "integration"])

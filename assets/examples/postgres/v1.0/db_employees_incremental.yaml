@@ -1,0 +1,33 @@
+$schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: db_employees_incremental
+version: "1.0"
+source_type: postgres
+object: employees
+schema:
+  - name: emp_id
+    type: integer
+    required: true
+  - name: first_name
+    type: string
+  - name: last_name
+    type: string
+  - name: email
+    type: string
+  - name: hire_date
+    type: date
+  - name: salary
+    type: decimal
+  - name: department
+    type: string
+  - name: updated_at
+    type: timestamp
+    required: true
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+team:
+  owner: test@example.com
+compliance:
+  classification: []

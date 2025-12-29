@@ -102,6 +102,12 @@ def create_incremental_strategy(
         else:
             # Default to file_modified_time for file-based sources
             strategy_name = "file_modified_time"
+    else:
+        # Map semantic strategy names to actual implementations
+        # These all use cursor_field strategy under the hood
+        semantic_strategies = ["updated_at", "created", "updated_after"]
+        if strategy_name in semantic_strategies:
+            strategy_name = "cursor_field"
 
     # Validate configuration: file_modified_time strategy doesn't use cursor_field
     if strategy_name == "file_modified_time" and incremental_config.get("cursor_field"):
