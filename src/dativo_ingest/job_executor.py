@@ -760,12 +760,29 @@ class JobExecutor:
         Returns:
             Transformed records
         """
+        # Check if markdown_kv transformation should be applied
         if not self.target_config.markdown_kv_storage:
+            # If target is markdown_kv but markdown_kv_storage is not configured, warn
+            if self.target_config.type == "markdown_kv":
+                self.logger.warning(
+                    "markdown_kv target connector detected but markdown_kv_storage is not configured. "
+                    "Transformation will be skipped. Please configure 'target.markdown_kv_storage.mode' "
+                    "in your job configuration.",
+                    extra={"event_type": "markdown_kv_config_missing"},
+                )
             return batch_records
 
         from .markdown_kv import parse_markdown_kv, transform_to_markdown_kv
 
         mode = self.target_config.markdown_kv_storage.get("mode")
+        if not mode:
+            self.logger.warning(
+                "markdown_kv_storage is configured but 'mode' is missing. "
+                "Transformation will be skipped. Please set 'target.markdown_kv_storage.mode' "
+                "to one of: 'string', 'raw_file', 'structured'.",
+                extra={"event_type": "markdown_kv_mode_missing"},
+            )
+            return batch_records
         transformed_records = []
 
         for record in batch_records:

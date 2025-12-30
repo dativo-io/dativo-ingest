@@ -741,6 +741,20 @@ class JobConfig(BaseModel):
                 else:
                     target_data[key] = value
 
+        # Backward compatibility: Convert storage_mode to markdown_kv_storage
+        if "storage_mode" in target_data and "markdown_kv_storage" not in target_data:
+            import warnings
+
+            warnings.warn(
+                "The 'storage_mode' configuration key is deprecated. "
+                "Please use 'markdown_kv_storage: { mode: ... }' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            target_data["markdown_kv_storage"] = {
+                "mode": target_data.pop("storage_mode")
+            }
+
         # Set branch default to tenant_id if not provided (only if catalog is configured)
         if target_data.get("catalog") and (
             "branch" not in target_data or target_data["branch"] is None
