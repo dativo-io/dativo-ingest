@@ -185,7 +185,7 @@ class ConnectionChecker:
             extra={
                 "event_type": "source_check_complete",
                 "status": source_status.get("status"),
-                "message": source_status.get("message"),
+                "check_message": source_status.get("message"),
             },
         )
 

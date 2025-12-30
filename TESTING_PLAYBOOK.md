@@ -1297,9 +1297,9 @@ def health():
 @app.route('/data')
 def data():
     return jsonify([
-        {"id": 1, "name": "Product A", "price": 29.99},
-        {"id": 2, "name": "Product B", "price": 49.99},
-        {"id": 3, "name": "Product C", "price": 19.99}
+        {"product_id": 1, "product_name": "Product A", "price": 29.99, "category": "Electronics", "in_stock": True},
+        {"product_id": 2, "product_name": "Product B", "price": 49.99, "category": "Electronics", "in_stock": True},
+        {"product_id": 3, "product_name": "Product C", "price": 19.99, "category": "Home", "in_stock": False}
     ])
 
 if __name__ == '__main__':
@@ -1307,10 +1307,19 @@ if __name__ == '__main__':
 EOF
 
 # 3. Install Flask and start mock server in background
+# Note: Use venv's Python to ensure Flask is available
+# Option A: Activate venv first (recommended)
+source venv/bin/activate
 pip install flask
 python plugins/testcase10/mock_api_server.py &
 MOCK_SERVER_PID=$!
 sleep 2
+
+# Option B: Use venv Python directly (if venv not activated)
+# ./venv/bin/pip install flask
+# ./venv/bin/python3.13 plugins/testcase10/mock_api_server.py &
+# MOCK_SERVER_PID=$!
+# sleep 2
 
 # 4. Create job using custom reader
 mkdir -p jobs/testcase10 secrets/testcase10
@@ -1346,7 +1355,8 @@ dativo ingest \
 kill $MOCK_SERVER_PID
 
 # 7. Verify data
-mc ls local/test-bucket/testcase10/api_products/ --recursive
+# Note: The output path uses the asset name 'products', not 'api_products'
+mc ls local/test-bucket/testcase10/products/ --recursive
 ```
 
 **Success Criteria:**

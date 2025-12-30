@@ -8,9 +8,9 @@ def health():
 @app.route('/data')
 def data():
     return jsonify([
-        {"id": 1, "name": "Product A", "price": 29.99},
-        {"id": 2, "name": "Product B", "price": 49.99},
-        {"id": 3, "name": "Product C", "price": 19.99}
+        {"product_id": 1, "product_name": "Product A", "price": 29.99, "category": "Electronics", "in_stock": True},
+        {"product_id": 2, "product_name": "Product B", "price": 49.99, "category": "Electronics", "in_stock": True},
+        {"product_id": 3, "product_name": "Product C", "price": 19.99, "category": "Home", "in_stock": False}
     ])
 
 if __name__ == '__main__':
