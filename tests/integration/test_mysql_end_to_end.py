@@ -28,11 +28,16 @@ def mysql_available():
             user=mysql_user,
             password=mysql_password,
             database=mysql_database,
-            connection_timeout=5,
+            connection_timeout=10,
+            auth_plugin="mysql_native_password",
         )
         conn.close()
         return True
-    except Exception:
+    except Exception as e:
+        # Log the error for debugging
+        import warnings
+
+        warnings.warn(f"MySQL connection failed: {e}")
         return False
 
 

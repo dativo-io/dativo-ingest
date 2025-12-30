@@ -341,14 +341,24 @@ class JobExecutor:
         # Build path following industry standards
         domain = self.asset_definition.domain or self.tenant_id or "default"
         data_product = getattr(self.asset_definition, "dataProduct", None) or "default"
-        table_name = (
-            self.asset_definition.name.lower().replace("-", "_").replace(" ", "_")
-        )
 
-        if domain == self.tenant_id and data_product == "default":
-            output_base = f"s3://{bucket}/{domain}/{table_name}"
+        # Special handling for markdown_kv connector: use markdown_kv/{object_name} path
+        if self.target_config.type == "markdown_kv":
+            object_name = (
+                self.asset_definition.object.lower().replace("-", "_").replace(" ", "_")
+                if self.asset_definition.object
+                else "default"
+            )
+            output_base = f"s3://{bucket}/{domain}/markdown_kv/{object_name}"
         else:
-            output_base = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
+            table_name = (
+                self.asset_definition.name.lower().replace("-", "_").replace(" ", "_")
+            )
+
+            if domain == self.tenant_id and data_product == "default":
+                output_base = f"s3://{bucket}/{domain}/{table_name}"
+            else:
+                output_base = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
 
         return output_base
 
@@ -761,7 +771,8 @@ class JobExecutor:
         for record in batch_records:
             if mode == "string":
                 doc_id = str(
-                    record.get("businessentityid")
+                    record.get("emp_id")
+                    or record.get("businessentityid")
                     or record.get("productid")
                     or record.get("customerid")
                     or record.get("salesorderid")
@@ -785,7 +796,8 @@ class JobExecutor:
 
             elif mode == "structured":
                 doc_id = str(
-                    record.get("businessentityid")
+                    record.get("emp_id")
+                    or record.get("businessentityid")
                     or record.get("productid")
                     or record.get("customerid")
                     or record.get("salesorderid")

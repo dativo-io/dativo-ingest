@@ -894,24 +894,29 @@ docker ps | grep postgres
 # Use the container name that matches your docker-compose setup (typically 'dativo-postgres')
 # If your container has a different name, replace 'dativo-postgres' in the commands below
 
-# 2. Create test table and data
-docker exec -i dativo-postgres psql -U postgres << 'EOF'
-CREATE TABLE IF NOT EXISTS employees (
-  emp_id SERIAL PRIMARY KEY,
-  first_name VARCHAR(50),
-  last_name VARCHAR(50),
-  email VARCHAR(100),
-  hire_date DATE,
-  salary DECIMAL(10,2),
-  department VARCHAR(50)
-);
+# 2. Setup PostgreSQL employees table
+# Run the testing playbook setup script to create the employees table with test data
+./scripts/testing-playbook-setup-postgres-employees.sh
 
-INSERT INTO employees (first_name, last_name, email, hire_date, salary, department) VALUES
-('Alice', 'Johnson', 'alice@example.com', '2023-01-15', 95000.00, 'Engineering'),
-('Bob', 'Smith', 'bob@example.com', '2023-02-20', 87000.00, 'Marketing'),
-('Carol', 'Williams', 'carol@example.com', '2023-03-10', 92000.00, 'Engineering'),
-('David', 'Brown', 'david@example.com', '2023-04-05', 78000.00, 'Sales');
-EOF
+# Alternative: Manual setup (if script doesn't work with your setup)
+# docker exec -i dativo-postgres psql -U postgres << 'EOF'
+# CREATE TABLE IF NOT EXISTS employees (
+#   emp_id SERIAL PRIMARY KEY,
+#   first_name VARCHAR(50),
+#   last_name VARCHAR(50),
+#   email VARCHAR(100),
+#   hire_date DATE,
+#   salary DECIMAL(10,2),
+#   department VARCHAR(50),
+#   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+# );
+# 
+# INSERT INTO employees (first_name, last_name, email, hire_date, salary, department, updated_at) VALUES
+# ('Alice', 'Johnson', 'alice@example.com', '2023-01-15', 95000.00, 'Engineering', CURRENT_TIMESTAMP),
+# ('Bob', 'Smith', 'bob@example.com', '2023-02-20', 87000.00, 'Marketing', CURRENT_TIMESTAMP),
+# ('Carol', 'Williams', 'carol@example.com', '2023-03-10', 92000.00, 'Engineering', CURRENT_TIMESTAMP),
+# ('David', 'Brown', 'david@example.com', '2023-04-05', 78000.00, 'Sales', CURRENT_TIMESTAMP);
+# EOF
 
 # 3. Create asset
 cat > assets/examples/postgres/v1.0/db_employees.yaml << 'EOF'
@@ -1018,13 +1023,16 @@ mc ls local/test-bucket/testcase7/db_employees/ --recursive
 
 **Steps:**
 ```bash
-# 1. Add updated_at column to employees table
-# Note: Replace 'dativo-postgres' with your actual container name if different
-# To find your container: docker ps --filter "name=postgres" --format "{{.Names}}"
-docker exec -i dativo-postgres psql -U postgres << 'EOF'
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-UPDATE employees SET updated_at = CURRENT_TIMESTAMP;
-EOF
+# 1. Setup PostgreSQL employees table (if not already done)
+# The setup script creates the employees table with updated_at column
+# If you already ran Test Case 7, you can skip this step
+./scripts/testing-playbook-setup-postgres-employees.sh
+
+# Alternative: If employees table exists but missing updated_at column
+# docker exec -i dativo-postgres psql -U postgres << 'EOF'
+# ALTER TABLE employees ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+# UPDATE employees SET updated_at = CURRENT_TIMESTAMP;
+# EOF
 
 # 2. Update asset to include updated_at
 cat > assets/examples/postgres/v1.0/db_employees_incremental.yaml << 'EOF'
@@ -1151,7 +1159,12 @@ dativo ingest \
 
 **Steps:**
 ```bash
-# 1. Create job with markdown_kv target
+# 1. Setup PostgreSQL employees table (if not already done)
+# The setup script creates the employees table required for this test case
+# If you already ran Test Case 7 or 8, you can skip this step
+./scripts/testing-playbook-setup-postgres-employees.sh
+
+# 2. Create job with markdown_kv target
 mkdir -p jobs/testcase9 secrets/testcase9
 cat > jobs/testcase9/postgres_to_markdown_kv.yaml << 'EOF'
 tenant_id: testcase9
@@ -1159,14 +1172,15 @@ source_connector: postgres
 source_connector_path: connectors/postgres.yaml
 target_connector: markdown_kv
 target_connector_path: connectors/markdown_kv.yaml
-asset: db_employees_incremental
-asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
+asset: employees_markdown_kv_string
+asset_path: assets/examples/markdown_kv/v1.0/employees_string.yaml
 source:
   tables:
     - name: employees
       schema: public
 target:
-  storage_mode: string  # Store entire document as single column
+  markdown_kv_storage:
+    mode: string  # Store entire document as single column in Parquet
   connection:
     s3:
       bucket: "${S3_BUCKET}"
@@ -1175,24 +1189,32 @@ EOF
 cp secrets/testcase7/postgres.env secrets/testcase9/
 cp secrets/testcase7/iceberg.env secrets/testcase9/
 
-# 2. Run job
+# 3. Run job
 dativo ingest \
   --config jobs/testcase9/postgres_to_markdown_kv.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
-# 3. Download and inspect Markdown-KV files
+# 4. Download and inspect output files
+# Files are stored as Parquet files in markdown_kv/employees/ path
+# (with mode: string, content is stored as markdown_kv_content column in Parquet)
 mc cp local/test-bucket/testcase9/markdown_kv/employees/ . --recursive
 
-# Expected format:
-# emp_id: 1
-# first_name: Alice
-# last_name: Johnson
-# email: alice@example.com
+# To view the Parquet file contents, you can use Python:
+# python -c "import pyarrow.parquet as pq; df = pq.read_table('employees_markdown_kv_string_000000.parquet').to_pandas(); print(df[['doc_id', 'markdown_kv_content']].to_string())"
+
+# Expected format in markdown_kv_content column:
+# emp_id:: 1
+# first_name:: Alice
+# last_name:: Johnson
+# email:: alice@example.com
+# hire_date:: 2023-01-15
+# salary:: 95000.00
+# department:: Engineering
+# updated_at:: 2023-01-15T10:30:00
 # ---
-# emp_id: 2
-# ...
+# (next employee record)
 ```
 
 **Success Criteria:**
