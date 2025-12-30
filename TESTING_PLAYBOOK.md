@@ -1307,19 +1307,21 @@ if __name__ == '__main__':
 EOF
 
 # 3. Install Flask and start mock server in background
-# Note: Use venv's Python to ensure Flask is available
-# Option A: Activate venv first (recommended)
+# IMPORTANT: Background processes may not inherit venv environment properly
+# Always use the venv's Python explicitly, even if venv is activated
+
+# Install Flask (if not already installed)
 source venv/bin/activate
 pip install flask
-python plugins/testcase10/mock_api_server.py &
+
+# Start mock server using venv's Python explicitly
+# This ensures Flask is found even in background processes
+./venv/bin/python3.13 plugins/testcase10/mock_api_server.py > /tmp/mock_api_server.log 2>&1 &
 MOCK_SERVER_PID=$!
 sleep 2
 
-# Option B: Use venv Python directly (if venv not activated)
-# ./venv/bin/pip install flask
-# ./venv/bin/python3.13 plugins/testcase10/mock_api_server.py &
-# MOCK_SERVER_PID=$!
-# sleep 2
+# Verify server is running
+curl -s http://localhost:8080/health || echo "Warning: Server may not have started. Check /tmp/mock_api_server.log"
 
 # 4. Create job using custom reader
 mkdir -p jobs/testcase10 secrets/testcase10
