@@ -2654,10 +2654,11 @@ dativo ingest \
 
 # 5. Verify results
 # Check Parquet files in MinIO
-mc ls local/test-bucket/testcase21/synthetic_customers/ --recursive
+# Note: Files are written using the asset name 'mimesis_customers', not the catalog table name
+mc ls local/test-bucket/testcase21/mimesis_customers/ --recursive
 
 # Verify file count and sizes
-mc stat local/test-bucket/testcase21/synthetic_customers/ingest_date=*/part-*.parquet
+mc stat local/test-bucket/testcase21/mimesis_customers/ingest_date=*/mimesis_customers_*.parquet
 
 # 6. Generate larger dataset for performance testing
 # Update job config to generate 100K records
