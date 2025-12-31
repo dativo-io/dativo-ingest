@@ -2716,8 +2716,8 @@ source:
     type: native
     options:
       native:
-        row_count: 5000
-        locale: "ru"  # Russian locale for Cyrillic names
+        row_count: 5000000
+        locale: "pl"  # Polish locale for Polish names
         seed: 123
 target:
   type: iceberg
@@ -2771,6 +2771,160 @@ dativo ingest \
 - Set `null_probability: 0.0` if you want all optional fields populated
 - Increase `batch_size` for better performance with large datasets
 - See [docs/connectors/mimesis.md](docs/connectors/mimesis.md) for complete field mapping reference
+
+---
+
+### Test Case 22: Mimesis Data with Rust Parquet Writer
+**Purpose:** Use Rust Parquet writer plugin for high-performance writing of Mimesis-generated data
+
+**Use Cases:**
+- Performance optimization for large-scale synthetic data generation
+- Demonstrating Rust plugin performance benefits
+- Combining Mimesis source with Rust writer for maximum throughput
+
+**Prerequisites:**
+- Rust toolchain installed (for building plugins)
+- Rust Parquet writer plugin built
+
+**Steps:**
+```bash
+# 1. Build Rust Parquet writer plugin (if not already built)
+cd examples/plugins/rust
+make build-release
+# Or manually:
+# cargo build --release
+cd ../../..
+
+# Verify plugin exists (macOS uses .dylib, Linux uses .so)
+ls -la examples/plugins/rust/target/release/libparquet_writer_plugin.*
+# Should show: libparquet_writer_plugin.dylib (macOS) or libparquet_writer_plugin.so (Linux)
+
+# 2. Reuse asset definition from Test Case 21
+# assets/examples/mimesis/v1.0/customers.yaml already exists
+
+# 3. Determine plugin path based on platform
+# macOS uses .dylib, Linux uses .so
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    RUST_WRITER_PLUGIN="examples/plugins/rust/target/release/libparquet_writer_plugin.dylib:create_writer"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    RUST_WRITER_PLUGIN="examples/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
+else
+    echo "Warning: Unknown platform. Using .so extension. Adjust if needed."
+    RUST_WRITER_PLUGIN="examples/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
+fi
+
+# Verify plugin exists
+if [ ! -f "examples/plugins/rust/target/release/libparquet_writer_plugin.dylib" ] && \
+   [ ! -f "examples/plugins/rust/target/release/libparquet_writer_plugin.so" ]; then
+    echo "Error: Rust Parquet writer plugin not found!"
+    echo "Please build it first: cd examples/plugins/rust && make build-release"
+    exit 1
+fi
+
+# 4. Create job configuration with Rust writer
+mkdir -p jobs/testcase22
+cat > jobs/testcase22/mimesis_rust_writer.yaml << EOF
+tenant_id: testcase22
+source_connector: mimesis
+source_connector_path: connectors/mimesis.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: mimesis_customers
+asset_path: assets/examples/mimesis/v1.0/customers.yaml
+
+# Source configuration - Mimesis synthetic data generation
+source:
+  type: mimesis
+  object: customers
+  engine:
+    type: native
+    options:
+      native:
+        row_count: 50000  # Generate 50K records for performance comparison
+        batch_size: 10000  # Larger batches work better with Rust
+        locale: "en"
+        seed: 42
+        null_probability: 0.1
+
+# Target configuration - Using Rust Parquet writer
+target:
+  type: iceberg
+  # Specify Rust Parquet writer plugin
+  # Format: "path/to/libplugin.so:create_writer" or "path/to/libplugin.dylib:create_writer"
+  custom_writer: "${RUST_WRITER_PLUGIN}"
+  connection:
+    s3:
+      bucket: "\${S3_BUCKET}"
+  partitioning: [ingest_date]
+  engine:
+    options:
+      # Rust writer options
+      compression: "zstd"  # Better compression than snappy
+      row_group_size: 100000  # Optimized for large datasets
+
+# Schema validation
+schema_validation_mode: warn
+EOF
+
+# 5. Create secrets (reuse from Test Case 21)
+mkdir -p secrets/testcase22
+cp secrets/testcase21/iceberg.env secrets/testcase22/
+
+# 6. Run job with Rust writer
+time dativo ingest \
+  --config jobs/testcase22/mimesis_rust_writer.yaml \
+  --secret-manager filesystem \
+  --secrets-dir secrets \
+  --mode self_hosted
+
+# 7. Compare with Python writer (Test Case 21)
+# Run Test Case 21 with same row_count for comparison:
+# First, update Test Case 21 job to use row_count: 50000 for fair comparison
+# Then run: time dativo ingest --config jobs/testcase21/mimesis_customers_to_iceberg.yaml ...
+# Compare execution times and file sizes
+
+# 8. Verify results
+# Check Parquet files in MinIO
+mc ls local/test-bucket/testcase22/mimesis_customers/ --recursive
+
+# Verify file count and sizes
+# Note: Rust writer typically produces better compression
+mc stat 'local/test-bucket/testcase22/mimesis_customers/ingest_date=2025-12-31/mimesis_customers_000000.parquet'
+
+# 9. Compare performance metrics
+# Rust writer should show:
+# - Faster write times (5-20x improvement)
+# - Better compression ratios (20-30% smaller files)
+# - Lower memory usage
+```
+
+**Success Criteria:**
+- ✅ Rust writer plugin successfully loads
+- ✅ 50K records generated and written
+- ✅ Parquet files created with ZSTD compression
+- ✅ Files are smaller than Python writer (better compression)
+- ✅ Execution time is faster than Python writer (5-20x improvement)
+- ✅ Memory usage is lower than Python writer
+- ✅ Data integrity maintained (all records valid)
+
+**Performance Comparison:**
+- **Python Writer (Test Case 21):** Baseline performance
+- **Rust Writer (Test Case 22):** 5-20x faster, 20-30% better compression, lower memory
+
+**Key Features Demonstrated:**
+- Rust plugin integration for high-performance writing
+- Mimesis + Rust writer combination for maximum throughput
+- Compression optimization with ZSTD
+- Large batch processing with optimized row group sizes
+- Performance benchmarking capabilities
+
+**Tips:**
+- Build Rust plugins in release mode for best performance: `cargo build --release`
+- Use larger `batch_size` (10K-100K) with Rust writers for better performance
+- ZSTD compression provides best compression ratio, Snappy provides best speed
+- Adjust `row_group_size` based on your data characteristics (larger = better compression, more memory)
+- Compare performance with Python writer to measure improvement
+- See [examples/plugins/rust/README.md](examples/plugins/rust/README.md) for Rust plugin details
 
 ---
 
@@ -2869,8 +3023,9 @@ This playbook covers:
 3. Progress through database connectors (Test Cases 7-9)
 4. Experiment with custom plugins (Test Cases 10-11)
 5. Test synthetic data generation (Test Case 21) - great for performance testing
-6. Test advanced features (Test Cases 12-20)
-7. Simulate production scenarios (Test Case 20)
+6. Test Rust writer performance (Test Case 22) - compare with Python writer
+7. Test advanced features (Test Cases 12-20)
+8. Simulate production scenarios (Test Case 20)
 
 ### 📚 Additional Resources
 - [README.md](README.md) - Platform overview
