@@ -1,6 +1,6 @@
 """Custom JSON API Reader Plugin"""
 import requests
-from typing import Iterator, Dict, Any
+from typing import Iterator, Dict, Any, List, Optional
 from dativo_ingest.plugins import BaseReader
 
 class JSONAPIReader(BaseReader):
@@ -8,8 +8,20 @@ class JSONAPIReader(BaseReader):
     
     __version__ = "1.0.0"
     
-    def extract(self, state_manager=None) -> Iterator[Dict[str, Any]]:
-        """Extract data from API"""
+    def extract(
+        self,
+        state_manager=None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
+    ) -> Iterator[List[Dict[str, Any]]]:
+        """Extract data from API
+        
+        Args:
+            state_manager: Optional state manager for incremental syncs
+            checkpoint_context: Optional checkpoint context for WAL resume
+            
+        Yields:
+            Batches of records as list of dictionaries
+        """
         connection = self.source_config.connection
         base_url = connection.get("base_url")
         endpoint = connection.get("endpoint", "/data")
@@ -18,16 +30,18 @@ class JSONAPIReader(BaseReader):
         response = requests.get(f"{base_url}{endpoint}")
         response.raise_for_status()
         
-        # Yield records
+        # Yield records as batches (BaseReader expects batches)
         data = response.json()
+        records = []
         if isinstance(data, list):
-            for record in data:
-                yield record
+            records = data
         elif isinstance(data, dict):
             # Handle paginated responses
             records = data.get("records", data.get("data", []))
-            for record in records:
-                yield record
+        
+        # Yield as a single batch (list of records)
+        if records:
+            yield records
     
     def check_connection(self) -> tuple[bool, str, Dict[str, Any]]:
         """Test API connectivity"""
