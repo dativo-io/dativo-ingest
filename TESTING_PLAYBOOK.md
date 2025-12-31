@@ -1152,7 +1152,7 @@ mkdir -p plugins/testcase10
 cat > plugins/testcase10/json_api_reader.py << 'EOF'
 """Custom JSON API Reader Plugin"""
 import requests
-from typing import Iterator, Dict, Any
+from typing import Iterator, Dict, Any, List, Optional
 from dativo_ingest.plugins import BaseReader
 
 class JSONAPIReader(BaseReader):
@@ -1160,8 +1160,20 @@ class JSONAPIReader(BaseReader):
     
     __version__ = "1.0.0"
     
-    def extract(self, state_manager=None) -> Iterator[Dict[str, Any]]:
-        """Extract data from API"""
+    def extract(
+        self,
+        state_manager=None,
+        checkpoint_context: Optional[Dict[str, Any]] = None,
+    ) -> Iterator[List[Dict[str, Any]]]:
+        """Extract data from API
+        
+        Args:
+            state_manager: Optional state manager for incremental syncs
+            checkpoint_context: Optional checkpoint context for WAL resume
+            
+        Yields:
+            Batches of records as list of dictionaries
+        """
         connection = self.source_config.connection
         base_url = connection.get("base_url")
         endpoint = connection.get("endpoint", "/data")
@@ -1170,16 +1182,18 @@ class JSONAPIReader(BaseReader):
         response = requests.get(f"{base_url}{endpoint}")
         response.raise_for_status()
         
-        # Yield records
+        # Yield records as batches (BaseReader expects batches)
         data = response.json()
+        records = []
         if isinstance(data, list):
-            for record in data:
-                yield record
+            records = data
         elif isinstance(data, dict):
             # Handle paginated responses
             records = data.get("records", data.get("data", []))
-            for record in records:
-                yield record
+        
+        # Yield as a single batch (list of records)
+        if records:
+            yield records
     
     def check_connection(self) -> tuple[bool, str, Dict[str, Any]]:
         """Test API connectivity"""
@@ -1214,9 +1228,9 @@ def health():
 @app.route('/data')
 def data():
     return jsonify([
-        {"id": 1, "name": "Product A", "price": 29.99},
-        {"id": 2, "name": "Product B", "price": 49.99},
-        {"id": 3, "name": "Product C", "price": 19.99}
+        {"product_id": 1, "product_name": "Product A", "price": 29.99, "category": "Electronics", "in_stock": True},
+        {"product_id": 2, "product_name": "Product B", "price": 49.99, "category": "Electronics", "in_stock": True},
+        {"product_id": 3, "product_name": "Product C", "price": 19.99, "category": "Home", "in_stock": False}
     ])
 
 if __name__ == '__main__':
@@ -1224,10 +1238,22 @@ if __name__ == '__main__':
 EOF
 
 # 3. Install Flask and start mock server in background
+# CRITICAL: Do NOT use 'python' or 'python3' - they point to Python 3.12.7
+# Flask is installed for Python 3.13, so you MUST use ./venv/bin/python3.13 explicitly
+# Background processes may not inherit venv environment properly
+
+# Install Flask (if not already installed)
+source venv/bin/activate
 pip install flask
-python plugins/testcase10/mock_api_server.py &
+
+# Start mock server - MUST use explicit Python 3.13 path
+# Using 'python' or 'python3' will fail with "ModuleNotFoundError: No module named 'flask'"
+./venv/bin/python3.13 plugins/testcase10/mock_api_server.py > /tmp/mock_api_server.log 2>&1 &
 MOCK_SERVER_PID=$!
 sleep 2
+
+# Verify server is running
+curl -s http://localhost:8080/health || echo "Warning: Server may not have started. Check /tmp/mock_api_server.log"
 
 # 4. Create job using custom reader
 mkdir -p jobs/testcase10 secrets/testcase10
@@ -1253,7 +1279,7 @@ EOF
 cp secrets/testcase1/iceberg.env secrets/testcase10/
 
 # 5. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase10/custom_reader_job.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1263,7 +1289,8 @@ dativo run \
 kill $MOCK_SERVER_PID
 
 # 7. Verify data
-mc ls local/test-bucket/testcase10/api_products/ --recursive
+# Note: The output path uses the asset name 'products', not 'api_products'
+mc ls local/test-bucket/testcase10/products/ --recursive
 ```
 
 **Success Criteria:**
