@@ -2658,7 +2658,10 @@ dativo ingest \
 mc ls local/test-bucket/testcase21/mimesis_customers/ --recursive
 
 # Verify file count and sizes
-mc stat local/test-bucket/testcase21/mimesis_customers/ingest_date=*/mimesis_customers_*.parquet
+# Note: Use quotes to prevent shell glob expansion, or check a specific file
+mc stat 'local/test-bucket/testcase21/mimesis_customers/ingest_date=2025-12-31/mimesis_customers_000000.parquet'
+# Or list all files to see count:
+mc ls local/test-bucket/testcase21/mimesis_customers/ingest_date=2025-12-31/ | wc -l
 
 # 6. Generate larger dataset for performance testing
 # Update job config to generate 100K records
