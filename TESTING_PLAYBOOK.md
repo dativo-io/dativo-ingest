@@ -1307,15 +1307,16 @@ if __name__ == '__main__':
 EOF
 
 # 3. Install Flask and start mock server in background
-# IMPORTANT: Background processes may not inherit venv environment properly
-# Always use the venv's Python explicitly, even if venv is activated
+# CRITICAL: Do NOT use 'python' or 'python3' - they point to Python 3.12.7
+# Flask is installed for Python 3.13, so you MUST use ./venv/bin/python3.13 explicitly
+# Background processes may not inherit venv environment properly
 
 # Install Flask (if not already installed)
 source venv/bin/activate
 pip install flask
 
-# Start mock server using venv's Python explicitly
-# This ensures Flask is found even in background processes
+# Start mock server - MUST use explicit Python 3.13 path
+# Using 'python' or 'python3' will fail with "ModuleNotFoundError: No module named 'flask'"
 ./venv/bin/python3.13 plugins/testcase10/mock_api_server.py > /tmp/mock_api_server.log 2>&1 &
 MOCK_SERVER_PID=$!
 sleep 2
