@@ -2620,12 +2620,15 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-  catalog:
-    type: nessie
-    uri: "${NESSIE_URI}"
-    database: test_db
-    table: synthetic_customers
   partitioning: [ingest_date]
+
+# Catalog configuration (optional - for Iceberg table registration)
+catalog:
+  type: nessie
+  connection:
+    uri: "${NESSIE_URI}"
+  database: test_db
+  table_name: synthetic_customers
 
 # Schema validation
 schema_validation_mode: warn
