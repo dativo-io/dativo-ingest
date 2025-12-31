@@ -25,7 +25,7 @@ Always check Python version in setup instructions and error messages.
 
 **Available Commands:**
 - `dativo ingest` - Execute ingestion job (primary action, recommended)
-- `dativo run` - Execute ingestion job (alias for `ingest`, legacy)
+- `dativo run` - Execute ingestion job (legacy alias, maintained for backward compatibility)
 - `dativo check` - Validate configuration
 - `dativo discover` - Discover schema from connector
 - `dativo start` - Start orchestrated mode (Dagster)
@@ -65,16 +65,18 @@ src/dativo_ingest/
 **Job Configuration:**
 - Located in `configs/jobs/` or `jobs/`
 - References asset definitions in `configs/assets/` or `assets/`
-- References connector definitions in `connectors/examples/`
+- References connector definitions in `connectors/`
 
 **Asset Definitions:**
 - Follow ODCS v3.0.2 schema standard
 - Located in `configs/assets/` or `assets/`
 - Must include: schema, team owner, compliance classification
+- Example asset definitions may be in `assets/examples/` (for shipped examples)
 
 **Connector Definitions:**
-- Located in `connectors/examples/`
+- Located in `connectors/` (core infrastructure, not examples)
 - Define connector capabilities, engines, and connection templates
+- Example job configs may reference example assets in `assets/examples/`
 
 ## Testing Conventions
 
@@ -226,3 +228,4 @@ src/dativo_ingest/
 **Secret Pattern:**
 - `DATIVO_SECRET__{TENANT}__{SECRET_NAME}__[json|env|text]` for env backend
 - `DATIVO_SECRET__GLOBAL__{SECRET_NAME}__text` for global secrets
+
