@@ -2741,7 +2741,7 @@ dativo ingest \
 **Success Criteria:**
 - ✅ Exit code 0
 - ✅ Synthetic data generated successfully
-- ✅ Parquet files created in MinIO at `testcase21/synthetic_customers/ingest_date=YYYY-MM-DD/`
+- ✅ Parquet files created in MinIO at `testcase21/mimesis_customers/ingest_date=YYYY-MM-DD/`
 - ✅ Generated data matches asset schema
 - ✅ Required fields are always present
 - ✅ Optional fields respect null_probability setting
