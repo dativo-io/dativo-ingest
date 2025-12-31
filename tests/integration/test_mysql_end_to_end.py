@@ -28,11 +28,16 @@ def mysql_available():
             user=mysql_user,
             password=mysql_password,
             database=mysql_database,
-            connection_timeout=5,
+            connection_timeout=10,
+            auth_plugin="mysql_native_password",
         )
         conn.close()
         return True
-    except Exception:
+    except Exception as e:
+        # Log the error for debugging
+        import warnings
+
+        warnings.warn(f"MySQL connection failed: {e}")
         return False
 
 
@@ -48,10 +53,10 @@ tenant_id: test_tenant
 environment: test
 
 source_connector: mysql
-source_connector_path: connectors/examples/mysql.yaml
+source_connector_path: connectors/mysql.yaml
 
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 asset: mysql_employees_markdown_kv
 asset_path: tests/fixtures/assets/mysql/v1.0/employees_markdown_kv.yaml
@@ -206,10 +211,10 @@ tenant_id: test_tenant
 environment: test
 
 source_connector: mysql
-source_connector_path: connectors/examples/mysql.yaml
+source_connector_path: connectors/mysql.yaml
 
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 asset: mysql_employees_markdown_kv
 asset_path: tests/fixtures/assets/mysql/v1.0/employees_markdown_kv.yaml

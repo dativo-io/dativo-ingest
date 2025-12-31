@@ -40,7 +40,7 @@ mc ls local/test-bucket --recursive
 ./scripts/generate-test-data.sh
 
 # Run smoke test
-dativo run \
+dativo ingest \
   --job-dir tests/fixtures/jobs \
   --secret-manager filesystem \
   --secrets-dir tests/fixtures/secrets \
@@ -67,17 +67,17 @@ source .env
 
 ```bash
 # Single job
-dativo run --config jobs/mytenant/myjob.yaml --mode self_hosted
+dativo ingest --config jobs/mytenant/myjob.yaml --mode self_hosted
 
 # All jobs in directory (with filesystem secrets)
-dativo run --job-dir jobs/mytenant \
+dativo ingest --job-dir jobs/mytenant \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
 # With environment variable secrets
 export DATIVO_SECRET__MYTENANT__postgres__env=$'PGHOST=localhost\nPGUSER=postgres'
-dativo run --config jobs/mytenant/myjob.yaml --mode self_hosted
+dativo ingest --config jobs/mytenant/myjob.yaml --mode self_hosted
 ```
 
 ### Connection Testing
@@ -186,7 +186,7 @@ secrets/
     iceberg.env
 
 # Run with filesystem secrets
-dativo run --config jobs/mytenant/job.yaml \
+dativo ingest --config jobs/mytenant/job.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
@@ -200,7 +200,7 @@ export DATIVO_SECRET__MYTENANT__postgres__env=$'PGHOST=localhost\nPGUSER=postgre
 export DATIVO_SECRET__MYTENANT__stripe__text="sk_live_123"
 
 # Run with env secrets (default)
-dativo run --config jobs/mytenant/job.yaml --mode self_hosted
+dativo ingest --config jobs/mytenant/job.yaml --mode self_hosted
 ```
 
 ### Global Secrets (All Tenants)
@@ -413,14 +413,14 @@ EOF
 
 ```bash
 # Time execution
-time dativo run --config jobs/mytenant/large_job.yaml --mode self_hosted
+time dativo ingest --config jobs/mytenant/large_job.yaml --mode self_hosted
 
 # Compare Python vs Rust plugins
-time dativo run --config jobs/python_reader.yaml --mode self_hosted
-time dativo run --config jobs/rust_reader.yaml --mode self_hosted
+time dativo ingest --config jobs/python_reader.yaml --mode self_hosted
+time dativo ingest --config jobs/rust_reader.yaml --mode self_hosted
 
 # Monitor memory
-/usr/bin/time -v dativo run --config jobs/mytenant/job.yaml --mode self_hosted
+/usr/bin/time -v dativo ingest --config jobs/mytenant/job.yaml --mode self_hosted
 ```
 
 ## Exit Codes
@@ -492,7 +492,7 @@ open http://localhost:8585
 ./scripts/setup-dev.sh && source .env
 
 # 2. Test basic CSV ingestion (30 seconds)
-dativo run \
+dativo ingest \
   --job-dir tests/fixtures/jobs \
   --secret-manager filesystem \
   --secrets-dir tests/fixtures/secrets \

@@ -180,7 +180,7 @@ generate_test_data() {
         echo "ℹ️  Skipping data generation (--skip-data-generation flag)"
         if [ ! -f "$PERF_TEST_CSV_FILE" ]; then
             echo -e "${RED}❌ Test data file not found: $PERF_TEST_CSV_FILE${NC}"
-            echo "   Generate it with: dativo_ingest run --config configs/jobs/mimesis_perf_test.yaml"
+            echo "   Generate it with: dativo ingest --config configs/jobs/mimesis_perf_test.yaml"
             echo "   (Legacy script: python tests/scripts/legacy/generate_perf_test_data.py - deprecated)"
             exit 1
         fi
@@ -221,7 +221,7 @@ generate_test_data() {
     
     # Run mimesis job (generates Parquet)
     echo "Running mimesis connector job to generate performance test data..."
-    PYTHONPATH=src python3 -m dativo_ingest.cli run \
+    PYTHONPATH=src python3 -m dativo_ingest.cli ingest \
         --config "$MIAMESIS_JOB_CONFIG" \
         --secrets-dir "$SCRIPT_DIR/fixtures/secrets" \
         --mode self_hosted || {
@@ -322,7 +322,7 @@ run_performance_test() {
         PYTHON_CMD="python3"
     fi
     
-    PYTHONPATH=src "$PYTHON_CMD" -m dativo_ingest.cli run \
+    PYTHONPATH=src "$PYTHON_CMD" -m dativo_ingest.cli ingest \
         --config "$job_config" \
         --secrets-dir "$SCRIPT_DIR/fixtures/secrets" \
         --mode self_hosted \

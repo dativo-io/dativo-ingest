@@ -299,7 +299,7 @@ if [ $ISSUES -eq 0 ]; then
     echo "Next steps:"
     echo "  1. Source environment variables: ${YELLOW}source .env${NC}"
     echo "  2. Generate test data: ${YELLOW}./scripts/generate-test-data.sh${NC}"
-    echo "  3. Run smoke test: ${YELLOW}dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted${NC}"
+    echo "  3. Run smoke test: ${YELLOW}dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted${NC}"
     echo "  4. Follow test cases: ${YELLOW}TESTING_PLAYBOOK.md${NC}"
     echo ""
     exit 0

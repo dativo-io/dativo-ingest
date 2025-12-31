@@ -146,7 +146,7 @@ run_test() {
     
     # Run the test
     set +e
-    OUTPUT=$(PYTHONPATH=src $PYTHON_CMD -m dativo_ingest.cli run \
+    OUTPUT=$(PYTHONPATH=src $PYTHON_CMD -m dativo_ingest.cli ingest \
         --job-dir "$TEMP_JOB_DIR" \
         --secrets-dir "$SECRETS_DIR" \
         --mode self_hosted 2>&1)

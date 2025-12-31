@@ -27,9 +27,9 @@ Create a job file with catalog configuration:
 # jobs/testcase3/stripe_customers_with_catalog.yaml
 tenant_id: testcase3
 source_connector: stripe
-source_connector_path: connectors/examples/stripe.yaml
+source_connector_path: connectors/stripe.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
@@ -54,7 +54,7 @@ catalog:
 ## Step 2: Run the Job
 
 ```bash
-dativo run \
+dativo ingest \
   --config jobs/testcase3/stripe_customers_with_catalog.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets

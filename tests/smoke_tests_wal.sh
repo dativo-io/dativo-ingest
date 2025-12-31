@@ -67,7 +67,7 @@ fi
 
 # Run job (may fail if infrastructure not set up, but WAL should still be created)
 set +e
-OUTPUT=$(PYTHONPATH=src $PYTHON_CMD -m dativo_ingest.cli run \
+OUTPUT=$(PYTHONPATH=src $PYTHON_CMD -m dativo_ingest.cli ingest \
     --config "$WAL_JOB_PATH" \
     --secrets-dir "$SECRETS_DIR" \
     --mode self_hosted 2>&1)

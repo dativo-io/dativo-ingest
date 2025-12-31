@@ -637,15 +637,23 @@ class AirbyteExtractor(BaseEngineExtractor):
                         msg = json.loads(line)
                         if msg.get("type") == "CONNECTION_STATUS":
                             status = msg.get("connectionStatus", {}).get("status")
+                            error_message = msg.get("connectionStatus", {}).get(
+                                "message", ""
+                            )
                             if status == "SUCCEEDED":
                                 return {
                                     "status": "success",
                                     "message": "Airbyte connection check successful",
                                 }
                             else:
+                                # Include detailed error message if available
+                                detailed_msg = (
+                                    error_message
+                                    or f"Connection check failed: {status}"
+                                )
                                 return {
                                     "status": "failed",
-                                    "message": f"Connection check failed: {status}",
+                                    "message": detailed_msg,
                                     "error_code": "AUTH_FAILED",
                                 }
                     except json.JSONDecodeError:
@@ -668,19 +676,32 @@ class AirbyteExtractor(BaseEngineExtractor):
                         msg = json.loads(line)
                         if msg.get("type") == "LOG" and msg.get("log", {}).get(
                             "level"
-                        ) in ["ERROR", "FATAL"]:
-                            error_messages.append(msg.get("log", {}).get("message", ""))
+                        ) in ["ERROR", "FATAL", "WARN"]:
+                            log_msg = msg.get("log", {}).get("message", "")
+                            if log_msg:
+                                error_messages.append(log_msg)
                         elif (
                             msg.get("type") == "TRACE"
                             and msg.get("trace", {}).get("type") == "ERROR"
                         ):
                             error_info = msg.get("trace", {}).get("error", {})
-                            error_messages.append(
-                                error_info.get("message", "")
-                                or error_info.get("internal_message", "")
-                            )
+                            # Prefer internal_message as it's usually more detailed
+                            error_msg = error_info.get(
+                                "internal_message"
+                            ) or error_info.get("message", "")
+                            if error_msg:
+                                error_messages.append(error_msg)
+                        elif msg.get("type") == "CONNECTION_STATUS":
+                            # Also check CONNECTION_STATUS for error details
+                            conn_status = msg.get("connectionStatus", {})
+                            if conn_status.get("status") != "SUCCEEDED":
+                                status_msg = conn_status.get("message", "")
+                                if status_msg:
+                                    error_messages.append(status_msg)
                     except json.JSONDecodeError:
-                        continue
+                        # If not JSON, might be plain text error
+                        if "error" in line.lower() or "failed" in line.lower():
+                            error_messages.append(line)
 
                 # Also check stderr
                 if stderr.strip():
@@ -689,7 +710,7 @@ class AirbyteExtractor(BaseEngineExtractor):
                 error_msg = (
                     " | ".join(error_messages)
                     if error_messages
-                    else "Connection check failed"
+                    else "Connection check failed (no detailed error message available)"
                 )
 
                 # Determine error code based on error message

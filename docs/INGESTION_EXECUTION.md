@@ -408,7 +408,7 @@ Planned metrics:
 
 ```bash
 # Run a CSV ingestion job
-dativo_ingest run \
+dativo ingest \
   --config jobs/acme/csv_person_to_iceberg.yaml \
   --mode self_hosted
 ```

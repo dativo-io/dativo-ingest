@@ -8,11 +8,11 @@ environment: test
 
 # Source connector
 source_connector: mimesis
-source_connector_path: connectors/examples/mimesis.yaml
+source_connector_path: connectors/mimesis.yaml
 
 # Target connector - using Iceberg/Parquet for performance tests
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 # Asset definition for performance test
 asset: perf_test_data

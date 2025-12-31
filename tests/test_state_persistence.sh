@@ -82,7 +82,7 @@ echo ""
 # Step 2: First run - should process all records and create state
 echo -e "${YELLOW}Step 2: Running job (first run - full sync)...${NC}"
 set +e
-OUTPUT1=$(PYTHONPATH=src $PYTHON_CMD -m dativo_ingest.cli run \
+OUTPUT1=$(PYTHONPATH=src $PYTHON_CMD -m dativo_ingest.cli ingest \
     --job-dir "$JOBS_DIR" \
     --secrets-dir "$SECRETS_DIR" \
     --mode self_hosted \
@@ -115,7 +115,7 @@ echo ""
 # Step 3: Second run - should read state and skip unchanged files
 echo -e "${YELLOW}Step 3: Running job (second run - incremental sync)...${NC}"
 set +e
-OUTPUT2=$(PYTHONPATH=src $PYTHON_CMD -m dativo_ingest.cli run \
+OUTPUT2=$(PYTHONPATH=src $PYTHON_CMD -m dativo_ingest.cli ingest \
     --job-dir "$JOBS_DIR" \
     --secrets-dir "$SECRETS_DIR" \
     --mode self_hosted \

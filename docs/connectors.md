@@ -55,7 +55,7 @@ Connectors are tenant-agnostic, reusable YAML recipes that define how to connect
 **Configuration Example**:
 ```yaml
 source_connector: stripe
-source_connector_path: connectors/examples/stripe.yaml
+source_connector_path: connectors/stripe.yaml
 source:
   object: customers
   incremental:
@@ -94,7 +94,7 @@ source:
 **Configuration Example**:
 ```yaml
 source_connector: hubspot
-source_connector_path: connectors/examples/hubspot.yaml
+source_connector_path: connectors/hubspot.yaml
 source:
   object: contacts
   incremental:
@@ -130,7 +130,7 @@ source:
 **Configuration Example**:
 ```yaml
 source_connector: gdrive_csv
-source_connector_path: connectors/examples/gdrive_csv.yaml
+source_connector_path: connectors/gdrive_csv.yaml
 source:
   file_id: "1abc123..."
   path: "/path/to/file.csv"
@@ -167,7 +167,7 @@ source:
 **Configuration Example**:
 ```yaml
 source_connector: google_sheets
-source_connector_path: connectors/examples/google_sheets.yaml
+source_connector_path: connectors/google_sheets.yaml
 source:
   spreadsheet_id: "1abc123..."
   range: "Sheet1!A1:Z1000"
@@ -202,7 +202,7 @@ source:
 **Configuration Example**:
 ```yaml
 source_connector: csv
-source_connector_path: connectors/examples/csv.yaml
+source_connector_path: connectors/csv.yaml
 source:
   files:
     - path: "/data/employees.csv"
@@ -267,7 +267,7 @@ See [Markdown-KV Storage](MARKDOWN_KV_STORAGE.md) for detailed documentation.
 **Configuration Example**:
 ```yaml
 source_connector: mimesis
-source_connector_path: connectors/examples/mimesis.yaml
+source_connector_path: connectors/mimesis.yaml
 source:
   type: mimesis
   options:
@@ -307,7 +307,7 @@ source:
 **Configuration Example**:
 ```yaml
 source_connector: postgres
-source_connector_path: connectors/examples/postgres.yaml
+source_connector_path: connectors/postgres.yaml
 source:
   object: customers
   incremental:
@@ -349,7 +349,7 @@ source:
 **Configuration Example**:
 ```yaml
 source_connector: mysql
-source_connector_path: connectors/examples/mysql.yaml
+source_connector_path: connectors/mysql.yaml
 source:
   object: customers
   incremental:
@@ -395,7 +395,7 @@ source:
 **Configuration Example**:
 ```yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 target:
   connection:
     s3:
@@ -429,7 +429,7 @@ target:
 **Configuration Example**:
 ```yaml
 target_connector: s3
-target_connector_path: connectors/examples/s3.yaml
+target_connector_path: connectors/s3.yaml
 target:
   connection:
     s3:
@@ -461,7 +461,7 @@ target:
 **Configuration Example**:
 ```yaml
 target_connector: minio
-target_connector_path: connectors/examples/minio.yaml
+target_connector_path: connectors/minio.yaml
 target:
   connection:
     s3:
@@ -504,9 +504,9 @@ rate_limits:
 ```yaml
 tenant_id: acme
 source_connector: stripe
-source_connector_path: connectors/examples/stripe.yaml
+source_connector_path: connectors/stripe.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml
 source:
@@ -584,7 +584,7 @@ target:
 
 ## Best Practices
 
-1. **Use Connector Recipes**: Store connector configurations in `connectors/examples/` for reuse
+1. **Use Connector Recipes**: Store connector configurations in `connectors/` for reuse
 2. **Version Control**: Track connector recipe changes in git
 3. **Credentials**: Use secret managers, never hardcode credentials
 4. **Incremental Sync**: Enable incremental sync for large datasets

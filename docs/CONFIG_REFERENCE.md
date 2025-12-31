@@ -372,7 +372,7 @@ Dativo-ingest supports multiple engine types for connectors, allowing you to cho
 The engine type is determined from the connector recipe's `default_engine.type` field:
 
 ```yaml
-# connectors/examples/hubspot.yaml
+# connectors/hubspot.yaml
 default_engine:
   type: airbyte
   options:

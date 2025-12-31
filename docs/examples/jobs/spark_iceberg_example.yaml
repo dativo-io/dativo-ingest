@@ -14,11 +14,11 @@ environment: prod
 
 # Source connector
 source_connector: csv
-source_connector_path: connectors/examples/csv.yaml
+source_connector_path: connectors/csv.yaml
 
 # Target connector
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 # Asset definition
 asset: csv_employee
@@ -86,6 +86,6 @@ logging:
 # Usage:
 # 1. Start infrastructure: docker-compose -f docker-compose.dev.yml up -d
 # 2. Set environment variables (or use defaults above)
-# 3. Run: dativo run --config examples/jobs/spark_iceberg_example.yaml
+# 3. Run: dativo ingest --config examples/jobs/spark_iceberg_example.yaml
 #
 # For more details, see docs/SPARK_SETUP.md

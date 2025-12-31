@@ -1,0 +1,24 @@
+$schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: employees_markdown_kv_string
+version: "1.0"
+source_type: postgres
+object: employees
+schema:
+  - name: doc_id
+    type: string
+    required: true
+    description: "Document identifier (emp_id from employees table)"
+  - name: markdown_kv_content
+    type: string
+    required: false
+    description: "Markdown-KV formatted content from employees table row"
+target:
+  file_format: parquet
+  partitioning: [ingest_date]
+team:
+  owner: test@example.com
+compliance:
+  classification: []
+

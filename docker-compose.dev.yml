@@ -46,6 +46,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./tests/fixtures/seeds/AdventureWorks-oltp-install-script:/docker-entrypoint-initdb.d/adventureworks:ro
+      - ./tests/fixtures/seeds/postgres_employees_setup.sql:/docker-entrypoint-initdb.d/99_employees_setup.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -65,6 +66,7 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
       - ./tests/fixtures/seeds/test_db:/docker-entrypoint-initdb.d/test_db:ro
+      - ./tests/fixtures/seeds/mysql_employees_setup.sql:/docker-entrypoint-initdb.d/99_employees_setup.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
       interval: 10s

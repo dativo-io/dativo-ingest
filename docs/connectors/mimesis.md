@@ -180,10 +180,10 @@ tenant_id: acme
 environment: dev
 
 source_connector: mimesis
-source_connector_path: connectors/examples/mimesis.yaml
+source_connector_path: connectors/mimesis.yaml
 
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 
 asset: mimesis_customers
 asset_path: configs/assets/mimesis_customers.yaml
@@ -297,6 +297,6 @@ Use `type: mimesis` in your source configuration. The `synthetic` type is not su
 
 ## See Also
 
-- [Connector Examples](../../connectors/examples/mimesis.yaml)
+- [Connector Examples](../../connectors/mimesis.yaml)
 - [Job Configuration Examples](../../configs/jobs/mimesis.yaml)
 - [Performance Test Configuration](../../configs/jobs/mimesis_perf_test.yaml)

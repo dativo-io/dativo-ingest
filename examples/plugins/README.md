@@ -113,7 +113,7 @@ source:
 Run your job to test the custom plugin:
 
 ```bash
-dativo run --config /app/jobs/my_job.yaml --mode self_hosted
+dativo ingest --config /app/jobs/my_job.yaml --mode self_hosted
 ```
 
 ## Plugin Development Guidelines

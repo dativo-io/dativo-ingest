@@ -75,10 +75,10 @@ These fixtures are used by smoke tests. To run smoke tests, simply execute the C
 
 ```bash
 # Run all jobs in the fixtures directory
-dativo_ingest run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
+dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets
 
 # Or run a specific job
-dativo_ingest run --config tests/fixtures/jobs/adventureworks_person_to_iceberg.yaml --secrets-dir tests/fixtures/secrets
+dativo ingest --config tests/fixtures/jobs/adventureworks_person_to_iceberg.yaml --secrets-dir tests/fixtures/secrets
 ```
 
 ## Asset Definitions (ODCS v3.0.2)

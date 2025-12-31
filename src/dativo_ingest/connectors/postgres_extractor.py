@@ -236,9 +236,13 @@ class PostgresExtractor:
         # Create incremental strategy if configured
         incremental_strategy: Optional[IncrementalStrategy] = None
         if self.source_config.incremental:
+            # Get state_path from config (should be set by JobConfig._merge_source_with_recipe)
+            state_path_str = self.source_config.incremental.get("state_path")
+            default_state_path = Path(state_path_str) if state_path_str else None
+
             incremental_strategy = create_incremental_strategy(
                 self.source_config.incremental,
-                default_state_path=None,
+                default_state_path=default_state_path,
             )
 
         # Get cursor field default for backward compatibility

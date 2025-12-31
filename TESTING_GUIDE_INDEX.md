@@ -150,7 +150,7 @@ echo $NESSIE_URI         # Should show: http://localhost:19120/api/v1
 
 ### Step 4: Run Basic Smoke Test
 ```bash
-dativo run \
+dativo ingest \
   --job-dir tests/fixtures/jobs \
   --secret-manager filesystem \
   --secrets-dir tests/fixtures/secrets \

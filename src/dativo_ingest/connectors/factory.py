@@ -1,5 +1,6 @@
 """Factory for creating extractor instances."""
 
+import sys
 from typing import Any, Dict, Optional, Tuple
 
 from ..config import ConnectorRecipe, JobConfig, SourceConfig
@@ -75,6 +76,16 @@ class ExtractorFactory:
                 connector_recipe = ConnectorRecipe.from_yaml(
                     job_config.source_connector_path
                 )
+            except ValueError as e:
+                # ValueError from ConnectorRecipe.from_yaml means file not found or invalid
+                error_msg = f"Failed to load connector recipe from '{job_config.source_connector_path}': {e}"
+                print(f"ERROR: {error_msg}", file=sys.stderr)
+                logger.error(
+                    error_msg,
+                    extra={"event_type": "connector_recipe_error"},
+                    exc_info=True,
+                )
+                raise  # Re-raise to fail the job
             except Exception as e:
                 logger.warning(
                     f"Failed to load connector recipe: {e}. Using default engine selection.",

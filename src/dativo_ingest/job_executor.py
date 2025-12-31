@@ -1,6 +1,7 @@
 """Job executor for running ETL pipelines."""
 
 import os
+import sys
 from typing import Any, Dict, List, Optional
 
 from .config import AssetDefinition, JobConfig, SourceConfig, TargetConfig
@@ -263,8 +264,10 @@ class JobExecutor:
                 asset_definition=self.asset_definition,  # Pass asset_definition for mimesis connector
             )
         except ValueError as e:
+            error_msg = f"Failed to initialize extractor: {e}"
+            print(f"ERROR: {error_msg}", file=sys.stderr)
             self.logger.error(
-                f"Failed to initialize extractor: {e}",
+                error_msg,
                 extra={
                     "event_type": "extractor_error",
                 },
@@ -272,8 +275,12 @@ class JobExecutor:
             )
             return 2
         except Exception as e:
+            error_msg = f"Failed to initialize extractor: {e}"
+            print(f"ERROR: {error_msg}", file=sys.stderr)
+            if hasattr(e, "__cause__") and e.__cause__:
+                print(f"  Caused by: {e.__cause__}", file=sys.stderr)
             self.logger.error(
-                f"Failed to initialize extractor: {e}",
+                error_msg,
                 extra={
                     "event_type": "extractor_error",
                 },
@@ -334,14 +341,24 @@ class JobExecutor:
         # Build path following industry standards
         domain = self.asset_definition.domain or self.tenant_id or "default"
         data_product = getattr(self.asset_definition, "dataProduct", None) or "default"
-        table_name = (
-            self.asset_definition.name.lower().replace("-", "_").replace(" ", "_")
-        )
 
-        if domain == self.tenant_id and data_product == "default":
-            output_base = f"s3://{bucket}/{domain}/{table_name}"
+        # Special handling for markdown_kv connector: use markdown_kv/{object_name} path
+        if self.target_config.type == "markdown_kv":
+            object_name = (
+                self.asset_definition.object.lower().replace("-", "_").replace(" ", "_")
+                if self.asset_definition.object
+                else "default"
+            )
+            output_base = f"s3://{bucket}/{domain}/markdown_kv/{object_name}"
         else:
-            output_base = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
+            table_name = (
+                self.asset_definition.name.lower().replace("-", "_").replace(" ", "_")
+            )
+
+            if domain == self.tenant_id and data_product == "default":
+                output_base = f"s3://{bucket}/{domain}/{table_name}"
+            else:
+                output_base = f"s3://{bucket}/{domain}/{data_product}/{table_name}"
 
         return output_base
 
@@ -743,18 +760,36 @@ class JobExecutor:
         Returns:
             Transformed records
         """
+        # Check if markdown_kv transformation should be applied
         if not self.target_config.markdown_kv_storage:
+            # If target is markdown_kv but markdown_kv_storage is not configured, warn
+            if self.target_config.type == "markdown_kv":
+                self.logger.warning(
+                    "markdown_kv target connector detected but markdown_kv_storage is not configured. "
+                    "Transformation will be skipped. Please configure 'target.markdown_kv_storage.mode' "
+                    "in your job configuration.",
+                    extra={"event_type": "markdown_kv_config_missing"},
+                )
             return batch_records
 
         from .markdown_kv import parse_markdown_kv, transform_to_markdown_kv
 
         mode = self.target_config.markdown_kv_storage.get("mode")
+        if not mode:
+            self.logger.warning(
+                "markdown_kv_storage is configured but 'mode' is missing. "
+                "Transformation will be skipped. Please set 'target.markdown_kv_storage.mode' "
+                "to one of: 'string', 'raw_file', 'structured'.",
+                extra={"event_type": "markdown_kv_mode_missing"},
+            )
+            return batch_records
         transformed_records = []
 
         for record in batch_records:
             if mode == "string":
                 doc_id = str(
-                    record.get("businessentityid")
+                    record.get("emp_id")
+                    or record.get("businessentityid")
                     or record.get("productid")
                     or record.get("customerid")
                     or record.get("salesorderid")
@@ -778,7 +813,8 @@ class JobExecutor:
 
             elif mode == "structured":
                 doc_id = str(
-                    record.get("businessentityid")
+                    record.get("emp_id")
+                    or record.get("businessentityid")
                     or record.get("productid")
                     or record.get("customerid")
                     or record.get("salesorderid")
@@ -1048,8 +1084,33 @@ class JobExecutor:
         """
         try:
             # Resolve source and target configs
-            self.source_config = self.job_config.get_source()
-            self.target_config = self.job_config.get_target()
+            try:
+                self.source_config = self.job_config.get_source()
+                self.target_config = self.job_config.get_target()
+            except ValueError as e:
+                error_msg = f"Failed to load connector configuration: {e}"
+                print(f"ERROR: {error_msg}", file=sys.stderr)
+                # Set up logging to log the error
+                self._setup_logging()
+                self.logger.error(
+                    error_msg,
+                    extra={"event_type": "config_error"},
+                    exc_info=True,
+                )
+                return 2
+            except Exception as e:
+                error_msg = f"Failed to resolve source/target configuration: {e}"
+                print(f"ERROR: {error_msg}", file=sys.stderr)
+                if hasattr(e, "__cause__") and e.__cause__:
+                    print(f"  Caused by: {e.__cause__}", file=sys.stderr)
+                # Set up logging to log the error
+                self._setup_logging()
+                self.logger.error(
+                    error_msg,
+                    extra={"event_type": "config_error"},
+                    exc_info=True,
+                )
+                return 2
 
             # Set up logging
             self._setup_logging()

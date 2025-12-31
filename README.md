@@ -209,7 +209,7 @@ See [docs/python-setup.md](docs/python-setup.md) for detailed Python setup instr
 source .env.example  # Or create your own .env file
 
 # 4. Run end-to-end test (filesystem secret manager)
-dativo run --job-dir tests/fixtures/jobs \
+dativo ingest --job-dir tests/fixtures/jobs \
   --secret-manager filesystem \
   --secrets-dir tests/fixtures/secrets \
   --mode self_hosted
@@ -237,7 +237,7 @@ docker run --rm \
   -v $(pwd)/configs:/app/configs \
   -v $(pwd)/secrets:/app/secrets \
   -v $(pwd)/state:/app/state \
-  dativo:1.1.0 run --config /app/jobs/acme/stripe_customers_to_iceberg.yaml --mode self_hosted
+  dativo:1.1.0 ingest --config /app/jobs/acme/stripe_customers_to_iceberg.yaml --mode self_hosted
 ```
 
 3. Start orchestrated mode:
@@ -267,16 +267,20 @@ docker run --rm -p 3000:3000 \
 docker-compose -f docker-compose.demo.yml up -d
 
 # Run demo job
-dativo run --config demo/jobs/csv_to_iceberg.yaml --mode self_hosted
+dativo ingest --config demo/jobs/csv_to_iceberg.yaml --mode self_hosted
 ```
 
 See [demo/README.md](demo/README.md) for complete demo instructions.
 
 ## CLI Usage
 
-### Run a Single Job
+### Ingest Data (Run a Single Job)
 
 ```bash
+# Recommended: use 'ingest' for clarity
+dativo ingest --config <path> --mode <self_hosted|cloud>
+
+# Alternative: 'run' is also supported (alias for ingest)
 dativo run --config <path> --mode <self_hosted|cloud>
 ```
 
@@ -320,10 +324,10 @@ dativo discover --config jobs/acme/stripe_customers.yaml [--json] [--verbose]
 **Examples:**
 ```bash
 # Single job
-dativo run --config jobs/acme/stripe_customers.yaml --mode self_hosted
+dativo ingest --config jobs/acme/stripe_customers.yaml --mode self_hosted
 
 # Multiple jobs from directory (filesystem secrets)
-dativo run --job-dir jobs/acme \
+dativo ingest --job-dir jobs/acme \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
@@ -344,16 +348,16 @@ Starts Dagster orchestrator with scheduled jobs. Default config: `/app/configs/r
 **Job Config** - Defines source, target, asset, and tenant overrides:
 
 **Path Conventions:**
-- **Local Development**: Use relative paths (e.g., `connectors/examples/stripe.yaml`)
-- **Docker**: Use absolute paths (e.g., `/app/connectors/examples/stripe.yaml`)
+- **Local Development**: Use relative paths (e.g., `connectors/stripe.yaml`)
+- **Docker**: Use absolute paths (e.g., `/app/connectors/stripe.yaml`)
 - **Assets**: Always use versioned paths (e.g., `assets/examples/stripe/v1.0/customers.yaml`)
 
 ```yaml
 tenant_id: acme
 source_connector: stripe
-source_connector_path: connectors/examples/stripe.yaml  # Local: relative, Docker: /app/connectors/examples/stripe.yaml
+source_connector_path: connectors/stripe.yaml  # Local: relative, Docker: /app/connectors/stripe.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: stripe_customers
 asset_path: assets/examples/stripe/v1.0/customers.yaml  # Always versioned
 source:
@@ -400,7 +404,7 @@ See [docs/MINIMAL_ASSET_EXAMPLE.md](docs/MINIMAL_ASSET_EXAMPLE.md) for minimal a
 
 Here's a complete minimal example showing how to ingest a CSV file to S3/Iceberg with all three required config files:
 
-**1. Connector Recipe** (`connectors/examples/csv.yaml`):
+**1. Connector Recipe** (`connectors/csv.yaml`):
 ```yaml
 type: csv
 name: CSV File Connector
@@ -442,9 +446,9 @@ compliance:
 ```yaml
 tenant_id: mytenant
 source_connector: csv
-source_connector_path: connectors/examples/csv.yaml
+source_connector_path: connectors/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: customers
 asset_path: assets/examples/csv/v1.0/customers.yaml
 source:
@@ -469,7 +473,7 @@ NESSIE_URI=http://localhost:19120/api/v1
 
 **5. Run the job**:
 ```bash
-dativo run --config jobs/mytenant/customers_to_iceberg.yaml \
+dativo ingest --config jobs/mytenant/customers_to_iceberg.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted

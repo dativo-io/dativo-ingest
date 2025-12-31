@@ -15,8 +15,8 @@ Add an optional `catalog` block to your job configuration:
 
 ```yaml
 tenant_id: acme
-source_connector_path: connectors/examples/csv.yaml
-target_connector_path: connectors/examples/iceberg.yaml
+source_connector_path: connectors/csv.yaml
+target_connector_path: connectors/iceberg.yaml
 asset_path: assets/examples/csv/v1.0/employee.yaml
 
 source:
@@ -176,8 +176,8 @@ Metadata includes governance and operational information:
 
 ```yaml
 tenant_id: acme
-source_connector_path: connectors/examples/csv.yaml
-target_connector_path: connectors/examples/iceberg.yaml
+source_connector_path: connectors/csv.yaml
+target_connector_path: connectors/iceberg.yaml
 asset_path: assets/examples/csv/v1.0/employee.yaml
 
 source:
@@ -222,7 +222,7 @@ export OPENMETADATA_AUTH_TOKEN="your-token-here"
 export OPENMETADATA_API_URL="http://localhost:8585/api"
 
 # Run job with catalog
-dativo run --config jobs/acme/employees_with_catalog.yaml
+dativo ingest --config jobs/acme/employees_with_catalog.yaml
 ```
 
 ## Error Handling

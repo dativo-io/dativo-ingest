@@ -46,7 +46,7 @@ For smoke tests with Iceberg targets, the following environment variables should
 Secrets are automatically loaded by the `startup_sequence()` function when running with `--job-dir`:
 
 ```bash
-dativo_ingest run --job-dir tests/fixtures/jobs \
+dativo ingest --job-dir tests/fixtures/jobs \
   --secrets-dir tests/fixtures/secrets \
   --tenant-id test_tenant \
   --mode self_hosted

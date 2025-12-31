@@ -7,11 +7,20 @@ default_engine:
   type: airbyte
   options:
     airbyte:
-      docker_image: "airbyte/source-hubspot:0.2.0"
+      docker_image: "airbyte/source-hubspot:6.0.15"
       streams_default: ["contacts", "deals", "companies"]
       start_date_default: "2024-01-01"
 credentials:
-  type: api_key
+  type: oauth
+  # Airbyte HubSpot 6.0.15+ supports both OAuth and Private App authentication
+  # 
+  # Option 1: Private App (simpler, recommended for testing)
+  # - HUBSPOT_API_KEY or HUBSPOT_ACCESS_TOKEN: Private App access token (pat-*)
+  #
+  # Option 2: OAuth (for production with refresh tokens)
+  # - HUBSPOT_CLIENT_ID: OAuth client ID from HubSpot OAuth app
+  # - HUBSPOT_OAUTH_CLIENT_SECRET: OAuth client secret from HubSpot OAuth app
+  # - HUBSPOT_REFRESH_TOKEN: OAuth refresh token (obtained through OAuth authorization flow)
   from_env: HUBSPOT_API_KEY
 incremental:
   # Strategy: semantic name indicating type of incremental sync (created, updated_after, updated_at)

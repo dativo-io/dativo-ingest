@@ -99,7 +99,7 @@ However, for local development, it's recommended to install Spark directly on yo
 The Iceberg connector supports Spark engine configuration:
 
 ```yaml
-# connectors/examples/iceberg.yaml
+# connectors/iceberg.yaml
 default_engine:
   type: spark  # Use Spark engine instead of native
   options:
@@ -163,7 +163,7 @@ export NESSIE_URI=http://localhost:19120/api/v1
 ### Run Job
 
 ```bash
-dativo run --config path/to/job.yaml --mode self_hosted
+dativo ingest --config path/to/job.yaml --mode self_hosted
 ```
 
 ## Spark Configuration Options

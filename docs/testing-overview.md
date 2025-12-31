@@ -93,7 +93,7 @@
   $ source .env
 
   Step 4: Run Basic Smoke Test
-  $ dativo run \
+  $ dativo ingest \
       --job-dir tests/fixtures/jobs \
       --secret-manager filesystem \
       --secrets-dir tests/fixtures/secrets \
@@ -252,7 +252,7 @@
 
   4. Run Your First Test
      $ source .env
-     $ dativo run --job-dir tests/fixtures/jobs \
+     $ dativo ingest --job-dir tests/fixtures/jobs \
          --secrets-dir tests/fixtures/secrets --mode self_hosted
 
   5. Follow Test Cases 1-21

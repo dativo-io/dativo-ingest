@@ -125,7 +125,7 @@ cd tests
 ### Run Individual Test
 
 ```bash
-python -m dativo_ingest.cli run \
+python -m dativo_ingest.cli ingest \
     --job-file tests/fixtures/jobs/smoke_test_1_postgres_employee_python_rust.yaml \
     --secrets-dir tests/fixtures/secrets \
     --mode self_hosted

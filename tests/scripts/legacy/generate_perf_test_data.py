@@ -18,7 +18,7 @@ Usage:
 
 Migration:
     Replace this script usage with:
-    dativo_ingest run --config configs/jobs/mimesis_perf_test.yaml
+    dativo ingest --config configs/jobs/mimesis_perf_test.yaml
 """
 
 import argparse

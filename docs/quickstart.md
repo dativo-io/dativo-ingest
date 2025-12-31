@@ -67,7 +67,7 @@ source .env
 ### 3. Run End-to-End Test
 
 ```bash
-dativo run --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
+dativo ingest --job-dir tests/fixtures/jobs --secrets-dir tests/fixtures/secrets --mode self_hosted
 ```
 
 ## Expected Output
@@ -119,9 +119,9 @@ docker-compose -f docker-compose.dev.yml down -v
 ```yaml
 tenant_id: mytenant
 source_connector: csv
-source_connector_path: connectors/examples/csv.yaml
+source_connector_path: connectors/csv.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: my_asset
 asset_path: assets/examples/csv/v1.0/my_asset.yaml
 source:
@@ -170,7 +170,7 @@ S3_BUCKET=test-bucket
 
 4. **Run the job**:
 ```bash
-dativo run --config jobs/mytenant/my_job.yaml --mode self_hosted
+dativo ingest --config jobs/mytenant/my_job.yaml --mode self_hosted
 ```
 
 ## Next Steps
