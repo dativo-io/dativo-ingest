@@ -2802,24 +2802,19 @@ ls -la examples/plugins/rust/target/release/libparquet_writer_plugin.*
 # 2. Reuse asset definition from Test Case 21
 # assets/examples/mimesis/v1.0/customers.yaml already exists
 
-# 3. Determine plugin path based on platform
+# 3. Determine plugin path based on what file exists (more reliable than platform detection)
 # macOS uses .dylib, Linux uses .so
-if [[ "$OSTYPE" == "darwin"* ]]; then
+if [ -f "examples/plugins/rust/target/release/libparquet_writer_plugin.dylib" ]; then
     RUST_WRITER_PLUGIN="examples/plugins/rust/target/release/libparquet_writer_plugin.dylib:create_writer"
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+elif [ -f "examples/plugins/rust/target/release/libparquet_writer_plugin.so" ]; then
     RUST_WRITER_PLUGIN="examples/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
 else
-    echo "Warning: Unknown platform. Using .so extension. Adjust if needed."
-    RUST_WRITER_PLUGIN="examples/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
-fi
-
-# Verify plugin exists
-if [ ! -f "examples/plugins/rust/target/release/libparquet_writer_plugin.dylib" ] && \
-   [ ! -f "examples/plugins/rust/target/release/libparquet_writer_plugin.so" ]; then
     echo "Error: Rust Parquet writer plugin not found!"
     echo "Please build it first: cd examples/plugins/rust && make build-release"
     exit 1
 fi
+
+echo "Using Rust writer plugin: $RUST_WRITER_PLUGIN"
 
 # 4. Create job configuration with Rust writer
 mkdir -p jobs/testcase22
@@ -2849,9 +2844,9 @@ source:
 # Target configuration - Using Rust Parquet writer
 target:
   type: iceberg
-  # Specify Rust Parquet writer plugin
+  # Specify Rust Parquet writer plugin (auto-detected based on available file)
   # Format: "path/to/libplugin.so:create_writer" or "path/to/libplugin.dylib:create_writer"
-  custom_writer: "${RUST_WRITER_PLUGIN}"
+  custom_writer: "$RUST_WRITER_PLUGIN"
   connection:
     s3:
       bucket: "\${S3_BUCKET}"
