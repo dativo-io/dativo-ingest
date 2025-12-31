@@ -1,1 +1,30 @@
-
+$schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+name: large_dataset
+version: "1.0"
+source_type: csv
+object: large_dataset
+schema:
+  - name: id
+    type: integer
+    required: true
+  - name: name
+    type: string
+    required: true
+  - name: email
+    type: string
+    required: true
+  - name: created_at
+    type: timestamp
+    required: true
+  - name: value
+    type: decimal
+    required: true
+target:
+  file_format: parquet
+  partitioning: []
+team:
+  owner: test@example.com
+compliance:
+  classification: []
