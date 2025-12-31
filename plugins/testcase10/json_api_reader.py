@@ -1,28 +1,15 @@
 """Custom JSON API Reader Plugin"""
 import requests
-from typing import Iterator, Dict, Any, List, Optional
-from dativo_ingest.plugins import BaseReader, ConnectionTestResult, DiscoveryResult
-from dativo_ingest.validator import IncrementalStateManager
+from typing import Iterator, Dict, Any
+from dativo_ingest.plugins import BaseReader
 
 class JSONAPIReader(BaseReader):
     """Read data from a JSON API endpoint"""
     
     __version__ = "1.0.0"
     
-    def extract(
-        self,
-        state_manager: Optional[IncrementalStateManager] = None,
-        checkpoint_context: Optional[Dict[str, Any]] = None,
-    ) -> Iterator[List[Dict[str, Any]]]:
-        """Extract data from API
-        
-        Args:
-            state_manager: Optional state manager for incremental syncs
-            checkpoint_context: Optional checkpoint context for WAL resume
-            
-        Yields:
-            Batches of records as list of dictionaries
-        """
+    def extract(self, state_manager=None) -> Iterator[Dict[str, Any]]:
+        """Extract data from API"""
         connection = self.source_config.connection
         base_url = connection.get("base_url")
         endpoint = connection.get("endpoint", "/data")
@@ -31,48 +18,33 @@ class JSONAPIReader(BaseReader):
         response = requests.get(f"{base_url}{endpoint}")
         response.raise_for_status()
         
-        # Yield records as batches (BaseReader expects batches)
+        # Yield records
         data = response.json()
-        records = []
         if isinstance(data, list):
-            records = data
+            for record in data:
+                yield record
         elif isinstance(data, dict):
             # Handle paginated responses
             records = data.get("records", data.get("data", []))
-        
-        # Yield as a single batch (list of records)
-        if records:
-            yield records
+            for record in records:
+                yield record
     
-    def check_connection(self) -> ConnectionTestResult:
+    def check_connection(self) -> tuple[bool, str, Dict[str, Any]]:
         """Test API connectivity"""
         try:
             connection = self.source_config.connection
             base_url = connection.get("base_url")
             response = requests.get(f"{base_url}/health")
             if response.status_code == 200:
-                return ConnectionTestResult(
-                    success=True,
-                    message="API is accessible",
-                    details={"status": "healthy"}
-                )
-            return ConnectionTestResult(
-                success=False,
-                message=f"API returned {response.status_code}",
-                error_code="HTTP_ERROR"
-            )
+                return True, "API is accessible", {"status": "healthy"}
+            return False, f"API returned {response.status_code}", {}
         except Exception as e:
-            return ConnectionTestResult(
-                success=False,
-                message=str(e),
-                error_code="CONNECTION_ERROR"
-            )
+            return False, str(e), {}
     
-    def discover(self) -> DiscoveryResult:
+    def discover(self) -> Dict[str, Any]:
         """Discover available endpoints"""
-        return DiscoveryResult(
-            objects=[
-                {"name": "data", "type": "stream", "schema": {}}
-            ],
-            metadata={"endpoint": "/data"}
-        )
+        return {
+            "streams": [
+                {"name": "data", "schema": {}}
+            ]
+        }
