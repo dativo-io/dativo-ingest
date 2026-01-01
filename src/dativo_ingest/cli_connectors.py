@@ -284,7 +284,9 @@ def connectors_sync_command(
                 dest_path = syncer.sync_from_url(catalog_url, name=catalog_name)
                 synced = True
                 if not json_output:
-                    print(f"✓ Synced catalog '{catalog_name}' from {catalog_url} -> {dest_path}")
+                    print(
+                        f"✓ Synced catalog '{catalog_name}' from {catalog_url} -> {dest_path}"
+                    )
             except Exception as e:
                 error_msg = f"Failed to sync catalog from URL: {e}"
                 if json_output:
@@ -299,14 +301,16 @@ def connectors_sync_command(
             try:
                 dest_path = syncer.sync_from_file(Path(catalog_file), name=catalog_name)
                 synced = True
-                
+
                 logger.info(
                     f"Copied catalog: {catalog_file}",
                     extra={"event_type": "catalog_synced"},
                 )
 
                 if not json_output:
-                    print(f"✓ Synced catalog '{catalog_name}': {catalog_file} -> {dest_path}")
+                    print(
+                        f"✓ Synced catalog '{catalog_name}': {catalog_file} -> {dest_path}"
+                    )
             except Exception as e:
                 error_msg = f"Failed to sync catalog from file: {e}"
                 if json_output:

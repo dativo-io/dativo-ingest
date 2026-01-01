@@ -1,6 +1,8 @@
-from typing import Any, Dict
 from datetime import datetime
+from typing import Any, Dict
+
 from .base import BaseAdapter
+
 
 class SingerAdapter(BaseAdapter):
     """Adapter for Singer catalog format (Stub)."""
@@ -11,5 +13,5 @@ class SingerAdapter(BaseAdapter):
             "schema_version": 1,
             "generated_at": datetime.utcnow().isoformat() + "Z",
             "meta": metadata,
-            "connectors": [] # Stub
+            "connectors": [],  # Stub
         }

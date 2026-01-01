@@ -204,15 +204,17 @@ class ConnectorValidator:
             return  # Skip if no image (will fail elsewhere if strict)
 
         # Check allowlist
-        allow_custom = os.getenv("DATIVO_ALLOW_CUSTOM_IMAGES", "false").lower() == "true"
+        allow_custom = (
+            os.getenv("DATIVO_ALLOW_CUSTOM_IMAGES", "false").lower() == "true"
+        )
         if allow_custom:
             return
 
         allowed_prefixes = ["airbyte/", "meltano/", "singer/"]
-        
+
         # Check if image starts with any allowed prefix
         is_allowed = any(docker_image.startswith(prefix) for prefix in allowed_prefixes)
-        
+
         if not is_allowed:
             print(
                 f"ERROR: Security violation for connector '{connector_type}'.\n"
@@ -251,27 +253,39 @@ class ConnectorValidator:
 
         # Validate incremental strategy
         self.validate_incremental_strategy(job_config, source_connector_def)
-        
+
         # Validate image security (source)
         source_engine = source_config.engine or {}
-        engine_type = source_engine.get("type", source_connector_def.get("default_engine"))
-        
+        engine_type = source_engine.get(
+            "type", source_connector_def.get("default_engine")
+        )
+
         if engine_type in ["airbyte", "meltano", "singer"]:
             job_overrides = {}
-            if source_engine.get("options", {}).get(engine_type, {}).get("docker_image"):
-                job_overrides["docker_image"] = source_engine.get("options", {}).get(engine_type, {}).get("docker_image")
-            
+            if (
+                source_engine.get("options", {})
+                .get(engine_type, {})
+                .get("docker_image")
+            ):
+                job_overrides["docker_image"] = (
+                    source_engine.get("options", {})
+                    .get(engine_type, {})
+                    .get("docker_image")
+                )
+
             # Resolve with strict mode to ensure metadata exists (Requirement C3)
             try:
                 resolved = self.registry.resolve_connector(
                     source_config.type,
                     engine=engine_type,
                     job_overrides=job_overrides,
-                    strict_mode=True
+                    strict_mode=True,
                 )
-                
+
                 if resolved and resolved.docker_image:
-                    self.validate_image_security(source_config.type, engine_type, resolved.docker_image)
+                    self.validate_image_security(
+                        source_config.type, engine_type, resolved.docker_image
+                    )
             except ValueError as e:
                 print(f"ERROR: {e}", file=sys.stderr)
                 sys.exit(2)

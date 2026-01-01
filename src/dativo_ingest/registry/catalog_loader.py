@@ -40,7 +40,7 @@ class CatalogLoader:
                 if path.exists():
                     catalogs_dir = path
                     break
-            
+
             # If still None, default to relative path
             if catalogs_dir is None:
                 catalogs_dir = Path("registry/catalogs")
@@ -89,20 +89,22 @@ class CatalogLoader:
         connectors = []
 
         # Normalized format with "connectors" list
-        if "connectors" in catalog_data and isinstance(catalog_data["connectors"], list):
+        if "connectors" in catalog_data and isinstance(
+            catalog_data["connectors"], list
+        ):
             for item in catalog_data["connectors"]:
                 connector = self._parse_connector_item(item, source_of_truth)
                 if connector:
                     connectors.append(connector)
-        
+
         # Fallback for legacy/other formats (e.g. raw Airbyte sources list if manually placed)
         elif "sources" in catalog_data and isinstance(catalog_data["sources"], list):
-             # Try to parse as normalized connector items first (in case keys match), 
-             # but likely needs adapter logic if we wanted to support raw files here.
-             # Ideally, users should use 'sync' to normalize.
-             # We will skip raw files to enforce normalization flow, or add simple support.
-             # For now, stick to normalized format as per requirements.
-             pass
+            # Try to parse as normalized connector items first (in case keys match),
+            # but likely needs adapter logic if we wanted to support raw files here.
+            # Ideally, users should use 'sync' to normalize.
+            # We will skip raw files to enforce normalization flow, or add simple support.
+            # For now, stick to normalized format as per requirements.
+            pass
 
         return connectors
 
@@ -115,7 +117,7 @@ class CatalogLoader:
             external_id = item.get("external_id", "")
             docker_image = item.get("docker_image")
             version = item.get("version")
-            
+
             # Map capabilities object to list of strings
             capabilities_list = []
             caps = item.get("capabilities", {})

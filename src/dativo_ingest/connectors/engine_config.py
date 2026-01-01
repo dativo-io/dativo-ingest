@@ -232,10 +232,10 @@ class EngineConfigParser:
             # This follows the resolution priority rule (job > catalog > registry) because
             # docker_image here comes from engine_options which combines recipe + job config
             resolved_image = self._resolve_airbyte_image_from_registry(docker_image)
-            
+
             # TODO: Add Strict Mode check here or in validator
             # Ideally, validator should catch this before runtime, but runtime should also fail if strict
-            
+
             return resolved_image
         return None
 
@@ -286,7 +286,7 @@ class EngineConfigParser:
             # However, for Airbyte connectors relying on catalog/registry, this IS a failure.
             if strict_mode:
                 raise ValueError(f"Registry required for resolution but not found: {e}")
-            
+
             logger.warning(
                 f"Could not resolve docker image from registry: {e}",
                 extra={

@@ -39,13 +39,13 @@ class CatalogSyncer:
                 if path.exists() or path.parent.exists():
                     catalogs_dir = path
                     break
-            
+
             # If still None, default to relative path
             if catalogs_dir is None:
                 catalogs_dir = Path("registry/catalogs")
 
         self.catalogs_dir = catalogs_dir
-        
+
         # Ensure directory exists
         if not self.catalogs_dir.exists():
             try:
@@ -55,7 +55,9 @@ class CatalogSyncer:
                     f"Failed to create catalogs directory {self.catalogs_dir}: {e}"
                 )
 
-    def sync_from_url(self, url: str, name: str = "airbyte", force: bool = False) -> Path:
+    def sync_from_url(
+        self, url: str, name: str = "airbyte", force: bool = False
+    ) -> Path:
         """Fetch catalog from URL, normalize, and save to file with idempotency.
 
         Args:
@@ -77,7 +79,7 @@ class CatalogSyncer:
         )
 
         output_path = self.catalogs_dir / f"{name}.json"
-        
+
         # Check existing cache for ETag/Last-Modified
         existing_meta = {}
         if not force and output_path.exists():
@@ -95,27 +97,30 @@ class CatalogSyncer:
             ctx.verify_mode = ssl.CERT_NONE
 
             req = urllib.request.Request(url)
-            req.add_header('User-Agent', 'Dativo/1.0')
-            
+            req.add_header("User-Agent", "Dativo/1.0")
+
             # Add conditional headers
             if existing_meta.get("etag"):
-                req.add_header('If-None-Match', existing_meta["etag"])
+                req.add_header("If-None-Match", existing_meta["etag"])
             if existing_meta.get("last_modified"):
-                req.add_header('If-Modified-Since', existing_meta["last_modified"])
-            
+                req.add_header("If-Modified-Since", existing_meta["last_modified"])
+
             try:
                 with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
                     # 200 OK - Content updated
                     raw_data_bytes = response.read()
-                    
+
                     # Compute SHA256 of raw content
                     sha256 = hashlib.sha256(raw_data_bytes).hexdigest()
-                    
+
                     # If content hasn't changed (based on hash), we might still want to update metadata
                     if not force and existing_meta.get("sha256") == sha256:
                         self.logger.info(
                             f"Catalog '{name}' content unchanged (SHA256 match).",
-                            extra={"event_type": "catalog_sync_skipped", "reason": "content_unchanged"}
+                            extra={
+                                "event_type": "catalog_sync_skipped",
+                                "reason": "content_unchanged",
+                            },
                         )
                         return output_path
 
@@ -126,9 +131,9 @@ class CatalogSyncer:
                         "source_url": url,
                         "etag": response_headers.get("ETag"),
                         "last_modified": response_headers.get("Last-Modified"),
-                        "sha256": sha256
+                        "sha256": sha256,
                     }
-                    
+
                     # Parse JSON
                     try:
                         raw_json = json.loads(raw_data_bytes)
@@ -138,17 +143,20 @@ class CatalogSyncer:
                     # Normalize
                     adapter = self._get_adapter(name)
                     normalized_data = adapter.normalize(raw_json, metadata)
-                    
+
                     # Validate against schema (basic check for required fields)
                     # Note: Full schema validation could happen here, but we rely on adapter correctness for now
                     # to avoid heavy dependencies in runtime. Validator will check structure.
-                    
+
                     # Save to file
                     self._save_atomic(output_path, normalized_data)
-                    
+
                     self.logger.info(
                         f"Successfully synced catalog '{name}' to {output_path}",
-                        extra={"event_type": "catalog_sync_success", "path": str(output_path)},
+                        extra={
+                            "event_type": "catalog_sync_success",
+                            "path": str(output_path),
+                        },
                     )
                     return output_path
 
@@ -157,7 +165,10 @@ class CatalogSyncer:
                     # 304 Not Modified
                     self.logger.info(
                         f"Catalog '{name}' unchanged (304 Not Modified).",
-                        extra={"event_type": "catalog_sync_skipped", "reason": "not_modified"}
+                        extra={
+                            "event_type": "catalog_sync_skipped",
+                            "reason": "not_modified",
+                        },
                     )
                     return output_path
                 else:
@@ -175,31 +186,31 @@ class CatalogSyncer:
         source_path = Path(source_path)
         if not source_path.exists():
             raise FileNotFoundError(f"Source file not found: {source_path}")
-            
+
         with open(source_path, "rb") as f:
             raw_data_bytes = f.read()
-            
+
         sha256 = hashlib.sha256(raw_data_bytes).hexdigest()
-        
+
         try:
             raw_json = json.loads(raw_data_bytes)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in source file: {e}")
-            
+
         metadata = {
             "fetched_at": datetime.utcnow().isoformat() + "Z",
             "source_url": f"file://{source_path.absolute()}",
             "sha256": sha256,
             "etag": None,
-            "last_modified": None
+            "last_modified": None,
         }
-        
+
         adapter = self._get_adapter(name)
         normalized_data = adapter.normalize(raw_json, metadata)
-        
+
         output_path = self.catalogs_dir / f"{name}.json"
         self._save_atomic(output_path, normalized_data)
-        
+
         return output_path
 
     def _get_adapter(self, name: str):
@@ -212,7 +223,7 @@ class CatalogSyncer:
         else:
             # Default to Airbyte adapter if unknown, or raise error?
             # For robustness, we can try generic adapter or default to airbyte for now
-            return AirbyteAdapter() 
+            return AirbyteAdapter()
 
     def _save_atomic(self, path: Path, data: Dict[str, Any]):
         temp_path = path.with_suffix(".tmp")
@@ -222,10 +233,10 @@ class CatalogSyncer:
 
     def get_default_url(self, name: str) -> Optional[str]:
         """Get default URL for known catalogs.
-        
+
         Args:
             name: Catalog name
-            
+
         Returns:
             Default URL or None
         """

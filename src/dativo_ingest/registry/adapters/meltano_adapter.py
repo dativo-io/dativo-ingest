@@ -1,6 +1,8 @@
-from typing import Any, Dict
 from datetime import datetime
+from typing import Any, Dict
+
 from .base import BaseAdapter
+
 
 class MeltanoAdapter(BaseAdapter):
     """Adapter for Meltano catalog format (Stub)."""
@@ -11,5 +13,5 @@ class MeltanoAdapter(BaseAdapter):
             "schema_version": 1,
             "generated_at": datetime.utcnow().isoformat() + "Z",
             "meta": metadata,
-            "connectors": [] # Stub
+            "connectors": [],  # Stub
         }
