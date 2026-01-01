@@ -11,11 +11,6 @@ from .cli_commands import (
     format_check_output,
     format_discovery_output,
 )
-from .cli_connectors import (
-    connectors_inspect_command,
-    connectors_list_command,
-    connectors_sync_command,
-)
 from .config import JobConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import setup_logging
@@ -68,7 +63,13 @@ def run_command(args: argparse.Namespace) -> int:
         try:
             job_config = JobConfig.from_yaml(args.config)
         except SystemExit as e:
+            # SystemExit from JobConfig.from_yaml already prints error to stderr
             return e.code if e.code else 2
+        except Exception as e:
+            print(f"ERROR: Failed to load job configuration: {e}", file=sys.stderr)
+            if hasattr(e, "__cause__") and e.__cause__:
+                print(f"  Caused by: {e.__cause__}", file=sys.stderr)
+            return 2
 
         # Set up logging for single job execution (no startup_sequence was called)
         log_level = job_config.logging.level if job_config.logging else "INFO"
@@ -376,10 +377,10 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Ingest data from source to target (primary action)
+  # Ingest data from source to target (recommended)
   dativo ingest --config /app/configs/jobs/stripe.yaml --mode self_hosted
 
-  # Legacy alias (still supported)
+  # Legacy alias (backward compatibility)
   dativo run --config /app/configs/jobs/stripe.yaml --mode self_hosted
 
   # Start orchestrated mode
@@ -389,14 +390,14 @@ Examples:
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
-    # Ingest command (primary action)
-    ingest_parser = subparsers.add_parser(
-        "ingest",
-        help="Ingest data from source to target (primary action)",
+    # Run command
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run a single job in oneshot mode",
         description="Execute a single ingestion job and exit. Validates configuration, "
         "schema presence, and connector restrictions before execution.",
     )
-    config_group = ingest_parser.add_mutually_exclusive_group(required=True)
+    config_group = run_parser.add_mutually_exclusive_group(required=True)
     config_group.add_argument(
         "--config",
         help="Path to job configuration YAML file",
@@ -405,28 +406,28 @@ Examples:
         "--job-dir",
         help="Path to directory containing job YAML files (mutually exclusive with --config)",
     )
-    ingest_parser.add_argument(
+    run_parser.add_argument(
         "--secrets-dir",
         default="/secrets",
         help="Path to secrets directory (default: /secrets, used by filesystem secret manager)",
     )
-    ingest_parser.add_argument(
+    run_parser.add_argument(
         "--tenant-id",
         help="Tenant ID override (optional; if not provided, inferred from job configurations). "
         "If provided, validates all jobs belong to this tenant.",
     )
-    ingest_parser.add_argument(
+    run_parser.add_argument(
         "--secret-manager",
         choices=["env", "filesystem", "vault", "aws", "gcp"],
         default=os.getenv("DATIVO_SECRET_MANAGER", "env"),
         help="Secret backend to use (default: env or DATIVO_SECRET_MANAGER env var).",
     )
-    ingest_parser.add_argument(
+    run_parser.add_argument(
         "--secret-manager-config",
         help="Path to YAML/JSON file or inline JSON blob with secret manager configuration. "
         "Falls back to DATIVO_SECRET_MANAGER_CONFIG when omitted.",
     )
-    ingest_parser.add_argument(
+    run_parser.add_argument(
         "--mode",
         choices=["self_hosted", "cloud"],
         default="self_hosted",
@@ -434,44 +435,45 @@ Examples:
         "allowed in self_hosted mode.",
     )
 
-    # Run command (legacy alias for ingest)
-    run_parser = subparsers.add_parser(
-        "run",
-        help="Run a single job in oneshot mode (legacy alias for 'ingest')",
-        description="Execute a single ingestion job and exit. This is a legacy alias for 'ingest'. "
+    # Ingest command (primary, recommended)
+    ingest_parser = subparsers.add_parser(
+        "ingest",
+        help="Ingest data from source to target (primary command, recommended)",
+        description="Execute a single ingestion job and exit. This is the primary command. "
+        "'run' is maintained as a backward-compatible alias. "
         "Validates configuration, schema presence, and connector restrictions before execution.",
     )
-    run_config_group = run_parser.add_mutually_exclusive_group(required=True)
-    run_config_group.add_argument(
+    ingest_config_group = ingest_parser.add_mutually_exclusive_group(required=True)
+    ingest_config_group.add_argument(
         "--config",
         help="Path to job configuration YAML file",
     )
-    run_config_group.add_argument(
+    ingest_config_group.add_argument(
         "--job-dir",
         help="Path to directory containing job YAML files (mutually exclusive with --config)",
     )
-    run_parser.add_argument(
+    ingest_parser.add_argument(
         "--secrets-dir",
         default="/secrets",
         help="Path to secrets directory (default: /secrets, used by filesystem secret manager)",
     )
-    run_parser.add_argument(
+    ingest_parser.add_argument(
         "--tenant-id",
         help="Tenant ID override (optional; if not provided, inferred from job configurations). "
         "If provided, validates all jobs belong to this tenant.",
     )
-    run_parser.add_argument(
+    ingest_parser.add_argument(
         "--secret-manager",
         choices=["env", "filesystem", "vault", "aws", "gcp"],
         default=os.getenv("DATIVO_SECRET_MANAGER", "env"),
         help="Secret backend to use (default: env or DATIVO_SECRET_MANAGER env var).",
     )
-    run_parser.add_argument(
+    ingest_parser.add_argument(
         "--secret-manager-config",
         help="Path to YAML/JSON file or inline JSON blob with secret manager configuration. "
         "Falls back to DATIVO_SECRET_MANAGER_CONFIG when omitted.",
     )
-    run_parser.add_argument(
+    ingest_parser.add_argument(
         "--mode",
         choices=["self_hosted", "cloud"],
         default="self_hosted",
@@ -591,93 +593,13 @@ Examples:
         help="Enable verbose output with additional details",
     )
 
-    # Connectors command (with subcommands)
-    connectors_parser = subparsers.add_parser(
-        "connectors",
-        help="Manage connector registry and catalogs",
-        description="List, inspect, and sync connector registry with external catalogs",
-    )
-    connectors_subparsers = connectors_parser.add_subparsers(
-        dest="connectors_command", help="Connectors subcommand"
-    )
-
-    # connectors list
-    list_parser = connectors_subparsers.add_parser(
-        "list",
-        help="List all registered connectors",
-        description="Display all connectors from the registry with their metadata",
-    )
-    list_parser.add_argument(
-        "--role",
-        choices=["source", "target"],
-        help="Filter by role (source or target)",
-    )
-    list_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output results in JSON format",
-    )
-    list_parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable verbose output with additional details",
-    )
-
-    # connectors inspect
-    inspect_parser = connectors_subparsers.add_parser(
-        "inspect",
-        help="Inspect a specific connector",
-        description="Show detailed information about a connector including resolved "
-        "engine configuration, docker images, versions, and catalog entries",
-    )
-    inspect_parser.add_argument(
-        "name",
-        help="Connector name to inspect",
-    )
-    inspect_parser.add_argument(
-        "--engine",
-        choices=["airbyte", "singer", "meltano", "native", "jdbc", "spark"],
-        help="Override engine for resolution",
-    )
-    inspect_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output results in JSON format",
-    )
-
-    # connectors sync
-    sync_parser = connectors_subparsers.add_parser(
-        "sync",
-        help="Sync external connector catalogs",
-        description="Refresh external catalogs (Airbyte, Singer, Meltano) and write to "
-        "/registry/catalogs/. Can fetch from URL or copy from local file.",
-    )
-    sync_parser.add_argument(
-        "--catalog-url",
-        help="URL to fetch catalog from",
-    )
-    sync_parser.add_argument(
-        "--catalog-file",
-        help="Local catalog file to copy",
-    )
-    sync_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output results in JSON format",
-    )
-    sync_parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable verbose output with additional details",
-    )
-
     args = parser.parse_args()
 
     if not args.command:
         parser.print_help()
         return 2
 
-    if args.command == "ingest" or args.command == "run":
+    if args.command == "run" or args.command == "ingest":
         return run_command(args)
     elif args.command == "start":
         return start_command(args)
@@ -685,29 +607,6 @@ Examples:
         return check_command(args)
     elif args.command == "discover":
         return discover_command(args)
-    elif args.command == "connectors":
-        if args.connectors_command == "list":
-            return connectors_list_command(
-                role=args.role,
-                json_output=args.json,
-                verbose=args.verbose,
-            )
-        elif args.connectors_command == "inspect":
-            return connectors_inspect_command(
-                name=args.name,
-                engine=args.engine,
-                json_output=args.json,
-            )
-        elif args.connectors_command == "sync":
-            return connectors_sync_command(
-                catalog_url=args.catalog_url,
-                catalog_file=args.catalog_file,
-                json_output=args.json,
-                verbose=args.verbose,
-            )
-        else:
-            connectors_parser.print_help()
-            return 2
     else:
         parser.print_help()
         return 2

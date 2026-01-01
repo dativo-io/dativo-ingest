@@ -15,112 +15,115 @@ This playbook covers 21 real-world test cases to validate all capabilities of da
 
 ## Prerequisites & Setup
 
-### Step 0: Verify Python Version (CRITICAL)
+### Prerequisites Checklist
 
-**⚠️ CRITICAL:** Dativo-ingest requires **Python 3.10 or higher**. Python 3.9 and below will **NOT work** and will cause installation failures.
+Before starting, ensure you have:
+- **Python 3.10 or higher** (Python 3.9 and below will NOT work)
+- Docker and Docker Compose
+- Git
 
-#### Quick Check
-
+**Check Python version:**
 ```bash
-python3 --version
+python3 --version  # Should show 3.10.x or higher
 ```
 
-**Expected Output:**
-```
-Python 3.10.0
-```
-or higher (3.10.x, 3.11.x, 3.12.x, etc.)
-
-**If you see Python 3.9.x or below:**
-You **must** upgrade before proceeding. Installation will fail with:
-```
-ERROR: Package 'dativo-ingest' requires a different Python: 3.9.x not in '>=3.10'
-```
-
-#### Upgrade Options
-
-**Option 1: Conda (Recommended - Works on all platforms)**
-```bash
-# Create new environment with Python 3.10
-conda create -n dativo python=3.10 -y
-
-# Activate the environment
-conda activate dativo
-
-# Verify version
-python --version  # Should show 3.10.x or higher
-```
-
-**Option 2: Homebrew (macOS)**
-```bash
-# Install Python 3.10
-brew install python@3.10
-
-# Create virtual environment
-python3.10 -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate
-
-# Verify version
-python --version  # Should show 3.10.x
-```
-
-**Option 3: pyenv (All platforms)**
-```bash
-# Install Python 3.10
-pyenv install 3.10.13
-
-# Set local version
-pyenv local 3.10.13
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Verify version
-python --version  # Should show 3.10.x
-```
-
-#### Verify Before Proceeding
-
-After upgrading, verify your Python version again:
-```bash
-python3 --version
-python --version  # If using virtual environment
-```
-
-**Only proceed to Step 1 once you have Python 3.10+ confirmed.**
-
----
+If you have Python 3.9 or below, see [docs/python-setup.md](docs/python-setup.md) for upgrade instructions.
 
 ### 1. Environment Setup (5 minutes)
 
 ```bash
-# Clone and navigate to the repository
-cd /workspace
+# 1. Clone and navigate to the repository
+cd /path/to/dativo-ingest
 
-# Run automated setup
+# 2. Run automated setup script
+# This will:
+#   - Create a virtual environment (venv) with Python 3.10+
+#   - Install all dependencies
+#   - Start Docker services (Nessie, MinIO, PostgreSQL)
+#   - Create necessary directories and buckets
 ./scripts/setup-dev.sh
 
-# Source environment variables
+# 3. Activate virtual environment (IMPORTANT!)
+# The setup script activates it, but if you open a new terminal, you need to activate it again:
+source venv/bin/activate
+
+# You should see (venv) in your prompt after activation
+# Example: (venv) user@hostname dativo-ingest %
+
+# 4. Source environment variables
 source .env
 
-# Verify services are running
+# 5. Verify services are running
 docker ps | grep -E '(nessie|minio|postgres)'
 ```
+
+**Important Notes:**
+- The `dativo` command is only available when the virtual environment is activated
+- If you see "command not found: dativo", activate the venv: `source venv/bin/activate`
+- Each new terminal session requires reactivating the venv
 
 ### 2. Verify Installation
 
 ```bash
-# Test CLI
+# 1. Verify virtual environment is activated
+# Check that (venv) appears in your prompt, or:
+which python  # Should show: .../dativo-ingest/venv/bin/python
+python --version  # Should show Python 3.10+ (not 3.9 or below)
+
+# 2. Test CLI command
 dativo --help
 
-# Check infrastructure
+# If "command not found", activate venv:
+# source venv/bin/activate
+
+# Alternative: Use Python module directly (works without venv activation)
+python -m dativo_ingest.cli --help
+
+# 3. Check infrastructure services
 curl http://localhost:19120/api/v1/config  # Nessie
 curl http://localhost:9000/minio/health/live  # MinIO
 
-# MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
+# 4. MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
+```
+
+### 3. Troubleshooting Common Issues
+
+**Issue: "command not found: dativo"**
+
+**Solution:** Activate the virtual environment:
+```bash
+source venv/bin/activate
+```
+
+**Issue: "Python 3.9.x" when running `python --version`**
+
+**Solution:** You're not using the venv's Python. Activate the venv:
+```bash
+source venv/bin/activate
+python --version  # Should now show 3.10+
+```
+
+**Issue: Virtual environment not found**
+
+**Solution:** Run the setup script to create it:
+```bash
+./scripts/setup-dev.sh
+```
+
+**Issue: Services not starting**
+
+**Solution:** Check Docker is running and start services manually:
+```bash
+docker ps  # Verify Docker is running
+docker-compose -f docker-compose.dev.yml up -d
+```
+
+**Alternative: Run without activating venv**
+
+If you prefer not to activate the venv, you can use the Python module directly:
+```bash
+# Instead of: dativo ingest --config ...
+venv/bin/python -m dativo_ingest.cli ingest --config ...
 ```
 
 ---
@@ -278,6 +281,12 @@ curl -X POST "https://api.hubapi.com/crm/v3/objects/companies" \
 
 ## Top 21 Test Cases
 
+> **⚠️ Important:** Before running any test case, ensure your virtual environment is activated:
+> ```bash
+> source venv/bin/activate
+> ```
+> If you see "command not found: dativo", the venv is not activated. See [Prerequisites & Setup](#prerequisites--setup) for details.
+
 ### Test Case 1: Basic CSV to Iceberg Ingestion
 **Purpose:** Validate basic ETL pipeline with Parquet writing and Iceberg integration
 
@@ -357,7 +366,7 @@ NESSIE_URI=http://localhost:19120/api/v1
 EOF
 
 # 5. Run the job
-dativo run \
+dativo ingest \
   --config jobs/testcase1/employees_to_iceberg.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -454,7 +463,7 @@ cp data/test_case_2/orders_initial.csv data/test_case_2/orders.csv
 mkdir -p secrets/testcase2
 cp secrets/testcase1/iceberg.env secrets/testcase2/
 
-dativo run \
+dativo ingest \
   --config jobs/testcase2/orders_incremental.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -471,7 +480,7 @@ cat >> data/test_case_2/orders.csv << 'EOF'
 EOF
 
 # 8. Second run (incremental sync - will process file again since it was modified)
-dativo run \
+dativo ingest \
   --config jobs/testcase2/orders_incremental.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -549,14 +558,14 @@ dativo discover \
   --verbose
 
 # 6. Run ingestion
-dativo run \
+dativo ingest \
   --config jobs/testcase3/stripe_customers.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
 # 7. Verify data
-mc ls local/test-bucket/testcase3/stripe/customers/ --recursive
+mc ls local/test-bucket/testcase3/stripe_customers/ --recursive
 ```
 
 **Success Criteria:**
@@ -575,12 +584,21 @@ mc ls local/test-bucket/testcase3/stripe/customers/ --recursive
 # 1. Create HubSpot secrets
 mkdir -p secrets/testcase4
 cat > secrets/testcase4/hubspot.env << EOF
-HUBSPOT_API_KEY=pat-na1-YOUR_API_KEY_HERE
+# HubSpot Private App credentials (recommended for testing)
+# Airbyte HubSpot 6.0.15+ supports Private App tokens
+# From HubSpot Settings > Integrations > Private Apps
+HUBSPOT_API_KEY=pat-eu1-YOUR_ACCESS_TOKEN_HERE
+
+# Alternative: OAuth credentials (for production with refresh tokens)
+# HUBSPOT_CLIENT_ID=your_oauth_client_id
+# HUBSPOT_OAUTH_CLIENT_SECRET=your_oauth_client_secret
+# HUBSPOT_REFRESH_TOKEN=your_refresh_token
 EOF
 
 cp secrets/testcase3/iceberg.env secrets/testcase4/
 
-# 2. Create job for contacts
+# 2. Create job directory and job for contacts
+mkdir -p jobs/testcase4
 cat > jobs/testcase4/hubspot_contacts.yaml << 'EOF'
 tenant_id: testcase4
 source_connector: hubspot
@@ -642,14 +660,19 @@ dativo check \
   --verbose
 
 # 6. Run all HubSpot jobs
-dativo run \
+dativo ingest \
   --job-dir jobs/testcase4 \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
 # 7. Verify data
-mc ls local/test-bucket/testcase4/hubspot/ --recursive
+# Verify contacts
+mc ls local/test-bucket/testcase4/hubspot_contacts/ --recursive
+# Verify companies
+mc ls local/test-bucket/testcase4/hubspot_companies/ --recursive
+# Verify deals
+mc ls local/test-bucket/testcase4/hubspot_deals/ --recursive
 ```
 
 **Success Criteria:**
@@ -675,7 +698,8 @@ product_id,product_name,price,category,in_stock
 4,Widget D,39.99,,true
 EOF
 
-# 2. Create asset with strict validation
+# 2. Create asset definition (validation mode is set in job config, not asset)
+mkdir -p assets/examples/csv/v1.0
 cat > assets/examples/csv/v1.0/products.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
@@ -702,15 +726,13 @@ schema:
 target:
   file_format: parquet
   partitioning: []
-validation:
-  mode: strict  # Fail on any validation error
 team:
   owner: test@example.com
 compliance:
   classification: []
 EOF
 
-# 3. Create job
+# 3. Create job with strict validation mode
 mkdir -p jobs/testcase5 secrets/testcase5
 cat > jobs/testcase5/products_strict.yaml << 'EOF'
 tenant_id: testcase5
@@ -720,6 +742,7 @@ target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products
 asset_path: assets/examples/csv/v1.0/products.yaml
+schema_validation_mode: strict  # Fail on any validation error
 source:
   files:
     - path: data/test_case_5/products_invalid.csv
@@ -733,7 +756,7 @@ EOF
 cp secrets/testcase1/iceberg.env secrets/testcase5/
 
 # 4. Run job (expect failure)
-dativo run \
+dativo ingest \
   --config jobs/testcase5/products_strict.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -752,10 +775,12 @@ product_id,product_name,price,category,in_stock
 EOF
 
 # 6. Update job config to use valid file
-sed -i 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml
+# On macOS, use: sed -i '' 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml
+# On Linux, use: sed -i 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml
+sed -i '' 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml 2>/dev/null || sed -i 's/products_invalid/products_valid/g' jobs/testcase5/products_strict.yaml
 
 # 7. Run again
-dativo run \
+dativo ingest \
   --config jobs/testcase5/products_strict.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -777,7 +802,8 @@ dativo run \
 
 **Steps:**
 ```bash
-# 1. Create same asset with warn mode
+# 1. Create asset definition (validation mode is set in job config, not asset)
+mkdir -p assets/examples/csv/v1.0
 cat > assets/examples/csv/v1.0/products_warn.yaml << 'EOF'
 $schema: ../../schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
 apiVersion: v3.0.2
@@ -804,15 +830,13 @@ schema:
 target:
   file_format: parquet
   partitioning: []
-validation:
-  mode: warn  # Log warnings but continue
 team:
   owner: test@example.com
 compliance:
   classification: []
 EOF
 
-# 2. Create job
+# 2. Create job with warn validation mode
 mkdir -p jobs/testcase6 secrets/testcase6
 cat > jobs/testcase6/products_warn.yaml << 'EOF'
 tenant_id: testcase6
@@ -822,6 +846,7 @@ target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
 asset: products_warn
 asset_path: assets/examples/csv/v1.0/products_warn.yaml
+schema_validation_mode: warn  # Log warnings but continue processing
 source:
   files:
     - path: data/test_case_5/products_invalid.csv
@@ -835,7 +860,7 @@ EOF
 cp secrets/testcase1/iceberg.env secrets/testcase6/
 
 # 3. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase6/products_warn.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -864,24 +889,34 @@ mc ls local/test-bucket/testcase6/products/ --recursive
 # 1. Verify PostgreSQL is running (from docker-compose)
 docker ps | grep postgres
 
-# 2. Create test table and data
-docker exec -i $(docker ps -q -f name=postgres) psql -U postgres << 'EOF'
-CREATE TABLE IF NOT EXISTS employees (
-  emp_id SERIAL PRIMARY KEY,
-  first_name VARCHAR(50),
-  last_name VARCHAR(50),
-  email VARCHAR(100),
-  hire_date DATE,
-  salary DECIMAL(10,2),
-  department VARCHAR(50)
-);
+# Identify the correct container name if you have multiple postgres containers:
+# docker ps --filter "name=postgres" --format "{{.Names}}\t{{.Ports}}"
+# Use the container name that matches your docker-compose setup (typically 'dativo-postgres')
+# If your container has a different name, replace 'dativo-postgres' in the commands below
 
-INSERT INTO employees (first_name, last_name, email, hire_date, salary, department) VALUES
-('Alice', 'Johnson', 'alice@example.com', '2023-01-15', 95000.00, 'Engineering'),
-('Bob', 'Smith', 'bob@example.com', '2023-02-20', 87000.00, 'Marketing'),
-('Carol', 'Williams', 'carol@example.com', '2023-03-10', 92000.00, 'Engineering'),
-('David', 'Brown', 'david@example.com', '2023-04-05', 78000.00, 'Sales');
-EOF
+# 2. Setup PostgreSQL employees table
+# Run the testing playbook setup script to create the employees table with test data
+./scripts/testing-playbook-setup-postgres-employees.sh
+
+# Alternative: Manual setup (if script doesn't work with your setup)
+# docker exec -i dativo-postgres psql -U postgres << 'EOF'
+# CREATE TABLE IF NOT EXISTS employees (
+#   emp_id SERIAL PRIMARY KEY,
+#   first_name VARCHAR(50),
+#   last_name VARCHAR(50),
+#   email VARCHAR(100),
+#   hire_date DATE,
+#   salary DECIMAL(10,2),
+#   department VARCHAR(50),
+#   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+# );
+# 
+# INSERT INTO employees (first_name, last_name, email, hire_date, salary, department, updated_at) VALUES
+# ('Alice', 'Johnson', 'alice@example.com', '2023-01-15', 95000.00, 'Engineering', CURRENT_TIMESTAMP),
+# ('Bob', 'Smith', 'bob@example.com', '2023-02-20', 87000.00, 'Marketing', CURRENT_TIMESTAMP),
+# ('Carol', 'Williams', 'carol@example.com', '2023-03-10', 92000.00, 'Engineering', CURRENT_TIMESTAMP),
+# ('David', 'Brown', 'david@example.com', '2023-04-05', 78000.00, 'Sales', CURRENT_TIMESTAMP);
+# EOF
 
 # 3. Create asset
 cat > assets/examples/postgres/v1.0/db_employees.yaml << 'EOF'
@@ -910,7 +945,7 @@ schema:
     type: string
 target:
   file_format: parquet
-  partitioning: [department]
+  partitioning: [department]  # Suggested partitioning (must be set in job config to use)
 team:
   owner: test@example.com
 compliance:
@@ -947,25 +982,39 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
+  # Note: Partitioning can be set here to override asset definition
+  # If not specified, uses connector recipe default (typically [ingest_date])
+  # To partition by department as defined in asset, uncomment:
+  # partitioning: [department]
 EOF
 
 # 6. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase7/postgres_employees.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
 # 7. Verify data
-mc ls local/test-bucket/testcase7/postgres/employees/ --recursive
-# Should see partitions by department (Engineering, Marketing, Sales)
+mc ls local/test-bucket/testcase7/db_employees/ --recursive
+# By default, files are partitioned by ingest_date (e.g., ingest_date=2025-12-29/)
+# If you set partitioning: [department] in job config, you'll see:
+#   department=Engineering/, department=Marketing/, department=Sales/
+# Note: The path uses the asset name 'db_employees', not 'postgres/employees'
 ```
 
 **Success Criteria:**
-- ✅ All 4 employee records extracted
-- ✅ Data partitioned by department
+- ✅ Employee records extracted (check logs for exact count)
+- ✅ Parquet files created in S3/MinIO at `testcase7/db_employees/ingest_date=YYYY-MM-DD/`
 - ✅ Schema correctly mapped from PostgreSQL types
-- ✅ Parquet files created
+- ✅ Files are readable and contain expected data
+
+**Note on Partitioning:**
+- By default, files are partitioned by `ingest_date` (from connector recipe default)
+- The asset definition specifies `partitioning: [department]`, but this is only used if:
+  1. The job config's `target.partitioning` is set to `[department]`, OR
+  2. The connector recipe doesn't have a `partitioning_default`
+- To partition by department, add `partitioning: [department]` to the job's `target` section
 
 ---
 
@@ -974,11 +1023,16 @@ mc ls local/test-bucket/testcase7/postgres/employees/ --recursive
 
 **Steps:**
 ```bash
-# 1. Add updated_at column to employees table
-docker exec -i $(docker ps -q -f name=postgres) psql -U postgres << 'EOF'
-ALTER TABLE employees ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-UPDATE employees SET updated_at = CURRENT_TIMESTAMP;
-EOF
+# 1. Setup PostgreSQL employees table (if not already done)
+# The setup script creates the employees table with updated_at column
+# If you already ran Test Case 7, you can skip this step
+./scripts/testing-playbook-setup-postgres-employees.sh
+
+# Alternative: If employees table exists but missing updated_at column
+# docker exec -i dativo-postgres psql -U postgres << 'EOF'
+# ALTER TABLE employees ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+# UPDATE employees SET updated_at = CURRENT_TIMESTAMP;
+# EOF
 
 # 2. Update asset to include updated_at
 cat > assets/examples/postgres/v1.0/db_employees_incremental.yaml << 'EOF'
@@ -1018,6 +1072,9 @@ compliance:
 EOF
 
 # 3. Create incremental job
+# Note: The 'strategy' field should match the connector's incremental_strategy_default from registry/connectors.yaml
+# For postgres, this is 'updated_at'. Semantic strategy names (updated_at, created, updated_after) are
+# automatically mapped to 'cursor_field' strategy implementation.
 mkdir -p jobs/testcase8 secrets/testcase8
 cat > jobs/testcase8/postgres_employees_incremental.yaml << 'EOF'
 tenant_id: testcase8
@@ -1031,9 +1088,11 @@ source:
   tables:
     - name: employees
       schema: public
+      object: employees  # Specify object name for better state file naming
   incremental:
     enabled: true
-    cursor_field: updated_at
+    strategy: updated_at  # Semantic name (automatically mapped to 'cursor_field' strategy)
+    cursor_field: updated_at  # The actual column to track
     lookback_days: 1
 target:
   connection:
@@ -1045,30 +1104,33 @@ cp secrets/testcase7/postgres.env secrets/testcase8/
 cp secrets/testcase7/iceberg.env secrets/testcase8/
 
 # 4. First run (full sync)
-dativo run \
+dativo ingest \
   --config jobs/testcase8/postgres_employees_incremental.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
 # 5. Check state
-cat .local/state/testcase8/employees_state.json
+# State file path format: .local/state/{tenant_id}/{connector_type}.{object_name}.state.json
+# If object is not specified in tables config, it defaults to "default"
+cat .local/state/testcase8/postgres.employees.state.json
+# Note: State file may not exist until after first successful incremental sync with changes
 
 # 6. Add new employee
-docker exec -i $(docker ps -q -f name=postgres) psql -U postgres << 'EOF'
+docker exec -i dativo-postgres psql -U postgres << 'EOF'
 INSERT INTO employees (first_name, last_name, email, hire_date, salary, department, updated_at)
 VALUES ('Eve', 'Davis', 'eve@example.com', '2023-05-01', 89000.00, 'Engineering', CURRENT_TIMESTAMP);
 EOF
 
 # 7. Update existing employee
-docker exec -i $(docker ps -q -f name=postgres) psql -U postgres << 'EOF'
+docker exec -i dativo-postgres psql -U postgres << 'EOF'
 UPDATE employees
 SET salary = 98000.00, updated_at = CURRENT_TIMESTAMP
 WHERE email = 'alice@example.com';
 EOF
 
 # 8. Second run (incremental)
-dativo run \
+dativo ingest \
   --config jobs/testcase8/postgres_employees_incremental.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1079,9 +1141,16 @@ dativo run \
 
 **Success Criteria:**
 - ✅ First run processes all employees
-- ✅ State file captures max updated_at
-- ✅ Second run processes only changed records
-- ✅ State file updated with new cursor value
+- ✅ State file created at `.local/state/testcase8/postgres.employees.state.json`
+- ✅ State file contains max `updated_at` value: `{"employees.updated_at": {"last_value": "...", "updated_at": "..."}}`
+- ✅ Second run processes only changed records (new inserts + updates)
+- ✅ State file updated with new max cursor value
+
+**Note on State Files:**
+- State file path: `.local/state/{tenant_id}/{connector_type}.{object_name}.state.json`
+- If `object` is not specified in table config, it defaults to "default"
+- State is only written after successfully processing records
+- State format for cursor-based incremental: `{object_name}.{cursor_field} -> {last_value, updated_at}`
 
 ---
 
@@ -1090,7 +1159,12 @@ dativo run \
 
 **Steps:**
 ```bash
-# 1. Create job with markdown_kv target
+# 1. Setup PostgreSQL employees table (if not already done)
+# The setup script creates the employees table required for this test case
+# If you already ran Test Case 7 or 8, you can skip this step
+./scripts/testing-playbook-setup-postgres-employees.sh
+
+# 2. Create job with markdown_kv target
 mkdir -p jobs/testcase9 secrets/testcase9
 cat > jobs/testcase9/postgres_to_markdown_kv.yaml << 'EOF'
 tenant_id: testcase9
@@ -1098,14 +1172,15 @@ source_connector: postgres
 source_connector_path: connectors/postgres.yaml
 target_connector: markdown_kv
 target_connector_path: connectors/markdown_kv.yaml
-asset: db_employees_incremental
-asset_path: assets/examples/postgres/v1.0/db_employees_incremental.yaml
+asset: employees_markdown_kv_string
+asset_path: assets/examples/markdown_kv/v1.0/employees_string.yaml
 source:
   tables:
     - name: employees
       schema: public
 target:
-  storage_mode: string  # Store entire document as single column
+  markdown_kv_storage:
+    mode: string  # Store entire document as single column in Parquet
   connection:
     s3:
       bucket: "${S3_BUCKET}"
@@ -1114,24 +1189,32 @@ EOF
 cp secrets/testcase7/postgres.env secrets/testcase9/
 cp secrets/testcase7/iceberg.env secrets/testcase9/
 
-# 2. Run job
-dativo run \
+# 3. Run job
+dativo ingest \
   --config jobs/testcase9/postgres_to_markdown_kv.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
-# 3. Download and inspect Markdown-KV files
+# 4. Download and inspect output files
+# Files are stored as Parquet files in markdown_kv/employees/ path
+# (with mode: string, content is stored as markdown_kv_content column in Parquet)
 mc cp local/test-bucket/testcase9/markdown_kv/employees/ . --recursive
 
-# Expected format:
-# emp_id: 1
-# first_name: Alice
-# last_name: Johnson
-# email: alice@example.com
+# To view the Parquet file contents, you can use Python:
+# python -c "import pyarrow.parquet as pq; df = pq.read_table('employees_markdown_kv_string_000000.parquet').to_pandas(); print(df[['doc_id', 'markdown_kv_content']].to_string())"
+
+# Expected format in markdown_kv_content column:
+# emp_id:: 1
+# first_name:: Alice
+# last_name:: Johnson
+# email:: alice@example.com
+# hire_date:: 2023-01-15
+# salary:: 95000.00
+# department:: Engineering
+# updated_at:: 2023-01-15T10:30:00
 # ---
-# emp_id: 2
-# ...
+# (next employee record)
 ```
 
 **Success Criteria:**
@@ -1152,7 +1235,7 @@ mkdir -p plugins/testcase10
 cat > plugins/testcase10/json_api_reader.py << 'EOF'
 """Custom JSON API Reader Plugin"""
 import requests
-from typing import Iterator, Dict, Any, List, Optional
+from typing import Iterator, Dict, Any
 from dativo_ingest.plugins import BaseReader
 
 class JSONAPIReader(BaseReader):
@@ -1160,20 +1243,8 @@ class JSONAPIReader(BaseReader):
     
     __version__ = "1.0.0"
     
-    def extract(
-        self,
-        state_manager=None,
-        checkpoint_context: Optional[Dict[str, Any]] = None,
-    ) -> Iterator[List[Dict[str, Any]]]:
-        """Extract data from API
-        
-        Args:
-            state_manager: Optional state manager for incremental syncs
-            checkpoint_context: Optional checkpoint context for WAL resume
-            
-        Yields:
-            Batches of records as list of dictionaries
-        """
+    def extract(self, state_manager=None) -> Iterator[Dict[str, Any]]:
+        """Extract data from API"""
         connection = self.source_config.connection
         base_url = connection.get("base_url")
         endpoint = connection.get("endpoint", "/data")
@@ -1182,18 +1253,16 @@ class JSONAPIReader(BaseReader):
         response = requests.get(f"{base_url}{endpoint}")
         response.raise_for_status()
         
-        # Yield records as batches (BaseReader expects batches)
+        # Yield records
         data = response.json()
-        records = []
         if isinstance(data, list):
-            records = data
+            for record in data:
+                yield record
         elif isinstance(data, dict):
             # Handle paginated responses
             records = data.get("records", data.get("data", []))
-        
-        # Yield as a single batch (list of records)
-        if records:
-            yield records
+            for record in records:
+                yield record
     
     def check_connection(self) -> tuple[bool, str, Dict[str, Any]]:
         """Test API connectivity"""
@@ -1394,14 +1463,14 @@ cp secrets/testcase1/iceberg.env secrets/testcase11/
 # Modify job to use native CSV reader
 sed 's/custom_reader:.*//' jobs/testcase11/rust_csv_reader.yaml > jobs/testcase11/python_csv_reader.yaml
 
-time dativo run \
+time dativo ingest \
   --config jobs/testcase11/python_csv_reader.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted
 
 # 6. Run with Rust reader (compare performance)
-time dativo run \
+time dativo ingest \
   --config jobs/testcase11/rust_csv_reader.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1504,7 +1573,7 @@ target:
 EOF
 
 # 6. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase12/google_sheets_job.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1569,7 +1638,7 @@ target:
 EOF
 
 # 4. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase13/gdrive_csv_job.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1628,19 +1697,19 @@ EOF
 done
 
 # 2. Run all tenant jobs
-dativo run \
+dativo ingest \
   --job-dir jobs/tenant_a \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted &
 
-dativo run \
+dativo ingest \
   --job-dir jobs/tenant_b \
   --secret-manager filesystem \
   --secrets-dir secrets \
   --mode self_hosted &
 
-dativo run \
+dativo ingest \
   --job-dir jobs/tenant_c \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -1698,13 +1767,13 @@ target:
 EOF
 
 # 3. Run job with env secret manager (default)
-dativo run \
+dativo ingest \
   --config jobs/testcase15/env_secrets_job.yaml \
   --secret-manager env \
   --mode self_hosted
 
 # OR just omit --secret-manager (env is default)
-dativo run \
+dativo ingest \
   --config jobs/testcase15/env_secrets_job.yaml \
   --mode self_hosted
 
@@ -1721,6 +1790,43 @@ mc ls local/test-bucket/testcase15/employees/ --recursive
 - ✅ Namespace format (DATIVO_SECRET__{TENANT}__{SECRET_NAME}) works
 - ✅ Global secrets accessible to all tenants
 - ✅ Job runs successfully with env secrets
+
+---
+
+### Understanding Partitioning Configuration
+
+**How Partitioning Works:**
+
+Partitioning can be configured at three levels (in order of precedence):
+
+1. **Job Config** (`target.partitioning`) - Highest priority, overrides everything
+2. **Asset Definition** (`target.partitioning`) - Used if job config doesn't specify
+3. **Connector Recipe** (`partitioning_default`) - Fallback default if neither is set
+
+**Example:**
+```yaml
+# Asset definition (assets/examples/postgres/v1.0/db_employees.yaml)
+target:
+  partitioning: [department]  # Suggested partitioning
+
+# Connector recipe (connectors/iceberg.yaml)
+partitioning_default: [ingest_date]  # Default fallback
+
+# Job config (jobs/testcase7/postgres_employees.yaml)
+target:
+  partitioning: [department]  # This overrides both asset and connector default
+```
+
+**Important Notes:**
+- If you want to use the asset definition's partitioning, you must explicitly set it in the job config
+- The connector recipe's `partitioning_default` is used when neither job nor asset specify partitioning
+- Common partition columns: `ingest_date` (automatic date), custom columns from your data
+- Partition columns must exist in the schema
+
+**Special Case: `ingest_date`**
+- `ingest_date` is a special partition column that's automatically set to the current date
+- It doesn't need to exist in your source data schema
+- It's commonly used as a default for time-based partitioning
 
 ---
 
@@ -1843,15 +1949,18 @@ EOF
 mkdir -p jobs/testcase16 secrets/testcase16
 cp secrets/testcase1/iceberg.env secrets/testcase16/
 
-for strategy in by_region multi_partition date_partition; do
-  cat > jobs/testcase16/sales_${strategy}.yaml << EOF
+# IMPORTANT: Partitioning must be set in job config to use asset definition's partitioning
+# If omitted, connector recipe default ([ingest_date]) will be used instead
+
+# Job A: Single column partitioning
+cat > jobs/testcase16/sales_by_region.yaml << 'EOF'
 tenant_id: testcase16
 source_connector: csv
 source_connector_path: connectors/csv.yaml
 target_connector: iceberg
 target_connector_path: connectors/iceberg.yaml
-asset: sales_${strategy}
-asset_path: assets/examples/csv/v1.0/sales_${strategy}.yaml
+asset: sales_by_region
+asset_path: assets/examples/csv/v1.0/sales_by_region.yaml
 source:
   files:
     - path: data/test_case_16/sales_data.csv
@@ -1859,13 +1968,53 @@ source:
 target:
   connection:
     s3:
-      bucket: "\${S3_BUCKET}"
+      bucket: "${S3_BUCKET}"
+  partitioning: [region]  # Must set here to use asset definition's partitioning
 EOF
-done
+
+# Job B: Multi-level partitioning
+cat > jobs/testcase16/sales_multi_partition.yaml << 'EOF'
+tenant_id: testcase16
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: sales_multi_partition
+asset_path: assets/examples/csv/v1.0/sales_multi_partition.yaml
+source:
+  files:
+    - path: data/test_case_16/sales_data.csv
+      object: sales
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+  partitioning: [region, product_category]  # Must set here to use asset definition's partitioning
+EOF
+
+# Job C: Date partitioning
+cat > jobs/testcase16/sales_date_partition.yaml << 'EOF'
+tenant_id: testcase16
+source_connector: csv
+source_connector_path: connectors/csv.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: sales_date_partition
+asset_path: assets/examples/csv/v1.0/sales_date_partition.yaml
+source:
+  files:
+    - path: data/test_case_16/sales_data.csv
+      object: sales
+target:
+  connection:
+    s3:
+      bucket: "${S3_BUCKET}"
+  partitioning: [ingest_date]  # Must set here to use asset definition's partitioning
+EOF
 
 # 3. Run all strategies
 for strategy in by_region multi_partition date_partition; do
-  dativo run \
+  dativo ingest \
     --config jobs/testcase16/sales_${strategy}.yaml \
     --secret-manager filesystem \
     --secrets-dir secrets \
@@ -1943,7 +2092,7 @@ OPENMETADATA_AUTH_TOKEN=your_token_here
 EOF
 
 # 3. Run job
-dativo run \
+dativo ingest \
   --config jobs/testcase17/catalog_integration_job.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2073,7 +2222,7 @@ target:
 EOF
 
 # Run and expect immediate failure (non-retryable)
-dativo run \
+dativo ingest \
   --config jobs/testcase19/invalid_creds.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2135,7 +2284,7 @@ target:
 EOF
 
 # Run both jobs
-dativo run \
+dativo ingest \
   --job-dir jobs/testcase19_multi \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2336,7 +2485,7 @@ for job in stripe_customers_daily hubspot_contacts_hourly postgres_orders_freque
 done
 
 # 5. Run all jobs once
-dativo run \
+dativo ingest \
   --job-dir jobs/production \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2445,9 +2594,9 @@ mkdir -p jobs/testcase21
 cat > jobs/testcase21/mimesis_customers_to_iceberg.yaml << 'EOF'
 tenant_id: testcase21
 source_connector: mimesis
-source_connector_path: connectors/examples/mimesis.yaml
+source_connector_path: connectors/mimesis.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: mimesis_customers
 asset_path: assets/examples/mimesis/v1.0/customers.yaml
 
@@ -2471,12 +2620,15 @@ target:
   connection:
     s3:
       bucket: "${S3_BUCKET}"
-  catalog:
-    type: nessie
-    uri: "${NESSIE_URI}"
-    database: test_db
-    table: synthetic_customers
   partitioning: [ingest_date]
+
+# Catalog configuration (optional - for Iceberg table registration)
+catalog:
+  type: nessie
+  connection:
+    uri: "${NESSIE_URI}"
+  database: test_db
+  table_name: synthetic_customers
 
 # Schema validation
 schema_validation_mode: warn
@@ -2494,7 +2646,7 @@ NESSIE_URI=http://localhost:19120/api/v1
 EOF
 
 # 4. Run the job
-dativo run \
+dativo ingest \
   --config jobs/testcase21/mimesis_customers_to_iceberg.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2502,19 +2654,23 @@ dativo run \
 
 # 5. Verify results
 # Check Parquet files in MinIO
-mc ls local/test-bucket/testcase21/synthetic_customers/ --recursive
+# Note: Files are written using the asset name 'mimesis_customers', not the catalog table name
+mc ls local/test-bucket/testcase21/mimesis_customers/ --recursive
 
 # Verify file count and sizes
-mc stat local/test-bucket/testcase21/synthetic_customers/ingest_date=*/part-*.parquet
+# Note: Use quotes to prevent shell glob expansion, or check a specific file
+mc stat 'local/test-bucket/testcase21/mimesis_customers/ingest_date=2025-12-31/mimesis_customers_000000.parquet'
+# Or list all files to see count:
+mc ls local/test-bucket/testcase21/mimesis_customers/ingest_date=2025-12-31/ | wc -l
 
 # 6. Generate larger dataset for performance testing
-# Update job config to generate 100K records
+# Update job config to generate 10M records for meaningful performance comparison
 cat > jobs/testcase21/mimesis_performance_test.yaml << 'EOF'
 tenant_id: testcase21
 source_connector: mimesis
-source_connector_path: connectors/examples/mimesis.yaml
+source_connector_path: connectors/mimesis.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: mimesis_customers
 asset_path: assets/examples/mimesis/v1.0/customers.yaml
 source:
@@ -2524,8 +2680,8 @@ source:
     type: native
     options:
       native:
-        row_count: 100000  # 100K records for performance testing
-        batch_size: 10000  # Larger batches for better performance
+        row_count: 10000000  # 10M records for performance testing (shows Rust advantages)
+        batch_size: 50000  # Larger batches for better performance
         locale: "en"
         seed: 42
 target:
@@ -2538,7 +2694,7 @@ schema_validation_mode: warn
 EOF
 
 # Run performance test
-time dativo run \
+time dativo ingest \
   --config jobs/testcase21/mimesis_performance_test.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2548,9 +2704,9 @@ time dativo run \
 cat > jobs/testcase21/mimesis_multilocale.yaml << 'EOF'
 tenant_id: testcase21
 source_connector: mimesis
-source_connector_path: connectors/examples/mimesis.yaml
+source_connector_path: connectors/mimesis.yaml
 target_connector: iceberg
-target_connector_path: connectors/examples/iceberg.yaml
+target_connector_path: connectors/iceberg.yaml
 asset: mimesis_customers
 asset_path: assets/examples/mimesis/v1.0/customers.yaml
 source:
@@ -2561,7 +2717,7 @@ source:
     options:
       native:
         row_count: 5000
-        locale: "ru"  # Russian locale for Cyrillic names
+        locale: "pl"  # Polish locale for Polish names
         seed: 123
 target:
   type: iceberg
@@ -2572,7 +2728,7 @@ target:
 EOF
 
 # Run with different locale
-dativo run \
+dativo ingest \
   --config jobs/testcase21/mimesis_multilocale.yaml \
   --secret-manager filesystem \
   --secrets-dir secrets \
@@ -2588,14 +2744,14 @@ dativo run \
 **Success Criteria:**
 - ✅ Exit code 0
 - ✅ Synthetic data generated successfully
-- ✅ Parquet files created in MinIO at `testcase21/synthetic_customers/ingest_date=YYYY-MM-DD/`
+- ✅ Parquet files created in MinIO at `testcase21/mimesis_customers/ingest_date=YYYY-MM-DD/`
 - ✅ Generated data matches asset schema
 - ✅ Required fields are always present
 - ✅ Optional fields respect null_probability setting
 - ✅ Data types match schema definitions (integer, string, date, double, boolean)
 - ✅ Locale settings affect generated names/addresses appropriately
 - ✅ Seed ensures reproducible data generation
-- ✅ Performance test completes in reasonable time (100K records)
+- ✅ Performance test completes in reasonable time (10M records for comprehensive testing)
 - ✅ Iceberg table registered in Nessie catalog (if catalog enabled)
 
 **Key Features Demonstrated:**
@@ -2618,6 +2774,269 @@ dativo run \
 
 ---
 
+### Test Case 22: Mimesis Data with Rust Parquet Writer
+**Purpose:** Use Rust Parquet writer plugin for storage-optimized writing of Mimesis-generated data with ZSTD compression
+
+**Use Cases:**
+- Storage optimization for large-scale synthetic data generation
+- Demonstrating Rust plugin compression benefits (ZSTD)
+- Combining Mimesis source with Rust writer for storage cost reduction
+- Long-term data archival with maximum compression
+
+**Prerequisites:**
+- Rust toolchain installed (for building plugins)
+- Rust Parquet writer plugin built
+
+**Steps:**
+```bash
+# 1. Build Rust Parquet writer plugin (if not already built)
+cd examples/plugins/rust
+make build-release
+# Or manually:
+# cargo build --release
+cd ../../..
+
+# Verify plugin exists (macOS uses .dylib, Linux uses .so)
+ls -la examples/plugins/rust/target/release/libparquet_writer_plugin.*
+# Should show: libparquet_writer_plugin.dylib (macOS) or libparquet_writer_plugin.so (Linux)
+
+# 2. Reuse asset definition from Test Case 21
+# assets/examples/mimesis/v1.0/customers.yaml already exists
+
+# 3. Determine plugin path based on what file exists (more reliable than platform detection)
+# macOS uses .dylib, Linux uses .so
+if [ -f "examples/plugins/rust/target/release/libparquet_writer_plugin.dylib" ]; then
+    RUST_WRITER_PLUGIN="examples/plugins/rust/target/release/libparquet_writer_plugin.dylib:create_writer"
+    exit 0
+elif [ -f "examples/plugins/rust/target/release/libparquet_writer_plugin.so" ]; then
+    RUST_WRITER_PLUGIN="examples/plugins/rust/target/release/libparquet_writer_plugin.so:create_writer"
+    exit 0
+else
+    echo "Error: Rust Parquet writer plugin not found!"
+    echo "Please build it first: cd examples/plugins/rust && make build-release"
+    exit 1
+fi
+
+echo "Using Rust writer plugin: $RUST_WRITER_PLUGIN"
+
+# 4. Create job configuration with Rust writer
+mkdir -p jobs/testcase22
+cat > jobs/testcase22/mimesis_rust_writer.yaml << EOF
+tenant_id: testcase22
+source_connector: mimesis
+source_connector_path: connectors/mimesis.yaml
+target_connector: iceberg
+target_connector_path: connectors/iceberg.yaml
+asset: mimesis_customers
+asset_path: assets/examples/mimesis/v1.0/customers.yaml
+
+# Source configuration - Mimesis synthetic data generation
+source:
+  type: mimesis
+  object: customers
+  engine:
+    type: native
+    options:
+      native:
+        row_count: 10000000  # Generate 10M records for performance comparison (shows Rust advantages)
+        batch_size: 100000  # Larger batches reduce FFI overhead (fewer calls = 100 FFI calls for 10M)
+        locale: "en"
+        seed: 42
+        null_probability: 0.1
+
+# Target configuration - Using Rust Parquet writer
+target:
+  type: iceberg
+  # Specify Rust Parquet writer plugin (auto-detected based on available file)
+  # Format: "path/to/libplugin.so:create_writer" or "path/to/libplugin.dylib:create_writer"
+  custom_writer: "$RUST_WRITER_PLUGIN"
+  connection:
+    s3:
+      bucket: "\${S3_BUCKET}"
+  partitioning: [ingest_date]
+  engine:
+    options:
+      # Rust writer options - optimized for compression and performance
+      compression: "zstd"  # Better compression than snappy (20-30% smaller files)
+      row_group_size: 100000  # Larger groups for better compression efficiency
+
+# Schema validation
+schema_validation_mode: warn
+EOF
+
+# 5. Create secrets (reuse from Test Case 21)
+mkdir -p secrets/testcase22
+cp secrets/testcase21/iceberg.env secrets/testcase22/
+
+# 6. Verify Rust writer will be used (check config)
+echo "Verifying custom_writer is set in job config..."
+if grep -q "custom_writer: \"\"" jobs/testcase22/mimesis_rust_writer.yaml || \
+   grep -q "custom_writer: \"${RUST_WRITER_PLUGIN}\"" jobs/testcase22/mimesis_rust_writer.yaml && \
+   [ -z "$RUST_WRITER_PLUGIN" ]; then
+    echo "ERROR: custom_writer is empty or variable not expanded! Updating with detected plugin path..."
+    # Update the config file with the detected plugin path
+    sed -i.bak "s|custom_writer:.*|custom_writer: \"$RUST_WRITER_PLUGIN\"|" jobs/testcase22/mimesis_rust_writer.yaml
+    rm -f jobs/testcase22/mimesis_rust_writer.yaml.bak
+fi
+echo "Current custom_writer setting:"
+grep "custom_writer:" jobs/testcase22/mimesis_rust_writer.yaml
+
+# 7. Run job with Rust writer and capture logs
+echo "Running job with Rust writer..."
+time dativo ingest \
+  --config jobs/testcase22/mimesis_rust_writer.yaml \
+  --secret-manager filesystem \
+  --secrets-dir secrets \
+  --mode self_hosted 2>&1 | tee /tmp/testcase22_rust_writer.log
+
+# 8. Verify Rust writer was actually used (check logs)
+echo ""
+echo "=== Verifying Rust writer was used ==="
+if grep -q "Loading custom writer from:" /tmp/testcase22_rust_writer.log; then
+    echo "✅ Custom writer loading detected"
+    grep "Loading custom writer from:" /tmp/testcase22_rust_writer.log
+else
+    echo "❌ WARNING: No custom writer loading detected! Rust writer may not be active."
+fi
+
+if grep -q "Custom writer initialized" /tmp/testcase22_rust_writer.log; then
+    echo "✅ Custom writer initialized successfully"
+    grep "Custom writer initialized" /tmp/testcase22_rust_writer.log
+else
+    echo "❌ WARNING: Custom writer initialization not found in logs!"
+fi
+
+# Check for Rust-specific log messages
+if grep -qi "rust" /tmp/testcase22_rust_writer.log; then
+    echo "✅ Rust-related log messages found"
+    grep -i "rust" /tmp/testcase22_rust_writer.log | head -5
+fi
+
+# 9. Compare with Python writer (Test Case 21)
+echo ""
+echo "=== Running Python writer for comparison ==="
+echo "Running Test Case 21 with same row_count (10M) for fair comparison..."
+echo "Note: This will take longer - 10M records is a significant dataset size"
+time dativo ingest \
+  --config jobs/testcase21/mimesis_performance_test.yaml \
+  --secret-manager filesystem \
+  --secrets-dir secrets \
+  --mode self_hosted 2>&1 | tee /tmp/testcase21_python_writer.log
+
+# 10. Verify results and compare file sizes
+echo ""
+echo "=== Comparing file sizes ==="
+
+# Get Rust writer file sizes
+echo "Rust writer files (Test Case 22):"
+RUST_FILES=$(mc ls local/test-bucket/testcase22/mimesis_customers/ --recursive | grep "\.parquet$" | awk '{print $5, $6}')
+if [ -n "$RUST_FILES" ]; then
+    echo "$RUST_FILES"
+    RUST_TOTAL_SIZE=$(mc ls local/test-bucket/testcase22/mimesis_customers/ --recursive | grep "\.parquet$" | awk '{sum+=$5} END {print sum}')
+    echo "Total Rust writer size: $RUST_TOTAL_SIZE bytes"
+else
+    echo "No Parquet files found for Rust writer"
+fi
+
+# Get Python writer file sizes
+echo ""
+echo "Python writer files (Test Case 21):"
+PYTHON_FILES=$(mc ls local/test-bucket/testcase21/mimesis_customers/ --recursive | grep "\.parquet$" | awk '{print $5, $6}')
+if [ -n "$PYTHON_FILES" ]; then
+    echo "$PYTHON_FILES"
+    PYTHON_TOTAL_SIZE=$(mc ls local/test-bucket/testcase21/mimesis_customers/ --recursive | grep "\.parquet$" | awk '{sum+=$5} END {print sum}')
+    echo "Total Python writer size: $PYTHON_TOTAL_SIZE bytes"
+else
+    echo "No Parquet files found for Python writer"
+fi
+
+# Compare sizes
+if [ -n "$RUST_TOTAL_SIZE" ] && [ -n "$PYTHON_TOTAL_SIZE" ]; then
+    echo ""
+    echo "=== Size Comparison ==="
+    echo "Python writer total: $PYTHON_TOTAL_SIZE bytes"
+    echo "Rust writer total:   $RUST_TOTAL_SIZE bytes"
+    SIZE_DIFF=$((PYTHON_TOTAL_SIZE - RUST_TOTAL_SIZE))
+    SIZE_PCT=$((SIZE_DIFF * 100 / PYTHON_TOTAL_SIZE))
+    if [ $SIZE_DIFF -gt 0 ]; then
+        echo "Rust writer is $SIZE_DIFF bytes smaller ($SIZE_PCT% better compression)"
+    elif [ $SIZE_DIFF -lt 0 ]; then
+        echo "Rust writer is $((-$SIZE_DIFF)) bytes larger ($((-$SIZE_PCT))% larger)"
+    else
+        echo "File sizes are identical"
+    fi
+fi
+
+# 11. Compare execution times
+echo ""
+echo "=== Performance Summary ==="
+echo "Check the 'time' output above for execution time comparison"
+echo ""
+echo "Expected Results:"
+echo "  - Speed: Rust writer may be slightly faster (1-5%) or similar to Python"
+echo "  - Compression: Rust writer files should be 70-80% smaller (ZSTD advantage)"
+echo "  - Storage: Significant storage savings with Rust writer"
+echo ""
+echo "Note: FFI overhead (JSON serialization) limits speed improvements."
+echo "Primary benefit is storage optimization, not speed."
+```
+
+**Success Criteria:**
+- ✅ Rust writer plugin successfully loads (verified in logs)
+- ✅ 10M records generated and written
+- ✅ Parquet files created with ZSTD compression (better compression ratio)
+- ✅ File sizes are 70-80% smaller than Python writer (ZSTD compression advantage)
+- ✅ Data integrity maintained (all records valid)
+- ✅ Logs confirm "Loading custom writer" and "Custom writer initialized"
+
+**Actual Performance Results (10M records):**
+- **Python Writer (Test Case 21):** 10:08.64 (608.64 seconds)
+- **Rust Writer (Test Case 22):** 10:01.52 (601.52 seconds)
+- **Speed Improvement:** 1.2% faster (minimal due to FFI overhead)
+- **Compression:** 78.6% smaller files (2.6 MiB → 557 KiB per file)
+- **Storage Savings:** ~204 MiB total for 10M records (78.6% reduction)
+
+**Key Insights:**
+- **Primary Benefit:** Storage optimization, not speed
+- **Compression:** ZSTD provides excellent compression (70-80% smaller files)
+- **Performance:** FFI overhead (JSON serialization) limits speed improvements
+- **Use Case:** Rust writer is best for storage-optimized workloads, not speed-critical ones
+
+**Optimization Notes:**
+- **Batch size:** 100K minimizes FFI overhead (only 100 FFI calls for 10M records)
+- **Compression:** Using `zstd` for maximum compression ratio (70-80% smaller files)
+- **Row group size:** 100K for optimal compression efficiency
+- **Dataset size:** 10M records shows compression benefits clearly
+- **FFI Overhead:** JSON serialization/deserialization for each batch limits speed gains
+- **Verification:** Logs are checked to ensure Rust writer is actually being used
+
+**When to Use Rust Writer:**
+- ✅ Storage optimization is priority (ZSTD compression)
+- ✅ Large datasets where storage costs matter
+- ✅ Long-term data archival
+- ❌ Speed-critical workloads (FFI overhead negates benefits)
+- ❌ Small datasets (overhead not amortized)
+
+**Key Features Demonstrated:**
+- Rust plugin integration for storage-optimized writing
+- Mimesis + Rust writer combination for compression benefits
+- ZSTD compression optimization (70-80% file size reduction)
+- FFI bridge between Python and Rust
+- Storage cost optimization for large datasets
+- Large batch processing with optimized row group sizes
+
+**Tips:**
+- Build Rust plugins in release mode: `cargo build --release`
+- Use larger `batch_size` (50K-100K) with Rust writers to minimize FFI overhead
+- **ZSTD compression:** Provides excellent compression (70-80% smaller files) but minimal speed improvement
+- **Snappy compression:** Faster but less compression (use for speed-critical workloads)
+- Adjust `row_group_size` based on your data characteristics (larger = better compression, more memory)
+- **Primary benefit:** Storage optimization, not speed (FFI overhead limits speed gains)
+- **Best use case:** Long-term data archival, storage cost optimization
+- See [examples/plugins/rust/README.md](examples/plugins/rust/README.md) for Rust plugin details
+
+---
+
 ## Advanced Testing Scenarios
 
 ### Scenario A: Disaster Recovery
@@ -2625,19 +3044,19 @@ dativo run \
 
 ```bash
 # 1. Run a job and capture state
-dativo run --config jobs/testcase2/orders_incremental.yaml ...
+dativo ingest --config jobs/testcase2/orders_incremental.yaml ...
 
 # 2. Simulate failure - stop MinIO
 docker stop $(docker ps -q -f name=minio)
 
 # 3. Attempt to run job (should fail gracefully)
-dativo run --config jobs/testcase2/orders_incremental.yaml ...
+dativo ingest --config jobs/testcase2/orders_incremental.yaml ...
 
 # 4. Restart MinIO
 docker start $(docker ps -a -q -f name=minio)
 
 # 5. Run job again (should resume from last state)
-dativo run --config jobs/testcase2/orders_incremental.yaml ...
+dativo ingest --config jobs/testcase2/orders_incremental.yaml ...
 ```
 
 ### Scenario B: Schema Evolution
@@ -2645,7 +3064,7 @@ dativo run --config jobs/testcase2/orders_incremental.yaml ...
 
 ```bash
 # 1. Run initial ingestion
-dativo run --config jobs/testcase1/employees_to_iceberg.yaml ...
+dativo ingest --config jobs/testcase1/employees_to_iceberg.yaml ...
 
 # 2. Add new column to CSV
 cat >> data/test_case_1/employees.csv << 'EOF'
@@ -2656,26 +3075,27 @@ EOF
 # Edit assets/examples/csv/v1.0/employees.yaml - add "title" field
 
 # 4. Re-run job
-dativo run --config jobs/testcase1/employees_to_iceberg.yaml ...
+dativo ingest --config jobs/testcase1/employees_to_iceberg.yaml ...
 
 # Expected: Schema evolution handled (if catalog supports it)
 ```
 
 ### Scenario C: Large-Scale Performance Testing
-**Test with 1M+ records**
+**Test with 10M+ records (use Test Case 21/22 for performance comparison)**
 
 ```bash
-# Generate 1M records
+# For 10M records, use Test Case 21 (Python) and Test Case 22 (Rust) for comparison
+# Example: Generate 10M records for custom testing
 python << 'EOF'
 import csv
-for i in range(1000000):
+for i in range(10000000):
     if i == 0:
         print("id,name,value")
     print(f"{i},User_{i},{i * 1.5}")
 EOF > data/large_scale_test.csv
 
 # Run with Rust plugin for performance
-dativo run --config jobs/large_scale_job.yaml ...
+dativo ingest --config jobs/large_scale_job.yaml ...
 
 # Monitor:
 # - Memory usage
@@ -2713,8 +3133,9 @@ This playbook covers:
 3. Progress through database connectors (Test Cases 7-9)
 4. Experiment with custom plugins (Test Cases 10-11)
 5. Test synthetic data generation (Test Case 21) - great for performance testing
-6. Test advanced features (Test Cases 12-20)
-7. Simulate production scenarios (Test Case 20)
+6. Test Rust writer performance (Test Case 22) - compare with Python writer
+7. Test advanced features (Test Cases 12-20)
+8. Simulate production scenarios (Test Case 20)
 
 ### 📚 Additional Resources
 - [README.md](README.md) - Platform overview

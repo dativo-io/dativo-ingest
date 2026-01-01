@@ -1,0 +1,1 @@
+{"connectors": [{"name": "test_connector", "external_id": "test-id", "docker_image_default": "test/image:1.0"}]}
