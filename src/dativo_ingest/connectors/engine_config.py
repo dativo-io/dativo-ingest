@@ -44,15 +44,23 @@ class EngineConfigParser:
         return str(default_engine) if default_engine else "native"
 
     def _get_engine_options(self) -> Dict[str, Any]:
-        """Get engine-specific options from connector recipe.
+        """Get engine-specific options from connector recipe and source config.
 
         Returns:
             Dictionary of engine options
         """
+        options = {}
+
+        # 1. Recipe defaults
         default_engine = self.connector_recipe.default_engine
         if isinstance(default_engine, dict):
-            return default_engine.get("options", {})
-        return {}
+            options.update(default_engine.get("options", {}))
+
+        # 2. Source config overrides
+        if self.source_config.engine and isinstance(self.source_config.engine, dict):
+            options.update(self.source_config.engine.get("options", {}))
+
+        return options
 
     def build_airbyte_config(self) -> Dict[str, Any]:
         """Build Airbyte connector configuration.
@@ -207,9 +215,11 @@ class EngineConfigParser:
         """Get Docker image for Airbyte connector with catalog resolution.
 
         Resolution priority:
-        1. Airbyte options in connector recipe
-        2. Connector registry with catalog lookup
-        3. None
+        1. Job-level source config override
+        2. Airbyte options in connector recipe
+        3. External Catalog (e.g. Airbyte JSON)
+        4. Connector Registry (connectors.yaml)
+        5. None
 
         Returns:
             Docker image name or None
@@ -218,18 +228,20 @@ class EngineConfigParser:
             airbyte_opts = self.engine_options.get("airbyte", {})
             docker_image = airbyte_opts.get("docker_image")
 
-            # If docker_image not in recipe, try registry resolution
-            if not docker_image:
-                docker_image = self._resolve_airbyte_image_from_registry()
-
-            return docker_image
+            # Always try registry resolution to support catalogs, passing any specific overrides found
+            return self._resolve_airbyte_image_from_registry(docker_image)
         return None
 
-    def _resolve_airbyte_image_from_registry(self) -> Optional[str]:
+    def _resolve_airbyte_image_from_registry(
+        self, job_docker_image: Optional[str] = None
+    ) -> Optional[str]:
         """Resolve Airbyte docker image from registry.
 
         This helper encapsulates registry resolution logic for EngineConfigParser.
         It handles registry errors gracefully, logging warnings but not crashing.
+
+        Args:
+            job_docker_image: Optional docker image override from job/recipe
 
         Returns:
             Docker image name if resolved, None otherwise
@@ -237,8 +249,20 @@ class EngineConfigParser:
         logger = get_logger()
         try:
             registry = ConnectorRegistry.from_default_paths()
+
+            # Prepare overrides
+            job_overrides = {}
+            if job_docker_image:
+                job_overrides["docker_image"] = job_docker_image
+
+            airbyte_opts = self.engine_options.get("airbyte", {})
+            if airbyte_opts.get("version"):
+                job_overrides["version"] = airbyte_opts.get("version")
+
             resolved = registry.resolve_connector(
-                self.source_config.type, engine=self.engine_type
+                self.source_config.type,
+                engine=self.engine_type,
+                job_overrides=job_overrides,
             )
             if resolved:
                 return resolved.docker_image

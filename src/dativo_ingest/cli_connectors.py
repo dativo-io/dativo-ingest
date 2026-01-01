@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from .logging import get_logger
 from .registry import (
     CatalogLoader,
+    CatalogSyncer,
     ConnectorRegistry,
     RegistryLoadError,
     RegistryNotFoundError,
@@ -276,15 +277,19 @@ def connectors_sync_command(
 
         # Handle URL sync
         if catalog_url:
-            error_msg = (
-                "URL sync not implemented. "
-                "Use --catalog-file to sync from a local JSON file."
-            )
-            if json_output:
-                print(json.dumps({"error": error_msg}, indent=2))
-            else:
-                print(f"ERROR: {error_msg}", file=sys.stderr)
-            return 2
+            syncer = CatalogSyncer(catalogs_dir)
+            try:
+                dest_path = syncer.sync_from_url(catalog_url)
+                synced = True
+                if not json_output:
+                    print(f"✓ Synced catalog from {catalog_url} -> {dest_path}")
+            except Exception as e:
+                error_msg = f"Failed to sync catalog from URL: {e}"
+                if json_output:
+                    print(json.dumps({"error": error_msg}, indent=2))
+                else:
+                    print(f"ERROR: {error_msg}", file=sys.stderr)
+                return 2
 
         # Handle file copy
         if catalog_file:

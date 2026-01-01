@@ -209,9 +209,7 @@ Sync external connector catalogs.
 
 **Currently Supported:**
 - `--catalog-file <path>`: Copy a local JSON catalog file to the catalogs directory
-
-**Not Yet Implemented:**
-- `--catalog-url`: URL-based catalog sync (will error clearly if attempted)
+- `--catalog-url <url>`: Download catalog JSON from a remote URL (e.g., Airbyte OSS registry)
 
 ```bash
 # Show current catalogs
@@ -219,6 +217,9 @@ dativo connectors sync
 
 # Copy catalog from local file
 dativo connectors sync --catalog-file /path/to/airbyte-catalog.json
+
+# Download catalog from URL
+dativo connectors sync --catalog-url https://connectors.airbyte.com/files/registries/v0/oss_registry.json
 
 # JSON output
 dativo connectors sync --json
@@ -496,11 +497,10 @@ jsonschema -i registry/connectors.yaml schemas/connectors.schema.json
 
 Potential future improvements:
 
-1. **Automatic Catalog Sync**: Download catalogs from URLs
-2. **Catalog Versioning**: Track catalog versions and updates
-3. **Connector Templates**: Enhanced templates with catalog metadata
-4. **Multi-Source Aggregation**: Merge multiple catalogs intelligently
-5. **Capability Matching**: Match job requirements to connector capabilities
+1. **Catalog Versioning**: Track catalog versions and updates
+2. **Connector Templates**: Enhanced templates with catalog metadata
+3. **Multi-Source Aggregation**: Merge multiple catalogs intelligently
+4. **Capability Matching**: Match job requirements to connector capabilities
 
 ## Migration Guide
 
@@ -611,7 +611,7 @@ dativo connectors list [--role {source,target}] [--json] [--verbose]
 dativo connectors inspect <name> [--engine {airbyte,singer,meltano}] [--json]
 
 # Sync catalogs
-dativo connectors sync [--catalog-file PATH] [--json] [--verbose]
+dativo connectors sync [--catalog-file PATH] [--catalog-url URL] [--json] [--verbose]
 ```
 
 ## Security Considerations
