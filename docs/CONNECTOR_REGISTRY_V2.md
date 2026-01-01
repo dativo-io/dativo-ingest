@@ -209,13 +209,14 @@ Sync external connector catalogs.
 
 **Currently Supported:**
 - `--catalog-file <path>`: Copy a local JSON catalog file to the catalogs directory
-
-**Not Yet Implemented:**
-- `--catalog-url`: URL-based catalog sync (will error clearly if attempted)
+- `--catalog-url <url>`: Download a remote catalog and cache it (Airbyte index JSON is normalized)
 
 ```bash
 # Show current catalogs
 dativo connectors sync
+
+# Sync from a remote URL (Airbyte index JSON is normalized and cached as airbyte.json)
+dativo connectors sync --catalog-url https://example.com/airbyte-index.json
 
 # Copy catalog from local file
 dativo connectors sync --catalog-file /path/to/airbyte-catalog.json

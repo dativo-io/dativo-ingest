@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .logging import get_logger
+from .connector_catalog import CatalogSyncError, sync_catalog_url_to_cache
 from .registry import (
     CatalogLoader,
     ConnectorRegistry,
@@ -276,15 +277,36 @@ def connectors_sync_command(
 
         # Handle URL sync
         if catalog_url:
-            error_msg = (
-                "URL sync not implemented. "
-                "Use --catalog-file to sync from a local JSON file."
+            try:
+                result = sync_catalog_url_to_cache(
+                    catalog_url=catalog_url,
+                    destination_dir=catalogs_dir,
+                    # Default to Airbyte cache location for remote sync
+                    destination_filename="airbyte.json",
+                )
+            except CatalogSyncError as e:
+                if json_output:
+                    print(json.dumps({"error": str(e)}, indent=2))
+                else:
+                    print(f"ERROR: {e}", file=sys.stderr)
+                return 2
+
+            logger.info(
+                f"Synced catalog from URL: {catalog_url}",
+                extra={
+                    "event_type": "catalog_synced",
+                    "catalog": result.catalog_name,
+                    "destination": str(result.destination),
+                    "connector_count": result.connector_count,
+                    "normalized": result.normalized,
+                },
             )
-            if json_output:
-                print(json.dumps({"error": error_msg}, indent=2))
-            else:
-                print(f"ERROR: {error_msg}", file=sys.stderr)
-            return 2
+            synced = True
+            if not json_output:
+                print(
+                    f"✓ Synced catalog from URL -> {result.destination} "
+                    f"({result.connector_count} connectors)"
+                )
 
         # Handle file copy
         if catalog_file:

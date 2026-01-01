@@ -5,6 +5,11 @@ import os
 import sys
 from pathlib import Path
 
+from .cli_connectors import (
+    connectors_inspect_command,
+    connectors_list_command,
+    connectors_sync_command,
+)
 from .cli_commands import (
     ConnectionChecker,
     DiscoveryService,
@@ -593,6 +598,72 @@ Examples:
         help="Enable verbose output with additional details",
     )
 
+    # Connectors command group (registry + external catalogs)
+    connectors_parser = subparsers.add_parser(
+        "connectors",
+        help="Manage connector registry and external catalogs",
+        description="List and inspect connectors, and sync external catalogs (Airbyte/Singer/Meltano).",
+    )
+    connectors_subparsers = connectors_parser.add_subparsers(
+        dest="connectors_command", help="Connector subcommand"
+    )
+
+    connectors_list_parser = connectors_subparsers.add_parser(
+        "list", help="List all registered connectors"
+    )
+    connectors_list_parser.add_argument(
+        "--role",
+        choices=["source", "target"],
+        help="Filter by role",
+    )
+    connectors_list_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    connectors_list_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with additional details",
+    )
+
+    connectors_inspect_parser = connectors_subparsers.add_parser(
+        "inspect", help="Inspect a specific connector"
+    )
+    connectors_inspect_parser.add_argument("name", help="Connector name")
+    connectors_inspect_parser.add_argument(
+        "--engine",
+        choices=["airbyte", "singer", "meltano"],
+        help="Engine override for resolution",
+    )
+    connectors_inspect_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+
+    connectors_sync_parser = connectors_subparsers.add_parser(
+        "sync", help="Sync external connector catalogs"
+    )
+    connectors_sync_parser.add_argument(
+        "--catalog-url",
+        help="URL to fetch catalog from (Airbyte index JSON supported and normalized)",
+    )
+    connectors_sync_parser.add_argument(
+        "--catalog-file",
+        help="Local catalog JSON file to copy into registry/catalogs/",
+    )
+    connectors_sync_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    connectors_sync_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with additional details",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -607,6 +678,24 @@ Examples:
         return check_command(args)
     elif args.command == "discover":
         return discover_command(args)
+    elif args.command == "connectors":
+        if args.connectors_command == "list":
+            return connectors_list_command(
+                role=args.role, json_output=args.json, verbose=args.verbose
+            )
+        if args.connectors_command == "inspect":
+            return connectors_inspect_command(
+                args.name, engine=args.engine, json_output=args.json
+            )
+        if args.connectors_command == "sync":
+            return connectors_sync_command(
+                catalog_url=args.catalog_url,
+                catalog_file=args.catalog_file,
+                json_output=args.json,
+                verbose=args.verbose,
+            )
+        connectors_parser.print_help()
+        return 2
     else:
         parser.print_help()
         return 2

@@ -8,7 +8,8 @@ from typing import Any, Dict, Optional
 
 import yaml
 
-from .config import JobConfig
+from .config import ConnectorRecipe, JobConfig
+from .connectors.engine_config import EngineConfigParser
 from .registry import ConnectorRegistry, RegistryLoadError, RegistryNotFoundError
 
 
@@ -208,6 +209,42 @@ class ConnectorValidator:
 
         # Validate incremental strategy
         self.validate_incremental_strategy(job_config, source_connector_def)
+
+        # Validate external engine catalog resolution (fail fast)
+        #
+        # Goal: if a job uses an external engine (e.g., Airbyte) but does not specify an
+        # explicit image override, we must be able to resolve a docker image from the
+        # external catalog cache (registry/catalogs/*.json) or registry defaults.
+        try:
+            source_recipe = job_config._resolve_source_recipe()
+            if isinstance(source_recipe, ConnectorRecipe):
+                engine_type = (
+                    source_recipe.default_engine.get("type")
+                    if isinstance(source_recipe.default_engine, dict)
+                    else None
+                )
+                if engine_type in ["airbyte", "singer", "meltano"]:
+                    source_config = job_config.get_source()
+                    parser = EngineConfigParser(
+                        source_config, source_recipe, tenant_id=job_config.tenant_id
+                    )
+                    docker_image = parser.get_docker_image() if engine_type == "airbyte" else None
+
+                    if engine_type == "airbyte" and not docker_image:
+                        print(
+                            "ERROR: Unable to resolve Airbyte docker image.\n"
+                            f"Connector: {source_config.type}\n"
+                            "Fix:\n"
+                            "  - Add an entry to registry/catalogs/airbyte.json (with docker image + version), OR\n"
+                            "  - Set job override: source.engine.options.airbyte.docker_image\n",
+                            file=sys.stderr,
+                        )
+                        sys.exit(2)
+        except SystemExit:
+            raise
+        except Exception:
+            # Best-effort: do not break legacy jobs if recipe parsing differs
+            pass
 
 
 class IncrementalStateManager:

@@ -26,8 +26,6 @@ connectors:
     default_engine: airbyte
     engines_supported: [airbyte, singer, native]
     external_id: "airbyte/source-stripe"
-    docker_image_default: "airbyte/source-stripe:4.0.0"
-    version_default: "4.0.0"
     source_of_truth: airbyte
     allowed_in_cloud: true
     supports_incremental: true

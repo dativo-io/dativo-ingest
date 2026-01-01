@@ -148,8 +148,8 @@ dativo connectors inspect <name> --json
 
 ## Security
 
-- Catalogs are loaded from local filesystem only
-- No automatic downloading or network access
+- Catalogs are loaded from the local filesystem at runtime
+- Optional CLI sync can download and cache catalogs (headless, deterministic cache file)
 - Job-level overrides can override any catalog value
 - Docker images are not validated or pulled automatically
 

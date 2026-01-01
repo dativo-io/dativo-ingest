@@ -137,25 +137,72 @@ class TestCLIRegistryIntegration:
         assert "error" in data
 
     def test_connectors_sync_url_not_implemented(self):
-        """connectors sync --catalog-url should fail with clear error."""
-        exit_code = connectors_sync_command(
-            catalog_url="https://example.com/catalog.json"
-        )
-        assert exit_code == 2
+        """connectors sync --catalog-url should succeed when URL is reachable."""
+        from unittest.mock import patch
+
+        sample_airbyte_index = {
+            "sources": [
+                {
+                    "sourceDefinitionId": "id-123",
+                    "name": "Stripe",
+                    "dockerRepository": "airbyte/source-stripe",
+                    "dockerImageTag": "9.9.9",
+                    "documentationUrl": "https://docs.example/stripe",
+                    "supportLevel": "certified",
+                }
+            ]
+        }
+
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps(sample_airbyte_index).encode("utf-8")
+
+        with patch("src.dativo_ingest.connector_catalog.urlopen", return_value=FakeResp()):
+            exit_code = connectors_sync_command(
+                catalog_url="https://example.com/catalog.json"
+            )
+            assert exit_code == 0
 
     def test_connectors_sync_url_not_implemented_json(self, capsys):
-        """connectors sync --catalog-url --json should output error JSON."""
-        exit_code = connectors_sync_command(
-            catalog_url="https://example.com/catalog.json", json_output=True
-        )
-        assert exit_code == 2
+        """connectors sync --catalog-url --json should output JSON status."""
+        from unittest.mock import patch
+
+        sample_airbyte_index = {
+            "sources": [
+                {
+                    "sourceDefinitionId": "id-123",
+                    "name": "Stripe",
+                    "dockerRepository": "airbyte/source-stripe",
+                    "dockerImageTag": "9.9.9",
+                }
+            ]
+        }
+
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps(sample_airbyte_index).encode("utf-8")
+
+        with patch("src.dativo_ingest.connector_catalog.urlopen", return_value=FakeResp()):
+            exit_code = connectors_sync_command(
+                catalog_url="https://example.com/catalog.json", json_output=True
+            )
+            assert exit_code == 0
 
         captured = capsys.readouterr()
         output = captured.out
 
-        # Should be valid JSON with error
+        # Should be valid JSON status payload
         data = json.loads(output)
-        assert "error" in data
-        assert (
-            "not implemented" in data["error"].lower() or "url" in data["error"].lower()
-        )
+        assert "catalogs" in data
