@@ -120,8 +120,20 @@
               "enum": ["airbyte", "meltano", "singer", "native", "jdbc"],
               "description": "Engine type for source extraction"
             },
+            "docker_image": {
+              "type": "string",
+              "description": "Job-level Docker image override (highest priority)"
+            },
             "options": {"type": "object"}
           }
+        },
+        "docker_image": {
+          "type": "string",
+          "description": "Job-level Docker image override (highest priority)"
+        },
+        "version": {
+          "type": "string",
+          "description": "Job-level version override"
         }
       },
       "additionalProperties": true

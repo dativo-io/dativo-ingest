@@ -370,6 +370,47 @@ def start_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def connectors_command(args: argparse.Namespace) -> int:
+    """Handle connectors subcommands.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=success, 2=failure)
+    """
+    from .cli_connectors import (
+        connectors_inspect_command,
+        connectors_list_command,
+        connectors_sync_command,
+    )
+
+    if args.connectors_subcommand == "list":
+        return connectors_list_command(
+            role=args.role,
+            json_output=args.json,
+            verbose=args.verbose,
+        )
+    elif args.connectors_subcommand == "inspect":
+        return connectors_inspect_command(
+            name=args.name,
+            engine=args.engine,
+            json_output=args.json,
+        )
+    elif args.connectors_subcommand == "sync":
+        return connectors_sync_command(
+            catalog_url=args.catalog_url,
+            catalog_file=args.catalog_file,
+            catalog_name=args.catalog_name,
+            force=args.force,
+            json_output=args.json,
+            verbose=args.verbose,
+        )
+    else:
+        print("ERROR: No subcommand specified. Use 'list', 'inspect', or 'sync'.", file=sys.stderr)
+        return 2
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -593,6 +634,86 @@ Examples:
         help="Enable verbose output with additional details",
     )
 
+    # Connectors command
+    connectors_parser = subparsers.add_parser(
+        "connectors",
+        help="Manage connector registry and external catalogs",
+        description="List, inspect, and sync connector metadata from external catalogs like Airbyte.",
+    )
+    connectors_subparsers = connectors_parser.add_subparsers(
+        dest="connectors_subcommand", help="Connector subcommand"
+    )
+
+    # Connectors list subcommand
+    connectors_list_parser = connectors_subparsers.add_parser(
+        "list", help="List all registered connectors"
+    )
+    connectors_list_parser.add_argument(
+        "--role",
+        choices=["source", "target"],
+        help="Filter by connector role",
+    )
+    connectors_list_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    connectors_list_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include verbose details",
+    )
+
+    # Connectors inspect subcommand
+    connectors_inspect_parser = connectors_subparsers.add_parser(
+        "inspect", help="Inspect a specific connector"
+    )
+    connectors_inspect_parser.add_argument(
+        "name",
+        help="Connector name to inspect",
+    )
+    connectors_inspect_parser.add_argument(
+        "--engine",
+        help="Engine override for resolution (e.g., airbyte, singer, meltano)",
+    )
+    connectors_inspect_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+
+    # Connectors sync subcommand
+    connectors_sync_parser = connectors_subparsers.add_parser(
+        "sync", help="Sync external connector catalogs"
+    )
+    connectors_sync_parser.add_argument(
+        "--catalog-url",
+        help="URL to fetch catalog from",
+    )
+    connectors_sync_parser.add_argument(
+        "--catalog-file",
+        help="Local catalog file to sync",
+    )
+    connectors_sync_parser.add_argument(
+        "--catalog-name",
+        help="Catalog name (for known catalogs like 'airbyte', or custom naming)",
+    )
+    connectors_sync_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-download even if cached",
+    )
+    connectors_sync_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    connectors_sync_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include verbose details",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -607,6 +728,8 @@ Examples:
         return check_command(args)
     elif args.command == "discover":
         return discover_command(args)
+    elif args.command == "connectors":
+        return connectors_command(args)
     else:
         parser.print_help()
         return 2

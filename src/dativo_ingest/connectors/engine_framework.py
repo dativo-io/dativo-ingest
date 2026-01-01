@@ -112,10 +112,28 @@ class AirbyteExtractor(BaseEngineExtractor):
         super().__init__(source_config, connector_recipe, tenant_id)
         self.docker_image = self.config_parser.get_docker_image()
         if not self.docker_image:
-            raise ValueError(
-                f"Airbyte connector requires docker_image in engine options. "
-                f"Connector: {connector_recipe.name}"
+            # Enhanced error message with catalog guidance
+            error_msg = (
+                f"Airbyte connector '{connector_recipe.name}' (type: {source_config.type}) "
+                f"requires a docker_image but none was found.\n\n"
+                f"Resolution priority:\n"
+                f"1. Job-level override: source.docker_image or source.engine.docker_image\n"
+                f"2. Connector recipe: default_engine.options.airbyte.docker_image\n"
+                f"3. External catalog: Sync Airbyte catalog with 'dativo connectors sync --catalog-name airbyte'\n"
+                f"4. Registry defaults: Add docker_image_default to registry/connectors.yaml\n\n"
+                f"To resolve:\n"
+                f"- Sync Airbyte catalog: dativo connectors sync --catalog-name airbyte\n"
+                f"- Or add to job config:\n"
+                f"  source:\n"
+                f"    docker_image: airbyte/source-{source_config.type}:latest\n"
+                f"- Or add to connector recipe:\n"
+                f"  default_engine:\n"
+                f"    type: airbyte\n"
+                f"    options:\n"
+                f"      airbyte:\n"
+                f"        docker_image: airbyte/source-{source_config.type}:latest"
             )
+            raise ValueError(error_msg)
 
         self.logger.info(
             f"Initialized Airbyte extractor with image: {self.docker_image}",

@@ -1,6 +1,7 @@
 """Connector registry and catalog management."""
 
 from .catalog_loader import CatalogLoader, ExternalConnector
+from .catalog_syncer import CatalogSyncError, CatalogSyncer
 from .connector_registry import (
     ConnectorRegistry,
     RegistryLoadError,
@@ -17,6 +18,8 @@ __all__ = [
     "RegistryLoadError",
     # Internal APIs (exposed for CLI/testing, but not recommended for general use)
     "CatalogLoader",
+    "CatalogSyncError",
+    "CatalogSyncer",
     "ExternalConnector",
     "resolve_image_and_version",
 ]

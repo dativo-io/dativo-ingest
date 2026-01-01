@@ -131,10 +131,24 @@ class CatalogLoader:
             docker_repo = item.get("dockerRepository", "")
             docker_tag = item.get("dockerImageTag", "latest")
 
+            # Validate required fields
+            if not name or not external_id:
+                # Skip entries without required fields
+                return None
+
             # Build full docker image
             docker_image = (
                 f"{docker_repo}:{docker_tag}" if docker_repo and docker_tag else None
             )
+
+            # Validate docker image is present (required for Airbyte connectors)
+            if not docker_image:
+                import warnings
+                warnings.warn(
+                    f"Airbyte connector '{name}' missing docker image (repo: {docker_repo}, tag: {docker_tag}). Skipping.",
+                    stacklevel=2
+                )
+                return None
 
             # Extract capabilities
             capabilities = []

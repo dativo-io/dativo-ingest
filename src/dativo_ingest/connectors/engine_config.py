@@ -207,18 +207,31 @@ class EngineConfigParser:
         """Get Docker image for Airbyte connector with catalog resolution.
 
         Resolution priority:
-        1. Airbyte options in connector recipe
-        2. Connector registry with catalog lookup
-        3. None
+        1. Job-level override (source_config.docker_image)
+        2. Engine options in connector recipe (source_config.engine.docker_image or airbyte.docker_image)
+        3. Connector registry with catalog lookup
+        4. None
 
         Returns:
             Docker image name or None
         """
         if self.engine_type == "airbyte":
+            # Priority 1: Job-level override in source_config
+            if hasattr(self.source_config, "docker_image") and self.source_config.docker_image:
+                return self.source_config.docker_image
+
+            # Priority 2: Engine options in source_config or connector recipe
+            # Check source_config.engine.docker_image first
+            if self.source_config.engine and isinstance(self.source_config.engine, dict):
+                engine_docker_image = self.source_config.engine.get("docker_image")
+                if engine_docker_image:
+                    return engine_docker_image
+
+            # Then check connector recipe airbyte options
             airbyte_opts = self.engine_options.get("airbyte", {})
             docker_image = airbyte_opts.get("docker_image")
 
-            # If docker_image not in recipe, try registry resolution
+            # Priority 3: Registry resolution (includes catalog lookup)
             if not docker_image:
                 docker_image = self._resolve_airbyte_image_from_registry()
 

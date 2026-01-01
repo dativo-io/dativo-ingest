@@ -574,6 +574,54 @@ class TestConnectorResolutionIntegration:
         assert "source" in resolved.roles
         assert resolved.supports_incremental is False
 
+    def test_stripe_with_airbyte_engine_and_catalog(self):
+        """Test Stripe connector with Airbyte engine resolves docker image from catalog or registry."""
+        registry = ConnectorRegistry.from_default_paths()
+        resolved = registry.resolve_connector("stripe", engine="airbyte")
+
+        assert resolved is not None
+        assert "source" in resolved.roles
+        assert resolved.default_engine == "airbyte"
+        assert "airbyte" in resolved.engines_supported
+
+        # Should have docker image from registry or catalog
+        # Note: This will be non-None if either:
+        # 1. Registry has docker_image_default
+        # 2. Catalog has been synced and contains stripe entry
+        if resolved.docker_image:
+            assert "stripe" in resolved.docker_image.lower()
+            assert ":" in resolved.docker_image  # Has version tag
+
+        # Check metadata from registry
+        assert resolved.source_of_truth == "airbyte"
+        assert resolved.category == "payments"
+        assert resolved.supports_incremental is True
+        assert resolved.incremental_strategy_default == "created"
+
+        # If catalog entry exists, verify it has proper fields
+        if resolved.catalog_entry:
+            assert resolved.catalog_entry.external_id
+            assert resolved.catalog_entry.docker_image_default
+            assert resolved.catalog_entry.version_default
+            assert "stripe" in resolved.catalog_entry.docker_image_default.lower()
+
+    def test_stripe_with_job_overrides(self):
+        """Test Stripe connector with job-level docker_image override."""
+        registry = ConnectorRegistry.from_default_paths()
+
+        # Override docker image
+        custom_image = "custom/stripe:dev"
+        job_overrides = {"docker_image": custom_image, "version": "dev"}
+
+        resolved = registry.resolve_connector(
+            "stripe", engine="airbyte", job_overrides=job_overrides
+        )
+
+        assert resolved is not None
+        # Job override should take precedence
+        assert resolved.docker_image == custom_image
+        assert resolved.version == "dev"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -222,6 +222,8 @@ def connectors_inspect_command(
 def connectors_sync_command(
     catalog_url: Optional[str] = None,
     catalog_file: Optional[str] = None,
+    catalog_name: Optional[str] = None,
+    force: bool = False,
     json_output: bool = False,
     verbose: bool = False,
 ) -> int:
@@ -230,154 +232,147 @@ def connectors_sync_command(
     Args:
         catalog_url: Optional URL to fetch catalog from
         catalog_file: Optional local catalog file to copy
+        catalog_name: Optional catalog name (for known catalogs or custom naming)
+        force: Force re-download even if cached
         json_output: Whether to output JSON
         verbose: Whether to include verbose details
 
     Returns:
         Exit code (0=success, 2=failure)
     """
+    from .registry import CatalogSyncError, CatalogSyncer
+
     logger = get_logger()
 
     try:
-        # Determine catalogs directory
-        catalogs_dir = None
-        possible_paths = [
-            Path("/app/registry/catalogs"),
-            Path("registry/catalogs"),
-            Path(__file__).parent.parent.parent / "registry" / "catalogs",
-        ]
-        for path in possible_paths:
-            if path.exists():
-                catalogs_dir = path
-                break
-
-        if not catalogs_dir:
-            # Create the directory
-            for path in possible_paths:
-                try:
-                    path.mkdir(parents=True, exist_ok=True)
-                    catalogs_dir = path
-                    break
-                except Exception:
-                    continue
-
-        if not catalogs_dir:
-            if json_output:
-                print(
-                    json.dumps(
-                        {"error": "Failed to create catalogs directory"}, indent=2
-                    )
-                )
-            else:
-                print("ERROR: Failed to create catalogs directory", file=sys.stderr)
-            return 2
-
+        syncer = CatalogSyncer()
         synced = False
+        result = None
 
         # Handle URL sync
         if catalog_url:
-            error_msg = (
-                "URL sync not implemented. "
-                "Use --catalog-file to sync from a local JSON file."
-            )
-            if json_output:
-                print(json.dumps({"error": error_msg}, indent=2))
-            else:
-                print(f"ERROR: {error_msg}", file=sys.stderr)
-            return 2
+            try:
+                result = syncer.sync_from_url(
+                    catalog_url, catalog_name=catalog_name, force=force
+                )
+                synced = True
+
+                logger.info(
+                    f"Synced catalog from URL: {catalog_url}",
+                    extra={"event_type": "catalog_synced", "catalog_name": result["catalog_name"]},
+                )
+
+                if not json_output:
+                    status = "✓ Downloaded" if not result.get("cached") else "✓ Cached"
+                    print(
+                        f"{status}: {result['catalog_name']} "
+                        f"({result['connectors_count']} connectors)"
+                    )
+            except CatalogSyncError as e:
+                if json_output:
+                    print(json.dumps({"error": str(e)}, indent=2))
+                else:
+                    print(f"ERROR: {e}", file=sys.stderr)
+                return 2
+
+        # Handle known catalog sync
+        elif catalog_name and not catalog_file:
+            try:
+                result = syncer.sync_known_catalog(catalog_name, force=force)
+                synced = True
+
+                logger.info(
+                    f"Synced known catalog: {catalog_name}",
+                    extra={"event_type": "catalog_synced", "catalog_name": catalog_name},
+                )
+
+                if not json_output:
+                    status = "✓ Downloaded" if not result.get("cached") else "✓ Cached"
+                    print(
+                        f"{status}: {result['catalog_name']} "
+                        f"({result['connectors_count']} connectors)"
+                    )
+            except CatalogSyncError as e:
+                if json_output:
+                    print(json.dumps({"error": str(e)}, indent=2))
+                else:
+                    print(f"ERROR: {e}", file=sys.stderr)
+                    # Show available catalogs
+                    available = CatalogSyncer.get_known_catalog_names()
+                    print(f"Available known catalogs: {', '.join(available)}", file=sys.stderr)
+                return 2
 
         # Handle file copy
-        if catalog_file:
-            import shutil
-
-            source_path = Path(catalog_file)
-            if not source_path.exists():
-                error_msg = f"Catalog file not found: {catalog_file}"
-                if json_output:
-                    print(json.dumps({"error": error_msg}, indent=2))
-                else:
-                    print(f"ERROR: {error_msg}", file=sys.stderr)
-                return 2
-
-            if not source_path.is_file():
-                error_msg = f"Not a file: {catalog_file}"
-                if json_output:
-                    print(json.dumps({"error": error_msg}, indent=2))
-                else:
-                    print(f"ERROR: {error_msg}", file=sys.stderr)
-                return 2
-
-            dest_path = catalogs_dir / source_path.name
+        elif catalog_file:
             try:
-                shutil.copy2(source_path, dest_path)
-            except OSError as e:
-                error_msg = f"Failed to copy catalog file: {e}"
+                source_path = Path(catalog_file)
+                result = syncer.sync_from_file(source_path, catalog_name=catalog_name)
+                synced = True
+
+                logger.info(
+                    f"Synced catalog from file: {catalog_file}",
+                    extra={"event_type": "catalog_synced", "catalog_name": result["catalog_name"]},
+                )
+
+                if not json_output:
+                    print(
+                        f"✓ Synced: {result['catalog_name']} "
+                        f"({result['connectors_count']} connectors)"
+                    )
+            except CatalogSyncError as e:
                 if json_output:
-                    print(json.dumps({"error": error_msg}, indent=2))
+                    print(json.dumps({"error": str(e)}, indent=2))
                 else:
-                    print(f"ERROR: {error_msg}", file=sys.stderr)
+                    print(f"ERROR: {e}", file=sys.stderr)
                 return 2
 
-            logger.info(
-                f"Copied catalog: {source_path.name}",
-                extra={"event_type": "catalog_synced"},
-            )
-            synced = True
-
-            if not json_output:
-                print(f"✓ Synced catalog: {source_path.name} -> {dest_path}")
-
-        # If no specific sync action, just reload existing catalogs
+        # If no specific sync action, show existing catalogs
         if not synced:
-            loader = CatalogLoader(catalogs_dir)
-            catalog_names = loader.get_catalog_names()
+            result = syncer.list_synced_catalogs()
 
             if json_output:
-                print(
-                    json.dumps(
-                        {
-                            "catalogs": catalog_names,
-                            "count": len(catalog_names),
-                            "status": "loaded",
-                        },
-                        indent=2,
-                    )
-                )
+                print(json.dumps(result, indent=2))
             else:
-                if catalog_names:
-                    print(f"\nLoaded Catalogs ({len(catalog_names)}):")
-                    for catalog_name in catalog_names:
-                        connectors = loader.list_connectors(catalog_name)
-                        print(f"  - {catalog_name}: {len(connectors)} connectors")
+                if result["count"] > 0:
+                    print(f"\nSynced Catalogs ({result['count']}):")
+                    print("=" * 80)
+                    for catalog in result["catalogs"]:
+                        print(f"\n{catalog['name']}")
+                        print(f"  Connectors: {catalog['connectors_count']}")
+                        if verbose:
+                            if catalog.get("synced_at"):
+                                print(f"  Synced At: {catalog['synced_at']}")
+                            if catalog.get("source_url"):
+                                print(f"  Source URL: {catalog['source_url']}")
+                            if catalog.get("source_file"):
+                                print(f"  Source File: {catalog['source_file']}")
+                            print(f"  Path: {catalog['path']}")
+                    print()
                 else:
-                    print("No catalogs found. Catalogs are optional.")
-                    print(f"To add a catalog, place a JSON file in: {catalogs_dir}")
+                    print("\nNo catalogs synced. Catalogs are optional.")
+                    print("\nTo sync a known catalog:")
+                    available = CatalogSyncer.get_known_catalog_names()
+                    for name in available:
+                        print(f"  dativo connectors sync --catalog-name {name}")
+                    print("\nOr sync from URL:")
+                    print("  dativo connectors sync --catalog-url <url>")
+                    print("\nOr copy from local file:")
+                    print("  dativo connectors sync --catalog-file <path>")
+                    print()
 
             return 0
 
         # Show sync results
-        if json_output:
-            loader = CatalogLoader(catalogs_dir)
+        if json_output and result:
+            print(json.dumps(result, indent=2))
+        elif result and verbose:
+            loader = CatalogLoader(syncer.catalogs_dir)
             catalog_names = loader.get_catalog_names()
-            print(
-                json.dumps(
-                    {
-                        "catalogs": catalog_names,
-                        "count": len(catalog_names),
-                        "status": "synced",
-                    },
-                    indent=2,
-                )
-            )
-        else:
-            print("\n✓ Catalog sync complete")
-            loader = CatalogLoader(catalogs_dir)
-            catalog_names = loader.get_catalog_names()
-            if verbose and catalog_names:
-                print(f"\nAvailable Catalogs ({len(catalog_names)}):")
-                for catalog_name in catalog_names:
-                    connectors = loader.list_connectors(catalog_name)
-                    print(f"  - {catalog_name}: {len(connectors)} connectors")
+            if catalog_names:
+                print(f"\nAll Synced Catalogs ({len(catalog_names)}):")
+                for name in catalog_names:
+                    connectors = loader.list_connectors(name)
+                    print(f"  - {name}: {len(connectors)} connectors")
 
         return 0
 

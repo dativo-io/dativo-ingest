@@ -1,8 +1,8 @@
 # Connector Registry v2 - External Catalog Support
 
-**Version:** 0.5  
+**Version:** 0.6  
 **Status:** Implemented  
-**Date:** 2025-12-10
+**Date:** 2025-01-01
 
 ## Overview
 
@@ -80,7 +80,8 @@ hubspot:
 Connector resolution follows a clear, centralized precedence order:
 
 1. **Job-level overrides** (highest priority)
-   - Docker image, version, engine specified in job config or connector recipe
+   - Docker image and version specified directly in job config
+   - Three ways to specify: `source.docker_image`, `source.engine.docker_image`, or connector recipe
 2. **External catalog entries**
    - If engine is `airbyte`/`singer`/`meltano` and matching catalog entry exists
 3. **Registry defaults**
@@ -89,6 +90,47 @@ Connector resolution follows a clear, centralized precedence order:
    - Returns None for missing values
 
 The resolution logic is implemented in a single, testable helper function (`resolve_image_and_version`) to ensure consistency across all code paths.
+
+#### Job-Level Override Options
+
+**Option 1: Direct override in job config (highest priority)**
+```yaml
+# job.yaml
+source:
+  type: stripe
+  docker_image: "airbyte/source-stripe:5.0.0"  # Overrides everything
+  version: "5.0.0"
+```
+
+**Option 2: Override in source.engine**
+```yaml
+# job.yaml
+source:
+  type: stripe
+  engine:
+    type: airbyte
+    docker_image: "airbyte/source-stripe:5.0.0"
+```
+
+**Option 3: Override in connector recipe**
+```yaml
+# connector_recipe.yaml
+default_engine:
+  type: airbyte
+  options:
+    airbyte:
+      docker_image: "airbyte/source-stripe:4.0.0"
+```
+
+**Option 4: Automatic resolution from catalog (lowest priority)**
+```yaml
+# job.yaml
+source:
+  type: stripe
+  engine:
+    type: airbyte
+  # docker_image automatically resolved from catalog!
+```
 
 #### Resolution Example
 
@@ -205,20 +247,33 @@ External Catalog Entry:
 
 #### `dativo connectors sync`
 
-Sync external connector catalogs.
+Sync external connector catalogs from multiple sources.
 
-**Currently Supported:**
-- `--catalog-file <path>`: Copy a local JSON catalog file to the catalogs directory
-
-**Not Yet Implemented:**
-- `--catalog-url`: URL-based catalog sync (will error clearly if attempted)
+**Supported Operations:**
+- Show currently synced catalogs (no arguments)
+- Sync from remote URL (`--catalog-url`)
+- Sync known catalogs by name (`--catalog-name`)
+- Copy from local file (`--catalog-file`)
 
 ```bash
 # Show current catalogs
 dativo connectors sync
 
+# Sync from remote URL
+dativo connectors sync --catalog-url https://example.com/catalog.json
+
+# Sync a known catalog (e.g., Airbyte's official catalog)
+dativo connectors sync --catalog-name airbyte
+dativo connectors sync --catalog-name airbyte_oss
+
 # Copy catalog from local file
 dativo connectors sync --catalog-file /path/to/airbyte-catalog.json
+
+# Custom catalog name (optional with URL or file)
+dativo connectors sync --catalog-url https://... --catalog-name my_catalog
+
+# Force re-download (bypass cache)
+dativo connectors sync --catalog-name airbyte --force
 
 # JSON output
 dativo connectors sync --json
@@ -227,17 +282,43 @@ dativo connectors sync --json
 dativo connectors sync --verbose
 ```
 
+**Known Catalogs:**
+
+The system has pre-configured URLs for popular connector catalogs:
+- `airbyte`: Airbyte's official connector registry
+- `airbyte_oss`: Airbyte OSS connector registry
+
 **Error Handling:**
 - Returns exit code 0 on success
 - Returns exit code 2 on errors (missing file, invalid arguments, etc.)
 - Error messages are clear and consistent, with JSON output when `--json` is used
+- Catalog files are cached locally - use `--force` to re-download
 
-**Example Output:**
+**Example Output (Show):**
 ```
-Loaded Catalogs (1):
-  - airbyte: 7 connectors
+Synced Catalogs (2):
+================================================================================
 
-To add a catalog, place a JSON file in: /app/registry/catalogs/
+airbyte
+  Connectors: 450
+  Synced At: 2025-01-01T12:00:00
+  Source URL: https://connectors.airbyte.com/files/generated_reports/connector_registry_report.json
+  Path: /app/registry/catalogs/airbyte.json
+
+custom
+  Connectors: 12
+  Source File: /data/custom-catalog.json
+  Path: /app/registry/catalogs/custom.json
+```
+
+**Example Output (First Time Sync):**
+```
+✓ Downloaded: airbyte (450 connectors)
+```
+
+**Example Output (Cached):**
+```
+✓ Cached: airbyte (450 connectors)
 ```
 
 ## Architecture
@@ -410,7 +491,21 @@ dativo connectors sync --verbose
 
 ## Use Cases
 
-### 1. Automatic Docker Image Resolution
+### 1. Quick Start with Known Catalogs
+
+Sync Airbyte's official catalog in one command:
+
+```bash
+# Sync Airbyte catalog
+dativo connectors sync --catalog-name airbyte
+
+# Verify it's loaded
+dativo connectors list --verbose | grep -A 5 stripe
+
+# Use in jobs - docker_image automatically resolved!
+```
+
+### 2. Automatic Docker Image Resolution
 
 Without catalog:
 ```yaml
@@ -428,6 +523,14 @@ With catalog:
 default_engine:
   type: airbyte
   # docker_image automatically resolved from catalog!
+```
+
+Job config can override anything:
+```yaml
+# job.yaml
+source:
+  type: stripe
+  docker_image: "custom/stripe:dev"  # Overrides catalog and registry
 ```
 
 ### 2. Version Management
@@ -504,15 +607,35 @@ Potential future improvements:
 
 ## Migration Guide
 
-### From v0.4.x to v0.5
+### From v0.5.x to v0.6
 
-No migration required! v0.5 is fully backward compatible.
+No migration required! v0.6 is fully backward compatible.
+
+**New features you can leverage:**
+
+1. **Remote catalog sync**: Sync catalogs directly from URLs
+   ```bash
+   dativo connectors sync --catalog-name airbyte
+   ```
+
+2. **Job-level overrides**: Override docker images per job
+   ```yaml
+   source:
+     type: stripe
+     docker_image: "airbyte/source-stripe:5.0.0"
+   ```
+
+3. **Improved error messages**: Better guidance when docker_image is missing
+
+### From v0.4.x to v0.5+
+
+No migration required! v0.5+ is fully backward compatible.
 
 **Optional enhancements:**
 
-1. Add catalog files to `/registry/catalogs/` for automatic resolution
+1. Sync catalogs using the CLI instead of manual file placement
 2. Update `connectors.yaml` entries with new optional fields
-3. Use new CLI commands for connector inspection
+3. Use job-level overrides for connector-specific versions
 
 **Example update:**
 
@@ -639,6 +762,16 @@ For issues or questions:
 5. Consult `tests/test_registry.py` for examples
 
 ## Changelog
+
+**v0.6.0 (2025-01-01):**
+- Added remote catalog sync from URLs (`--catalog-url`)
+- Added known catalog sync by name (`--catalog-name airbyte`)
+- Implemented catalog caching with force re-download option
+- Added job-level docker_image and version overrides in source config
+- Enhanced catalog entry validation with warning messages
+- Improved error messages with resolution guidance
+- Updated JSON schemas for job-level overrides
+- Comprehensive documentation updates
 
 **v0.5.0 (2025-12-10):**
 - Added external connector catalog support

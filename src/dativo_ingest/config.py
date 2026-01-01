@@ -355,6 +355,8 @@ class SourceConfig(BaseModel):
         None  # Path to custom reader class (format: "path/to/module.py:ClassName")
     )
     wal: Optional[Dict[str, Any]] = None  # WAL/checkpointing configuration
+    docker_image: Optional[str] = None  # Job-level docker image override
+    version: Optional[str] = None  # Job-level version override
 
 
 class TargetConfig(BaseModel):
