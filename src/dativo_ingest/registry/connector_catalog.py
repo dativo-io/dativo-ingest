@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import ssl
 import urllib.request
 from datetime import datetime
@@ -91,10 +92,25 @@ class CatalogSyncer:
                 pass
 
         try:
-            # Create SSL context
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
+            # Create SSL context with proper certificate verification
+            # Security: By default, verify SSL certificates to prevent MITM attacks
+            # Set DATIVO_SSL_VERIFY=false only for development/testing with self-signed certs
+            verify_ssl = os.getenv("DATIVO_SSL_VERIFY", "true").lower() != "false"
+
+            if verify_ssl:
+                # Use default secure SSL context (verifies certificates and hostnames)
+                ctx = ssl.create_default_context()
+            else:
+                # Insecure mode: only for development/testing
+                # WARNING: This disables certificate verification and is vulnerable to MITM attacks
+                self.logger.warning(
+                    "SSL verification disabled via DATIVO_SSL_VERIFY=false. "
+                    "This is insecure and should only be used in development/testing.",
+                    extra={"event_type": "ssl_verification_disabled"},
+                )
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
 
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "Dativo/1.0")
