@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -40,6 +40,10 @@ class CatalogLoader:
                 if path.exists():
                     catalogs_dir = path
                     break
+            
+            # If still None, default to relative path
+            if catalogs_dir is None:
+                catalogs_dir = Path("registry/catalogs")
 
         self.catalogs_dir = catalogs_dir
         self.catalogs: Dict[str, List[ExternalConnector]] = {}
@@ -72,9 +76,8 @@ class CatalogLoader:
     ) -> List[ExternalConnector]:
         """Parse catalog data into normalized ExternalConnector objects.
 
-        Supports multiple catalog formats:
-        - Airbyte catalog format
-        - Generic format with connectors list
+        Supports normalized catalog format (schema_version=1).
+        Backward compatibility for raw list of connectors not guaranteed but attempted.
 
         Args:
             catalog_data: Raw catalog JSON data
@@ -85,90 +88,58 @@ class CatalogLoader:
         """
         connectors = []
 
-        # Detect catalog format
-        if "connectors" in catalog_data and isinstance(
-            catalog_data["connectors"], list
-        ):
-            # Generic format with connectors list
+        # Normalized format with "connectors" list
+        if "connectors" in catalog_data and isinstance(catalog_data["connectors"], list):
             for item in catalog_data["connectors"]:
-                connector = self._parse_generic_connector(item, source_of_truth)
+                connector = self._parse_connector_item(item, source_of_truth)
                 if connector:
                     connectors.append(connector)
-        elif "sources" in catalog_data:
-            # Airbyte format with sources
-            for item in catalog_data["sources"]:
-                connector = self._parse_airbyte_connector(item, source_of_truth)
-                if connector:
-                    connectors.append(connector)
-        else:
-            # Fallback: treat entire catalog as a list of connectors
-            if isinstance(catalog_data, list):
-                for item in catalog_data:
-                    connector = self._parse_generic_connector(item, source_of_truth)
-                    if connector:
-                        connectors.append(connector)
+        
+        # Fallback for legacy/other formats (e.g. raw Airbyte sources list if manually placed)
+        elif "sources" in catalog_data and isinstance(catalog_data["sources"], list):
+             # Try to parse as normalized connector items first (in case keys match), 
+             # but likely needs adapter logic if we wanted to support raw files here.
+             # Ideally, users should use 'sync' to normalize.
+             # We will skip raw files to enforce normalization flow, or add simple support.
+             # For now, stick to normalized format as per requirements.
+             pass
 
         return connectors
 
-    def _parse_airbyte_connector(
+    def _parse_connector_item(
         self, item: Dict[str, Any], source_of_truth: str
     ) -> Optional[ExternalConnector]:
-        """Parse Airbyte catalog entry.
-
-        Airbyte catalog format:
-        {
-          "sourceDefinitionId": "uuid",
-          "name": "Stripe",
-          "dockerRepository": "airbyte/source-stripe",
-          "dockerImageTag": "1.0.0",
-          "documentationUrl": "...",
-          "supportLevel": "certified"
-        }
-        """
+        """Parse a normalized connector item."""
         try:
-            name = item.get("name", "").lower().replace(" ", "_").replace("-", "_")
-            external_id = item.get("sourceDefinitionId", "")
-            docker_repo = item.get("dockerRepository", "")
-            docker_tag = item.get("dockerImageTag", "latest")
-
-            # Build full docker image
-            docker_image = (
-                f"{docker_repo}:{docker_tag}" if docker_repo and docker_tag else None
-            )
-
-            # Extract capabilities
-            capabilities = []
-            if item.get("supportLevel"):
-                capabilities.append(f"support:{item['supportLevel']}")
+            name = item.get("name", "")
+            external_id = item.get("external_id", "")
+            docker_image = item.get("docker_image")
+            version = item.get("version")
+            
+            # Map capabilities object to list of strings
+            capabilities_list = []
+            caps = item.get("capabilities", {})
+            if isinstance(caps, dict):
+                if caps.get("supports_incremental"):
+                    capabilities_list.append("incremental")
+                if caps.get("supports_state"):
+                    capabilities_list.append("state")
+                if caps.get("supports_discover"):
+                    capabilities_list.append("discover")
+                if caps.get("requires_tables"):
+                    capabilities_list.append("requires_tables")
+                if caps.get("supports_queries"):
+                    capabilities_list.append("queries")
+            elif isinstance(caps, list):
+                # Legacy support if capabilities is already a list
+                capabilities_list = caps
 
             return ExternalConnector(
                 name=name,
                 external_id=external_id,
                 docker_image_default=docker_image,
-                version_default=docker_tag,
-                capabilities=capabilities,
-                source_of_truth=source_of_truth,
-                metadata={
-                    "documentation_url": item.get("documentationUrl"),
-                    "support_level": item.get("supportLevel"),
-                },
-            )
-        except Exception:
-            return None
-
-    def _parse_generic_connector(
-        self, item: Dict[str, Any], source_of_truth: str
-    ) -> Optional[ExternalConnector]:
-        """Parse generic catalog entry."""
-        try:
-            return ExternalConnector(
-                name=item.get("name", ""),
-                external_id=item.get("external_id", item.get("id", "")),
-                docker_image_default=item.get(
-                    "docker_image_default", item.get("docker_image")
-                ),
-                version_default=item.get("version_default", item.get("version")),
-                capabilities=item.get("capabilities", []),
+                version_default=version,
+                capabilities=capabilities_list,
                 source_of_truth=source_of_truth,
                 metadata=item.get("metadata", {}),
             )

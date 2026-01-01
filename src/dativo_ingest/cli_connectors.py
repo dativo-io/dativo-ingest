@@ -221,6 +221,7 @@ def connectors_inspect_command(
 
 
 def connectors_sync_command(
+    catalog_name: str = "airbyte",
     catalog_url: Optional[str] = None,
     catalog_file: Optional[str] = None,
     json_output: bool = False,
@@ -229,6 +230,7 @@ def connectors_sync_command(
     """Sync external connector catalogs.
 
     Args:
+        catalog_name: Name of the catalog to sync (default: airbyte)
         catalog_url: Optional URL to fetch catalog from
         catalog_file: Optional local catalog file to copy
         json_output: Whether to output JSON
@@ -279,10 +281,10 @@ def connectors_sync_command(
         if catalog_url:
             syncer = CatalogSyncer(catalogs_dir)
             try:
-                dest_path = syncer.sync_from_url(catalog_url)
+                dest_path = syncer.sync_from_url(catalog_url, name=catalog_name)
                 synced = True
                 if not json_output:
-                    print(f"✓ Synced catalog from {catalog_url} -> {dest_path}")
+                    print(f"✓ Synced catalog '{catalog_name}' from {catalog_url} -> {dest_path}")
             except Exception as e:
                 error_msg = f"Failed to sync catalog from URL: {e}"
                 if json_output:
@@ -293,44 +295,25 @@ def connectors_sync_command(
 
         # Handle file copy
         if catalog_file:
-            import shutil
-
-            source_path = Path(catalog_file)
-            if not source_path.exists():
-                error_msg = f"Catalog file not found: {catalog_file}"
-                if json_output:
-                    print(json.dumps({"error": error_msg}, indent=2))
-                else:
-                    print(f"ERROR: {error_msg}", file=sys.stderr)
-                return 2
-
-            if not source_path.is_file():
-                error_msg = f"Not a file: {catalog_file}"
-                if json_output:
-                    print(json.dumps({"error": error_msg}, indent=2))
-                else:
-                    print(f"ERROR: {error_msg}", file=sys.stderr)
-                return 2
-
-            dest_path = catalogs_dir / source_path.name
+            syncer = CatalogSyncer(catalogs_dir)
             try:
-                shutil.copy2(source_path, dest_path)
-            except OSError as e:
-                error_msg = f"Failed to copy catalog file: {e}"
+                dest_path = syncer.sync_from_file(Path(catalog_file), name=catalog_name)
+                synced = True
+                
+                logger.info(
+                    f"Copied catalog: {catalog_file}",
+                    extra={"event_type": "catalog_synced"},
+                )
+
+                if not json_output:
+                    print(f"✓ Synced catalog '{catalog_name}': {catalog_file} -> {dest_path}")
+            except Exception as e:
+                error_msg = f"Failed to sync catalog from file: {e}"
                 if json_output:
                     print(json.dumps({"error": error_msg}, indent=2))
                 else:
                     print(f"ERROR: {error_msg}", file=sys.stderr)
                 return 2
-
-            logger.info(
-                f"Copied catalog: {source_path.name}",
-                extra={"event_type": "catalog_synced"},
-            )
-            synced = True
-
-            if not json_output:
-                print(f"✓ Synced catalog: {source_path.name} -> {dest_path}")
 
         # If no specific sync action, just reload existing catalogs
         if not synced:

@@ -43,6 +43,7 @@ class TestConnectorResolution(unittest.TestCase):
             name="stripe",
             external_id="stripe-id",
             docker_image_default="airbyte/source-stripe:2.0.0",  # Catalog has newer version
+            version_default="2.0.0",
             source_of_truth="airbyte"
         )
         
@@ -90,6 +91,41 @@ class TestConnectorResolution(unittest.TestCase):
         mock_registry_instance.resolve_connector.assert_called_with(
             "stripe",
             engine="airbyte",
-            job_overrides={"docker_image": "job-override:1.0"}
+            job_overrides={"docker_image": "job-override:1.0"},
+            strict_mode=True
         )
         self.assertEqual(image, "resolved:latest")
+
+    @patch("dativo_ingest.registry.connector_registry.ConnectorRegistry._load_registry")
+    @patch("dativo_ingest.registry.connector_registry.ConnectorRegistry._find_registry_path")
+    def test_strict_mode_failure(self, mock_find_path, mock_load_registry):
+        dummy_registry = Path(self.temp_dir.name) / "registry.yaml"
+        dummy_registry.touch()
+        mock_find_path.return_value = dummy_registry
+        
+        # Registry missing docker_image_default
+        bad_registry_data = {
+            "connectors": {
+                "stripe": {
+                    "roles": ["source"],
+                    "default_engine": "airbyte",
+                    # No docker_image_default
+                }
+            }
+        }
+        mock_load_registry.return_value = bad_registry_data
+        
+        # Mock catalog loader returning nothing
+        mock_catalog_loader = MagicMock()
+        mock_catalog_loader.get_connector.return_value = None
+        
+        registry = ConnectorRegistry(registry_path=dummy_registry, catalog_loader=mock_catalog_loader)
+        
+        # Should fail in strict mode
+        with self.assertRaises(ValueError) as cm:
+            registry.resolve_connector("stripe", engine="airbyte", strict_mode=True)
+        self.assertIn("Failed to resolve docker image", str(cm.exception))
+        
+        # Should NOT fail in fallback mode (strict_mode=False)
+        resolved = registry.resolve_connector("stripe", engine="airbyte", strict_mode=False)
+        self.assertIsNone(resolved.docker_image)

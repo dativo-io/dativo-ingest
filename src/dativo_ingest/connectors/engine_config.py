@@ -229,7 +229,14 @@ class EngineConfigParser:
             docker_image = airbyte_opts.get("docker_image")
 
             # Always try registry resolution to support catalogs, passing any specific overrides found
-            return self._resolve_airbyte_image_from_registry(docker_image)
+            # This follows the resolution priority rule (job > catalog > registry) because
+            # docker_image here comes from engine_options which combines recipe + job config
+            resolved_image = self._resolve_airbyte_image_from_registry(docker_image)
+            
+            # TODO: Add Strict Mode check here or in validator
+            # Ideally, validator should catch this before runtime, but runtime should also fail if strict
+            
+            return resolved_image
         return None
 
     def _resolve_airbyte_image_from_registry(
@@ -259,16 +266,27 @@ class EngineConfigParser:
             if airbyte_opts.get("version"):
                 job_overrides["version"] = airbyte_opts.get("version")
 
+            # Strict mode: Default to True as per requirements.
+            # Ideally this should be configurable via JobConfig, but EngineConfigParser
+            # assumes strict resolution for external engines to avoid runtime failures.
+            strict_mode = True
+
             resolved = registry.resolve_connector(
                 self.source_config.type,
                 engine=self.engine_type,
                 job_overrides=job_overrides,
+                strict_mode=strict_mode,
             )
             if resolved:
                 return resolved.docker_image
         except (RegistryNotFoundError, RegistryLoadError) as e:
             # Expected errors: registry missing or malformed
-            # Log warning but continue - backward compatibility
+            # If strict mode is ON, we might want to fail here too, but for backward compat
+            # with systems without registry, we log warning.
+            # However, for Airbyte connectors relying on catalog/registry, this IS a failure.
+            if strict_mode:
+                raise ValueError(f"Registry required for resolution but not found: {e}")
+            
             logger.warning(
                 f"Could not resolve docker image from registry: {e}",
                 extra={
@@ -276,6 +294,9 @@ class EngineConfigParser:
                     "engine": self.engine_type,
                 },
             )
+        except ValueError:
+            # Re-raise validation errors from strict mode resolution
+            raise
         except Exception as e:
             # Unexpected errors: log and re-raise
             logger.error(

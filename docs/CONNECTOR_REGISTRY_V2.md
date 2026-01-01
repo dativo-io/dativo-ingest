@@ -241,6 +241,37 @@ Loaded Catalogs (1):
 To add a catalog, place a JSON file in: /app/registry/catalogs/
 ```
 
+### Strict Mode vs Fallback
+
+**Strict Mode (Default):**
+- If a connector is configured to use an external engine (Airbyte, etc.), the system REQUIRES resolving a valid Docker image and version.
+- If resolution fails (missing catalog entry, missing fields in catalog, no job override), the validator/runtime will raise an error.
+- Suggested fix: Run `dativo connectors sync <engine>` or provide `docker_image` in job config.
+
+**Fallback Behavior:**
+- (Internal/Legacy) If strict mode is disabled, the system might proceed if partial metadata is available, but this is not recommended for production.
+
+### Security / Governance Guardrail
+
+Optional security feature to restrict Docker images to allowed registries.
+
+**Configuration:**
+- `DATIVO_ALLOW_CUSTOM_IMAGES`: Set to `false` (default) to restrict images to allowed prefixes (`airbyte/`, `meltano/`, `singer/`). Set to `true` to allow any image.
+
+**Behavior:**
+- If `false`, job validation fails if a connector tries to use a Docker image that doesn't start with an allowed prefix.
+- If `true`, any Docker image can be used (useful for private registries or custom builds).
+
+### 5. Catalog Normalization and Adapters
+
+The system includes adapters to normalize external catalog formats into a standard internal representation.
+
+- **Airbyte Adapter**: Fully implemented. Normalizes Airbyte catalog JSON into Dativo's format.
+- **Singer/Meltano Adapters**: Stubs provided for future implementation.
+
+**Normalized Catalog Schema:**
+See `schemas/external_catalog.schema.json` for the strict schema definition.
+
 ## Architecture
 
 ### Module Structure
@@ -565,6 +596,32 @@ stripe:
 2. Inspect connector: `dativo connectors inspect <name> --json`
 3. Check for job-level overrides in connector recipe
 4. Verify catalog entry: look at `catalog_entry` in inspect output
+
+### Validation Error: "Failed to resolve docker image/version"
+
+**Problem:** Job fails validation with error about missing metadata.
+
+**Solutions:**
+1. Run `dativo connectors sync airbyte` (or relevant engine)
+2. Ensure the connector exists in the synced catalog
+3. Provide a manual override in your job config:
+   ```yaml
+   source:
+     type: stripe
+     engine:
+       type: airbyte
+       options:
+         airbyte:
+           docker_image: "airbyte/source-stripe:4.0.0"
+   ```
+
+### Security Violation
+
+**Problem:** "Docker image ... is not allowlisted".
+
+**Solutions:**
+1. Use an official image (`airbyte/...`).
+2. Set `DATIVO_ALLOW_CUSTOM_IMAGES=true` in environment if using custom images.
 
 ## API Reference
 

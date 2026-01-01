@@ -365,6 +365,7 @@ class ConnectorRegistry:
         engine: Optional[str] = None,
         job_overrides: Optional[Dict[str, Any]] = None,
         role: Optional[str] = None,
+        strict_mode: bool = True,
     ) -> Optional[ResolvedConnector]:
         """Resolve connector with catalog and job overrides.
 
@@ -378,13 +379,19 @@ class ConnectorRegistry:
             engine: Optional engine override
             job_overrides: Optional job-level overrides
             role: Optional role filter ('source' or 'target')
+            strict_mode: If True, raise error if metadata is missing/incomplete
 
         Returns:
             ResolvedConnector or None if not found
+
+        Raises:
+            ValueError: If strict_mode is True and resolution fails
         """
         # Get registry entry
         registry_entry = self.get_connector_entry(connector_name, role)
         if not registry_entry:
+            if strict_mode:
+                raise ValueError(f"Connector '{connector_name}' not found in registry")
             return None
 
         # Prepare job overrides (copy to avoid mutating caller's dict)
@@ -408,13 +415,26 @@ class ConnectorRegistry:
             if not catalog_entry:
                 catalog_entry = self._catalog_loader.get_connector(connector_name)
 
-        return ResolvedConnector(
+        resolved = ResolvedConnector(
             name=connector_name,
             connector_type=connector_name,
             registry_entry=registry_entry,
             catalog_entry=catalog_entry,
             job_overrides=overrides,
         )
+
+        # Strict validation
+        if strict_mode and effective_engine in ["airbyte", "singer", "meltano"]:
+            if not resolved.docker_image or not resolved.version:
+                error_msg = (
+                    f"Failed to resolve docker image/version for connector '{connector_name}' "
+                    f"using engine '{effective_engine}'.\n"
+                    f"Catalog entry found: {'Yes' if catalog_entry else 'No'}\n"
+                    f"Please run 'dativo connectors sync {effective_engine}' or provide job override."
+                )
+                raise ValueError(error_msg)
+
+        return resolved
 
     def list_connectors(self, role: Optional[str] = None) -> List[str]:
         """List all connector names from registry.

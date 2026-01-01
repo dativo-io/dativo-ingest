@@ -1,13 +1,18 @@
 """External connector catalog synchronization."""
 
+import hashlib
 import json
 import ssl
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.error import URLError
 
 from ..logging import get_logger
+from .adapters.airbyte_adapter import AirbyteAdapter
+from .adapters.meltano_adapter import MeltanoAdapter
+from .adapters.singer_adapter import SingerAdapter
 
 
 class CatalogSyncer:
@@ -50,12 +55,13 @@ class CatalogSyncer:
                     f"Failed to create catalogs directory {self.catalogs_dir}: {e}"
                 )
 
-    def sync_from_url(self, url: str, name: str = "airbyte") -> Path:
-        """Fetch catalog from URL and save to file.
+    def sync_from_url(self, url: str, name: str = "airbyte", force: bool = False) -> Path:
+        """Fetch catalog from URL, normalize, and save to file with idempotency.
 
         Args:
             url: URL to fetch catalog JSON from
-            name: Name of the catalog (used for filename)
+            name: Name of the catalog (used for filename and adapter selection)
+            force: Whether to force download ignoring cache
 
         Returns:
             Path to saved catalog file
@@ -70,49 +76,92 @@ class CatalogSyncer:
             extra={"event_type": "catalog_sync_start", "url": url, "catalog": name},
         )
 
+        output_path = self.catalogs_dir / f"{name}.json"
+        
+        # Check existing cache for ETag/Last-Modified
+        existing_meta = {}
+        if not force and output_path.exists():
+            try:
+                with open(output_path, "r") as f:
+                    data = json.load(f)
+                    existing_meta = data.get("meta", {})
+            except Exception:
+                pass
+
         try:
-            # Create SSL context that ignores self-signed certs (useful for internal registries)
-            # For public internet, this might be too permissive, but practical for many enterprise envs
+            # Create SSL context
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
 
             req = urllib.request.Request(url)
-            # Add User-Agent to avoid 403s from some servers
             req.add_header('User-Agent', 'Dativo/1.0')
             
-            with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
-                if response.status != 200:
-                    raise ValueError(f"HTTP {response.status}: {response.reason}")
-                
-                data = response.read()
-                
-            # Verify it's valid JSON
+            # Add conditional headers
+            if existing_meta.get("etag"):
+                req.add_header('If-None-Match', existing_meta["etag"])
+            if existing_meta.get("last_modified"):
+                req.add_header('If-Modified-Since', existing_meta["last_modified"])
+            
             try:
-                json_data = json.loads(data)
-            except json.JSONDecodeError as e:
-                raise ValueError(f"Invalid JSON response: {e}")
+                with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
+                    # 200 OK - Content updated
+                    raw_data_bytes = response.read()
+                    
+                    # Compute SHA256 of raw content
+                    sha256 = hashlib.sha256(raw_data_bytes).hexdigest()
+                    
+                    # If content hasn't changed (based on hash), we might still want to update metadata
+                    if not force and existing_meta.get("sha256") == sha256:
+                        self.logger.info(
+                            f"Catalog '{name}' content unchanged (SHA256 match).",
+                            extra={"event_type": "catalog_sync_skipped", "reason": "content_unchanged"}
+                        )
+                        return output_path
 
-            # Basic validation
-            if not isinstance(json_data, (dict, list)):
-                raise ValueError("Catalog must be a JSON object or list")
+                    # Extract metadata headers
+                    response_headers = response.info()
+                    metadata = {
+                        "fetched_at": datetime.utcnow().isoformat() + "Z",
+                        "source_url": url,
+                        "etag": response_headers.get("ETag"),
+                        "last_modified": response_headers.get("Last-Modified"),
+                        "sha256": sha256
+                    }
+                    
+                    # Parse JSON
+                    try:
+                        raw_json = json.loads(raw_data_bytes)
+                    except json.JSONDecodeError as e:
+                        raise ValueError(f"Invalid JSON response: {e}")
 
-            # Save to file
-            output_path = self.catalogs_dir / f"{name}.json"
-            
-            # Write atomically (write to temp file then rename)
-            temp_path = output_path.with_suffix(".tmp")
-            with open(temp_path, "wb") as f:
-                f.write(data)
-            
-            temp_path.rename(output_path)
-            
-            self.logger.info(
-                f"Successfully synced catalog '{name}' to {output_path}",
-                extra={"event_type": "catalog_sync_success", "path": str(output_path)},
-            )
-            
-            return output_path
+                    # Normalize
+                    adapter = self._get_adapter(name)
+                    normalized_data = adapter.normalize(raw_json, metadata)
+                    
+                    # Validate against schema (basic check for required fields)
+                    # Note: Full schema validation could happen here, but we rely on adapter correctness for now
+                    # to avoid heavy dependencies in runtime. Validator will check structure.
+                    
+                    # Save to file
+                    self._save_atomic(output_path, normalized_data)
+                    
+                    self.logger.info(
+                        f"Successfully synced catalog '{name}' to {output_path}",
+                        extra={"event_type": "catalog_sync_success", "path": str(output_path)},
+                    )
+                    return output_path
+
+            except urllib.error.HTTPError as e:
+                if e.code == 304:
+                    # 304 Not Modified
+                    self.logger.info(
+                        f"Catalog '{name}' unchanged (304 Not Modified).",
+                        extra={"event_type": "catalog_sync_skipped", "reason": "not_modified"}
+                    )
+                    return output_path
+                else:
+                    raise
 
         except URLError as e:
             self.logger.error(
@@ -120,6 +169,56 @@ class CatalogSyncer:
                 extra={"event_type": "catalog_sync_error", "error": str(e)},
             )
             raise
+
+    def sync_from_file(self, source_path: Path, name: str = "airbyte") -> Path:
+        """Sync from a local file (copy and normalize)."""
+        source_path = Path(source_path)
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source file not found: {source_path}")
+            
+        with open(source_path, "rb") as f:
+            raw_data_bytes = f.read()
+            
+        sha256 = hashlib.sha256(raw_data_bytes).hexdigest()
+        
+        try:
+            raw_json = json.loads(raw_data_bytes)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in source file: {e}")
+            
+        metadata = {
+            "fetched_at": datetime.utcnow().isoformat() + "Z",
+            "source_url": f"file://{source_path.absolute()}",
+            "sha256": sha256,
+            "etag": None,
+            "last_modified": None
+        }
+        
+        adapter = self._get_adapter(name)
+        normalized_data = adapter.normalize(raw_json, metadata)
+        
+        output_path = self.catalogs_dir / f"{name}.json"
+        self._save_atomic(output_path, normalized_data)
+        
+        return output_path
+
+    def _get_adapter(self, name: str):
+        if name == "airbyte":
+            return AirbyteAdapter()
+        elif name == "singer":
+            return SingerAdapter()
+        elif name == "meltano":
+            return MeltanoAdapter()
+        else:
+            # Default to Airbyte adapter if unknown, or raise error?
+            # For robustness, we can try generic adapter or default to airbyte for now
+            return AirbyteAdapter() 
+
+    def _save_atomic(self, path: Path, data: Dict[str, Any]):
+        temp_path = path.with_suffix(".tmp")
+        with open(temp_path, "w") as f:
+            json.dump(data, f, indent=2)
+        temp_path.rename(path)
 
     def get_default_url(self, name: str) -> Optional[str]:
         """Get default URL for known catalogs.
