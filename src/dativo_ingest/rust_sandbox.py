@@ -517,6 +517,16 @@ class RustPluginSandbox:
         plugin_filename = self.plugin_path.name
         plugin_path_in_container = f"/usr/local/plugins/{plugin_filename}"
 
+        # Close any existing exec instance socket before creating a new one
+        # This prevents socket leaks when reinitializing after a retry
+        if self._exec_instance:
+            try:
+                if "socket" in self._exec_instance:
+                    self._exec_instance["socket"].close()
+            except Exception:
+                pass
+            self._exec_instance = None
+
         # Send init request
         init_request = json.dumps({"init": plugin_path_in_container})
 
