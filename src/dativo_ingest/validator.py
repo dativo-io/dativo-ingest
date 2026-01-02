@@ -297,13 +297,13 @@ class ConnectorValidator:
                 sys.exit(2)
         elif engine_type == "meltano":
             # Meltano uses Python packages, not Docker images
-            # Still validate connector exists but don't require docker_image/version
+            # Strict mode is safe for meltano - it validates connector exists but doesn't require docker_image/version
             try:
                 resolved = self.registry.resolve_connector(
                     source_config.type,
                     engine=engine_type,
                     job_overrides={},
-                    strict_mode=False,  # Don't require docker_image/version for meltano
+                    strict_mode=True,  # Safe for meltano - strict validation excludes Docker requirements for meltano
                 )
                 if not resolved:
                     print(

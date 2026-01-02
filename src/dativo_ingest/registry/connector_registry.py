@@ -424,7 +424,9 @@ class ConnectorRegistry:
         )
 
         # Strict validation
-        if strict_mode and effective_engine in ["airbyte", "singer", "meltano"]:
+        # Only validate docker_image/version for engines that require Docker images
+        # Meltano uses Python packages, not Docker images, so it doesn't need docker_image/version
+        if strict_mode and effective_engine in ["airbyte", "singer"]:
             if not resolved.docker_image or not resolved.version:
                 lookup_key = resolved.external_id or "unknown"
                 error_msg = (

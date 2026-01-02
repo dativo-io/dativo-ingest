@@ -299,7 +299,9 @@ def connectors_sync_command(
         if catalog_url:
             syncer = CatalogSyncer(catalogs_dir)
             try:
-                dest_path = syncer.sync_from_url(catalog_url, name=catalog_name, insecure=insecure)
+                dest_path = syncer.sync_from_url(
+                    catalog_url, name=catalog_name, insecure=insecure
+                )
                 synced = True
                 if not json_output:
                     print(
