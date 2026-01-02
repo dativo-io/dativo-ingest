@@ -45,7 +45,21 @@ class SandboxedRustReaderWrapper(BaseReader):
         mode: str,
         sandbox_config: Optional[Dict[str, Any]] = None,
     ):
-        """Initialize sandboxed Rust reader wrapper."""
+        """Initialize sandboxed Rust reader wrapper.
+        
+        Args:
+            plugin_path: Path to Rust plugin library
+            source_config: Source configuration
+            mode: Execution mode (cloud, local, etc.)
+            sandbox_config: Sandbox configuration options:
+                - enabled: Whether sandboxing is enabled (bool)
+                - reuse_container: Reuse container across requests (bool, default: True)
+                - max_retries: Maximum retries for failed requests (int, default: 3)
+                - container_max_age_seconds: Max container lifetime (int, optional)
+                - cpu_limit: CPU limit (float, 0.0-1.0)
+                - memory_limit: Memory limit string (e.g., "512m", "1g")
+                - timeout: Execution timeout in seconds (int, default: 300)
+        """
         super().__init__(source_config)
         self.plugin_path = plugin_path
         self.mode = mode
@@ -214,7 +228,23 @@ class SandboxedRustWriterWrapper(BaseWriter):
         mode: str,
         sandbox_config: Optional[Dict[str, Any]] = None,
     ):
-        """Initialize sandboxed Rust writer wrapper."""
+        """Initialize sandboxed Rust writer wrapper.
+        
+        Args:
+            plugin_path: Path to Rust plugin library
+            asset_definition: Asset definition
+            target_config: Target configuration
+            output_base: Base output path
+            mode: Execution mode (cloud, local, etc.)
+            sandbox_config: Sandbox configuration options:
+                - enabled: Whether sandboxing is enabled (bool)
+                - reuse_container: Reuse container across requests (bool, default: True)
+                - max_retries: Maximum retries for failed requests (int, default: 3)
+                - container_max_age_seconds: Max container lifetime (int, optional)
+                - cpu_limit: CPU limit (float, 0.0-1.0)
+                - memory_limit: Memory limit string (e.g., "512m", "1g")
+                - timeout: Execution timeout in seconds (int, default: 300)
+        """
         super().__init__(asset_definition, target_config, output_base)
         self.plugin_path = plugin_path
         self.mode = mode
