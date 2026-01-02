@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from .logging import get_logger
 from .registry import (
     CatalogLoader,
+    CatalogSyncer,
     ConnectorRegistry,
     RegistryLoadError,
     RegistryNotFoundError,
@@ -31,7 +32,8 @@ def format_connector_list(
     if json_output:
         output = []
         for name in sorted(connectors):
-            resolved = registry.resolve_connector(name)
+            # Use strict_mode=False for listing - we're just showing what's registered
+            resolved = registry.resolve_connector(name, strict_mode=False)
             if resolved:
                 output.append(resolved.to_dict())
         print(json.dumps({"connectors": output, "count": len(output)}, indent=2))
@@ -40,7 +42,8 @@ def format_connector_list(
         print("=" * 80)
 
         for name in sorted(connectors):
-            resolved = registry.resolve_connector(name)
+            # Use strict_mode=False for listing - we're just showing what's registered
+            resolved = registry.resolve_connector(name, strict_mode=False)
             if not resolved:
                 continue
 
@@ -200,7 +203,9 @@ def connectors_inspect_command(
     """
     try:
         registry = ConnectorRegistry.from_default_paths()
-        resolved = registry.resolve_connector(name, engine=engine)
+        # Use strict_mode=False for inspection - we're just showing connector info
+        # Strict validation happens during job validation, not during inspection
+        resolved = registry.resolve_connector(name, engine=engine, strict_mode=False)
 
         format_connector_inspect(name, resolved, json_output)
         return 0
@@ -220,16 +225,20 @@ def connectors_inspect_command(
 
 
 def connectors_sync_command(
+    catalog_name: str = "airbyte",
     catalog_url: Optional[str] = None,
     catalog_file: Optional[str] = None,
+    insecure: bool = False,
     json_output: bool = False,
     verbose: bool = False,
 ) -> int:
     """Sync external connector catalogs.
 
     Args:
+        catalog_name: Name of the catalog to sync (default: airbyte)
         catalog_url: Optional URL to fetch catalog from
         catalog_file: Optional local catalog file to copy
+        insecure: Whether to disable SSL verification
         json_output: Whether to output JSON
         verbose: Whether to include verbose details
 
@@ -237,6 +246,18 @@ def connectors_sync_command(
         Exit code (0=success, 2=failure)
     """
     logger = get_logger()
+
+    # Validate mutual exclusivity of catalog_url and catalog_file
+    if catalog_url and catalog_file:
+        error_msg = (
+            "Cannot specify both --catalog-url and --catalog-file. "
+            "Please provide only one source for the catalog."
+        )
+        if json_output:
+            print(json.dumps({"error": error_msg}, indent=2))
+        else:
+            print(f"ERROR: {error_msg}", file=sys.stderr)
+        return 2
 
     try:
         # Determine catalogs directory
@@ -276,56 +297,47 @@ def connectors_sync_command(
 
         # Handle URL sync
         if catalog_url:
-            error_msg = (
-                "URL sync not implemented. "
-                "Use --catalog-file to sync from a local JSON file."
-            )
-            if json_output:
-                print(json.dumps({"error": error_msg}, indent=2))
-            else:
-                print(f"ERROR: {error_msg}", file=sys.stderr)
-            return 2
+            syncer = CatalogSyncer(catalogs_dir)
+            try:
+                dest_path = syncer.sync_from_url(
+                    catalog_url, name=catalog_name, insecure=insecure
+                )
+                synced = True
+                if not json_output:
+                    print(
+                        f"✓ Synced catalog '{catalog_name}' from {catalog_url} -> {dest_path}"
+                    )
+            except Exception as e:
+                error_msg = f"Failed to sync catalog from URL: {e}"
+                if json_output:
+                    print(json.dumps({"error": error_msg}, indent=2))
+                else:
+                    print(f"ERROR: {error_msg}", file=sys.stderr)
+                return 2
 
         # Handle file copy
         if catalog_file:
-            import shutil
-
-            source_path = Path(catalog_file)
-            if not source_path.exists():
-                error_msg = f"Catalog file not found: {catalog_file}"
-                if json_output:
-                    print(json.dumps({"error": error_msg}, indent=2))
-                else:
-                    print(f"ERROR: {error_msg}", file=sys.stderr)
-                return 2
-
-            if not source_path.is_file():
-                error_msg = f"Not a file: {catalog_file}"
-                if json_output:
-                    print(json.dumps({"error": error_msg}, indent=2))
-                else:
-                    print(f"ERROR: {error_msg}", file=sys.stderr)
-                return 2
-
-            dest_path = catalogs_dir / source_path.name
+            syncer = CatalogSyncer(catalogs_dir)
             try:
-                shutil.copy2(source_path, dest_path)
-            except OSError as e:
-                error_msg = f"Failed to copy catalog file: {e}"
+                dest_path = syncer.sync_from_file(Path(catalog_file), name=catalog_name)
+                synced = True
+
+                logger.info(
+                    f"Copied catalog: {catalog_file}",
+                    extra={"event_type": "catalog_synced"},
+                )
+
+                if not json_output:
+                    print(
+                        f"✓ Synced catalog '{catalog_name}': {catalog_file} -> {dest_path}"
+                    )
+            except Exception as e:
+                error_msg = f"Failed to sync catalog from file: {e}"
                 if json_output:
                     print(json.dumps({"error": error_msg}, indent=2))
                 else:
                     print(f"ERROR: {error_msg}", file=sys.stderr)
                 return 2
-
-            logger.info(
-                f"Copied catalog: {source_path.name}",
-                extra={"event_type": "catalog_synced"},
-            )
-            synced = True
-
-            if not json_output:
-                print(f"✓ Synced catalog: {source_path.name} -> {dest_path}")
 
         # If no specific sync action, just reload existing catalogs
         if not synced:

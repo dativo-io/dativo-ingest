@@ -197,8 +197,6 @@ class AssetDefinition(BaseModel):
 
     model_config = ConfigDict(
         populate_by_name=True,
-        # Suppress warning about 'schema' field shadowing BaseModel attribute
-        # This is intentional as 'schema' is required by ODCS specification
         extra="forbid",
     )
 
@@ -222,9 +220,22 @@ class AssetDefinition(BaseModel):
     target: Optional[Dict[str, Any]] = None
 
     # ODCS sections
-    schema: List[Dict[str, Any]] = Field(
-        ..., description="Schema fields array"
+    # Use schema_fields internally to avoid shadowing BaseModel.schema()
+    # but alias it to "schema" for YAML/JSON (ODCS requirement)
+    schema_fields: List[Dict[str, Any]] = Field(
+        ..., alias="schema", description="Schema fields array"
     )  # Schema fields array
+
+    @property
+    def schema(self) -> List[Dict[str, Any]]:
+        """Backward compatibility property for schema field.
+
+        This property exists to avoid shadowing BaseModel.schema() while
+        maintaining backward compatibility with existing code that accesses
+        asset_definition.schema.
+        """
+        return self.schema_fields
+
     data_quality: Optional[DataQualityModel] = None
     team: TeamModel
     compliance: Optional[ComplianceModel] = None

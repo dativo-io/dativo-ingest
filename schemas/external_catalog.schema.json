@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dativo.io/schemas/external_catalog.schema.json",
+  "title": "Normalized External Connector Catalog",
+  "type": "object",
+  "required": ["catalog", "schema_version", "generated_at", "meta", "connectors"],
+  "properties": {
+    "catalog": { "type": "string" },
+    "schema_version": { "type": "integer", "const": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "meta": {
+      "type": "object",
+      "required": ["fetched_at", "sha256"],
+      "properties": {
+        "fetched_at": { "type": "string", "format": "date-time" },
+        "source_url": { "type": ["string", "null"] },
+        "etag": { "type": ["string", "null"] },
+        "last_modified": { "type": ["string", "null"] },
+        "sha256": { "type": "string" }
+      }
+    },
+    "connectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["external_id", "name", "docker_image", "version", "capabilities"],
+        "properties": {
+          "external_id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "docker_image": { "type": "string", "minLength": 1 },
+          "version": { "type": "string", "minLength": 1 },
+          "capabilities": {
+            "type": "object",
+            "required": [],
+            "properties": {
+              "supports_incremental": { "type": "boolean" },
+              "supports_state": { "type": "boolean" },
+              "supports_discover": { "type": "boolean" },
+              "requires_tables": { "type": "boolean" },
+              "supports_queries": { "type": "boolean" }
+            }
+          },
+          "metadata": { "type": "object" }
+        }
+      }
+    }
+  }
+}

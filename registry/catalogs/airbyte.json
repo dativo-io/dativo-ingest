@@ -1,64 +1,13 @@
 {
-  "catalog_version": "1.0.0",
-  "catalog_name": "airbyte",
-  "description": "Airbyte connector catalog - subset of popular connectors",
-  "last_updated": "2025-12-10",
-  "sources": [
-    {
-      "sourceDefinitionId": "e094cb9a-26de-4645-8761-65c0c425d1de",
-      "name": "Stripe",
-      "dockerRepository": "airbyte/source-stripe",
-      "dockerImageTag": "4.0.0",
-      "documentationUrl": "https://docs.airbyte.com/integrations/sources/stripe",
-      "supportLevel": "certified"
-    },
-    {
-      "sourceDefinitionId": "36c891d9-4bd9-43ac-bad2-10e12756272c",
-      "name": "HubSpot",
-      "dockerRepository": "airbyte/source-hubspot",
-      "dockerImageTag": "2.0.0",
-      "documentationUrl": "https://docs.airbyte.com/integrations/sources/hubspot",
-      "supportLevel": "certified"
-    },
-    {
-      "sourceDefinitionId": "decd338e-5647-4c0b-adf4-da0e75f5a750",
-      "name": "Postgres",
-      "dockerRepository": "airbyte/source-postgres",
-      "dockerImageTag": "3.0.0",
-      "documentationUrl": "https://docs.airbyte.com/integrations/sources/postgres",
-      "supportLevel": "certified"
-    },
-    {
-      "sourceDefinitionId": "435bb9a5-7887-4809-aa58-28c27df0d7ad",
-      "name": "MySQL",
-      "dockerRepository": "airbyte/source-mysql",
-      "dockerImageTag": "2.5.0",
-      "documentationUrl": "https://docs.airbyte.com/integrations/sources/mysql",
-      "supportLevel": "certified"
-    },
-    {
-      "sourceDefinitionId": "d8540a80-6120-485d-b7d6-272bca477d9b",
-      "name": "Google Sheets",
-      "dockerRepository": "airbyte/source-google-sheets",
-      "dockerImageTag": "1.2.0",
-      "documentationUrl": "https://docs.airbyte.com/integrations/sources/google-sheets",
-      "supportLevel": "certified"
-    },
-    {
-      "sourceDefinitionId": "e7778cfc-e97c-4458-9ecb-b4f2bba8946c",
-      "name": "Google Drive",
-      "dockerRepository": "airbyte/source-google-drive",
-      "dockerImageTag": "0.1.0",
-      "documentationUrl": "https://docs.airbyte.com/integrations/sources/google-drive",
-      "supportLevel": "community"
-    },
-    {
-      "sourceDefinitionId": "b03f5a3e-9e45-422e-9a9c-4b0c31e05c3a",
-      "name": "File (CSV)",
-      "dockerRepository": "airbyte/source-file",
-      "dockerImageTag": "0.3.0",
-      "documentationUrl": "https://docs.airbyte.com/integrations/sources/file",
-      "supportLevel": "certified"
-    }
-  ]
+  "catalog": "airbyte",
+  "schema_version": 1,
+  "generated_at": "2026-01-02T14:40:51.471804Z",
+  "meta": {
+    "fetched_at": "2026-01-02T14:40:51.471790Z",
+    "source_url": "file:///private/var/folders/rk/vtq2689j32l8s72hlknmwqhw0000gn/T/pytest-of-sergeyenin/pytest-56/test_connectors_sync_with_vali0/test_catalog.json",
+    "sha256": "785496e155157a1898bcccfe7be6882e854fbef69e8f34f18be3fa6fd4522d7b",
+    "etag": null,
+    "last_modified": null
+  },
+  "connectors": []
 }

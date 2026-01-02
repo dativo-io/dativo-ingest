@@ -180,6 +180,51 @@ class ConnectorValidator:
                 )
                 sys.exit(2)
 
+    def validate_image_security(
+        self,
+        connector_type: str,
+        engine_type: str,
+        docker_image: Optional[str] = None,
+    ) -> None:
+        """Validate docker image against security policies.
+
+        Args:
+            connector_type: Connector type
+            engine_type: Engine type (airbyte, meltano, etc.)
+            docker_image: Docker image to validate
+
+        Raises:
+            SystemExit: Exit code 2 if image is not allowed
+        """
+        # Only validate if engine uses docker images (Airbyte mostly)
+        if engine_type not in ["airbyte", "meltano", "singer"]:
+            return
+
+        if not docker_image:
+            return  # Skip if no image (will fail elsewhere if strict)
+
+        # Check allowlist
+        allow_custom = (
+            os.getenv("DATIVO_ALLOW_CUSTOM_IMAGES", "false").lower() == "true"
+        )
+        if allow_custom:
+            return
+
+        allowed_prefixes = ["airbyte/", "meltano/", "singer/"]
+
+        # Check if image starts with any allowed prefix
+        is_allowed = any(docker_image.startswith(prefix) for prefix in allowed_prefixes)
+
+        if not is_allowed:
+            print(
+                f"ERROR: Security violation for connector '{connector_type}'.\n"
+                f"Docker image '{docker_image}' is not allowlisted.\n"
+                f"Allowed prefixes: {', '.join(allowed_prefixes)}\n"
+                f"To allow custom images, set DATIVO_ALLOW_CUSTOM_IMAGES=true",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
     def validate_job(self, job_config: JobConfig, mode: str = "self_hosted") -> None:
         """Validate complete job configuration.
 
@@ -208,6 +253,67 @@ class ConnectorValidator:
 
         # Validate incremental strategy
         self.validate_incremental_strategy(job_config, source_connector_def)
+
+        # Validate image security (source)
+        # Skip validation if custom_reader is used (bypasses engine framework)
+        if source_config.custom_reader:
+            return
+
+        source_engine = source_config.engine or {}
+        engine_type = source_engine.get(
+            "type", source_connector_def.get("default_engine")
+        )
+
+        # Only validate docker_image/version for engines that require Docker images
+        # Meltano uses Python packages, not Docker images, so it doesn't need docker_image/version
+        if engine_type in ["airbyte", "singer"]:
+            job_overrides = {}
+            if (
+                source_engine.get("options", {})
+                .get(engine_type, {})
+                .get("docker_image")
+            ):
+                job_overrides["docker_image"] = (
+                    source_engine.get("options", {})
+                    .get(engine_type, {})
+                    .get("docker_image")
+                )
+
+            # Resolve with strict mode to ensure metadata exists (Requirement C3)
+            try:
+                resolved = self.registry.resolve_connector(
+                    source_config.type,
+                    engine=engine_type,
+                    job_overrides=job_overrides,
+                    strict_mode=True,
+                )
+
+                if resolved and resolved.docker_image:
+                    self.validate_image_security(
+                        source_config.type, engine_type, resolved.docker_image
+                    )
+            except ValueError as e:
+                print(f"ERROR: {e}", file=sys.stderr)
+                sys.exit(2)
+        elif engine_type == "meltano":
+            # Meltano uses Python packages, not Docker images
+            # Strict mode is safe for meltano - it validates connector exists but doesn't require docker_image/version
+            try:
+                resolved = self.registry.resolve_connector(
+                    source_config.type,
+                    engine=engine_type,
+                    job_overrides={},
+                    strict_mode=True,  # Safe for meltano - strict validation excludes Docker requirements for meltano
+                )
+                if not resolved:
+                    print(
+                        f"ERROR: Connector '{source_config.type}' not found in registry",
+                        file=sys.stderr,
+                    )
+                    sys.exit(2)
+            except ValueError as e:
+                print(f"ERROR: {e}", file=sys.stderr)
+                sys.exit(2)
 
 
 class IncrementalStateManager:
