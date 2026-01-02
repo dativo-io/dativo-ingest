@@ -255,12 +255,18 @@ class ConnectorValidator:
         self.validate_incremental_strategy(job_config, source_connector_def)
 
         # Validate image security (source)
+        # Skip validation if custom_reader is used (bypasses engine framework)
+        if source_config.custom_reader:
+            return
+
         source_engine = source_config.engine or {}
         engine_type = source_engine.get(
             "type", source_connector_def.get("default_engine")
         )
 
-        if engine_type in ["airbyte", "meltano", "singer"]:
+        # Only validate docker_image/version for engines that require Docker images
+        # Meltano uses Python packages, not Docker images, so it doesn't need docker_image/version
+        if engine_type in ["airbyte", "singer"]:
             job_overrides = {}
             if (
                 source_engine.get("options", {})
@@ -286,6 +292,25 @@ class ConnectorValidator:
                     self.validate_image_security(
                         source_config.type, engine_type, resolved.docker_image
                     )
+            except ValueError as e:
+                print(f"ERROR: {e}", file=sys.stderr)
+                sys.exit(2)
+        elif engine_type == "meltano":
+            # Meltano uses Python packages, not Docker images
+            # Still validate connector exists but don't require docker_image/version
+            try:
+                resolved = self.registry.resolve_connector(
+                    source_config.type,
+                    engine=engine_type,
+                    job_overrides={},
+                    strict_mode=False,  # Don't require docker_image/version for meltano
+                )
+                if not resolved:
+                    print(
+                        f"ERROR: Connector '{source_config.type}' not found in registry",
+                        file=sys.stderr,
+                    )
+                    sys.exit(2)
             except ValueError as e:
                 print(f"ERROR: {e}", file=sys.stderr)
                 sys.exit(2)

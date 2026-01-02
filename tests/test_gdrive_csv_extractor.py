@@ -133,10 +133,22 @@ def test_gdrive_native_extractor_initialization(
 
 
 @patch("dativo_ingest.connectors.engine_framework.docker")
+@patch("dativo_ingest.connectors.engine_config.ConnectorRegistry")
 def test_gdrive_airbyte_extractor_initialization(
-    mock_docker, gdrive_source_config, gdrive_connector_recipe_airbyte
+    mock_registry_class,
+    mock_docker,
+    gdrive_source_config,
+    gdrive_connector_recipe_airbyte,
 ):
     """Test Google Drive CSV extractor with Airbyte engine."""
+    # Mock registry resolution to return docker_image from recipe
+    mock_registry = MagicMock()
+    mock_resolved = MagicMock()
+    mock_resolved.docker_image = "airbyte/source-google-drive:latest"
+    mock_resolved.version = "latest"
+    mock_registry.resolve_connector.return_value = mock_resolved
+    mock_registry_class.from_default_paths.return_value = mock_registry
+
     extractor = GDriveCSVExtractor(
         gdrive_source_config, gdrive_connector_recipe_airbyte
     )

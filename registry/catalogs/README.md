@@ -12,6 +12,37 @@ Catalogs are **optional** - the system operates normally without them. When pres
 - Capability metadata
 - Documentation URLs
 
+## Important: Resolution vs Registration
+
+**Catalogs are used for RESOLUTION, not REGISTRATION.**
+
+- **Registration**: Connectors must be defined in `registry/connectors.yaml` to be available
+- **Resolution**: Catalogs provide metadata (Docker images, versions, etc.) for connectors that are already registered
+
+**What this means:**
+- Syncing a catalog from a URL (`dativo connectors sync --catalog-url`) downloads metadata, but does NOT add new connectors to your registry
+- To use a new connector, you must first add it to `connectors.yaml`
+- The catalog then helps automatically resolve Docker images and versions for that connector
+
+**Example:**
+```yaml
+# Step 1: Register connector in connectors.yaml
+# registry/connectors.yaml
+stripe:
+  roles: [source]
+  default_engine: airbyte
+  engines_supported: [airbyte]
+
+# Step 2: Sync catalog (provides metadata)
+# dativo connectors sync --catalog-url https://...
+# This creates registry/catalogs/airbyte.json with metadata
+
+# Step 3: Resolution happens automatically
+# When you use "stripe" connector, system resolves:
+# - docker_image from catalog: airbyte/source-stripe:4.0.0
+# - version from catalog: 4.0.0
+```
+
 ## Catalog Files
 
 ### `airbyte.json`
@@ -40,9 +71,14 @@ Sample Airbyte connector catalog with popular connectors:
 # Copy from local file
 dativo connectors sync --catalog-file /path/to/catalog.json
 
+# Download from URL (e.g., Airbyte's official catalog)
+dativo connectors sync --catalog-url https://connectors.airbyte.com/files/registries/v0/oss_registry.json
+
 # Verify it loaded
 dativo connectors sync --verbose
 ```
+
+**Note:** Syncing from a URL downloads catalog metadata and saves it locally. This does NOT add new connectors to your registry - it only provides metadata for connectors already registered in `connectors.yaml`.
 
 ## Supported Formats
 
@@ -210,6 +246,9 @@ Resolution searches all catalogs automatically.
 - Verify catalog entry exists
 
 **Connector not found:**
+- **Important:** Catalogs don't register connectors - they only provide metadata
+- Add the connector to `registry/connectors.yaml` first
+- Then sync the catalog to get metadata for that connector
 - List connectors: `dativo connectors list`
 - Check catalog name matches
 - Verify connector name in catalog

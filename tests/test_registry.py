@@ -288,14 +288,14 @@ class TestConnectorRegistry:
         with open(registry_file, "w") as f:
             yaml.dump(registry_data, f)
 
-        # Create a test catalog
+        # Create a test catalog (use normalized format: docker_image and version, not docker_image_default)
         catalog_data = {
             "connectors": [
                 {
                     "name": "hubspot",
                     "external_id": "airbyte/source-hubspot",
-                    "docker_image_default": "airbyte/source-hubspot:2.5.0",
-                    "version_default": "2.5.0",
+                    "docker_image": "airbyte/source-hubspot:2.5.0",
+                    "version": "2.5.0",
                 }
             ]
         }
@@ -555,7 +555,9 @@ class TestConnectorResolutionIntegration:
     def test_postgres_connector_resolution(self):
         """Test Postgres connector resolution."""
         registry = ConnectorRegistry.from_default_paths()
-        resolved = registry.resolve_connector("postgres")
+        # Use strict_mode=False since this test is checking basic resolution,
+        # not strict validation (which requires catalog entries for external engines)
+        resolved = registry.resolve_connector("postgres", strict_mode=False)
 
         assert resolved is not None
         assert "source" in resolved.roles or "target" in resolved.roles
