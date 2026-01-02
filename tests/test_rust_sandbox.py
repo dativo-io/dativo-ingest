@@ -31,6 +31,35 @@ from dativo_ingest.exceptions import SandboxError
 from dativo_ingest.rust_sandbox import RustPluginSandbox
 
 
+class _FakeExecSocket:
+    """Minimal socket-like object for exec_start(socket=True) tests.
+
+    RustPluginSandbox runs rust-plugin-runner with tty=True, so stdout is raw bytes.
+    """
+
+    def __init__(self, responses: list[str]):
+        self._outgoing: list[bytes] = []
+        self._buffer = "".join(responses).encode("utf-8")
+        self.closed = False
+        self.timeout = None
+
+    def sendall(self, data: bytes) -> None:
+        self._outgoing.append(data)
+
+    def recv(self, n: int) -> bytes:
+        if not self._buffer:
+            return b""
+        chunk = self._buffer[:n]
+        self._buffer = self._buffer[n:]
+        return chunk
+
+    def settimeout(self, timeout: float) -> None:
+        self.timeout = timeout
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class TestRustSandboxInitialization:
     """Test Rust sandbox initialization and error handling."""
 
@@ -335,27 +364,37 @@ class TestRustSandboxExecution:
         mock_client.ping.return_value = True
         mock_docker_module.from_env.return_value = mock_client
 
-        # Mock container
+        # Mock container + streaming exec session
         mock_container = Mock()
-        mock_exec_result = Mock()
-        mock_exec_result.exit_code = 0
-        mock_exec_result.output = b'{"status": "success", "data": {"result": "ok"}}'
-        mock_container.exec_run.return_value = mock_exec_result
-        mock_container.logs.return_value = b""
+        mock_container.id = "container-id"
         mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()  # Image exists
+
+        mock_client.api = Mock()
+        mock_client.api.exec_create.return_value = {"Id": "exec-id"}
+        mock_client.api.exec_start.return_value = _FakeExecSocket(
+            [
+                '{"status":"success","message":"Initialized"}\n',
+                '{"status":"success","data":{"result":"ok"}}\n',
+            ]
+        )
 
         sandbox = RustPluginSandbox(str(plugin_file))
         result = sandbox.execute("check_connection", config='{"test": "config"}')
 
-        # Verify Docker was called
+        # Verify Docker was called (container + long-lived runner)
         assert mock_client.containers.create.call_count == 1
         assert mock_container.start.call_count == 1
-        assert mock_container.exec_run.call_count == 1
-        assert mock_container.remove.call_count == 1
+        assert mock_client.api.exec_create.call_count == 1
+        assert mock_client.api.exec_start.call_count == 1
 
         # Verify result is parsed correctly
         assert isinstance(result, dict)
         assert result.get("result") == "ok"
+
+        # Cleanup is explicit (not per execute call)
+        sandbox.close()
+        assert mock_container.remove.call_count == 1
 
     @patch("dativo_ingest.rust_sandbox.docker")
     def test_execute_plugin_method_error(self, mock_docker_module, tmp_path):
@@ -368,18 +407,24 @@ class TestRustSandboxExecution:
         mock_client.ping.return_value = True
         mock_docker_module.from_env.return_value = mock_client
 
-        # Mock container with error
+        # Mock container + error response from runner
         mock_container = Mock()
-        mock_exec_result = Mock()
-        mock_exec_result.exit_code = 1
-        mock_exec_result.output = b"Error occurred"
-        mock_container.exec_run.return_value = mock_exec_result
-        mock_container.logs.return_value = b"Error logs"
+        mock_container.id = "container-id"
         mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        mock_client.api = Mock()
+        mock_client.api.exec_create.return_value = {"Id": "exec-id"}
+        mock_client.api.exec_start.return_value = _FakeExecSocket(
+            [
+                '{"status":"success","message":"Initialized"}\n',
+                '{"status":"error","error":"Error occurred"}\n',
+            ]
+        )
 
         sandbox = RustPluginSandbox(str(plugin_file))
 
-        with pytest.raises(SandboxError, match="Rust plugin execution failed"):
+        with pytest.raises(SandboxError, match="returned error"):
             sandbox.execute("check_connection", config='{"test": "config"}')
 
     @patch("dativo_ingest.rust_sandbox.docker")
@@ -393,14 +438,20 @@ class TestRustSandboxExecution:
         mock_client.ping.return_value = True
         mock_docker_module.from_env.return_value = mock_client
 
-        # Mock container with invalid JSON
+        # Mock container + invalid JSON output
         mock_container = Mock()
-        mock_exec_result = Mock()
-        mock_exec_result.exit_code = 0
-        mock_exec_result.output = b"Invalid JSON response"
-        mock_container.exec_run.return_value = mock_exec_result
-        mock_container.logs.return_value = b"Invalid JSON"
+        mock_container.id = "container-id"
         mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        mock_client.api = Mock()
+        mock_client.api.exec_create.return_value = {"Id": "exec-id"}
+        mock_client.api.exec_start.return_value = _FakeExecSocket(
+            [
+                '{"status":"success","message":"Initialized"}\n',
+                "Invalid JSON response\n",
+            ]
+        )
 
         sandbox = RustPluginSandbox(str(plugin_file))
 
@@ -420,14 +471,20 @@ class TestRustSandboxExecution:
         mock_client.ping.return_value = True
         mock_docker_module.from_env.return_value = mock_client
 
-        # Mock container
+        # Mock container + method response using 'result' field
         mock_container = Mock()
-        mock_exec_result = Mock()
-        mock_exec_result.exit_code = 0
-        mock_exec_result.output = b'{"status": "success", "result": {"key": "value"}}'
-        mock_container.exec_run.return_value = mock_exec_result
-        mock_container.logs.return_value = b""
+        mock_container.id = "container-id"
         mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        mock_client.api = Mock()
+        mock_client.api.exec_create.return_value = {"Id": "exec-id"}
+        mock_client.api.exec_start.return_value = _FakeExecSocket(
+            [
+                '{"status":"success","message":"Initialized"}\n',
+                '{"status":"success","result":{"key":"value"}}\n',
+            ]
+        )
 
         sandbox = RustPluginSandbox(str(plugin_file))
         result = sandbox.execute("extract_batch", batch=[])
@@ -447,14 +504,20 @@ class TestRustSandboxExecution:
         mock_client.ping.return_value = True
         mock_docker_module.from_env.return_value = mock_client
 
-        # Mock container
+        # Mock container + method response using 'data' field
         mock_container = Mock()
-        mock_exec_result = Mock()
-        mock_exec_result.exit_code = 0
-        mock_exec_result.output = b'{"status": "success", "data": {"key": "value"}}'
-        mock_container.exec_run.return_value = mock_exec_result
-        mock_container.logs.return_value = b""
+        mock_container.id = "container-id"
         mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        mock_client.api = Mock()
+        mock_client.api.exec_create.return_value = {"Id": "exec-id"}
+        mock_client.api.exec_start.return_value = _FakeExecSocket(
+            [
+                '{"status":"success","message":"Initialized"}\n',
+                '{"status":"success","data":{"key":"value"}}\n',
+            ]
+        )
 
         sandbox = RustPluginSandbox(str(plugin_file))
         result = sandbox.execute("extract_batch", batch=[])
@@ -464,10 +527,8 @@ class TestRustSandboxExecution:
         assert result.get("key") == "value"
 
     @patch("dativo_ingest.rust_sandbox.docker")
-    def test_execute_plugin_method_multiline_response(
-        self, mock_docker_module, tmp_path
-    ):
-        """Test executing a Rust plugin method with multiline JSON response."""
+    def test_execute_plugin_method_multiline_response(self, mock_docker_module, tmp_path):
+        """Test a normal init+method response (runner is line-delimited)."""
         plugin_file = tmp_path / "test_plugin.so"
         plugin_file.write_bytes(b"fake plugin binary")
 
@@ -476,17 +537,20 @@ class TestRustSandboxExecution:
         mock_client.ping.return_value = True
         mock_docker_module.from_env.return_value = mock_client
 
-        # Mock container with multiline response (init + method response)
+        # Mock container with two line-delimited responses (init + method response)
         mock_container = Mock()
-        mock_exec_result = Mock()
-        mock_exec_result.exit_code = 0
-        mock_exec_result.output = (
-            b'{"status": "init", "message": "Plugin loaded"}\n'
-            b'{"status": "success", "data": {"result": "ok"}}'
-        )
-        mock_container.exec_run.return_value = mock_exec_result
-        mock_container.logs.return_value = b""
+        mock_container.id = "container-id"
         mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        mock_client.api = Mock()
+        mock_client.api.exec_create.return_value = {"Id": "exec-id"}
+        mock_client.api.exec_start.return_value = _FakeExecSocket(
+            [
+                '{"status":"success","message":"Initialized"}\n',
+                '{"status":"success","data":{"result":"ok"}}\n',
+            ]
+        )
 
         sandbox = RustPluginSandbox(str(plugin_file))
         result = sandbox.execute("check_connection", config='{"test": "config"}')
@@ -506,24 +570,26 @@ class TestRustSandboxExecution:
         mock_client.ping.return_value = True
         mock_docker_module.from_env.return_value = mock_client
 
-        # Mock container
+        # Mock container + method response
         mock_container = Mock()
-        mock_exec_result = Mock()
-        mock_exec_result.exit_code = 0
-        mock_exec_result.output = b'{"status": "success", "data": {"success": true}}'
-        mock_container.exec_run.return_value = mock_exec_result
-        mock_container.logs.return_value = b""
+        mock_container.id = "container-id"
         mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        mock_client.api = Mock()
+        mock_client.api.exec_create.return_value = {"Id": "exec-id"}
+        mock_client.api.exec_start.return_value = _FakeExecSocket(
+            [
+                '{"status":"success","message":"Initialized"}\n',
+                '{"status":"success","data":{"success":true}}\n',
+            ]
+        )
 
         sandbox = RustPluginSandbox(str(plugin_file))
         config = {"type": "test", "connection": {}}
         result = sandbox.check_connection(config)
 
-        # Verify check_connection was called
-        assert mock_container.exec_run.call_count == 1
-        # Verify config was passed as JSON string
-        exec_call = mock_container.exec_run.call_args
-        assert exec_call is not None
+        assert isinstance(result, dict)
 
     @patch("dativo_ingest.rust_sandbox.docker")
     def test_execute_container_cleanup_on_error(self, mock_docker_module, tmp_path):
@@ -536,14 +602,25 @@ class TestRustSandboxExecution:
         mock_client.ping.return_value = True
         mock_docker_module.from_env.return_value = mock_client
 
-        # Mock container that raises error on exec_run
+        # Mock container + socket that fails on request send
         mock_container = Mock()
-        mock_container.exec_run.side_effect = Exception("Execution error")
+        mock_container.id = "container-id"
         mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        mock_client.api = Mock()
+        mock_client.api.exec_create.return_value = {"Id": "exec-id"}
+        fake_socket = _FakeExecSocket(['{"status":"success","message":"Initialized"}\n'])
+
+        def _sendall_raises(_data: bytes) -> None:
+            raise Exception("Execution error")
+
+        fake_socket.sendall = _sendall_raises  # type: ignore[method-assign]
+        mock_client.api.exec_start.return_value = fake_socket
 
         sandbox = RustPluginSandbox(str(plugin_file))
 
-        with pytest.raises(Exception):
+        with pytest.raises(SandboxError):
             sandbox.execute("check_connection", config='{"test": "config"}')
 
         # Verify container cleanup was attempted
@@ -562,22 +639,29 @@ class TestRustSandboxExecution:
         mock_client.ping.return_value = True
         mock_docker_module.from_env.return_value = mock_client
 
-        # Mock container
+        # Mock container + method response
         mock_container = Mock()
-        mock_exec_result = Mock()
-        mock_exec_result.exit_code = 0
-        mock_exec_result.output = b'{"status": "success", "data": {}}'
-        mock_container.exec_run.return_value = mock_exec_result
-        mock_container.logs.return_value = b""
+        mock_container.id = "container-id"
         # Make remove raise an error
         mock_container.remove.side_effect = Exception("Cleanup error")
         mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        mock_client.api = Mock()
+        mock_client.api.exec_create.return_value = {"Id": "exec-id"}
+        mock_client.api.exec_start.return_value = _FakeExecSocket(
+            [
+                '{"status":"success","message":"Initialized"}\n',
+                '{"status":"success","data":{}}\n',
+            ]
+        )
 
         sandbox = RustPluginSandbox(str(plugin_file))
 
-        # Should not raise error even if cleanup fails
         result = sandbox.execute("check_connection", config='{"test": "config"}')
         assert result is not None
+        # Should not raise error even if cleanup fails
+        sandbox.close()
 
 
 class TestRustSandboxImageNotFoundErrorHandling:

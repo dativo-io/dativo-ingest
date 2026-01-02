@@ -57,6 +57,13 @@ class SandboxedRustReaderWrapper(BaseReader):
         }
         self.sandbox = RustPluginSandbox(plugin_path, **sandbox_kwargs)
 
+    def __del__(self) -> None:
+        # Best-effort cleanup of the sandbox container
+        try:
+            self.sandbox.close()
+        except Exception:
+            pass
+
     def check_connection(self) -> ConnectionTestResult:
         """Check connection via sandbox."""
         source_config_dict = {
@@ -220,6 +227,13 @@ class SandboxedRustWriterWrapper(BaseWriter):
             k: v for k, v in self.sandbox_config.items() if k != "enabled"
         }
         self.sandbox = RustPluginSandbox(plugin_path, **sandbox_kwargs)
+
+    def __del__(self) -> None:
+        # Best-effort cleanup of the sandbox container
+        try:
+            self.sandbox.close()
+        except Exception:
+            pass
 
     def check_connection(self) -> ConnectionTestResult:
         """Check connection via sandbox.

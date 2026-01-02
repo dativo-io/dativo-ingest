@@ -4,11 +4,7 @@ This module provides Docker-based sandboxing for Rust plugins,
 enabling secure execution with resource limits and network isolation.
 """
 
-import base64
 import json
-import os
-import shlex
-import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -80,6 +76,12 @@ class RustPluginSandbox:
         self.timeout = timeout
         self.container_image = container_image
 
+        # Long-lived container + runner session state
+        self._container = None
+        self._exec_socket = None
+        self._recv_buffer = b""
+        self._runner_initialized = False
+
         # Initialize Docker client
         try:
             self.docker_client = docker.from_env()
@@ -94,6 +96,35 @@ class RustPluginSandbox:
 
         # Default seccomp profile (restrictive)
         self.default_seccomp = self._get_default_seccomp_profile()
+
+    def __del__(self) -> None:
+        # Best-effort cleanup (avoid raising in GC)
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        """Close any long-lived runner/container resources."""
+        # Close exec socket first (stops stdin piping)
+        sock = self._exec_socket
+        self._exec_socket = None
+        self._recv_buffer = b""
+        self._runner_initialized = False
+        try:
+            if sock is not None:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+        finally:
+            container = self._container
+            self._container = None
+            if container is not None:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    pass
 
     def _get_default_seccomp_profile(self) -> Dict[str, Any]:
         """Get minimal restrictive seccomp profile.
@@ -406,37 +437,46 @@ class RustPluginSandbox:
         Raises:
             SandboxError: If execution fails
         """
-        # Build container command
         plugin_filename = self.plugin_path.name
         plugin_path_in_container = f"/usr/local/plugins/{plugin_filename}"
 
-        # Create request JSON
-        request = {
-            "method": method_name,
-            **kwargs,
-        }
+        request = {"method": method_name, **kwargs}
 
-        # Build container configuration
-        # Use a keep-alive command so the container stays running
-        # We'll use exec_run to run rust-plugin-runner with our inputs
+        try:
+            self._ensure_started(plugin_path_in_container=plugin_path_in_container)
+            response = self._send_and_receive_json(request)
+            return self._extract_result(response)
+        except SandboxError:
+            raise
+        except Exception as e:
+            # Any unexpected error: reset the session so a retry can start fresh
+            self.close()
+            raise SandboxError(
+                f"Rust plugin execution failed: {e}",
+                details={"error": str(e), "method": method_name},
+                retryable=True,
+            ) from e
+
+    def _ensure_started(self, plugin_path_in_container: str) -> None:
+        """Ensure a long-lived container + rust-plugin-runner process is running."""
+        if self._runner_initialized and self._container is not None and self._exec_socket:
+            return
+
+        # If we're partially initialized, reset before restarting
+        self.close()
+
         container_config = self._build_container_config(
-            command=["sleep", "infinity"],  # Keep container alive
-            environment={
-                "PLUGIN_PATH": plugin_path_in_container,
-            },
+            command=["sleep", "infinity"],
+            environment={"PLUGIN_PATH": plugin_path_in_container},
         )
 
-        # Create and run container
-        # First, ensure the Docker image is available (pull if needed)
         image_name = container_config.get("image", self.container_image)
         try:
             self.docker_client.images.get(image_name)
         except ImageNotFound:
-            # Image not found - try to pull it automatically
             try:
                 self.docker_client.images.pull(image_name)
             except Exception as pull_error:
-                # Pull failed - raise helpful error
                 raise SandboxError(
                     f"Failed to pull Docker image {image_name}: {pull_error}. "
                     f"Please ensure the image is available or pull it manually with 'docker pull {image_name}'",
@@ -445,135 +485,165 @@ class RustPluginSandbox:
                         "image": image_name,
                         "error_type": "ImagePullError",
                     },
-                    retryable=True,  # Network issues might be retryable
+                    retryable=True,
                 ) from pull_error
 
         try:
             try:
                 container = self.docker_client.containers.create(**container_config)
             except ImageNotFound as image_error:
-                # Docker image is missing even after pull attempt
-                # Extract image name from explanation (format: "No such image: dativo/rust-plugin-runner:latest")
                 explanation = getattr(image_error, "explanation", "")
                 if explanation and "No such image:" in explanation:
-                    # Extract image name from "No such image: dativo/rust-plugin-runner:latest"
-                    image_name = explanation.split("No such image:")[-1].strip()
+                    missing_image_name = explanation.split("No such image:")[-1].strip()
                 else:
-                    # Fallback to default or use explanation as-is if it's already just the image name
-                    image_name = explanation if explanation else self.container_image
+                    missing_image_name = explanation if explanation else self.container_image
                 raise SandboxError(
-                    f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
+                    f"Docker image not found: {missing_image_name}. Please ensure the image is available or pull it with 'docker pull {missing_image_name}'",
                     details={
                         "error": str(image_error),
-                        "image": image_name,
+                        "image": missing_image_name,
                         "error_type": "ImageNotFound",
                     },
                     retryable=False,
-                )
+                ) from image_error
 
-            # Start container
             container.start()
+            self._container = container
 
-            # Prepare both requests - init and method call
-            # The rust-plugin-runner expects to read multiple lines from stdin
-            # in a single process to maintain state
-            init_request = json.dumps({"init": plugin_path_in_container})
-            method_request = json.dumps(request)
+            # Start a single long-lived rust-plugin-runner process with an attached stdin/stdout.
+            # The runner is explicitly designed to keep plugin state across multiple JSON lines.
+            api = getattr(self.docker_client, "api", None)
+            if api is None:
+                raise SandboxError(
+                    "Docker client does not expose low-level API needed for streaming exec",
+                    details={"error_type": "DockerApiUnavailable"},
+                    retryable=False,
+                )
 
-            # Use base64 encoding to safely pass JSON through shell
-            # This avoids issues with special characters, quotes, newlines, etc.
-            init_b64 = base64.b64encode(init_request.encode("utf-8")).decode("utf-8")
-            method_b64 = base64.b64encode(method_request.encode("utf-8")).decode(
-                "utf-8"
-            )
-
-            # Use shlex.quote to properly escape base64 strings for shell safety
-            # This prevents shell interpretation issues with special characters
-            init_b64_quoted = shlex.quote(init_b64)
-            method_b64_quoted = shlex.quote(method_b64)
-
-            # Use a single exec_run that pipes both requests to rust-plugin-runner
-            # This ensures both requests go to the same process, maintaining state
-            # Pipe both decoded JSON lines to the same rust-plugin-runner process
-            result = container.exec_run(
-                [
-                    "sh",
-                    "-c",
-                    f"(echo {init_b64_quoted} | base64 -d; echo {method_b64_quoted} | base64 -d) | rust-plugin-runner",
-                ],
+            exec_create_result = api.exec_create(
+                container=self._container.id,
+                cmd=["rust-plugin-runner"],
                 stdin=True,
+                tty=True,
+            )
+            exec_id = exec_create_result.get("Id")
+            if not exec_id:
+                raise SandboxError(
+                    "Failed to create exec session for rust-plugin-runner",
+                    details={"exec_create_result": exec_create_result},
+                    retryable=True,
+                )
+
+            sock = api.exec_start(exec_id, socket=True, tty=True)
+            # docker-py may wrap the socket; unwrap when possible
+            self._exec_socket = getattr(sock, "_sock", sock)
+            try:
+                self._exec_socket.settimeout(self.timeout)
+            except Exception:
+                # Not all socket wrappers allow timeouts; ignore and rely on default behavior.
+                pass
+
+            # Initialize the runner with the plugin library path (once per container/session)
+            init_response = self._send_and_receive_json({"init": plugin_path_in_container})
+            if isinstance(init_response, dict) and init_response.get("status") == "error":
+                raise SandboxError(
+                    f"Rust plugin runner init failed: {init_response.get('error')}",
+                    details={"response": init_response},
+                    retryable=True,
+                )
+            if isinstance(init_response, dict) and init_response.get("error"):
+                raise SandboxError(
+                    f"Rust plugin runner init failed: {init_response.get('error')}",
+                    details={"response": init_response},
+                    retryable=True,
+                )
+
+            self._runner_initialized = True
+        except SandboxError:
+            self.close()
+            raise
+        except Exception as e:
+            self.close()
+            raise SandboxError(
+                f"Failed to start Rust plugin sandbox session: {e}",
+                details={"error": str(e)},
+                retryable=True,
+            ) from e
+
+    def _send_and_receive_json(self, obj: Dict[str, Any]) -> Any:
+        if not self._exec_socket:
+            raise SandboxError(
+                "Rust plugin runner is not started",
+                details={"error_type": "RunnerNotStarted"},
+                retryable=True,
             )
 
-            # Get output from exec_run (stdout and stderr combined)
-            output = result.output.decode("utf-8") if result.output else ""
+        line = json.dumps(obj, separators=(",", ":")).encode("utf-8") + b"\n"
+        try:
+            self._exec_socket.sendall(line)
+        except Exception as e:
+            raise SandboxError(
+                f"Failed to send request to rust-plugin-runner: {e}",
+                details={"error": str(e), "request": obj},
+                retryable=True,
+            ) from e
 
-            # Also get logs from container (in case output is in logs)
-            logs = container.logs(stdout=True, stderr=True).decode("utf-8")
+        raw_line = self._read_line()
+        try:
+            return json.loads(raw_line)
+        except json.JSONDecodeError as e:
+            raise SandboxError(
+                f"Failed to parse Rust plugin response: {e}",
+                details={"output": raw_line, "parse_error": str(e)},
+                retryable=True,
+            ) from e
 
-            # Combine outputs, preferring exec_run output
-            combined_output = output if output else logs
+    def _read_line(self) -> str:
+        """Read a single '\n'-terminated line from the runner stdout."""
+        if not self._exec_socket:
+            raise SandboxError(
+                "Rust plugin runner is not started",
+                details={"error_type": "RunnerNotStarted"},
+                retryable=True,
+            )
 
-            # Get exit code
-            exit_code = result.exit_code
-
-            if exit_code != 0:
+        # Drain buffer if we already have a full line
+        while b"\n" not in self._recv_buffer:
+            chunk = self._exec_socket.recv(4096)
+            if not chunk:
                 raise SandboxError(
-                    f"Rust plugin execution failed with exit code {exit_code}",
-                    details={
-                        "exit_code": exit_code,
-                        "logs": combined_output,
-                        "method": method_name,
-                    },
+                    "Rust plugin runner closed the connection unexpectedly",
+                    details={"error_type": "RunnerDisconnected"},
                     retryable=True,
                 )
+            self._recv_buffer += chunk
 
-            # Parse result from output
-            # The rust-plugin-runner outputs one JSON response per line
-            # We want the last non-empty line (which should be the method response)
-            try:
-                result_lines = [
-                    line.strip()
-                    for line in combined_output.strip().split("\n")
-                    if line.strip()
-                ]
-                if result_lines:
-                    # The last line should be the method response
-                    # The first line should be the init response
-                    if len(result_lines) >= 2:
-                        # Parse the method response (last line)
-                        result_json = json.loads(result_lines[-1])
-                    else:
-                        # Fallback: parse the only line
-                        result_json = json.loads(result_lines[0])
+        line_bytes, _, remainder = self._recv_buffer.partition(b"\n")
+        self._recv_buffer = remainder
+        # With tty=True, output may contain '\r'; strip it.
+        return line_bytes.decode("utf-8", errors="replace").strip("\r")
 
-                    # Extract the "data" or "result" field if present
-                    if isinstance(result_json, dict):
-                        if "data" in result_json:
-                            return result_json["data"]
-                        elif "result" in result_json:
-                            return result_json["result"]
-                        return result_json
-                    return result_json
-                else:
-                    return None
-            except (json.JSONDecodeError, IndexError) as e:
-                # If we can't parse JSON, return logs
+    def _extract_result(self, result_json: Any) -> Any:
+        # Preserve backwards compatibility with previous parsing behavior.
+        if isinstance(result_json, dict):
+            # Runner convention: {"status":"error","error":"..."}
+            if result_json.get("status") == "error":
                 raise SandboxError(
-                    f"Failed to parse Rust plugin response: {e}",
-                    details={
-                        "output": combined_output,
-                        "method": method_name,
-                        "parse_error": str(e),
-                    },
+                    f"Rust plugin execution returned error: {result_json.get('error')}",
+                    details=result_json,
                     retryable=True,
                 )
-
-        finally:
-            # Clean up container
-            try:
-                container.remove(force=True)
-            except Exception:
-                pass  # Ignore cleanup errors
+            if "error" in result_json and result_json.get("error"):
+                raise SandboxError(
+                    f"Rust plugin execution returned error: {result_json.get('error')}",
+                    details=result_json,
+                    retryable=True,
+                )
+            if "data" in result_json:
+                return result_json["data"]
+            if "result" in result_json:
+                return result_json["result"]
+        return result_json
 
     def check_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Check connection using sandboxed Rust plugin.
