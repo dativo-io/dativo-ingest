@@ -21,12 +21,12 @@ schema-odcs:
 
 # Unit tests: Test internal functions (config loading, validation, etc.)
 # Note: Some tests (sandbox integration) require Docker images to be built
-# Performance tests are excluded (use make test-performance)
+# Performance tests and integration tests are excluded (use make test-performance and make test-integration)
 test-unit: build-plugin-images
 	@if [ -f venv/bin/pytest ]; then \
-		PYTHONPATH=src venv/bin/pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration -m "not performance"; \
+		PYTHONPATH=src venv/bin/pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration -m "not performance and not integration"; \
 	else \
-		PYTHONPATH=src pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration -m "not performance"; \
+		PYTHONPATH=src pytest tests/test_*.py tests/secrets/ -v --ignore=tests/integration -m "not performance and not integration"; \
 	fi
 
 # Integration tests: Test module integration, tag derivation, ODCS compliance, and MySQL

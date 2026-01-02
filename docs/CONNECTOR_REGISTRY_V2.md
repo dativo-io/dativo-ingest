@@ -14,6 +14,41 @@ Connector Registry v2 extends Dativo-Ingest with support for external connector 
 
 The system can now load connector metadata from external JSON catalogs stored in `/registry/catalogs/`. This enables automatic resolution of Docker images, versions, and capabilities from external sources like Airbyte's connector catalog.
 
+#### ⚠️ Important: Catalogs are for Resolution, Not Registration
+
+**Key Distinction:**
+- **Registration**: Connectors must be defined in `registry/connectors.yaml` to be available in the system
+- **Resolution**: Catalogs provide metadata (Docker images, versions, capabilities) for connectors that are **already registered**
+
+**What this means:**
+- Running `dativo connectors sync --catalog-url <URL>` downloads and saves catalog metadata locally
+- This does **NOT** add new connectors to your registry
+- To use a new connector, you must first add it to `connectors.yaml`
+- The catalog then helps automatically resolve Docker images and versions for that connector
+
+**Example Workflow:**
+```yaml
+# Step 1: Register connector in connectors.yaml
+# registry/connectors.yaml
+stripe:
+  roles: [source]
+  default_engine: airbyte
+  engines_supported: [airbyte]
+
+# Step 2: Sync catalog (provides metadata only)
+# dativo connectors sync --catalog-url https://connectors.airbyte.com/...
+# This creates registry/catalogs/airbyte.json with metadata for registered connectors
+
+# Step 3: Resolution happens automatically
+# When you use "stripe" connector in a job, system resolves:
+# - docker_image from catalog: airbyte/source-stripe:4.0.0
+# - version from catalog: 4.0.0
+# - capabilities from catalog: ["incremental", "certified"]
+```
+
+**Without catalog:** You must manually specify Docker images in job configs  
+**With catalog:** Docker images are automatically resolved from catalog metadata
+
 #### Supported Catalog Formats
 
 **Airbyte Format:**
@@ -209,9 +244,8 @@ Sync external connector catalogs.
 
 **Currently Supported:**
 - `--catalog-file <path>`: Copy a local JSON catalog file to the catalogs directory
-
-**Not Yet Implemented:**
-- `--catalog-url`: URL-based catalog sync (will error clearly if attempted)
+- `--catalog-url <url>` (or `--url`): Download catalog JSON from a remote URL (e.g., Airbyte OSS registry)
+- `--insecure`: Disable SSL certificate verification (NOT recommended for production)
 
 ```bash
 # Show current catalogs
@@ -219,6 +253,12 @@ dativo connectors sync
 
 # Copy catalog from local file
 dativo connectors sync --catalog-file /path/to/airbyte-catalog.json
+
+# Download catalog from URL
+dativo connectors sync --url https://connectors.airbyte.com/files/registries/v0/oss_registry.json
+
+# Insecure download (development only)
+dativo connectors sync --url https://internal-registry/catalog.json --insecure
 
 # JSON output
 dativo connectors sync --json
@@ -239,6 +279,37 @@ Loaded Catalogs (1):
 
 To add a catalog, place a JSON file in: /app/registry/catalogs/
 ```
+
+### Strict Mode vs Fallback
+
+**Strict Mode (Default):**
+- If a connector is configured to use an external engine (Airbyte, etc.), the system REQUIRES resolving a valid Docker image and version.
+- If resolution fails (missing catalog entry, missing fields in catalog, no job override), the validator/runtime will raise an error.
+- Suggested fix: Run `dativo connectors sync <engine>` or provide `docker_image` in job config.
+
+**Fallback Behavior:**
+- (Internal/Legacy) If strict mode is disabled, the system might proceed if partial metadata is available, but this is not recommended for production.
+
+### Security / Governance Guardrail
+
+Optional security feature to restrict Docker images to allowed registries.
+
+**Configuration:**
+- `DATIVO_ALLOW_CUSTOM_IMAGES`: Set to `false` (default) to restrict images to allowed prefixes (`airbyte/`, `meltano/`, `singer/`). Set to `true` to allow any image.
+
+**Behavior:**
+- If `false`, job validation fails if a connector tries to use a Docker image that doesn't start with an allowed prefix.
+- If `true`, any Docker image can be used (useful for private registries or custom builds).
+
+### 5. Catalog Normalization and Adapters
+
+The system includes adapters to normalize external catalog formats into a standard internal representation.
+
+- **Airbyte Adapter**: Fully implemented. Normalizes Airbyte catalog JSON into Dativo's format.
+- **Singer/Meltano Adapters**: Stubs provided for future implementation.
+
+**Normalized Catalog Schema:**
+See `schemas/external_catalog.schema.json` for the strict schema definition.
 
 ## Architecture
 
@@ -385,6 +456,8 @@ The `ConnectorValidator` (`validator.py`) now uses the enhanced registry interna
 
 ## Adding New Catalogs
 
+**Note:** Adding a catalog provides metadata for connectors that are already registered in `connectors.yaml`. It does not add new connectors to your registry.
+
 ### Option 1: Manual File Placement
 
 1. Download or create a catalog JSON file
@@ -398,9 +471,17 @@ The `ConnectorValidator` (`validator.py`) now uses the enhanced registry interna
 # Copy from local file
 dativo connectors sync --catalog-file /path/to/catalog.json
 
+# Or download from URL
+dativo connectors sync --catalog-url https://connectors.airbyte.com/...
+
 # Verify it was loaded
 dativo connectors sync --verbose
 ```
+
+**What happens:**
+- Catalog file is saved to `registry/catalogs/`
+- Metadata is loaded for connectors that match names in your `connectors.yaml`
+- No new connectors are added to the registry
 
 ### Catalog File Requirements
 
@@ -444,7 +525,7 @@ dativo connectors inspect hubspot
 
 ### 3. Connector Discovery
 
-List all available connectors across native and external sources:
+List all available connectors (registered in `connectors.yaml`) and their metadata (from catalogs):
 
 ```bash
 # See all source connectors
@@ -453,6 +534,8 @@ dativo connectors list --role source --verbose
 # Find connectors with incremental support
 dativo connectors list --verbose | grep "Incremental: ✓"
 ```
+
+**Note:** This lists connectors that are already registered in `connectors.yaml`. Catalogs provide additional metadata (Docker images, versions, capabilities) for these connectors.
 
 ### 4. Multi-Catalog Support
 
@@ -496,11 +579,10 @@ jsonschema -i registry/connectors.yaml schemas/connectors.schema.json
 
 Potential future improvements:
 
-1. **Automatic Catalog Sync**: Download catalogs from URLs
-2. **Catalog Versioning**: Track catalog versions and updates
-3. **Connector Templates**: Enhanced templates with catalog metadata
-4. **Multi-Source Aggregation**: Merge multiple catalogs intelligently
-5. **Capability Matching**: Match job requirements to connector capabilities
+1. **Catalog Versioning**: Track catalog versions and updates
+2. **Connector Templates**: Enhanced templates with catalog metadata
+3. **Multi-Source Aggregation**: Merge multiple catalogs intelligently
+4. **Capability Matching**: Match job requirements to connector capabilities
 
 ## Migration Guide
 
@@ -551,10 +633,11 @@ stripe:
 **Problem:** `resolved.docker_image` is None despite catalog entry.
 
 **Solutions:**
-1. Verify connector name matches catalog: `dativo connectors list --verbose`
-2. Check engine matches catalog source: `dativo connectors inspect <name> --engine airbyte`
-3. Verify catalog entry has docker_image field
-4. Check catalog is loaded: `dativo connectors sync`
+1. **First, ensure connector is registered:** Verify the connector exists in `registry/connectors.yaml` (catalogs don't register connectors)
+2. Verify connector name matches catalog: `dativo connectors list --verbose`
+3. Check engine matches catalog source: `dativo connectors inspect <name> --engine airbyte`
+4. Verify catalog entry has docker_image field
+5. Check catalog is loaded: `dativo connectors sync`
 
 ### Wrong docker image being used
 
@@ -565,6 +648,32 @@ stripe:
 2. Inspect connector: `dativo connectors inspect <name> --json`
 3. Check for job-level overrides in connector recipe
 4. Verify catalog entry: look at `catalog_entry` in inspect output
+
+### Validation Error: "Failed to resolve docker image/version"
+
+**Problem:** Job fails validation with error about missing metadata.
+
+**Solutions:**
+1. Run `dativo connectors sync airbyte` (or relevant engine)
+2. Ensure the connector exists in the synced catalog
+3. Provide a manual override in your job config:
+   ```yaml
+   source:
+     type: stripe
+     engine:
+       type: airbyte
+       options:
+         airbyte:
+           docker_image: "airbyte/source-stripe:4.0.0"
+   ```
+
+### Security Violation
+
+**Problem:** "Docker image ... is not allowlisted".
+
+**Solutions:**
+1. Use an official image (`airbyte/...`).
+2. Set `DATIVO_ALLOW_CUSTOM_IMAGES=true` in environment if using custom images.
 
 ## API Reference
 
@@ -611,7 +720,7 @@ dativo connectors list [--role {source,target}] [--json] [--verbose]
 dativo connectors inspect <name> [--engine {airbyte,singer,meltano}] [--json]
 
 # Sync catalogs
-dativo connectors sync [--catalog-file PATH] [--json] [--verbose]
+dativo connectors sync [--catalog-file PATH] [--catalog-url URL] [--json] [--verbose]
 ```
 
 ## Security Considerations

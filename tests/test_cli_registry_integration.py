@@ -159,3 +159,48 @@ class TestCLIRegistryIntegration:
         assert (
             "not implemented" in data["error"].lower() or "url" in data["error"].lower()
         )
+
+    def test_connectors_sync_mutually_exclusive_args(self, tmp_path, capsys):
+        """connectors sync should fail when both --catalog-url and --catalog-file are provided."""
+        # Create a valid catalog file
+        catalog_data = {"connectors": []}
+        catalog_file = tmp_path / "test_catalog.json"
+        with open(catalog_file, "w") as f:
+            json.dump(catalog_data, f)
+
+        exit_code = connectors_sync_command(
+            catalog_url="https://example.com/catalog.json",
+            catalog_file=str(catalog_file),
+        )
+        assert exit_code == 2
+
+        captured = capsys.readouterr()
+        output = captured.err
+
+        # Should contain error message about mutual exclusivity
+        assert "Cannot specify both" in output or "--catalog-url" in output
+
+    def test_connectors_sync_mutually_exclusive_args_json(self, tmp_path, capsys):
+        """connectors sync --json should output error JSON when both args provided."""
+        # Create a valid catalog file
+        catalog_data = {"connectors": []}
+        catalog_file = tmp_path / "test_catalog.json"
+        with open(catalog_file, "w") as f:
+            json.dump(catalog_data, f)
+
+        exit_code = connectors_sync_command(
+            catalog_url="https://example.com/catalog.json",
+            catalog_file=str(catalog_file),
+            json_output=True,
+        )
+        assert exit_code == 2
+
+        captured = capsys.readouterr()
+        output = captured.out
+
+        # Should be valid JSON with error
+        data = json.loads(output)
+        assert "error" in data
+        assert (
+            "Cannot specify both" in data["error"] or "--catalog-url" in data["error"]
+        )

@@ -129,10 +129,22 @@ def test_sheets_native_extractor_initialization(
 
 
 @patch("dativo_ingest.connectors.engine_framework.docker")
+@patch("dativo_ingest.connectors.engine_config.ConnectorRegistry")
 def test_sheets_airbyte_extractor_initialization(
-    mock_docker, sheets_source_config, sheets_connector_recipe_airbyte
+    mock_registry_class,
+    mock_docker,
+    sheets_source_config,
+    sheets_connector_recipe_airbyte,
 ):
     """Test Google Sheets extractor with Airbyte engine."""
+    # Mock registry resolution to return docker_image from recipe
+    mock_registry = MagicMock()
+    mock_resolved = MagicMock()
+    mock_resolved.docker_image = "airbyte/source-google-sheets:latest"
+    mock_resolved.version = "latest"
+    mock_registry.resolve_connector.return_value = mock_resolved
+    mock_registry_class.from_default_paths.return_value = mock_registry
+
     extractor = GoogleSheetsExtractor(
         sheets_source_config, sheets_connector_recipe_airbyte
     )

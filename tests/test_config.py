@@ -10,7 +10,12 @@ import yaml
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dativo_ingest.config import ConnectorRecipe, JobConfig, SourceConnectorRecipe
+from dativo_ingest.config import (
+    AssetDefinition,
+    ConnectorRecipe,
+    JobConfig,
+    SourceConnectorRecipe,
+)
 
 
 @pytest.fixture
@@ -161,6 +166,132 @@ class TestAssetDefinitionValidation:
         config.asset_path = str(valid_asset_file)
         # Should not raise
         config.validate_schema_presence()
+
+
+class TestAssetDefinitionSchemaField:
+    """Test AssetDefinition schema field fix (no shadowing BaseModel.schema())."""
+
+    def test_schema_field_loads_from_yaml(self, temp_dir):
+        """Test that schema field loads correctly from YAML with alias."""
+        asset_path = temp_dir / "asset.yaml"
+        asset_data = {
+            "$schema": "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json",
+            "apiVersion": "v3.0.2",
+            "kind": "DataContract",
+            "name": "test_asset",
+            "version": "1.0",
+            "status": "active",
+            "source_type": "csv",
+            "object": "test.csv",
+            "schema": [
+                {"name": "id", "type": "string", "required": True},
+                {"name": "email", "type": "string", "required": False},
+            ],
+            "team": {"owner": "test@example.com"},
+        }
+        with open(asset_path, "w") as f:
+            yaml.dump(asset_data, f)
+
+        # Load asset definition - should not raise warnings about shadowing
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            asset = AssetDefinition.from_yaml(asset_path)
+
+            # Verify no warnings about field shadowing
+            shadowing_warnings = [
+                warning
+                for warning in w
+                if "shadows an attribute in parent" in str(warning.message)
+                and "schema" in str(warning.message)
+            ]
+            assert (
+                len(shadowing_warnings) == 0
+            ), f"Found shadowing warnings: {[str(w.message) for w in shadowing_warnings]}"
+
+        # Verify schema property works (backward compatibility)
+        assert len(asset.schema) == 2
+        assert asset.schema[0]["name"] == "id"
+        assert asset.schema[1]["name"] == "email"
+
+        # Verify schema_fields field works
+        assert len(asset.schema_fields) == 2
+        assert asset.schema_fields[0]["name"] == "id"
+        assert asset.schema_fields[1]["name"] == "email"
+
+        # Verify both return the same value
+        assert asset.schema == asset.schema_fields
+
+    def test_schema_field_serialization_uses_alias(self, temp_dir):
+        """Test that serialization uses 'schema' key (not 'schema_fields')."""
+        asset_path = temp_dir / "asset.yaml"
+        asset_data = {
+            "$schema": "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json",
+            "apiVersion": "v3.0.2",
+            "kind": "DataContract",
+            "name": "test_asset",
+            "version": "1.0",
+            "status": "active",
+            "source_type": "csv",
+            "object": "test.csv",
+            "schema": [
+                {"name": "id", "type": "string", "required": True},
+            ],
+            "team": {"owner": "test@example.com"},
+        }
+        with open(asset_path, "w") as f:
+            yaml.dump(asset_data, f)
+
+        asset = AssetDefinition.from_yaml(asset_path)
+
+        # Serialize with alias (default behavior)
+        serialized = asset.model_dump(by_alias=True)
+        assert "schema" in serialized
+        assert "schema_fields" not in serialized
+        assert len(serialized["schema"]) == 1
+        assert serialized["schema"][0]["name"] == "id"
+
+        # Serialize without alias (should use field name)
+        serialized_no_alias = asset.model_dump(by_alias=False)
+        assert "schema_fields" in serialized_no_alias
+        assert "schema" not in serialized_no_alias
+        assert len(serialized_no_alias["schema_fields"]) == 1
+
+    def test_schema_property_backward_compatibility(self, temp_dir):
+        """Test that existing code using asset.schema still works."""
+        asset_path = temp_dir / "asset.yaml"
+        asset_data = {
+            "$schema": "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json",
+            "apiVersion": "v3.0.2",
+            "kind": "DataContract",
+            "name": "test_asset",
+            "version": "1.0",
+            "status": "active",
+            "source_type": "csv",
+            "object": "test.csv",
+            "schema": [
+                {"name": "field1", "type": "string"},
+                {"name": "field2", "type": "integer"},
+            ],
+            "team": {"owner": "test@example.com"},
+        }
+        with open(asset_path, "w") as f:
+            yaml.dump(asset_data, f)
+
+        asset = AssetDefinition.from_yaml(asset_path)
+
+        # Simulate existing code patterns that access schema
+        field_names = [field["name"] for field in asset.schema]
+        assert field_names == ["field1", "field2"]
+
+        # Verify iteration works
+        field_count = len(asset.schema)
+        assert field_count == 2
+
+        # Verify indexing works
+        assert asset.schema[0]["name"] == "field1"
+        assert asset.schema[1]["name"] == "field2"
 
 
 class TestIncrementalStateConfig:

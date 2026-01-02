@@ -104,13 +104,54 @@ src/dativo_ingest/
 - README files: Per-directory READMEs for context
 - Testing: `TESTING_PLAYBOOK.md`, `TESTING_GUIDE_INDEX.md`
 
-**When Writing Documentation:**
-- Always use `dativo` as the primary command (not `dativo-ingest` or `dativo_ingest`)
-- Use `dativo ingest` as the primary action command (not `dativo run`)
-- `dativo run` is a legacy alias and should not be mentioned as alternative
-- Include Python version requirement (3.10+)
-- Provide both `--config` and `--job-dir` examples when relevant
-- Include fallback: `python -m dativo_ingest.cli` when command not found
+**Documentation Writing Principles:**
+
+1. **Write Documentation, Not Reports**
+   - Documentation should be user-focused and task-oriented, not a record of what was implemented
+   - **Avoid report-style language:**
+     - ❌ "I updated...", "The agent accomplished...", "This change adds..."
+     - ❌ "The system can now...", "This enables...", "extends..."
+     - ❌ "Version: X", "Status: Implemented", "Date: YYYY-MM-DD" (reserve for CHANGELOG.md)
+     - ❌ "Feature X was added", "Implemented Y"
+   - **Use documentation-style language:**
+     - ✅ "You can...", "The system does...", "To accomplish X, do Y"
+     - ✅ "Catalogs provide...", "Connectors support...", "Use this to..."
+     - ✅ Write in present tense, addressing the user directly
+     - ✅ Focus on what users need to know and how to use features, not what was changed
+   - **Structure:**
+     - Start with what the feature does for the user, not how it was implemented
+     - Lead with use cases and benefits, not technical details
+     - Remove implementation history from user-facing docs
+
+2. **Follow Diátaxis Framework** (https://diataxis.fr/)
+   - Organize documentation into four distinct types based on user needs:
+     - **Tutorials**: Learning-oriented, step-by-step lessons for beginners
+       - Structure: "Let's learn...", "Getting started with...", progressive learning path
+       - Goal: Help users learn by doing, building understanding step-by-step
+     - **How-to Guides**: Task-oriented, problem-solving instructions
+       - Structure: "How to...", "Setting up...", "Configuring..."
+       - Goal: Help users accomplish specific tasks, assume they know the basics
+     - **Reference**: Information-oriented, technical descriptions
+       - Structure: Organized, scannable format (tables, lists, API docs)
+       - Goal: Provide complete, accurate technical information for lookup
+     - **Explanation**: Understanding-oriented, conceptual discussions
+       - Structure: "Understanding...", "Why...", "How X works"
+       - Goal: Help users understand concepts, rationale, and architecture
+   - **Document organization:**
+     - Each document should clearly identify its primary type
+     - Mix types within a document only when necessary, with clear section headers
+     - Structure content around user needs and goals, not implementation details
+     - Use appropriate tone: Tutorials are friendly, Reference is formal, How-to is practical
+
+3. **Content Guidelines:**
+   - Always use `dativo` as the primary command (not `dativo-ingest` or `dativo_ingest`)
+   - Use `dativo ingest` as the primary action command (not `dativo run`)
+   - `dativo run` is a legacy alias and should not be mentioned as alternative
+   - Include Python version requirement (3.10+)
+   - Provide both `--config` and `--job-dir` examples when relevant
+   - Include fallback: `python -m dativo_ingest.cli` when command not found
+   - Use active voice and imperative mood for instructions
+   - Avoid passive voice and past tense unless describing historical context
 
 ## Code Patterns
 
