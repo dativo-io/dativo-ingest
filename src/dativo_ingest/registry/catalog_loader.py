@@ -150,7 +150,7 @@ class CatalogLoader:
             raw_name = item.get("name", "")
             # Normalize name: lowercase and replace spaces/dashes with underscores
             name = raw_name.lower().replace(" ", "_").replace("-", "_")
-            
+
             external_id = item.get("external_id", "")
             docker_image = item.get("docker_image")
             version = item.get("version")
