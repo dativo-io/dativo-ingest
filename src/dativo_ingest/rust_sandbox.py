@@ -876,6 +876,10 @@ class RustPluginSandbox:
             self._container = None
             self._container_initialized = False
 
+        # Clear buffer remainder to prevent stale data from old socket
+        # being mixed with new socket data after container restart
+        self._buffer_remainder = b""
+
     def __del__(self):
         """Cleanup on garbage collection."""
         self.cleanup()
