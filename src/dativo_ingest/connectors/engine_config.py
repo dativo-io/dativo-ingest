@@ -254,6 +254,11 @@ class EngineConfigParser:
             Docker image name if resolved, None otherwise
         """
         logger = get_logger()
+        # Strict mode: Default to True as per requirements.
+        # Ideally this should be configurable via JobConfig, but EngineConfigParser
+        # assumes strict resolution for external engines to avoid runtime failures.
+        strict_mode = True
+
         try:
             registry = ConnectorRegistry.from_default_paths()
 
@@ -265,11 +270,6 @@ class EngineConfigParser:
             airbyte_opts = self.engine_options.get("airbyte", {})
             if airbyte_opts.get("version"):
                 job_overrides["version"] = airbyte_opts.get("version")
-
-            # Strict mode: Default to True as per requirements.
-            # Ideally this should be configurable via JobConfig, but EngineConfigParser
-            # assumes strict resolution for external engines to avoid runtime failures.
-            strict_mode = True
 
             resolved = registry.resolve_connector(
                 self.source_config.type,

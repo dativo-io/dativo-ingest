@@ -309,7 +309,10 @@ class TestConnectorRegistry:
         registry = ConnectorRegistry(registry_path=registry_file, catalog_loader=loader)
 
         # Resolve with airbyte engine - should use catalog
-        resolved = registry.resolve_connector("hubspot", engine="airbyte")
+        # Use strict_mode=True since we have complete catalog data (docker_image and version)
+        resolved = registry.resolve_connector(
+            "hubspot", engine="airbyte", strict_mode=True
+        )
         assert resolved is not None
         assert resolved.docker_image == "airbyte/source-hubspot:2.5.0"
         assert resolved.version == "2.5.0"
@@ -352,9 +355,10 @@ class TestConnectorRegistry:
         registry = ConnectorRegistry(registry_path=registry_file, catalog_loader=loader)
 
         # Job override should take precedence
+        # Use strict_mode=True since we have complete data (overrides provide docker_image/version)
         overrides = {"docker_image": "custom/stripe:5.0.0", "version": "5.0.0"}
         resolved = registry.resolve_connector(
-            "stripe", engine="airbyte", job_overrides=overrides
+            "stripe", engine="airbyte", job_overrides=overrides, strict_mode=True
         )
 
         assert resolved.docker_image == "custom/stripe:5.0.0"
@@ -387,8 +391,13 @@ class TestConnectorRegistry:
         original_overrides_keys = set(original_overrides.keys())
 
         # Call resolve_connector with engine parameter
+        # Use strict_mode=False since this test is about mutation, not validation
+        # and we don't have complete catalog data for singer engine
         resolved = registry.resolve_connector(
-            "stripe", engine="singer", job_overrides=original_overrides
+            "stripe",
+            engine="singer",
+            job_overrides=original_overrides,
+            strict_mode=False,
         )
 
         # Verify the original dict was NOT mutated

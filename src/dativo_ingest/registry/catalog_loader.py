@@ -1,10 +1,16 @@
 """External connector catalog loader for Airbyte, Singer, Meltano, etc."""
 
 import json
+import warnings
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
+
+from .adapters.airbyte_adapter import AirbyteAdapter
+from .adapters.meltano_adapter import MeltanoAdapter
+from .adapters.singer_adapter import SingerAdapter
 
 
 class ExternalConnector(BaseModel):
@@ -65,8 +71,6 @@ class CatalogLoader:
                 self.catalogs[catalog_name] = connectors
             except Exception as e:
                 # Log error but don't fail - catalogs are optional
-                import warnings
-
                 warnings.warn(
                     f"Failed to load catalog {catalog_file}: {e}", stacklevel=2
                 )
@@ -77,7 +81,8 @@ class CatalogLoader:
         """Parse catalog data into normalized ExternalConnector objects.
 
         Supports normalized catalog format (schema_version=1).
-        Backward compatibility for raw list of connectors not guaranteed but attempted.
+        Also supports raw catalog formats (e.g., Airbyte "sources" format) by
+        automatically normalizing them using adapters.
 
         Args:
             catalog_data: Raw catalog JSON data
@@ -97,14 +102,43 @@ class CatalogLoader:
                 if connector:
                     connectors.append(connector)
 
-        # Fallback for legacy/other formats (e.g. raw Airbyte sources list if manually placed)
+        # Fallback: Detect raw catalog formats and normalize them
         elif "sources" in catalog_data and isinstance(catalog_data["sources"], list):
-            # Try to parse as normalized connector items first (in case keys match),
-            # but likely needs adapter logic if we wanted to support raw files here.
-            # Ideally, users should use 'sync' to normalize.
-            # We will skip raw files to enforce normalization flow, or add simple support.
-            # For now, stick to normalized format as per requirements.
-            pass
+            # Raw Airbyte format detected - normalize using adapter
+            warnings.warn(
+                f"Catalog '{source_of_truth}' appears to be in raw Airbyte format. "
+                f"Normalizing automatically. For better performance, consider using "
+                f"'dativo connectors sync {source_of_truth}' to pre-normalize the catalog.",
+                UserWarning,
+                stacklevel=3,
+            )
+
+            try:
+                adapter = AirbyteAdapter()
+                metadata = {
+                    "fetched_at": datetime.utcnow().isoformat() + "Z",
+                    "source_url": None,
+                    "sha256": "",
+                    "etag": None,
+                    "last_modified": None,
+                }
+                normalized_data = adapter.normalize(catalog_data, metadata)
+
+                # Parse normalized connectors
+                if "connectors" in normalized_data and isinstance(
+                    normalized_data["connectors"], list
+                ):
+                    for item in normalized_data["connectors"]:
+                        connector = self._parse_connector_item(item, source_of_truth)
+                        if connector:
+                            connectors.append(connector)
+            except Exception as e:
+                warnings.warn(
+                    f"Failed to normalize raw Airbyte catalog '{source_of_truth}': {e}. "
+                    f"No connectors will be loaded from this catalog.",
+                    UserWarning,
+                    stacklevel=3,
+                )
 
         return connectors
 

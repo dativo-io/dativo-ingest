@@ -32,7 +32,8 @@ def format_connector_list(
     if json_output:
         output = []
         for name in sorted(connectors):
-            resolved = registry.resolve_connector(name)
+            # Use strict_mode=False for listing - we're just showing what's registered
+            resolved = registry.resolve_connector(name, strict_mode=False)
             if resolved:
                 output.append(resolved.to_dict())
         print(json.dumps({"connectors": output, "count": len(output)}, indent=2))
@@ -41,7 +42,8 @@ def format_connector_list(
         print("=" * 80)
 
         for name in sorted(connectors):
-            resolved = registry.resolve_connector(name)
+            # Use strict_mode=False for listing - we're just showing what's registered
+            resolved = registry.resolve_connector(name, strict_mode=False)
             if not resolved:
                 continue
 
@@ -201,7 +203,9 @@ def connectors_inspect_command(
     """
     try:
         registry = ConnectorRegistry.from_default_paths()
-        resolved = registry.resolve_connector(name, engine=engine)
+        # Use strict_mode=False for inspection - we're just showing connector info
+        # Strict validation happens during job validation, not during inspection
+        resolved = registry.resolve_connector(name, engine=engine, strict_mode=False)
 
         format_connector_inspect(name, resolved, json_output)
         return 0
@@ -240,6 +244,18 @@ def connectors_sync_command(
         Exit code (0=success, 2=failure)
     """
     logger = get_logger()
+
+    # Validate mutual exclusivity of catalog_url and catalog_file
+    if catalog_url and catalog_file:
+        error_msg = (
+            "Cannot specify both --catalog-url and --catalog-file. "
+            "Please provide only one source for the catalog."
+        )
+        if json_output:
+            print(json.dumps({"error": error_msg}, indent=2))
+        else:
+            print(f"ERROR: {error_msg}", file=sys.stderr)
+        return 2
 
     try:
         # Determine catalogs directory

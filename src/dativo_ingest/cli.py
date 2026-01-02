@@ -690,7 +690,7 @@ Examples:
         help="Name of the catalog to sync (default: airbyte)",
     )
     sync_parser.add_argument(
-        "--url",
+        "--catalog-url",
         dest="catalog_url",
         help="URL to fetch catalog JSON from",
     )
