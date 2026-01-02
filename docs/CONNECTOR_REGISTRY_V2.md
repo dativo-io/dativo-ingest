@@ -244,7 +244,8 @@ Sync external connector catalogs.
 
 **Currently Supported:**
 - `--catalog-file <path>`: Copy a local JSON catalog file to the catalogs directory
-- `--catalog-url <url>`: Download catalog JSON from a remote URL (e.g., Airbyte OSS registry)
+- `--catalog-url <url>` (or `--url`): Download catalog JSON from a remote URL (e.g., Airbyte OSS registry)
+- `--insecure`: Disable SSL certificate verification (NOT recommended for production)
 
 ```bash
 # Show current catalogs
@@ -254,7 +255,10 @@ dativo connectors sync
 dativo connectors sync --catalog-file /path/to/airbyte-catalog.json
 
 # Download catalog from URL
-dativo connectors sync --catalog-url https://connectors.airbyte.com/files/registries/v0/oss_registry.json
+dativo connectors sync --url https://connectors.airbyte.com/files/registries/v0/oss_registry.json
+
+# Insecure download (development only)
+dativo connectors sync --url https://internal-registry/catalog.json --insecure
 
 # JSON output
 dativo connectors sync --json

@@ -228,6 +228,7 @@ def connectors_sync_command(
     catalog_name: str = "airbyte",
     catalog_url: Optional[str] = None,
     catalog_file: Optional[str] = None,
+    insecure: bool = False,
     json_output: bool = False,
     verbose: bool = False,
 ) -> int:
@@ -237,6 +238,7 @@ def connectors_sync_command(
         catalog_name: Name of the catalog to sync (default: airbyte)
         catalog_url: Optional URL to fetch catalog from
         catalog_file: Optional local catalog file to copy
+        insecure: Whether to disable SSL verification
         json_output: Whether to output JSON
         verbose: Whether to include verbose details
 
@@ -297,7 +299,7 @@ def connectors_sync_command(
         if catalog_url:
             syncer = CatalogSyncer(catalogs_dir)
             try:
-                dest_path = syncer.sync_from_url(catalog_url, name=catalog_name)
+                dest_path = syncer.sync_from_url(catalog_url, name=catalog_name, insecure=insecure)
                 synced = True
                 if not json_output:
                     print(

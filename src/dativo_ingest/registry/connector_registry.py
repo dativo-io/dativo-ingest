@@ -426,9 +426,11 @@ class ConnectorRegistry:
         # Strict validation
         if strict_mode and effective_engine in ["airbyte", "singer", "meltano"]:
             if not resolved.docker_image or not resolved.version:
+                lookup_key = resolved.external_id or "unknown"
                 error_msg = (
                     f"Failed to resolve docker image/version for connector '{connector_name}' "
                     f"using engine '{effective_engine}'.\n"
+                    f"Lookup key: {lookup_key}\n"
                     f"Catalog entry found: {'Yes' if catalog_entry else 'No'}\n"
                     f"Please run 'dativo connectors sync {effective_engine}' or provide job override."
                 )

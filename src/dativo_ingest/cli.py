@@ -401,6 +401,7 @@ def connectors_command(args: argparse.Namespace) -> int:
             catalog_name=args.name,
             catalog_url=args.catalog_url,
             catalog_file=args.catalog_file,
+            insecure=args.insecure,
             json_output=args.json,
             verbose=args.verbose,
         )
@@ -690,6 +691,7 @@ Examples:
         help="Name of the catalog to sync (default: airbyte)",
     )
     sync_parser.add_argument(
+        "--url",
         "--catalog-url",
         dest="catalog_url",
         help="URL to fetch catalog JSON from",
@@ -697,6 +699,11 @@ Examples:
     sync_parser.add_argument(
         "--catalog-file",
         help="Path to local catalog JSON file to ingest",
+    )
+    sync_parser.add_argument(
+        "--insecure",
+        action="store_true",
+        help="Disable SSL verification (INSECURE)",
     )
     sync_parser.add_argument(
         "--json",
