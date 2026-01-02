@@ -188,6 +188,9 @@ class CatalogSyncer:
                 ctx.verify_mode = ssl.CERT_NONE
             else:
                 ctx = ssl.create_default_context()
+                # Enforce hostname checking and verification (defaults for create_default_context, but being explicit)
+                ctx.check_hostname = True
+                ctx.verify_mode = ssl.CERT_REQUIRED
 
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "Dativo/1.0")
