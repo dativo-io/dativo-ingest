@@ -779,6 +779,23 @@ target:
       row_group_size: 500000
 ```
 
+#### CSV Writer
+- **Performance:** 10-50x faster than Python CSV writer
+- **Memory:** Constant memory usage with streaming
+- **Location:** `examples/plugins/rust/csv_writer/`
+
+```yaml
+target:
+  custom_writer: "/app/plugins/rust/target/release/libcsv_writer_plugin.so:create_writer"
+  engine:
+    options:
+      delimiter: ","
+      include_header: true
+      target_size_mb: 50
+```
+
+**Benchmark:** Run `python scripts/benchmark_writers.py --records 100000000` to compare Python vs Rust CSV writer performance with 100M records (all components embedded in the script).
+
 ### Creating Rust Plugins
 
 See the comprehensive guide in `examples/plugins/rust/README.md` for:

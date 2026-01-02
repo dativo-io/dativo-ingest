@@ -1,0 +1,59 @@
+$schema: schemas/odcs/dativo-odcs-3.0.2-extended.schema.json
+apiVersion: v3.0.2
+kind: DataContract
+id: 550e8400-e29b-41d4-a716-446655440000
+name: benchmark_csv
+version: "1.0"
+status: active
+domain: dativo
+dataProduct: benchmark
+tenant: benchmark
+description:
+  purpose: "Benchmark CSV dataset for performance testing"
+  limitations: "Generated test data - not for production use"
+  usage: "Used for performance benchmarking"
+tags: [benchmark, test-data, performance]
+source_type: csv
+object: benchmark_csv
+target:
+  file_format: csv
+  mode: warn
+schema:
+  - name: id
+    type: integer
+    required: true
+  - name: name
+    type: string
+    required: true
+  - name: email
+    type: string
+    required: true
+  - name: age
+    type: integer
+    required: true
+  - name: city
+    type: string
+    required: true
+  - name: country
+    type: string
+    required: true
+  - name: salary
+    type: integer
+    required: true
+  - name: active
+    type: boolean
+    required: true
+data_quality:
+  expectations: []
+  monitoring:
+    enabled: false
+team:
+  owner: benchmark-team@company.com
+compliance:
+  classification: []
+  regulations: []
+  retention_days: 1
+  security:
+    access_control: public
+    encryption_required: false
+

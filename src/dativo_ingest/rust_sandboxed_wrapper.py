@@ -46,7 +46,7 @@ class SandboxedRustReaderWrapper(BaseReader):
         sandbox_config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize sandboxed Rust reader wrapper.
-        
+
         Args:
             plugin_path: Path to Rust plugin library
             source_config: Source configuration
@@ -229,7 +229,7 @@ class SandboxedRustWriterWrapper(BaseWriter):
         sandbox_config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize sandboxed Rust writer wrapper.
-        
+
         Args:
             plugin_path: Path to Rust plugin library
             asset_definition: Asset definition

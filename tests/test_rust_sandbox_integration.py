@@ -54,7 +54,11 @@ class TestRustSandboxSecurityPreservation:
 
         # Verify container.create was called with security settings
         create_call_args = mock_client.containers.create.call_args
-        config = create_call_args[1] if len(create_call_args) > 1 else create_call_args.kwargs
+        config = (
+            create_call_args[1]
+            if len(create_call_args) > 1
+            else create_call_args.kwargs
+        )
 
         # Verify security settings
         assert config["network_disabled"] is True
@@ -165,9 +169,7 @@ class TestRustSandboxContainerHealthAndRecovery:
         mock_client.images.get.return_value = Mock()
 
         # Create sandbox with 1-second age limit
-        sandbox = RustPluginSandbox(
-            str(plugin_file), container_max_age_seconds=1
-        )
+        sandbox = RustPluginSandbox(str(plugin_file), container_max_age_seconds=1)
 
         # Create mock container
         mock_container = Mock()
@@ -180,6 +182,7 @@ class TestRustSandboxContainerHealthAndRecovery:
 
         # Simulate time passing
         import time
+
         original_start_time = sandbox._container_start_time
         sandbox._container_start_time = original_start_time - 2  # 2 seconds ago
 
@@ -247,7 +250,7 @@ class TestRustSandboxBuffering:
         mock_docker_module.from_env.return_value = mock_client
 
         sandbox = RustPluginSandbox(str(plugin_file))
-        
+
         # Buffer should be empty initially
         assert sandbox._buffer_remainder == b""
 
@@ -262,7 +265,7 @@ class TestRustPluginIntegration:
 
     def test_csv_reader_plugin_with_container_reuse(self, tmp_path):
         """Test CSV reader plugin with container reuse optimization.
-        
+
         This test requires the Rust CSV reader plugin to be built:
         cd examples/plugins/rust && make build
         """
@@ -276,7 +279,7 @@ class TestRustPluginIntegration:
 
     def test_parquet_writer_plugin_with_container_reuse(self, tmp_path):
         """Test Parquet writer plugin with container reuse optimization.
-        
+
         This test requires the Rust Parquet writer plugin to be built:
         cd examples/plugins/rust && make build
         """

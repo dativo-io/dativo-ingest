@@ -46,7 +46,7 @@ class RustPluginSandbox:
 
     Provides isolation, resource limits, and security controls for Rust plugin execution.
     Uses a Rust plugin runner container that loads and executes plugins dynamically.
-    
+
     This sandbox now supports persistent container connections for improved performance.
     Instead of creating/destroying containers per request, it can reuse containers
     across multiple method calls, significantly reducing overhead for batch operations.
@@ -412,10 +412,10 @@ class RustPluginSandbox:
 
     def _start_container(self):
         """Start a persistent container for plugin execution.
-        
+
         Creates and starts a long-running container that will handle
         multiple plugin method calls via stdin/stdout communication.
-        
+
         Raises:
             SandboxError: If container creation or startup fails
         """
@@ -456,7 +456,9 @@ class RustPluginSandbox:
 
         try:
             try:
-                self._container = self.docker_client.containers.create(**container_config)
+                self._container = self.docker_client.containers.create(
+                    **container_config
+                )
             except ImageNotFound as image_error:
                 # Docker image is missing even after pull attempt
                 explanation = getattr(image_error, "explanation", "")
@@ -477,9 +479,10 @@ class RustPluginSandbox:
             # Start container
             self._container.start()
             self._container_initialized = False  # Plugin not yet initialized
-            
+
             # Track container start time
             import time
+
             self._container_start_time = time.time()
 
         except Exception as e:
@@ -498,10 +501,10 @@ class RustPluginSandbox:
 
     def _initialize_plugin(self):
         """Initialize the plugin in the running container.
-        
+
         Sends the init request to rust-plugin-runner to load the plugin library.
         This only needs to be done once per container.
-        
+
         Raises:
             SandboxError: If plugin initialization fails
         """
@@ -516,7 +519,7 @@ class RustPluginSandbox:
 
         # Send init request
         init_request = json.dumps({"init": plugin_path_in_container})
-        
+
         try:
             # Create exec instance for rust-plugin-runner
             # This will be a persistent stdin/stdout connection
@@ -527,44 +530,44 @@ class RustPluginSandbox:
                 stdout=True,
                 stderr=True,
             )
-            
+
             # Start exec with detach=False to get socket
             exec_socket = self.docker_client.api.exec_start(
                 exec_id,
                 socket=True,
                 demux=False,
             )
-            
+
             self._exec_instance = {
                 "id": exec_id,
                 "socket": exec_socket,
             }
-            
+
             # Send init request
             init_line = init_request + "\n"
             exec_socket.sendall(init_line.encode("utf-8"))
-            
+
             # Read init response (one JSON line)
             response_data = self._read_json_line(exec_socket)
-            
+
             if not response_data:
                 raise SandboxError(
                     "No response from plugin initialization",
                     details={"init_request": init_request},
                     retryable=True,
                 )
-            
+
             response = json.loads(response_data)
-            
+
             if response.get("status") == "error" or "error" in response:
                 raise SandboxError(
                     f"Plugin initialization failed: {response.get('error', 'Unknown error')}",
                     details={"response": response},
                     retryable=True,
                 )
-            
+
             self._container_initialized = True
-            
+
         except json.JSONDecodeError as e:
             raise SandboxError(
                 f"Failed to parse plugin initialization response: {e}",
@@ -580,13 +583,13 @@ class RustPluginSandbox:
 
     def _check_container_health(self) -> bool:
         """Check if container is still healthy and within age limit.
-        
+
         Returns:
             True if container is healthy, False otherwise
         """
         if self._container is None:
             return False
-        
+
         # Check if container is still running
         try:
             self._container.reload()
@@ -594,60 +597,103 @@ class RustPluginSandbox:
                 return False
         except Exception:
             return False
-        
+
         # Check container age if limit is set
         if self.container_max_age_seconds and self._container_start_time:
             import time
+
             age = time.time() - self._container_start_time
             if age > self.container_max_age_seconds:
                 return False
-        
+
         return True
 
     def _read_json_line(self, socket, timeout: int = 30) -> str:
         """Read one line of JSON from socket with buffering support.
-        
+
         Args:
             socket: Docker exec socket
             timeout: Read timeout in seconds
-            
+
         Returns:
             JSON string (one line)
-            
+
         Raises:
             SandboxError: If timeout or read error occurs
         """
         import select
         import time
-        
+
         # Start with any buffered data from previous read
         buffer = self._buffer_remainder
         self._buffer_remainder = b""
-        
+
         end_time = None
         if timeout:
             end_time = time.time() + timeout
-        
+
         while True:
             # Check timeout
             if end_time and time.time() > end_time:
                 raise SandboxError(
                     "Timeout reading response from plugin",
-                    details={"partial_buffer": buffer.decode("utf-8", errors="replace")},
+                    details={
+                        "partial_buffer": buffer.decode("utf-8", errors="replace")
+                    },
                     retryable=True,
                 )
-            
+
             # Check if we already have a complete line in buffer
             if b"\n" in buffer:
                 line, remainder = buffer.split(b"\n", 1)
                 self._buffer_remainder = remainder  # Save remainder for next read
                 return line.decode("utf-8")
-            
+
             # Read more data
             try:
-                # Use select with timeout for non-blocking read
-                ready = select.select([socket], [], [], 1.0)
-                if ready[0]:
+                # Try to use select for non-blocking read if socket supports it
+                # Check if socket has a valid fileno() method (not a Mock)
+                try:
+                    fileno = socket.fileno()
+                    if isinstance(fileno, int):
+                        ready = select.select([socket], [], [], 1.0)
+                        if ready[0]:
+                            chunk = socket.recv(4096)
+                            if not chunk:
+                                # Socket closed - return what we have
+                                if buffer:
+                                    return buffer.decode("utf-8", errors="replace")
+                                raise SandboxError(
+                                    "Socket closed before receiving complete response",
+                                    details={
+                                        "partial_buffer": buffer.decode(
+                                            "utf-8", errors="replace"
+                                        )
+                                    },
+                                    retryable=True,
+                                )
+                            buffer += chunk
+                    else:
+                        # Socket doesn't have valid fileno (likely a Mock in tests)
+                        # Fall back to direct read
+                        chunk = socket.recv(4096)
+                        if not chunk:
+                            # Socket closed - return what we have
+                            if buffer:
+                                return buffer.decode("utf-8", errors="replace")
+                            raise SandboxError(
+                                "Socket closed before receiving complete response",
+                                details={
+                                    "partial_buffer": buffer.decode(
+                                        "utf-8", errors="replace"
+                                    )
+                                },
+                                retryable=True,
+                            )
+                        buffer += chunk
+                except (AttributeError, TypeError):
+                    # Socket doesn't have fileno() or it's not callable (Mock in tests)
+                    # Fall back to direct read
                     chunk = socket.recv(4096)
                     if not chunk:
                         # Socket closed - return what we have
@@ -655,7 +701,11 @@ class RustPluginSandbox:
                             return buffer.decode("utf-8", errors="replace")
                         raise SandboxError(
                             "Socket closed before receiving complete response",
-                            details={"partial_buffer": buffer.decode("utf-8", errors="replace")},
+                            details={
+                                "partial_buffer": buffer.decode(
+                                    "utf-8", errors="replace"
+                                )
+                            },
                             retryable=True,
                         )
                     buffer += chunk
@@ -668,25 +718,28 @@ class RustPluginSandbox:
             except Exception as e:
                 raise SandboxError(
                     f"Error reading from socket: {e}",
-                    details={"error": str(e), "buffer": buffer.decode("utf-8", errors="replace")},
+                    details={
+                        "error": str(e),
+                        "buffer": buffer.decode("utf-8", errors="replace"),
+                    },
                     retryable=True,
                 ) from e
 
     def _send_request(self, method_name: str, **kwargs: Any) -> Any:
         """Send a request to the running plugin container with retry logic.
-        
+
         Args:
             method_name: Name of method to execute
             **kwargs: Method arguments
-            
+
         Returns:
             Method result
-            
+
         Raises:
             SandboxError: If request fails after all retries
         """
         last_error = None
-        
+
         for attempt in range(self.max_retries):
             try:
                 # Check container health before sending request
@@ -694,35 +747,37 @@ class RustPluginSandbox:
                     # Container unhealthy, restart it
                     self.cleanup()
                     self._initialize_plugin()
-                
+
                 # Ensure container is started and initialized
                 if not self._container_initialized:
                     self._initialize_plugin()
-                
+
                 # Build request JSON
                 request = {
                     "method": method_name,
                     **kwargs,
                 }
-                request_json = json.dumps(request, separators=(",", ":"))  # Compact JSON
-                
+                request_json = json.dumps(
+                    request, separators=(",", ":")
+                )  # Compact JSON
+
                 # Send request via socket
                 socket = self._exec_instance["socket"]
                 request_line = request_json + "\n"
                 socket.sendall(request_line.encode("utf-8"))
-                
+
                 # Read response (one JSON line)
                 response_data = self._read_json_line(socket, timeout=self.timeout)
-                
+
                 if not response_data:
                     raise SandboxError(
                         f"No response from plugin method: {method_name}",
                         details={"method": method_name, "request": request},
                         retryable=True,
                     )
-                
+
                 response = json.loads(response_data)
-                
+
                 # Check for errors
                 if response.get("status") == "error" or "error" in response:
                     raise SandboxError(
@@ -730,21 +785,25 @@ class RustPluginSandbox:
                         details={"method": method_name, "response": response},
                         retryable=True,
                     )
-                
+
                 # Increment request counter
                 self._request_count += 1
-                
+
                 # Extract result
                 if "data" in response:
                     return response["data"]
                 elif "result" in response:
                     return response["result"]
                 return response
-                
+
             except json.JSONDecodeError as e:
                 last_error = SandboxError(
                     f"Failed to parse plugin response: {e}",
-                    details={"method": method_name, "error": str(e), "attempt": attempt + 1},
+                    details={
+                        "method": method_name,
+                        "error": str(e),
+                        "attempt": attempt + 1,
+                    },
                     retryable=True,
                 )
                 # Mark for reinitialization
@@ -762,24 +821,32 @@ class RustPluginSandbox:
             except Exception as e:
                 last_error = SandboxError(
                     f"Plugin method execution failed: {e}",
-                    details={"method": method_name, "error": str(e), "attempt": attempt + 1},
+                    details={
+                        "method": method_name,
+                        "error": str(e),
+                        "attempt": attempt + 1,
+                    },
                     retryable=True,
                 )
                 # Mark for reinitialization
                 self._container_initialized = False
                 if attempt < self.max_retries - 1:
                     continue
-        
+
         # All retries failed
-        raise last_error if last_error else SandboxError(
-            f"Plugin method execution failed after {self.max_retries} retries",
-            details={"method": method_name},
-            retryable=False,
+        raise (
+            last_error
+            if last_error
+            else SandboxError(
+                f"Plugin method execution failed after {self.max_retries} retries",
+                details={"method": method_name},
+                retryable=False,
+            )
         )
 
     def cleanup(self):
         """Clean up container resources.
-        
+
         This should be called when done with the sandbox to properly
         shut down and remove the container.
         """
@@ -790,7 +857,7 @@ class RustPluginSandbox:
             except Exception:
                 pass
             self._exec_instance = None
-        
+
         if self._container:
             try:
                 self._container.remove(force=True)
@@ -823,7 +890,7 @@ class RustPluginSandbox:
         # Use persistent container connection for better performance
         if self.reuse_container:
             return self._send_request(method_name, **kwargs)
-        
+
         # Legacy path: create/destroy container per request (for compatibility)
         return self._execute_oneshot(method_name, **kwargs)
 
@@ -833,17 +900,17 @@ class RustPluginSandbox:
         **kwargs: Any,
     ) -> Any:
         """Execute a single request with a disposable container.
-        
+
         This is the legacy behavior: create container, execute request, destroy container.
         Used when reuse_container=False for compatibility or specific security requirements.
-        
+
         Args:
             method_name: Name of method to execute
             **kwargs: Method arguments
-            
+
         Returns:
             Method result
-            
+
         Raises:
             SandboxError: If execution fails
         """
@@ -912,7 +979,9 @@ class RustPluginSandbox:
 
             # Use base64 encoding to safely pass JSON through shell
             init_b64 = base64.b64encode(init_request.encode("utf-8")).decode("utf-8")
-            method_b64 = base64.b64encode(method_request.encode("utf-8")).decode("utf-8")
+            method_b64 = base64.b64encode(method_request.encode("utf-8")).decode(
+                "utf-8"
+            )
 
             init_b64_quoted = shlex.quote(init_b64)
             method_b64_quoted = shlex.quote(method_b64)

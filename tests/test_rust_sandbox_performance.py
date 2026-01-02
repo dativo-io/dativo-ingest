@@ -65,7 +65,9 @@ class TestRustSandboxContainerReuse:
         mock_container = Mock()
         mock_exec_result = Mock()
         mock_exec_result.exit_code = 0
-        mock_exec_result.output = b'{"status": "success"}\n{"status": "success", "data": {"result": "ok"}}'
+        mock_exec_result.output = (
+            b'{"status": "success"}\n{"status": "success", "data": {"result": "ok"}}'
+        )
         mock_container.exec_run.return_value = mock_exec_result
         mock_container.logs.return_value = b""
         mock_client.containers.create.return_value = mock_container
@@ -98,13 +100,13 @@ class TestRustSandboxContainerReuse:
         mock_client.images.get.return_value = Mock()
 
         sandbox = RustPluginSandbox(str(plugin_file))
-        
+
         # Trigger container creation
         sandbox._start_container()
-        
+
         # Cleanup should remove container
         sandbox.cleanup()
-        
+
         assert mock_container.remove.called
 
     @patch("dativo_ingest.rust_sandbox.docker")
@@ -124,7 +126,7 @@ class TestRustSandboxContainerReuse:
 
         sandbox = RustPluginSandbox(str(plugin_file))
         sandbox._start_container()
-        
+
         # Should not raise error
         sandbox.cleanup()
 
@@ -144,10 +146,10 @@ class TestRustSandboxContainerReuse:
 
         sandbox = RustPluginSandbox(str(plugin_file))
         sandbox._start_container()
-        
+
         # Delete sandbox
         del sandbox
-        
+
         # Container should be removed
         assert mock_container.remove.called
 
@@ -158,19 +160,19 @@ class TestRustSandboxPerformanceComparison:
     @patch("dativo_ingest.rust_sandbox.docker")
     def test_legacy_mode_overhead_documentation(self, mock_docker_module, tmp_path):
         """Document the overhead difference between legacy and reuse modes.
-        
+
         This test documents the conceptual performance difference:
-        
+
         Legacy Mode (reuse_container=False):
         - 100 batches = 100 container creates + 100 container destroys
         - Overhead: ~100-500ms per container create/destroy
         - Total overhead: 10-50 seconds for 100 batches
-        
+
         Reuse Mode (reuse_container=True):
         - 100 batches = 1 container create + 1 container destroy
         - Overhead: ~100-500ms for initial setup, minimal per-batch overhead
         - Total overhead: <1 second for 100 batches
-        
+
         Expected improvement: 10-50x faster for batch operations
         """
         plugin_file = tmp_path / "test_plugin.so"
@@ -182,15 +184,15 @@ class TestRustSandboxPerformanceComparison:
 
         # This test is for documentation purposes
         # Actual performance measurements would require real Docker containers
-        
+
         # Legacy mode: Multiple container creates/destroys
         sandbox_legacy = RustPluginSandbox(str(plugin_file), reuse_container=False)
         assert sandbox_legacy.reuse_container is False
-        
+
         # Reuse mode: Single container for multiple operations
         sandbox_reuse = RustPluginSandbox(str(plugin_file), reuse_container=True)
         assert sandbox_reuse.reuse_container is True
-        
+
         # The performance difference is significant:
         # - Legacy: O(n) container operations for n batches
         # - Reuse: O(1) container operations for n batches
