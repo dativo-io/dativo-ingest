@@ -763,3 +763,349 @@ class TestRustSandboxImageNotFoundErrorHandling:
             # Verify error includes custom image name
             assert "Docker image not found" in str(exc_info.value)
             assert "custom/rust-runner:v1.0" in str(exc_info.value)
+
+
+class TestRustSandboxContainerLifecycle:
+    """Test container lifecycle management - create once per job, remove only in cleanup()."""
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_container_created_in_init_when_reuse_enabled(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that container is created and started in __init__() when reuse_container=True."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        # Create sandbox with reuse_container=True (default)
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # Container should be created and started during __init__()
+        assert mock_client.containers.create.call_count == 1
+        assert mock_container.start.call_count == 1
+        assert sandbox._container is not None
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_container_not_created_in_init_when_reuse_disabled(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that container is NOT created in __init__() when reuse_container=False."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        # Create sandbox with reuse_container=False
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=False)
+
+        # Container should NOT be created during __init__()
+        assert mock_client.containers.create.call_count == 0
+        assert sandbox._container is None
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_multiple_execute_calls_reuse_same_container(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that multiple execute() calls reuse the same container (no per-call removal)."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_container.logs.return_value = b""
+        mock_client.containers.create.return_value = mock_container
+
+        # Set up socket API for multiple method calls
+        # The socket is created once and reused for all calls
+        # _read_json_line buffers data using self._buffer_remainder
+        # So we can return all responses at once and it will extract lines one by one
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        method_response_1 = b'{"status": "success", "data": {"result": "ok1"}}\n'
+        method_response_2 = b'{"status": "success", "data": {"result": "ok2"}}\n'
+        method_response_3 = b'{"status": "success", "data": {"result": "ok3"}}\n'
+
+        # Combine all responses - _read_json_line will extract lines one by one
+        # First call: extracts init_response, buffers method_response_1, method_response_2, method_response_3
+        # Second call: uses buffer, extracts method_response_1, buffers method_response_2, method_response_3
+        # Third call: uses buffer, extracts method_response_2, buffers method_response_3
+        # Fourth call (method3): uses buffer, extracts method_response_3
+        all_responses = (
+            init_response + method_response_1 + method_response_2 + method_response_3
+        )
+
+        # Create a socket that returns all data on first recv(), then empty on subsequent recvs
+        recv_call_count = [0]
+
+        def recv_side_effect(size):
+            if recv_call_count[0] == 0:
+                recv_call_count[0] += 1
+                return all_responses
+            return b""
+
+        mock_socket = Mock()
+        mock_socket.recv.side_effect = recv_side_effect
+        mock_socket.sendall.return_value = None
+        mock_socket.fileno.side_effect = AttributeError("Mock socket has no fileno")
+
+        # Mock exec_create and exec_start
+        mock_exec_id = {"Id": "mock_exec_id"}
+        mock_client.api.exec_create.return_value = mock_exec_id
+        mock_client.api.exec_start.return_value = mock_socket
+        mock_client.images.get.return_value = Mock()
+
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # Execute multiple requests
+        result1 = sandbox.execute("method1", param="value1")
+        result2 = sandbox.execute("method2", param="value2")
+        result3 = sandbox.execute("method3", param="value3")
+
+        # Container should be created only once (in __init__)
+        assert mock_client.containers.create.call_count == 1
+        assert mock_container.start.call_count == 1
+
+        # Container should NOT be removed after each execute() call
+        assert mock_container.remove.call_count == 0
+
+        # All calls should use the same container
+        assert sandbox._container is mock_container
+
+        # Verify results
+        assert result1.get("result") == "ok1"
+        assert result2.get("result") == "ok2"
+        assert result3.get("result") == "ok3"
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_container_only_removed_in_cleanup(self, mock_docker_module, tmp_path):
+        """Test that container is only removed in cleanup(), not per-call."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_container.logs.return_value = b""
+        mock_client.containers.create.return_value = mock_container
+
+        # Set up socket API with responses for init + 3 method calls
+        # _read_json_line buffers data, so we can provide all responses at once
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        method_response_1 = b'{"status": "success", "data": {"result": "ok1"}}\n'
+        method_response_2 = b'{"status": "success", "data": {"result": "ok2"}}\n'
+        method_response_3 = b'{"status": "success", "data": {"result": "ok3"}}\n'
+        all_responses = (
+            init_response + method_response_1 + method_response_2 + method_response_3
+        )
+
+        # Create socket that returns all data on first recv()
+        recv_call_count = [0]
+
+        def recv_side_effect(size):
+            if recv_call_count[0] == 0:
+                recv_call_count[0] += 1
+                return all_responses
+            return b""
+
+        mock_socket = Mock()
+        mock_socket.recv.side_effect = recv_side_effect
+        mock_socket.sendall.return_value = None
+        mock_socket.fileno.side_effect = AttributeError("Mock socket has no fileno")
+
+        mock_exec_id = {"Id": "mock_exec_id"}
+        mock_client.api.exec_create.return_value = mock_exec_id
+        mock_client.api.exec_start.return_value = mock_socket
+        mock_client.images.get.return_value = Mock()
+
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # Execute multiple requests
+        sandbox.execute("method1", param="value1")
+        sandbox.execute("method2", param="value2")
+        sandbox.execute("method3", param="value3")
+
+        # Container should NOT be removed after execute() calls
+        assert mock_container.remove.call_count == 0
+
+        # Only cleanup() should remove the container
+        sandbox.cleanup()
+        assert mock_container.remove.call_count == 1
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_container_restart_on_health_check_failure(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that container restart is attempted when health check fails."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_container.logs.return_value = b""
+        mock_client.containers.create.return_value = mock_container
+
+        # Set up socket API
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        method_response = b'{"status": "success", "data": {"result": "ok"}}\n'
+        _setup_mock_socket_api(
+            mock_client, mock_container, init_response + method_response
+        )
+
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # First call succeeds
+        sandbox.execute("method1", param="value1")
+
+        # Simulate container becoming unhealthy (status changes to "exited")
+        mock_container.status = "exited"
+        mock_container.reload = Mock()  # reload() is called in _check_container_health
+
+        # Mock restart to succeed
+        mock_container.restart.return_value = None
+
+        # Set up socket API for reinitialization after restart
+        init_response_2 = b'{"status": "success", "message": "Reinitialized"}\n'
+        method_response_2 = b'{"status": "success", "data": {"result": "ok2"}}\n'
+        _setup_mock_socket_api(
+            mock_client, mock_container, init_response_2 + method_response_2
+        )
+
+        # Second call should trigger restart
+        result = sandbox.execute("method2", param="value2")
+
+        # Container should be restarted, not removed and recreated
+        assert mock_container.restart.call_count == 1
+        assert mock_container.remove.call_count == 0
+        assert result.get("result") == "ok2"
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_container_recreate_when_restart_fails(self, mock_docker_module, tmp_path):
+        """Test that container is recreated when restart fails."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_container.logs.return_value = b""
+        mock_client.containers.create.return_value = mock_container
+
+        # Set up socket API
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        method_response = b'{"status": "success", "data": {"result": "ok"}}\n'
+        _setup_mock_socket_api(
+            mock_client, mock_container, init_response + method_response
+        )
+
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # First call succeeds
+        sandbox.execute("method1", param="value1")
+
+        # Simulate container becoming unhealthy
+        mock_container.status = "exited"
+        mock_container.reload = Mock()
+
+        # Mock restart to fail
+        mock_container.restart.side_effect = Exception("Restart failed")
+
+        # Create a new container for recreation
+        mock_container_new = Mock()
+        mock_container_new.id = "mock_container_id_new"
+        mock_container_new.status = "running"
+        mock_container_new.logs.return_value = b""
+        mock_client.containers.create.return_value = mock_container_new
+
+        # Set up socket API for new container
+        init_response_new = b'{"status": "success", "message": "New container"}\n'
+        method_response_new = b'{"status": "success", "data": {"result": "ok_new"}}\n'
+        _setup_mock_socket_api(
+            mock_client, mock_container_new, init_response_new + method_response_new
+        )
+
+        # Second call should trigger restart, which fails, then recreate
+        result = sandbox.execute("method2", param="value2")
+
+        # Old container should be removed, new one created
+        assert mock_container.restart.call_count == 1
+        assert mock_container.remove.call_count == 1
+        assert mock_client.containers.create.call_count == 2  # Original + new
+        assert result.get("result") == "ok_new"
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_container_creation_failure_in_init_graceful_degradation(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that container creation failure in __init__() doesn't fail initialization."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        # First attempt to create container fails
+        mock_client.containers.create.side_effect = [
+            Exception("Docker temporarily unavailable"),
+            Mock(),  # Second attempt succeeds
+        ]
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_container.logs.return_value = b""
+        # Reset side_effect after first failure
+        mock_client.containers.create.side_effect = None
+        mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        # Create sandbox - should not raise even if container creation fails
+        # (it will retry on first execute())
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # Container creation should have been attempted
+        assert mock_client.containers.create.call_count >= 1
+
+        # Set up socket API for first execute() which will retry container creation
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        method_response = b'{"status": "success", "data": {"result": "ok"}}\n'
+        _setup_mock_socket_api(
+            mock_client, mock_container, init_response + method_response
+        )
+
+        # First execute() should succeed (retries container creation)
+        result = sandbox.execute("method1", param="value1")
+        assert result.get("result") == "ok"

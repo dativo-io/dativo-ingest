@@ -9,6 +9,7 @@ import json
 import os
 import shlex
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -115,6 +116,17 @@ class RustPluginSandbox:
 
         # Default seccomp profile (restrictive)
         self.default_seccomp = self._get_default_seccomp_profile()
+
+        # Create and start container immediately if reuse_container is enabled
+        # This ensures container lifecycle is tied to sandbox instance, not per-call
+        if self.reuse_container:
+            try:
+                self._start_container()
+            except Exception as e:
+                # If container creation fails during init, we'll retry on first execute()
+                # This allows for graceful degradation if Docker is temporarily unavailable
+                # Log the error but don't fail initialization
+                pass
 
     def _get_default_seccomp_profile(self) -> Dict[str, Any]:
         """Get minimal restrictive seccomp profile.
@@ -481,8 +493,6 @@ class RustPluginSandbox:
             self._container_initialized = False  # Plugin not yet initialized
 
             # Track container start time
-            import time
-
             self._container_start_time = time.time()
 
         except Exception as e:
@@ -511,8 +521,16 @@ class RustPluginSandbox:
         if self._container_initialized:
             return  # Already initialized
 
+        # Ensure container is started (should already be started in __init__ if reuse_container=True)
+        # This is a fallback for cases where container creation failed during __init__
         if self._container is None:
-            self._start_container()
+            if not self.reuse_container:
+                # Legacy path: create container on-demand
+                self._start_container()
+            else:
+                # Container should have been created in __init__, but creation may have failed
+                # Retry container creation here
+                self._start_container()
 
         plugin_filename = self.plugin_path.name
         plugin_path_in_container = f"/usr/local/plugins/{plugin_filename}"
@@ -754,8 +772,37 @@ class RustPluginSandbox:
             try:
                 # Check container health before sending request
                 if not self._check_container_health():
-                    # Container unhealthy, restart it
-                    self.cleanup()
+                    # Container unhealthy - attempt to restart it
+                    # Container should only be removed in cleanup() at job end, not per-call
+                    # However, if container is completely dead and restart fails, we must
+                    # remove the dead container to avoid leaks. This is a rare recovery scenario.
+                    if self._container:
+                        try:
+                            # Try to restart the existing container (preferred - no removal)
+                            self._container.restart(timeout=10)
+                            self._container_initialized = (
+                                False  # Need to reinitialize plugin
+                            )
+                            self._container_start_time = time.time()
+                        except Exception:
+                            # Restart failed - container is completely dead
+                            # Must remove dead container to avoid leaks, then recreate
+                            # This violates the "once per job" rule but is necessary for recovery
+                            if self._exec_instance:
+                                try:
+                                    if "socket" in self._exec_instance:
+                                        self._exec_instance["socket"].close()
+                                except Exception:
+                                    pass
+                                self._exec_instance = None
+                            # Remove dead container (unavoidable for recovery)
+                            try:
+                                self._container.remove(force=True)
+                            except Exception:
+                                pass
+                            self._container = None
+                            self._container_initialized = False
+                    # Reinitialize plugin in (restarted or recreated) container
                     self._initialize_plugin()
 
                 # Ensure container is started and initialized

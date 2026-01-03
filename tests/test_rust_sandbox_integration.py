@@ -140,13 +140,19 @@ class TestRustSandboxContainerHealthAndRecovery:
         mock_docker_module.from_env.return_value = mock_client
         mock_client.images.get.return_value = Mock()
 
-        sandbox = RustPluginSandbox(str(plugin_file))
-
-        # Create mock container
+        # Create mock container before sandbox initialization
+        # (container is created in __init__() when reuse_container=True)
         mock_container = Mock()
         mock_container.status = "running"
+        mock_container.id = "mock_container_id"
         mock_client.containers.create.return_value = mock_container
-        sandbox._start_container()
+
+        sandbox = RustPluginSandbox(str(plugin_file))
+
+        # Container should already be created and started
+        assert sandbox._container is not None
+        assert mock_client.containers.create.call_count == 1
+        assert mock_container.start.call_count == 1
 
         # Container is healthy initially
         assert sandbox._check_container_health() is True
@@ -168,14 +174,19 @@ class TestRustSandboxContainerHealthAndRecovery:
         mock_docker_module.from_env.return_value = mock_client
         mock_client.images.get.return_value = Mock()
 
+        # Create mock container before sandbox initialization
+        # (container is created in __init__() when reuse_container=True)
+        mock_container = Mock()
+        mock_container.status = "running"
+        mock_container.id = "mock_container_id"
+        mock_client.containers.create.return_value = mock_container
+
         # Create sandbox with 1-second age limit
         sandbox = RustPluginSandbox(str(plugin_file), container_max_age_seconds=1)
 
-        # Create mock container
-        mock_container = Mock()
-        mock_container.status = "running"
-        mock_client.containers.create.return_value = mock_container
-        sandbox._start_container()
+        # Container should already be created and started
+        assert sandbox._container is not None
+        assert mock_client.containers.create.call_count == 1
 
         # Container is healthy initially
         assert sandbox._check_container_health() is True
