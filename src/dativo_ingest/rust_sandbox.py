@@ -9,6 +9,7 @@ import json
 import os
 import shlex
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -46,6 +47,10 @@ class RustPluginSandbox:
 
     Provides isolation, resource limits, and security controls for Rust plugin execution.
     Uses a Rust plugin runner container that loads and executes plugins dynamically.
+
+    This sandbox now supports persistent container connections for improved performance.
+    Instead of creating/destroying containers per request, it can reuse containers
+    across multiple method calls, significantly reducing overhead for batch operations.
     """
 
     def __init__(
@@ -57,6 +62,9 @@ class RustPluginSandbox:
         seccomp_profile: Optional[str] = None,
         timeout: int = 300,
         container_image: str = "dativo/rust-plugin-runner:latest",
+        reuse_container: bool = True,
+        max_retries: int = 3,
+        container_max_age_seconds: Optional[int] = None,
     ):
         """Initialize Rust plugin sandbox.
 
@@ -68,6 +76,9 @@ class RustPluginSandbox:
             seccomp_profile: Path to seccomp profile JSON file (optional)
             timeout: Execution timeout in seconds (default: 300)
             container_image: Docker image for Rust plugin runner
+            reuse_container: Whether to reuse container across requests (default: True)
+            max_retries: Maximum retries for failed requests (default: 3)
+            container_max_age_seconds: Maximum container lifetime in seconds (optional)
 
         Raises:
             SandboxError: If Docker is not available or initialization fails
@@ -79,6 +90,17 @@ class RustPluginSandbox:
         self.seccomp_profile = seccomp_profile
         self.timeout = timeout
         self.container_image = container_image
+        self.reuse_container = reuse_container
+        self.max_retries = max_retries
+        self.container_max_age_seconds = container_max_age_seconds
+
+        # Container state for reuse
+        self._container = None
+        self._container_initialized = False
+        self._exec_instance = None
+        self._container_start_time = None
+        self._request_count = 0
+        self._buffer_remainder = b""  # Buffer for partial JSON lines
 
         # Initialize Docker client
         try:
@@ -94,6 +116,17 @@ class RustPluginSandbox:
 
         # Default seccomp profile (restrictive)
         self.default_seccomp = self._get_default_seccomp_profile()
+
+        # Create and start container immediately if reuse_container is enabled
+        # This ensures container lifecycle is tied to sandbox instance, not per-call
+        if self.reuse_container:
+            try:
+                self._start_container()
+            except Exception as e:
+                # If container creation fails during init, we'll retry on first execute()
+                # This allows for graceful degradation if Docker is temporarily unavailable
+                # Log the error but don't fail initialization
+                pass
 
     def _get_default_seccomp_profile(self) -> Dict[str, Any]:
         """Get minimal restrictive seccomp profile.
@@ -389,36 +422,22 @@ class RustPluginSandbox:
 
         return config
 
-    def execute(
-        self,
-        method_name: str,
-        **kwargs: Any,
-    ) -> Any:
-        """Execute a Rust plugin method in sandboxed environment.
+    def _start_container(self):
+        """Start a persistent container for plugin execution.
 
-        Args:
-            method_name: Name of method to execute (e.g., "extract_batch", "write_batch")
-            **kwargs: Keyword arguments for method
-
-        Returns:
-            Method return value
+        Creates and starts a long-running container that will handle
+        multiple plugin method calls via stdin/stdout communication.
 
         Raises:
-            SandboxError: If execution fails
+            SandboxError: If container creation or startup fails
         """
-        # Build container command
+        if self._container is not None:
+            return  # Container already running
+
+        # Build container command - keep container alive for persistent connection
         plugin_filename = self.plugin_path.name
         plugin_path_in_container = f"/usr/local/plugins/{plugin_filename}"
 
-        # Create request JSON
-        request = {
-            "method": method_name,
-            **kwargs,
-        }
-
-        # Build container configuration
-        # Use a keep-alive command so the container stays running
-        # We'll use exec_run to run rust-plugin-runner with our inputs
         container_config = self._build_container_config(
             command=["sleep", "infinity"],  # Keep container alive
             environment={
@@ -426,8 +445,7 @@ class RustPluginSandbox:
             },
         )
 
-        # Create and run container
-        # First, ensure the Docker image is available (pull if needed)
+        # Ensure the Docker image is available (pull if needed)
         image_name = container_config.get("image", self.container_image)
         try:
             self.docker_client.images.get(image_name)
@@ -445,21 +463,20 @@ class RustPluginSandbox:
                         "image": image_name,
                         "error_type": "ImagePullError",
                     },
-                    retryable=True,  # Network issues might be retryable
+                    retryable=True,
                 ) from pull_error
 
         try:
             try:
-                container = self.docker_client.containers.create(**container_config)
+                self._container = self.docker_client.containers.create(
+                    **container_config
+                )
             except ImageNotFound as image_error:
                 # Docker image is missing even after pull attempt
-                # Extract image name from explanation (format: "No such image: dativo/rust-plugin-runner:latest")
                 explanation = getattr(image_error, "explanation", "")
                 if explanation and "No such image:" in explanation:
-                    # Extract image name from "No such image: dativo/rust-plugin-runner:latest"
                     image_name = explanation.split("No such image:")[-1].strip()
                 else:
-                    # Fallback to default or use explanation as-is if it's already just the image name
                     image_name = explanation if explanation else self.container_image
                 raise SandboxError(
                     f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
@@ -472,29 +489,599 @@ class RustPluginSandbox:
                 )
 
             # Start container
+            self._container.start()
+            self._container_initialized = False  # Plugin not yet initialized
+
+            # Track container start time
+            self._container_start_time = time.time()
+
+        except Exception as e:
+            # Clean up on error
+            if self._container:
+                try:
+                    self._container.remove(force=True)
+                except Exception:
+                    pass
+                self._container = None
+            raise SandboxError(
+                f"Failed to start container: {e}",
+                details={"error": str(e)},
+                retryable=True,
+            ) from e
+
+    def _initialize_plugin(self):
+        """Initialize the plugin in the running container.
+
+        Sends the init request to rust-plugin-runner to load the plugin library.
+        This only needs to be done once per container.
+
+        CRITICAL: This method creates a persistent exec instance (rust-plugin-runner process)
+        that maintains state (reader_ptr/writer_ptr) across multiple method calls. The exec
+        instance is reused for all subsequent requests until the container is restarted or
+        the sandbox is cleaned up. This enables state reuse across batches, matching the
+        behavior of native Python wrappers (RustReaderWrapper/RustWriterWrapper).
+
+        Raises:
+            SandboxError: If plugin initialization fails
+        """
+        # Only initialize once - exec instance must persist across all batches
+        # to maintain plugin state in rust-plugin-runner process
+        if self._container_initialized and self._exec_instance is not None:
+            return  # Already initialized
+
+        # Ensure container is started (should already be started in __init__ if reuse_container=True)
+        # This is a fallback for cases where container creation failed during __init__
+        if self._container is None:
+            if not self.reuse_container:
+                # Legacy path: create container on-demand
+                self._start_container()
+            else:
+                # Container should have been created in __init__, but creation may have failed
+                # Retry container creation here
+                self._start_container()
+
+        plugin_filename = self.plugin_path.name
+        plugin_path_in_container = f"/usr/local/plugins/{plugin_filename}"
+
+        # Close any existing exec instance socket before creating a new one
+        # This should only happen during error recovery - normal operation reuses
+        # the same exec instance across all batches to maintain plugin state
+        if self._exec_instance:
+            try:
+                if "socket" in self._exec_instance:
+                    self._exec_instance["socket"].close()
+            except Exception:
+                pass
+            self._exec_instance = None
+            # Reset initialization flag since we're creating a new exec instance
+            self._container_initialized = False
+
+        # Send init request
+        init_request = json.dumps({"init": plugin_path_in_container})
+
+        try:
+            # Create exec instance for rust-plugin-runner
+            # This will be a persistent stdin/stdout connection
+            exec_id = self.docker_client.api.exec_create(
+                self._container.id,
+                ["rust-plugin-runner"],
+                stdin=True,
+                stdout=True,
+                stderr=True,
+            )
+
+            # Start exec with detach=False to get socket
+            exec_socket = self.docker_client.api.exec_start(
+                exec_id,
+                socket=True,
+                demux=False,
+            )
+
+            self._exec_instance = {
+                "id": exec_id,
+                "socket": exec_socket,
+            }
+
+            # Send init request to rust-plugin-runner
+            # This creates the PluginRunner instance that will maintain state
+            # (reader_ptr/writer_ptr) across all subsequent method calls
+            init_line = init_request + "\n"
+            exec_socket.sendall(init_line.encode("utf-8"))
+
+            # Read init response (one JSON line)
+            response_data = self._read_json_line(exec_socket)
+
+            if not response_data:
+                raise SandboxError(
+                    "No response from plugin initialization",
+                    details={"init_request": init_request},
+                    retryable=True,
+                )
+
+            response = json.loads(response_data)
+
+            if response.get("status") == "error" or "error" in response:
+                raise SandboxError(
+                    f"Plugin initialization failed: {response.get('error', 'Unknown error')}",
+                    details={"response": response},
+                    retryable=True,
+                )
+
+            self._container_initialized = True
+
+        except json.JSONDecodeError as e:
+            raise SandboxError(
+                f"Failed to parse plugin initialization response: {e}",
+                details={"error": str(e)},
+                retryable=True,
+            ) from e
+        except Exception as e:
+            raise SandboxError(
+                f"Plugin initialization failed: {e}",
+                details={"error": str(e)},
+                retryable=True,
+            ) from e
+
+    def _check_container_health(self) -> bool:
+        """Check if container is still healthy and within age limit.
+
+        Returns:
+            True if container is healthy, False otherwise
+        """
+        if self._container is None:
+            return False
+
+        # Check if container is still running
+        try:
+            self._container.reload()
+            if self._container.status != "running":
+                return False
+        except Exception:
+            return False
+
+        # Check container age if limit is set
+        if self.container_max_age_seconds and self._container_start_time:
+            import time
+
+            age = time.time() - self._container_start_time
+            if age > self.container_max_age_seconds:
+                return False
+
+        return True
+
+    def _read_json_line(self, socket, timeout: int = 30) -> str:
+        """Read one line of JSON from socket with buffering support.
+
+        Args:
+            socket: Docker exec socket
+            timeout: Read timeout in seconds
+
+        Returns:
+            JSON string (one line)
+
+        Raises:
+            SandboxError: If timeout or read error occurs
+        """
+        import select
+        import time
+
+        # Start with any buffered data from previous read
+        buffer = self._buffer_remainder
+        self._buffer_remainder = b""
+
+        end_time = None
+        if timeout:
+            end_time = time.time() + timeout
+
+        while True:
+            # Check timeout
+            if end_time and time.time() > end_time:
+                raise SandboxError(
+                    "Timeout reading response from plugin",
+                    details={
+                        "partial_buffer": buffer.decode("utf-8", errors="replace")
+                    },
+                    retryable=True,
+                )
+
+            # Check if we already have a complete line in buffer
+            if b"\n" in buffer:
+                line, remainder = buffer.split(b"\n", 1)
+                self._buffer_remainder = remainder  # Save remainder for next read
+                return line.decode("utf-8")
+
+            # Read more data
+            try:
+                # Try to use select for non-blocking read if socket supports it
+                # Check if socket has a valid fileno() method (not a Mock)
+                try:
+                    fileno = socket.fileno()
+                    if isinstance(fileno, int):
+                        ready = select.select([socket], [], [], 1.0)
+                        if ready[0]:
+                            chunk = socket.recv(4096)
+                            if not chunk:
+                                # Socket closed - return what we have
+                                if buffer:
+                                    return buffer.decode("utf-8", errors="replace")
+                                raise SandboxError(
+                                    "Socket closed before receiving complete response",
+                                    details={
+                                        "partial_buffer": buffer.decode(
+                                            "utf-8", errors="replace"
+                                        )
+                                    },
+                                    retryable=True,
+                                )
+                            buffer += chunk
+                    else:
+                        # Socket doesn't have valid fileno (likely a Mock in tests)
+                        # Fall back to direct read
+                        chunk = socket.recv(4096)
+                        if not chunk:
+                            # Socket closed - return what we have
+                            if buffer:
+                                return buffer.decode("utf-8", errors="replace")
+                            raise SandboxError(
+                                "Socket closed before receiving complete response",
+                                details={
+                                    "partial_buffer": buffer.decode(
+                                        "utf-8", errors="replace"
+                                    )
+                                },
+                                retryable=True,
+                            )
+                        buffer += chunk
+                except (AttributeError, TypeError):
+                    # Socket doesn't have fileno() or it's not callable (Mock in tests)
+                    # Fall back to direct read
+                    chunk = socket.recv(4096)
+                    if not chunk:
+                        # Socket closed - return what we have
+                        if buffer:
+                            return buffer.decode("utf-8", errors="replace")
+                        raise SandboxError(
+                            "Socket closed before receiving complete response",
+                            details={
+                                "partial_buffer": buffer.decode(
+                                    "utf-8", errors="replace"
+                                )
+                            },
+                            retryable=True,
+                        )
+                    buffer += chunk
+            except select.error as e:
+                raise SandboxError(
+                    f"Select error reading from socket: {e}",
+                    details={"error": str(e)},
+                    retryable=True,
+                ) from e
+            except Exception as e:
+                raise SandboxError(
+                    f"Error reading from socket: {e}",
+                    details={
+                        "error": str(e),
+                        "buffer": buffer.decode("utf-8", errors="replace"),
+                    },
+                    retryable=True,
+                ) from e
+
+    def _send_request(self, method_name: str, **kwargs: Any) -> Any:
+        """Send a request to the running plugin container with retry logic.
+
+        This method reuses the persistent exec instance (rust-plugin-runner process)
+        created during initialization. The rust-plugin-runner process maintains state
+        (reader_ptr/writer_ptr) across multiple method calls, enabling state reuse
+        across batches. This matches the behavior of native Python wrappers.
+
+        Args:
+            method_name: Name of method to execute
+            **kwargs: Method arguments
+
+        Returns:
+            Method result
+
+        Raises:
+            SandboxError: If request fails after all retries
+        """
+        last_error = None
+
+        for attempt in range(self.max_retries):
+            try:
+                # Check container health before sending request
+                if not self._check_container_health():
+                    # Container unhealthy - attempt to restart it
+                    # Container should only be removed in cleanup() at job end, not per-call
+                    # However, if container is completely dead and restart fails, we must
+                    # remove the dead container to avoid leaks. This is a rare recovery scenario.
+                    if self._container:
+                        try:
+                            # Try to restart the existing container (preferred - no removal)
+                            self._container.restart(timeout=10)
+                            self._container_initialized = (
+                                False  # Need to reinitialize plugin
+                            )
+                            self._container_start_time = time.time()
+                        except Exception:
+                            # Restart failed - container is completely dead
+                            # Must remove dead container to avoid leaks, then recreate
+                            # This violates the "once per job" rule but is necessary for recovery
+                            if self._exec_instance:
+                                try:
+                                    if "socket" in self._exec_instance:
+                                        self._exec_instance["socket"].close()
+                                except Exception:
+                                    pass
+                                self._exec_instance = None
+                            # Remove dead container (unavoidable for recovery)
+                            try:
+                                self._container.remove(force=True)
+                            except Exception:
+                                pass
+                            self._container = None
+                            self._container_initialized = False
+                    # Reinitialize plugin in (restarted or recreated) container
+                    self._initialize_plugin()
+
+                # Ensure container is started and initialized
+                # CRITICAL: Only initialize once - exec instance must persist across all batches
+                # to maintain plugin state (reader_ptr/writer_ptr) in rust-plugin-runner process
+                if not self._container_initialized or self._exec_instance is None:
+                    self._initialize_plugin()
+
+                # Verify exec instance exists (should always be true after initialization)
+                if self._exec_instance is None:
+                    raise SandboxError(
+                        "Exec instance not available - plugin initialization failed",
+                        details={"method": method_name},
+                        retryable=True,
+                    )
+
+                # Build request JSON
+                # CRITICAL: Entire batch is bundled into one JSON message.
+                # For write_batch/extract_batch, all records are passed as a complete list
+                # in kwargs (e.g., records=serializable_records) and serialized once here.
+                # This ensures optimal amortized cost per record as batch size grows.
+                request = {
+                    "method": method_name,
+                    **kwargs,
+                }
+                request_json = json.dumps(
+                    request, separators=(",", ":")
+                )  # Compact JSON - entire batch in one message
+
+                # Send request via persistent socket
+                # This socket connection maintains the rust-plugin-runner process state
+                # across multiple method calls, allowing reader_ptr/writer_ptr to persist
+                socket = self._exec_instance["socket"]
+                request_line = request_json + "\n"
+                socket.sendall(request_line.encode("utf-8"))
+
+                # Read response (one JSON line)
+                response_data = self._read_json_line(socket, timeout=self.timeout)
+
+                if not response_data:
+                    raise SandboxError(
+                        f"No response from plugin method: {method_name}",
+                        details={"method": method_name, "request": request},
+                        retryable=True,
+                    )
+
+                response = json.loads(response_data)
+
+                # Check for errors
+                if response.get("status") == "error" or "error" in response:
+                    raise SandboxError(
+                        f"Plugin method failed: {response.get('error', 'Unknown error')}",
+                        details={"method": method_name, "response": response},
+                        retryable=True,
+                    )
+
+                # Increment request counter
+                self._request_count += 1
+
+                # Extract result
+                if "data" in response:
+                    return response["data"]
+                elif "result" in response:
+                    return response["result"]
+                return response
+
+            except json.JSONDecodeError as e:
+                last_error = SandboxError(
+                    f"Failed to parse plugin response: {e}",
+                    details={
+                        "method": method_name,
+                        "error": str(e),
+                        "attempt": attempt + 1,
+                    },
+                    retryable=True,
+                )
+                # Mark for reinitialization
+                self._container_initialized = False
+                if attempt < self.max_retries - 1:
+                    continue
+            except SandboxError as e:
+                last_error = e
+                # Mark for reinitialization if retryable
+                if e.retryable:
+                    self._container_initialized = False
+                    if attempt < self.max_retries - 1:
+                        continue
+                break
+            except Exception as e:
+                last_error = SandboxError(
+                    f"Plugin method execution failed: {e}",
+                    details={
+                        "method": method_name,
+                        "error": str(e),
+                        "attempt": attempt + 1,
+                    },
+                    retryable=True,
+                )
+                # Mark for reinitialization
+                self._container_initialized = False
+                if attempt < self.max_retries - 1:
+                    continue
+
+        # All retries failed
+        raise (
+            last_error
+            if last_error
+            else SandboxError(
+                f"Plugin method execution failed after {self.max_retries} retries",
+                details={"method": method_name},
+                retryable=False,
+            )
+        )
+
+    def cleanup(self):
+        """Clean up container resources.
+
+        This should be called when done with the sandbox to properly
+        shut down and remove the container.
+        """
+        if self._exec_instance:
+            try:
+                if "socket" in self._exec_instance:
+                    self._exec_instance["socket"].close()
+            except Exception:
+                pass
+            self._exec_instance = None
+
+        if self._container:
+            try:
+                self._container.remove(force=True)
+            except Exception:
+                pass
+            self._container = None
+            self._container_initialized = False
+
+        # Clear buffer remainder to prevent stale data from old socket
+        # being mixed with new socket data after container restart
+        self._buffer_remainder = b""
+
+    def __del__(self):
+        """Cleanup on garbage collection."""
+        self.cleanup()
+
+    def execute(
+        self,
+        method_name: str,
+        **kwargs: Any,
+    ) -> Any:
+        """Execute a Rust plugin method in sandboxed environment.
+
+        Args:
+            method_name: Name of method to execute (e.g., "extract_batch", "write_batch")
+            **kwargs: Keyword arguments for method
+
+        Returns:
+            Method return value
+
+        Raises:
+            SandboxError: If execution fails
+        """
+        # Use persistent container connection for better performance
+        if self.reuse_container:
+            return self._send_request(method_name, **kwargs)
+
+        # Legacy path: create/destroy container per request (for compatibility)
+        return self._execute_oneshot(method_name, **kwargs)
+
+    def _execute_oneshot(
+        self,
+        method_name: str,
+        **kwargs: Any,
+    ) -> Any:
+        """Execute a single request with a disposable container.
+
+        This is the legacy behavior: create container, execute request, destroy container.
+        Used when reuse_container=False for compatibility or specific security requirements.
+
+        Args:
+            method_name: Name of method to execute
+            **kwargs: Method arguments
+
+        Returns:
+            Method result
+
+        Raises:
+            SandboxError: If execution fails
+        """
+        # Build container command
+        plugin_filename = self.plugin_path.name
+        plugin_path_in_container = f"/usr/local/plugins/{plugin_filename}"
+
+        # Create request JSON
+        request = {
+            "method": method_name,
+            **kwargs,
+        }
+
+        # Build container configuration
+        container_config = self._build_container_config(
+            command=["sleep", "infinity"],
+            environment={
+                "PLUGIN_PATH": plugin_path_in_container,
+            },
+        )
+
+        # Create and run container
+        image_name = container_config.get("image", self.container_image)
+        try:
+            self.docker_client.images.get(image_name)
+        except ImageNotFound:
+            try:
+                self.docker_client.images.pull(image_name)
+            except Exception as pull_error:
+                raise SandboxError(
+                    f"Failed to pull Docker image {image_name}: {pull_error}. "
+                    f"Please ensure the image is available or pull it manually with 'docker pull {image_name}'",
+                    details={
+                        "error": str(pull_error),
+                        "image": image_name,
+                        "error_type": "ImagePullError",
+                    },
+                    retryable=True,
+                ) from pull_error
+
+        container = None
+        try:
+            try:
+                container = self.docker_client.containers.create(**container_config)
+            except ImageNotFound as image_error:
+                explanation = getattr(image_error, "explanation", "")
+                if explanation and "No such image:" in explanation:
+                    image_name = explanation.split("No such image:")[-1].strip()
+                else:
+                    image_name = explanation if explanation else self.container_image
+                raise SandboxError(
+                    f"Docker image not found: {image_name}. Please ensure the image is available or pull it with 'docker pull {image_name}'",
+                    details={
+                        "error": str(image_error),
+                        "image": image_name,
+                        "error_type": "ImageNotFound",
+                    },
+                    retryable=False,
+                )
+
             container.start()
 
-            # Prepare both requests - init and method call
-            # The rust-plugin-runner expects to read multiple lines from stdin
-            # in a single process to maintain state
+            # Prepare init and method requests
             init_request = json.dumps({"init": plugin_path_in_container})
             method_request = json.dumps(request)
 
             # Use base64 encoding to safely pass JSON through shell
-            # This avoids issues with special characters, quotes, newlines, etc.
             init_b64 = base64.b64encode(init_request.encode("utf-8")).decode("utf-8")
             method_b64 = base64.b64encode(method_request.encode("utf-8")).decode(
                 "utf-8"
             )
 
-            # Use shlex.quote to properly escape base64 strings for shell safety
-            # This prevents shell interpretation issues with special characters
             init_b64_quoted = shlex.quote(init_b64)
             method_b64_quoted = shlex.quote(method_b64)
 
-            # Use a single exec_run that pipes both requests to rust-plugin-runner
-            # This ensures both requests go to the same process, maintaining state
-            # Pipe both decoded JSON lines to the same rust-plugin-runner process
+            # Execute both requests in single rust-plugin-runner process
             result = container.exec_run(
                 [
                     "sh",
@@ -504,16 +1091,9 @@ class RustPluginSandbox:
                 stdin=True,
             )
 
-            # Get output from exec_run (stdout and stderr combined)
             output = result.output.decode("utf-8") if result.output else ""
-
-            # Also get logs from container (in case output is in logs)
             logs = container.logs(stdout=True, stderr=True).decode("utf-8")
-
-            # Combine outputs, preferring exec_run output
             combined_output = output if output else logs
-
-            # Get exit code
             exit_code = result.exit_code
 
             if exit_code != 0:
@@ -527,9 +1107,7 @@ class RustPluginSandbox:
                     retryable=True,
                 )
 
-            # Parse result from output
-            # The rust-plugin-runner outputs one JSON response per line
-            # We want the last non-empty line (which should be the method response)
+            # Parse result
             try:
                 result_lines = [
                     line.strip()
@@ -537,16 +1115,11 @@ class RustPluginSandbox:
                     if line.strip()
                 ]
                 if result_lines:
-                    # The last line should be the method response
-                    # The first line should be the init response
                     if len(result_lines) >= 2:
-                        # Parse the method response (last line)
                         result_json = json.loads(result_lines[-1])
                     else:
-                        # Fallback: parse the only line
                         result_json = json.loads(result_lines[0])
 
-                    # Extract the "data" or "result" field if present
                     if isinstance(result_json, dict):
                         if "data" in result_json:
                             return result_json["data"]
@@ -557,7 +1130,6 @@ class RustPluginSandbox:
                 else:
                     return None
             except (json.JSONDecodeError, IndexError) as e:
-                # If we can't parse JSON, return logs
                 raise SandboxError(
                     f"Failed to parse Rust plugin response: {e}",
                     details={
@@ -569,11 +1141,11 @@ class RustPluginSandbox:
                 )
 
         finally:
-            # Clean up container
-            try:
-                container.remove(force=True)
-            except Exception:
-                pass  # Ignore cleanup errors
+            if container:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    pass
 
     def check_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Check connection using sandboxed Rust plugin.

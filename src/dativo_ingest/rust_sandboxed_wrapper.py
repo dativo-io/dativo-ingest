@@ -45,7 +45,21 @@ class SandboxedRustReaderWrapper(BaseReader):
         mode: str,
         sandbox_config: Optional[Dict[str, Any]] = None,
     ):
-        """Initialize sandboxed Rust reader wrapper."""
+        """Initialize sandboxed Rust reader wrapper.
+
+        Args:
+            plugin_path: Path to Rust plugin library
+            source_config: Source configuration
+            mode: Execution mode (cloud, local, etc.)
+            sandbox_config: Sandbox configuration options:
+                - enabled: Whether sandboxing is enabled (bool)
+                - reuse_container: Reuse container across requests (bool, default: True)
+                - max_retries: Maximum retries for failed requests (int, default: 3)
+                - container_max_age_seconds: Max container lifetime (int, optional)
+                - cpu_limit: CPU limit (float, 0.0-1.0)
+                - memory_limit: Memory limit string (e.g., "512m", "1g")
+                - timeout: Execution timeout in seconds (int, default: 300)
+        """
         super().__init__(source_config)
         self.plugin_path = plugin_path
         self.mode = mode
@@ -56,6 +70,11 @@ class SandboxedRustReaderWrapper(BaseReader):
             k: v for k, v in self.sandbox_config.items() if k != "enabled"
         }
         self.sandbox = RustPluginSandbox(plugin_path, **sandbox_kwargs)
+
+    def __del__(self):
+        """Cleanup sandbox resources on deletion."""
+        if hasattr(self, "sandbox"):
+            self.sandbox.cleanup()
 
     def check_connection(self) -> ConnectionTestResult:
         """Check connection via sandbox."""
@@ -85,7 +104,9 @@ class SandboxedRustReaderWrapper(BaseReader):
             SandboxError: If execution fails
         """
         source_config_dict = _serialize_config(self.source_config)
-        result = self.sandbox.execute("discover", config=json.dumps(source_config_dict))
+        result = self.sandbox.execute(
+            "discover", config=json.dumps(source_config_dict, separators=(",", ":"))
+        )
 
         # Check for errors
         if isinstance(result, dict) and "error" in result:
@@ -154,7 +175,7 @@ class SandboxedRustReaderWrapper(BaseReader):
 
         # Call extract - the plugin should handle initialization internally
         # or return all batches in a single response
-        config_json = json.dumps(source_config_dict)
+        config_json = json.dumps(source_config_dict, separators=(",", ":"))
         request_kwargs = {"config": config_json}
         if state_manager_dict:
             request_kwargs["state_manager"] = state_manager_dict
@@ -209,7 +230,23 @@ class SandboxedRustWriterWrapper(BaseWriter):
         mode: str,
         sandbox_config: Optional[Dict[str, Any]] = None,
     ):
-        """Initialize sandboxed Rust writer wrapper."""
+        """Initialize sandboxed Rust writer wrapper.
+
+        Args:
+            plugin_path: Path to Rust plugin library
+            asset_definition: Asset definition
+            target_config: Target configuration
+            output_base: Base output path
+            mode: Execution mode (cloud, local, etc.)
+            sandbox_config: Sandbox configuration options:
+                - enabled: Whether sandboxing is enabled (bool)
+                - reuse_container: Reuse container across requests (bool, default: True)
+                - max_retries: Maximum retries for failed requests (int, default: 3)
+                - container_max_age_seconds: Max container lifetime (int, optional)
+                - cpu_limit: CPU limit (float, 0.0-1.0)
+                - memory_limit: Memory limit string (e.g., "512m", "1g")
+                - timeout: Execution timeout in seconds (int, default: 300)
+        """
         super().__init__(asset_definition, target_config, output_base)
         self.plugin_path = plugin_path
         self.mode = mode
@@ -220,6 +257,11 @@ class SandboxedRustWriterWrapper(BaseWriter):
             k: v for k, v in self.sandbox_config.items() if k != "enabled"
         }
         self.sandbox = RustPluginSandbox(plugin_path, **sandbox_kwargs)
+
+    def __del__(self):
+        """Cleanup sandbox resources on deletion."""
+        if hasattr(self, "sandbox"):
+            self.sandbox.cleanup()
 
     def check_connection(self) -> ConnectionTestResult:
         """Check connection via sandbox.
@@ -235,7 +277,7 @@ class SandboxedRustWriterWrapper(BaseWriter):
             "output_base": self.output_base,
         }
         result = self.sandbox.execute(
-            "check_connection", config=json.dumps(config_dict)
+            "check_connection", config=json.dumps(config_dict, separators=(",", ":"))
         )
 
         # Convert result to ConnectionTestResult if needed
@@ -294,13 +336,16 @@ class SandboxedRustWriterWrapper(BaseWriter):
             "target_config": target_config_dict,
             "output_base": self.output_base,
         }
-        config_json = json.dumps(config_dict)
+        config_json = json.dumps(config_dict, separators=(",", ":"))
 
         # Write batch - the plugin runner will create writer if needed
+        # CRITICAL: Entire batch (serializable_records) is passed as one complete list.
+        # The sandbox.execute() method bundles the entire batch into a single JSON message,
+        # ensuring optimal amortized cost per record as batch size grows.
         result = self.sandbox.execute(
             "write_batch",
             config=config_json,  # Pass config so writer can be created if needed
-            records=serializable_records,
+            records=serializable_records,  # Complete batch - no fragmentation
             file_counter=file_counter,
         )
 

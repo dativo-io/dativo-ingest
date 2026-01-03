@@ -1,0 +1,7 @@
+# Git attributes for automatic merge conflict resolution
+
+# Catalog files with test-generated timestamps
+# Always keep current branch's version to avoid timestamp conflicts
+# When merging PRs, this keeps main's version (which is "ours" in that context)
+registry/catalogs/*.json merge=ours
+

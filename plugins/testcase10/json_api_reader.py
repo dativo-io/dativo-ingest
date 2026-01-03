@@ -30,9 +30,10 @@ class JSONAPIReader(BaseReader):
         response = requests.get(f"{base_url}{endpoint}")
         response.raise_for_status()
         
-        # Yield records as batches (BaseReader expects batches)
+        # Parse response and collect records into a batch
         data = response.json()
         records = []
+        
         if isinstance(data, list):
             records = data
         elif isinstance(data, dict):

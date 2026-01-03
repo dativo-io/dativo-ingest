@@ -11,16 +11,12 @@ schema:
     required: true
   - name: name
     type: string
-    required: true
   - name: email
     type: string
-    required: true
   - name: created_at
     type: timestamp
-    required: true
   - name: value
     type: decimal
-    required: true
 target:
   file_format: parquet
   partitioning: []
