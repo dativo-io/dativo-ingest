@@ -2,11 +2,13 @@
 
 import os
 import sys
+import time
 from typing import Any, Dict, List, Optional
 
 from .config import AssetDefinition, JobConfig, SourceConfig, TargetConfig
 from .connectors.factory import ExtractorFactory
 from .logging import get_logger, update_logging_settings
+from .metrics import JobRunMetrics, build_job_labels, metrics_enabled
 from .plugins import PluginLoader, extract_sandbox_config
 from .schema_validator import SchemaValidator
 from .utils import expand_env_variable
@@ -38,6 +40,9 @@ class JobExecutor:
         self.state_manager: Optional[IncrementalStateManager] = None
         self.wal_manager: Optional[WALManager] = None
         self.source_tags: Optional[Dict[str, Any]] = None
+        self._job_metrics: Optional[JobRunMetrics] = None
+        self._extract_seconds: float = 0.0
+        self._load_seconds: float = 0.0
 
     def _setup_logging(self) -> None:
         """Set up logging for the job."""
@@ -541,6 +546,7 @@ class JobExecutor:
 
             # Extract, validate, and write in batches
             batch_count = 0
+            extract_t0 = time.perf_counter()
             self.logger.info(
                 "Starting data extraction",
                 extra={
@@ -565,6 +571,8 @@ class JobExecutor:
             ):
                 batch_count += 1
                 total_records += len(batch_records)
+                if self._job_metrics:
+                    self._job_metrics.inc_records(len(batch_records), phase="extracted")
 
                 # Transform to Markdown-KV format if configured
                 batch_records = self._transform_markdown_kv(batch_records)
@@ -583,6 +591,11 @@ class JobExecutor:
                     batch_records
                 )
                 total_valid_records += len(valid_records)
+
+                if self._job_metrics:
+                    invalid = len(batch_records) - len(valid_records)
+                    if invalid > 0:
+                        self._job_metrics.inc_records(invalid, phase="invalid")
 
                 # Log validation results
                 if len(valid_records) < len(batch_records):
@@ -625,10 +638,22 @@ class JobExecutor:
 
                 # Write valid records to Parquet
                 if valid_records:
+                    write_t0 = time.perf_counter()
                     file_metadata = self.writer.write_batch(valid_records, file_counter)
+                    write_elapsed = time.perf_counter() - write_t0
                     all_file_metadata.extend(file_metadata)
                     total_files_written += len(file_metadata)
                     file_counter += len(file_metadata)
+
+                    if self._job_metrics:
+                        self._job_metrics.inc_records(
+                            len(valid_records), phase="written"
+                        )
+                        bytes_written = sum(
+                            int(m.get("size_bytes", 0) or 0) for m in file_metadata
+                        )
+                        if bytes_written > 0:
+                            self._job_metrics.inc_bytes(bytes_written, phase="written")
 
                     self.logger.info(
                         f"Wrote batch: {len(valid_records)} records, {len(file_metadata)} files",
@@ -709,6 +734,10 @@ class JobExecutor:
                         "event_type": "extraction_complete",
                     },
                 )
+
+            self._extract_seconds = time.perf_counter() - extract_t0
+            if self._job_metrics:
+                self._job_metrics.observe_extract_seconds(self._extract_seconds)
 
             # Finalize WAL before committing (on successful extraction)
             if self.wal_manager:
@@ -872,6 +901,8 @@ class JobExecutor:
         Returns:
             Exit code (0=success, 1=partial, 2=failure)
         """
+        load_t0 = time.perf_counter()
+
         if all_file_metadata:
             # Check if writer has custom commit_files method
             if self.target_config.custom_writer and hasattr(
@@ -963,6 +994,10 @@ class JobExecutor:
                 },
             )
 
+        self._load_seconds = time.perf_counter() - load_t0
+        if self._job_metrics:
+            self._job_metrics.observe_load_seconds(self._load_seconds)
+
         # Determine exit code
         if has_errors and validation_mode == "warn":
             exit_code = 1  # Partial success
@@ -977,6 +1012,11 @@ class JobExecutor:
             if all_file_metadata
             else 0
         )
+
+        if self._job_metrics and total_bytes > 0:
+            # Ensure the "bytes_total" metric is populated even if the writer
+            # didn't report per-batch sizes consistently.
+            self._job_metrics.inc_bytes(total_bytes, phase="committed")
 
         # Emit enhanced metadata
         self.logger.info(
@@ -1082,6 +1122,7 @@ class JobExecutor:
         Returns:
             Exit code (0=success, 1=partial, 2=failure)
         """
+        t0 = time.perf_counter()
         try:
             # Resolve source and target configs
             try:
@@ -1114,6 +1155,17 @@ class JobExecutor:
 
             # Set up logging
             self._setup_logging()
+
+            # Initialize metrics after we know connector type + tenant.
+            if metrics_enabled():
+                job_name = self.job_config.asset or "unknown"
+                labels = build_job_labels(
+                    tenant_id=self.job_config.tenant_id,
+                    job_name=job_name,
+                    connector_type=self.source_config.type if self.source_config else "unknown",
+                    mode=self.mode,
+                )
+                self._job_metrics = JobRunMetrics(labels)
 
             # Validate job
             exit_code = self._validate_job()
@@ -1171,3 +1223,8 @@ class JobExecutor:
                     exc_info=True,
                 )
             return 2
+        finally:
+            if self._job_metrics:
+                elapsed = time.perf_counter() - t0
+                self._job_metrics.observe_runtime_seconds(elapsed)
+                self._job_metrics.finish()

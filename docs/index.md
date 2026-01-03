@@ -41,6 +41,7 @@ Welcome to the Dativo Ingestion Platform documentation. This index provides orga
 - **[Tag Propagation](TAG_PROPAGATION.md)** - Governance tag propagation
 - **[Tag Precedence](TAG_PRECEDENCE.md)** - Tag precedence rules
 - **[Testing FinOps Metadata](TESTING_FINOPS_METADATA.md)** - FinOps metadata testing
+- **[Metrics Export (Prometheus + OpenTelemetry)](OBSERVABILITY_METRICS.md)** - Metrics endpoint and OTLP export
 
 ### Developer Resources
 - **[Developer Guide](DEVELOPER.md)** - Development setup and guidelines

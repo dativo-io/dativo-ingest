@@ -16,6 +16,7 @@ from dagster import (
 
 from .config import JobConfig, RunnerConfig
 from .logging import get_logger, setup_logging
+from .metrics import start_orchestrated_metrics_endpoint_if_enabled
 from .retry_policy import RetryPolicy as CustomRetryPolicy
 from .validator import ConnectorValidator
 
@@ -111,6 +112,21 @@ def _execute_job_with_retry(
             if custom_retry_policy and custom_retry_policy.should_retry(
                 result.returncode, result.stderr, attempt
             ):
+                # Increment retry counter (metrics are aggregated via multiprocess mode).
+                try:
+                    from .metrics import JobRunMetrics, build_job_labels, metrics_enabled
+
+                    if metrics_enabled():
+                        labels = build_job_labels(
+                            tenant_id=tenant_id,
+                            job_name=schedule_config.name,
+                            connector_type=connector_type,
+                            mode="orchestrated",
+                        )
+                        JobRunMetrics(labels).inc_retries(1)
+                except Exception:
+                    pass
+
                 custom_retry_policy.log_retry_attempt(
                     attempt, result.returncode, result.stderr
                 )
@@ -368,6 +384,10 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
         "Initializing Dagster orchestrator",
         extra={"event_type": "orchestrator_initializing"},
     )
+
+    # Expose Prometheus endpoint for orchestrated mode (best-effort).
+    # Uses Prometheus multiprocess mode so subprocess job runs contribute metrics.
+    start_orchestrated_metrics_endpoint_if_enabled()
 
     # Create Dagster definitions
     try:
