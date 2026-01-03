@@ -17,7 +17,7 @@ source_type: csv
 object: benchmark_csv
 target:
   file_format: csv
-  mode: warn
+  mode: relaxed
 schema:
   - name: id
     type: integer
