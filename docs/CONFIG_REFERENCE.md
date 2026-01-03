@@ -62,6 +62,13 @@ target:
 logging:
   redaction: true
   level: INFO
+
+metrics:
+  enabled: true
+  prometheus_port: 9400  # Default: 9400
+  otlp_endpoint: "http://otel-collector:4317"  # Optional OTLP export
+  otlp_headers:  # Optional
+    Authorization: "Bearer token"
 ```
 
 ### Required Fields
@@ -83,6 +90,41 @@ logging:
 - `target`: Target-specific configuration overrides
 - `schema_validation_mode`: Validation mode (`strict` or `warn`, defaults to `strict`)
 - `logging`: Logging configuration (level, redaction)
+- `metrics`: Metrics configuration (Prometheus port, OTLP endpoint)
+
+---
+
+## Metrics Configuration
+
+Dativo supports both Prometheus (via HTTP endpoint) and OpenTelemetry (OTLP) for metrics export.
+
+```yaml
+metrics:
+  enabled: true              # Enable metrics collection (default: true)
+  prometheus_port: 9400      # Port for Prometheus HTTP server (default: 9400)
+  otlp_endpoint: "http://otel-collector:4317"  # OTLP gRPC/HTTP endpoint
+  otlp_headers:              # Optional headers for OTLP
+    Authorization: "Bearer token"
+```
+
+### Exposed Metrics
+
+**Counters:**
+- `dativo_ingest_records_extracted_total`: Total records extracted from source
+- `dativo_ingest_records_valid_total`: Records passing validation
+- `dativo_ingest_records_invalid_total`: Records failing validation
+- `dativo_ingest_files_processed_total`: Source files processed
+- `dativo_ingest_files_written_total`: Output files written
+- `dativo_ingest_bytes_written_total`: Total bytes written
+- `dativo_ingest_api_calls_total`: API calls made (with `api_type` label)
+- `dativo_ingest_retries_total`: Retry attempts
+- `dativo_ingest_errors_total`: Errors encountered (with `error_type` label)
+
+**Histograms:**
+- `dativo_ingest_job_duration_seconds`: Total job duration
+- `dativo_ingest_extraction_duration_seconds`: Extraction phase duration
+
+All metrics include `job_name` and `tenant_id` labels.
 
 ---
 

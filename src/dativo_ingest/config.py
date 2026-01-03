@@ -423,6 +423,15 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
 
 
+class MetricsConfig(BaseModel):
+    """Metrics configuration."""
+
+    enabled: bool = True
+    prometheus_port: int = 9400
+    otlp_endpoint: Optional[str] = None
+    otlp_headers: Optional[Dict[str, str]] = None
+
+
 class CatalogConfig(BaseModel):
     """Data catalog configuration for lineage and metadata push."""
 
@@ -526,6 +535,7 @@ class JobConfig(BaseModel):
     retry_config: Optional[RetryConfig] = None
 
     logging: Optional[LoggingConfig] = None
+    metrics: Optional[MetricsConfig] = None
 
     # Plugin configuration
     plugins: Optional[PluginConfig] = None
@@ -1124,6 +1134,7 @@ class RunnerConfig(BaseModel):
 
     mode: str = Field(default="orchestrated", pattern="^(orchestrated|oneshot)$")
     orchestrator: OrchestratorConfig
+    metrics: Optional[MetricsConfig] = None
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "RunnerConfig":

@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from .config import AssetDefinition, JobConfig, SourceConfig, TargetConfig
 from .connectors.factory import ExtractorFactory
 from .logging import get_logger, update_logging_settings
+from .metrics import MetricsCollector, MetricsManager
 from .plugins import PluginLoader, extract_sandbox_config
 from .schema_validator import SchemaValidator
 from .utils import expand_env_variable
@@ -38,6 +39,7 @@ class JobExecutor:
         self.state_manager: Optional[IncrementalStateManager] = None
         self.wal_manager: Optional[WALManager] = None
         self.source_tags: Optional[Dict[str, Any]] = None
+        self.metrics: Optional[MetricsCollector] = None
 
     def _setup_logging(self) -> None:
         """Set up logging for the job."""
@@ -50,12 +52,26 @@ class JobExecutor:
             tenant_id=self.job_config.tenant_id,
         )
 
+        # Initialize metrics manager
+        MetricsManager.initialize(
+            config=self.job_config.metrics,
+            service_name="dativo-ingest",
+            instance_id=os.getenv("HOSTNAME", "unknown"),
+        )
+
     def _validate_job(self) -> int:
         """Validate job configuration.
 
         Returns:
             Exit code (0=success, 2=failure)
         """
+        # Initialize metrics collector
+        self.metrics = MetricsCollector(
+            job_name=self.job_config.asset or "unknown",
+            tenant_id=self.tenant_id,
+        )
+        self.metrics.start()
+
         self.logger.info(
             "Starting job execution",
             extra={
@@ -569,6 +585,10 @@ class JobExecutor:
                 # Transform to Markdown-KV format if configured
                 batch_records = self._transform_markdown_kv(batch_records)
 
+                # Record extraction metrics
+                if self.metrics:
+                    self.metrics.record_extraction(len(batch_records))
+
                 self.logger.info(
                     f"Processing batch {batch_count}: {len(batch_records)} records extracted",
                     extra={
@@ -583,6 +603,14 @@ class JobExecutor:
                     batch_records
                 )
                 total_valid_records += len(valid_records)
+
+                # Record validation metrics
+                if self.metrics:
+                    self.metrics.record_validation(
+                        len(valid_records),
+                        len(batch_records) - len(valid_records),
+                        len(batch_records),
+                    )
 
                 # Log validation results
                 if len(valid_records) < len(batch_records):
@@ -613,6 +641,8 @@ class JobExecutor:
                     if validation_mode == "strict" and len(valid_records) < len(
                         batch_records
                     ):
+                        if self.metrics:
+                            self.metrics.record_error("validation_failed_strict")
                         self.logger.error(
                             f"Strict validation mode: failing due to validation errors for job '{self.job_config.asset}'",
                             extra={
@@ -629,6 +659,14 @@ class JobExecutor:
                     all_file_metadata.extend(file_metadata)
                     total_files_written += len(file_metadata)
                     file_counter += len(file_metadata)
+
+                    # Record writing metrics
+                    if self.metrics:
+                        batch_bytes = sum(f.get("size_bytes", 0) for f in file_metadata)
+                        file_sizes = [f.get("size_bytes", 0) for f in file_metadata]
+                        self.metrics.record_writing(
+                            len(file_metadata), batch_bytes, file_sizes
+                        )
 
                     self.logger.info(
                         f"Wrote batch: {len(valid_records)} records, {len(file_metadata)} files",
@@ -740,6 +778,8 @@ class JobExecutor:
             return exit_code
 
         except Exception as e:
+            if self.metrics:
+                self.metrics.record_error("etl_pipeline_error")
             self.logger.error(
                 f"ETL pipeline execution failed: {e}",
                 extra={
@@ -1159,9 +1199,17 @@ class JobExecutor:
             # Push to catalog (for both success and partial success)
             self._push_to_catalog()
 
+            if self.metrics:
+                status = "success" if exit_code == 0 else "partial_success" if exit_code == 1 else "failure"
+                self.metrics.finish(status)
+
             return exit_code
 
         except Exception as e:
+            if self.metrics:
+                self.metrics.record_error("job_execution_failed")
+                self.metrics.finish("failure")
+
             if self.logger:
                 self.logger.error(
                     f"Job execution failed: {e}",

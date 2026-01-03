@@ -75,6 +75,10 @@ runner:
         config: /app/jobs/acme/hubspot_contacts_to_iceberg.yaml
         cron: "15 2 * * *"  # Daily at 2:15 AM
     concurrency_per_tenant: 1  # Serial execution per tenant
+  metrics:
+    enabled: true
+    prometheus_port: 9400  # Default port
+    otlp_endpoint: "http://otel-collector:4317"
 ```
 
 ### Configuration Fields
@@ -87,6 +91,7 @@ runner:
 **Optional:**
 - `concurrency_per_tenant`: Maximum concurrent jobs per tenant (default: 1)
 - `retry_config`: Retry configuration for failed jobs
+- `metrics`: Metrics configuration (Prometheus port, OTLP endpoint)
 
 ### Cron Expression Format
 
@@ -314,7 +319,18 @@ This prevents Nessie commit conflicts and ensures data consistency.
 
 #### Metrics Collection
 
-Metrics are automatically collected and emitted as structured log events:
+Metrics are automatically collected and emitted via **Prometheus** (HTTP endpoint) and **OpenTelemetry** (OTLP).
+
+**Prometheus Endpoint**:
+In orchestrated mode, the orchestrator exposes metrics on port `9400` (default) at `/metrics`.
+You can curl this endpoint to see real-time metrics:
+`curl http://localhost:9400/metrics`
+
+**OpenTelemetry**:
+If `otlp_endpoint` is configured, metrics are pushed to the collector.
+
+**Structured Logging**:
+Metrics are also emitted as structured log events:
 
 - **Extraction Metrics**: Records extracted, files processed
 - **Validation Metrics**: Valid/invalid records, validation rate

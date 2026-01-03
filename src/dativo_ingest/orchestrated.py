@@ -16,6 +16,7 @@ from dagster import (
 
 from .config import JobConfig, RunnerConfig
 from .logging import get_logger, setup_logging
+from .metrics import MetricsManager
 from .retry_policy import RetryPolicy as CustomRetryPolicy
 from .validator import ConnectorValidator
 
@@ -367,6 +368,13 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
     logger.info(
         "Initializing Dagster orchestrator",
         extra={"event_type": "orchestrator_initializing"},
+    )
+
+    # Initialize metrics for orchestrator
+    MetricsManager.initialize(
+        config=runner_config.metrics,
+        service_name="dativo-orchestrator",
+        instance_id=os.getenv("HOSTNAME", "unknown"),
     )
 
     # Create Dagster definitions
