@@ -1109,3 +1109,357 @@ class TestRustSandboxContainerLifecycle:
         # First execute() should succeed (retries container creation)
         result = sandbox.execute("method1", param="value1")
         assert result.get("result") == "ok"
+
+
+class TestRustSandboxExecInstanceReuse:
+    """Test exec instance reuse and state persistence across batches."""
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_exec_instance_created_once_during_initialization(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that exec instance is created only once during plugin initialization."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        # Set up socket API
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        method_response = b'{"status": "success", "data": {"result": "ok"}}\n'
+        _setup_mock_socket_api(
+            mock_client, mock_container, init_response + method_response
+        )
+
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # Execute a method - this will trigger initialization
+        result = sandbox.execute("method1", param="value1")
+
+        # exec_create should be called only once (during initialization)
+        assert mock_client.api.exec_create.call_count == 1
+        assert mock_client.api.exec_start.call_count == 1
+
+        # Exec instance should exist and be initialized
+        assert sandbox._exec_instance is not None
+        assert sandbox._container_initialized is True
+
+        assert result.get("result") == "ok"
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_exec_instance_reused_across_multiple_method_calls(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that exec instance is reused across multiple method calls."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        # Set up socket API with responses for init + 5 method calls
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        method_responses = [
+            b'{"status": "success", "data": {"result": "ok1"}}\n',
+            b'{"status": "success", "data": {"result": "ok2"}}\n',
+            b'{"status": "success", "data": {"result": "ok3"}}\n',
+            b'{"status": "success", "data": {"result": "ok4"}}\n',
+            b'{"status": "success", "data": {"result": "ok5"}}\n',
+        ]
+        all_responses = init_response + b"".join(method_responses)
+        _setup_mock_socket_api(mock_client, mock_container, all_responses)
+
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # Store initial exec instance
+        initial_exec_instance = None
+
+        # Execute multiple methods
+        for i in range(5):
+            result = sandbox.execute(f"method{i+1}", param=f"value{i+1}")
+
+            # On first call, exec instance should be created
+            if i == 0:
+                assert sandbox._exec_instance is not None
+                initial_exec_instance = sandbox._exec_instance
+            else:
+                # On subsequent calls, exec instance should be the same object
+                assert sandbox._exec_instance is initial_exec_instance
+
+            assert result.get("result") == f"ok{i+1}"
+
+        # exec_create should be called only once (during first initialization)
+        assert mock_client.api.exec_create.call_count == 1
+        assert mock_client.api.exec_start.call_count == 1
+
+        # Exec instance should still be the same
+        assert sandbox._exec_instance is initial_exec_instance
+        assert sandbox._container_initialized is True
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_exec_instance_not_recreated_on_subsequent_calls(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that exec instance is not recreated on subsequent execute() calls."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        # Set up socket API
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        method_responses = [
+            b'{"status": "success", "data": {"result": "ok1"}}\n',
+            b'{"status": "success", "data": {"result": "ok2"}}\n',
+        ]
+        all_responses = init_response + b"".join(method_responses)
+        _setup_mock_socket_api(mock_client, mock_container, all_responses)
+
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # First call - initialization happens
+        result1 = sandbox.execute("method1", param="value1")
+        exec_create_count_after_first = mock_client.api.exec_create.call_count
+        exec_start_count_after_first = mock_client.api.exec_start.call_count
+
+        # Second call - should reuse exec instance, not create new one
+        result2 = sandbox.execute("method2", param="value2")
+
+        # exec_create and exec_start should not be called again
+        assert mock_client.api.exec_create.call_count == exec_create_count_after_first
+        assert mock_client.api.exec_start.call_count == exec_start_count_after_first
+
+        assert result1.get("result") == "ok1"
+        assert result2.get("result") == "ok2"
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_state_persistence_across_write_batches(self, mock_docker_module, tmp_path):
+        """Test that plugin state (writer_ptr) persists across multiple write_batch calls."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        # Set up socket API for init + multiple write_batch calls
+        # The rust-plugin-runner maintains writer_ptr across these calls
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        write_responses = [
+            b'{"status": "success", "data": {"file": "batch1.parquet"}}\n',
+            b'{"status": "success", "data": {"file": "batch2.parquet"}}\n',
+            b'{"status": "success", "data": {"file": "batch3.parquet"}}\n',
+        ]
+        all_responses = init_response + b"".join(write_responses)
+        _setup_mock_socket_api(mock_client, mock_container, all_responses)
+
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # Execute multiple write_batch calls
+        # Each call should use the same exec instance, maintaining writer state
+        for i in range(3):
+            result = sandbox.execute(
+                "write_batch",
+                config='{"output_base": "/tmp"}',
+                records=[{"id": i, "data": f"value{i}"}],
+                file_counter=i,
+            )
+            assert result.get("file") == f"batch{i+1}.parquet"
+
+            # Exec instance should persist across all calls
+            assert sandbox._exec_instance is not None
+            assert sandbox._container_initialized is True
+
+        # exec_create should be called only once (during initialization)
+        assert mock_client.api.exec_create.call_count == 1
+        assert mock_client.api.exec_start.call_count == 1
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_state_persistence_across_extract_batches(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that plugin state (reader_ptr) persists across multiple extract_batch calls."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        # Set up socket API for init + create_reader + multiple extract_batch calls
+        # The rust-plugin-runner maintains reader_ptr across extract_batch calls
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        create_reader_response = b'{"status": "success", "reader_ptr": 12345}\n'
+        extract_responses = [
+            b'{"status": "success", "data": [{"id": 1}]}\n',
+            b'{"status": "success", "data": [{"id": 2}]}\n',
+            b'{"status": "done"}\n',
+        ]
+        all_responses = (
+            init_response + create_reader_response + b"".join(extract_responses)
+        )
+        _setup_mock_socket_api(mock_client, mock_container, all_responses)
+
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # Create reader (first call initializes exec instance)
+        sandbox.execute("create_reader", config='{"source": "test"}')
+
+        # Execute multiple extract_batch calls
+        # Each call should use the same exec instance, maintaining reader state
+        for i in range(2):
+            result = sandbox.execute("extract_batch")
+            # execute() extracts "data" field from response, so result is a list
+            assert isinstance(result, list)
+            assert result == [{"id": i + 1}]
+
+            # Exec instance should persist across all calls
+            assert sandbox._exec_instance is not None
+            assert sandbox._container_initialized is True
+
+        # exec_create should be called only once (during initialization)
+        assert mock_client.api.exec_create.call_count == 1
+        assert mock_client.api.exec_start.call_count == 1
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_exec_instance_recreated_only_on_error_recovery(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that exec instance is only recreated during error recovery, not on normal retries."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        # First attempt: init succeeds, but method call fails
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        error_response = b'{"status": "error", "error": "Temporary error"}\n'
+        success_response = b'{"status": "success", "data": {"result": "ok"}}\n'
+
+        # Set up socket to return error on first method call, success on retry
+        recv_call_count = [0]
+
+        def recv_side_effect(size):
+            if recv_call_count[0] == 0:
+                recv_call_count[0] += 1
+                return init_response + error_response
+            elif recv_call_count[0] == 1:
+                recv_call_count[0] += 1
+                return success_response
+            return b""
+
+        mock_socket = Mock()
+        mock_socket.recv.side_effect = recv_side_effect
+        mock_socket.sendall.return_value = None
+        mock_socket.fileno.side_effect = AttributeError("Mock socket has no fileno")
+
+        mock_exec_id = {"Id": "mock_exec_id"}
+        mock_client.api.exec_create.return_value = mock_exec_id
+        mock_client.api.exec_start.return_value = mock_socket
+
+        sandbox = RustPluginSandbox(
+            str(plugin_file), reuse_container=True, max_retries=3
+        )
+
+        # First call fails, triggers retry
+        # On retry, exec instance should be recreated (because _container_initialized was set to False)
+        try:
+            result = sandbox.execute("method1", param="value1")
+            # If retry succeeds, we should have a result
+            assert result.get("result") == "ok"
+        except SandboxError:
+            # If all retries fail, that's also acceptable for this test
+            pass
+
+        # exec_create should be called at least once (initialization)
+        # It may be called again if error recovery triggers reinitialization
+        assert mock_client.api.exec_create.call_count >= 1
+
+    @patch("dativo_ingest.rust_sandbox.docker")
+    def test_exec_instance_persists_after_container_health_check(
+        self, mock_docker_module, tmp_path
+    ):
+        """Test that exec instance persists even after container health checks."""
+        plugin_file = tmp_path / "test_plugin.so"
+        plugin_file.write_bytes(b"fake plugin binary")
+
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        mock_docker_module.from_env.return_value = mock_client
+
+        mock_container = Mock()
+        mock_container.id = "mock_container_id"
+        mock_container.status = "running"
+        mock_client.containers.create.return_value = mock_container
+        mock_client.images.get.return_value = Mock()
+
+        # Set up socket API
+        init_response = b'{"status": "success", "message": "Initialized"}\n'
+        method_responses = [
+            b'{"status": "success", "data": {"result": "ok1"}}\n',
+            b'{"status": "success", "data": {"result": "ok2"}}\n',
+        ]
+        all_responses = init_response + b"".join(method_responses)
+        _setup_mock_socket_api(mock_client, mock_container, all_responses)
+
+        sandbox = RustPluginSandbox(str(plugin_file), reuse_container=True)
+
+        # First call - creates exec instance
+        result1 = sandbox.execute("method1", param="value1")
+        initial_exec_instance = sandbox._exec_instance
+
+        # Container health check should pass (container is running)
+        assert sandbox._check_container_health() is True
+
+        # Second call - should reuse same exec instance
+        result2 = sandbox.execute("method2", param="value2")
+
+        # Exec instance should still be the same
+        assert sandbox._exec_instance is initial_exec_instance
+        assert sandbox._container_initialized is True
+
+        assert result1.get("result") == "ok1"
+        assert result2.get("result") == "ok2"

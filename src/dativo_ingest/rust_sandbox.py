@@ -515,10 +515,18 @@ class RustPluginSandbox:
         Sends the init request to rust-plugin-runner to load the plugin library.
         This only needs to be done once per container.
 
+        CRITICAL: This method creates a persistent exec instance (rust-plugin-runner process)
+        that maintains state (reader_ptr/writer_ptr) across multiple method calls. The exec
+        instance is reused for all subsequent requests until the container is restarted or
+        the sandbox is cleaned up. This enables state reuse across batches, matching the
+        behavior of native Python wrappers (RustReaderWrapper/RustWriterWrapper).
+
         Raises:
             SandboxError: If plugin initialization fails
         """
-        if self._container_initialized:
+        # Only initialize once - exec instance must persist across all batches
+        # to maintain plugin state in rust-plugin-runner process
+        if self._container_initialized and self._exec_instance is not None:
             return  # Already initialized
 
         # Ensure container is started (should already be started in __init__ if reuse_container=True)
@@ -536,7 +544,8 @@ class RustPluginSandbox:
         plugin_path_in_container = f"/usr/local/plugins/{plugin_filename}"
 
         # Close any existing exec instance socket before creating a new one
-        # This prevents socket leaks when reinitializing after a retry
+        # This should only happen during error recovery - normal operation reuses
+        # the same exec instance across all batches to maintain plugin state
         if self._exec_instance:
             try:
                 if "socket" in self._exec_instance:
@@ -544,6 +553,8 @@ class RustPluginSandbox:
             except Exception:
                 pass
             self._exec_instance = None
+            # Reset initialization flag since we're creating a new exec instance
+            self._container_initialized = False
 
         # Send init request
         init_request = json.dumps({"init": plugin_path_in_container})
@@ -571,7 +582,9 @@ class RustPluginSandbox:
                 "socket": exec_socket,
             }
 
-            # Send init request
+            # Send init request to rust-plugin-runner
+            # This creates the PluginRunner instance that will maintain state
+            # (reader_ptr/writer_ptr) across all subsequent method calls
             init_line = init_request + "\n"
             exec_socket.sendall(init_line.encode("utf-8"))
 
@@ -756,6 +769,11 @@ class RustPluginSandbox:
     def _send_request(self, method_name: str, **kwargs: Any) -> Any:
         """Send a request to the running plugin container with retry logic.
 
+        This method reuses the persistent exec instance (rust-plugin-runner process)
+        created during initialization. The rust-plugin-runner process maintains state
+        (reader_ptr/writer_ptr) across multiple method calls, enabling state reuse
+        across batches. This matches the behavior of native Python wrappers.
+
         Args:
             method_name: Name of method to execute
             **kwargs: Method arguments
@@ -806,8 +824,18 @@ class RustPluginSandbox:
                     self._initialize_plugin()
 
                 # Ensure container is started and initialized
-                if not self._container_initialized:
+                # CRITICAL: Only initialize once - exec instance must persist across all batches
+                # to maintain plugin state (reader_ptr/writer_ptr) in rust-plugin-runner process
+                if not self._container_initialized or self._exec_instance is None:
                     self._initialize_plugin()
+
+                # Verify exec instance exists (should always be true after initialization)
+                if self._exec_instance is None:
+                    raise SandboxError(
+                        "Exec instance not available - plugin initialization failed",
+                        details={"method": method_name},
+                        retryable=True,
+                    )
 
                 # Build request JSON
                 request = {
@@ -818,7 +846,9 @@ class RustPluginSandbox:
                     request, separators=(",", ":")
                 )  # Compact JSON
 
-                # Send request via socket
+                # Send request via persistent socket
+                # This socket connection maintains the rust-plugin-runner process state
+                # across multiple method calls, allowing reader_ptr/writer_ptr to persist
                 socket = self._exec_instance["socket"]
                 request_line = request_json + "\n"
                 socket.sendall(request_line.encode("utf-8"))
