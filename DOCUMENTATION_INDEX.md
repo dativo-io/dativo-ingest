@@ -180,9 +180,7 @@ Benchmark Documentation
 └── benchmarks/
     ├── README.md                         [Benchmark usage guide]
     ├── BENCHMARK_RESULTS.md              [Expected results]
-    ├── IMPLEMENTATION_SUMMARY.md         [Architecture details]
-    ├── benchmark_rust_vs_python.py       [Main script]
-    └── simple_benchmark.sh               [Shell wrapper]
+    └── IMPLEMENTATION_SUMMARY.md         [Architecture details]
 
 Test Documentation
 └── tests/
@@ -265,30 +263,17 @@ Source Code
 
 ### Beginner Path
 1. Read: **Performance Optimization Summary** (15 min)
-2. Run: Simple benchmark (5 min)
-   ```bash
-   python benchmarks/benchmark_rust_vs_python.py --records 10000 --python-only
-   ```
-3. Review: **Benchmark README** - Quick Start section (10 min)
+2. Review: **Benchmark README** - Quick Start section (10 min)
 
 ### Intermediate Path
 1. Read: **Rust Plugin Performance Optimization** (30 min)
 2. Read: **Production Readiness Guide** (30 min)
-3. Run: Full benchmark suite (20 min)
-   ```bash
-   python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 10000
-   ```
 4. Review: Test files (15 min)
 
 ### Advanced Path
 1. Read: **Complete Implementation Summary** (45 min)
 2. Read: **Benchmark Implementation Summary** (20 min)
 3. Review: Source code changes (30 min)
-4. Run: Large benchmark (60 min)
-   ```bash
-   python benchmarks/benchmark_rust_vs_python.py --records 10000000 --batch-size 10000
-   ```
-5. Customize: Modify benchmark for your use case
 
 ---
 

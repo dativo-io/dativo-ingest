@@ -104,7 +104,9 @@ class SandboxedRustReaderWrapper(BaseReader):
             SandboxError: If execution fails
         """
         source_config_dict = _serialize_config(self.source_config)
-        result = self.sandbox.execute("discover", config=json.dumps(source_config_dict))
+        result = self.sandbox.execute(
+            "discover", config=json.dumps(source_config_dict, separators=(",", ":"))
+        )
 
         # Check for errors
         if isinstance(result, dict) and "error" in result:
@@ -173,7 +175,7 @@ class SandboxedRustReaderWrapper(BaseReader):
 
         # Call extract - the plugin should handle initialization internally
         # or return all batches in a single response
-        config_json = json.dumps(source_config_dict)
+        config_json = json.dumps(source_config_dict, separators=(",", ":"))
         request_kwargs = {"config": config_json}
         if state_manager_dict:
             request_kwargs["state_manager"] = state_manager_dict
@@ -275,7 +277,7 @@ class SandboxedRustWriterWrapper(BaseWriter):
             "output_base": self.output_base,
         }
         result = self.sandbox.execute(
-            "check_connection", config=json.dumps(config_dict)
+            "check_connection", config=json.dumps(config_dict, separators=(",", ":"))
         )
 
         # Convert result to ConnectionTestResult if needed
@@ -334,7 +336,7 @@ class SandboxedRustWriterWrapper(BaseWriter):
             "target_config": target_config_dict,
             "output_base": self.output_base,
         }
-        config_json = json.dumps(config_dict)
+        config_json = json.dumps(config_dict, separators=(",", ":"))
 
         # Write batch - the plugin runner will create writer if needed
         result = self.sandbox.execute(

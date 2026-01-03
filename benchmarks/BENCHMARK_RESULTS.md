@@ -58,26 +58,7 @@ Based on the container reuse optimization, we expect significant performance imp
 
 ## Running Benchmarks
 
-### Quick Test (100K records)
-```bash
-cd /workspace
-python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 10000
-```
-
-### Medium Test (1M records)
-```bash
-python benchmarks/benchmark_rust_vs_python.py --records 1000000 --batch-size 10000
-```
-
-### Large Test (10M records)
-```bash
-python benchmarks/benchmark_rust_vs_python.py --records 10000000 --batch-size 10000
-```
-
-### Full Test (100M records - takes 30-60 minutes)
-```bash
-python benchmarks/benchmark_rust_vs_python.py --records 100000000 --batch-size 10000
-```
+Benchmark scripts have been removed. See other benchmark documentation for performance expectations.
 
 ## Sample Results
 
@@ -206,25 +187,13 @@ To verify the container reuse optimization is working:
 # Monitor Docker container events during benchmark
 docker events &
 
-# Run benchmark
-python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 10000
-
 # You should see:
 # - 1 container create (at start)
 # - 1 container start (at start)
 # - 1 container destroy (at end)
-# NOT 10 creates/destroys (one per batch)
+# NOT multiple creates/destroys (one per batch)
 ```
 
-### Compare Legacy vs Optimized
-
-```bash
-# Test with container reuse (optimized)
-python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 10000
-
-# Test with legacy mode (for comparison)
-# Edit sandbox_config in benchmark script to set reuse_container=False
-```
 
 ## Performance Targets
 

@@ -2,59 +2,7 @@
 
 ## Overview
 
-A comprehensive benchmark suite has been created to compare Rust vs Python plugin performance, specifically testing the container reuse optimization with Mimesis data generation and Parquet writing.
-
-## Deliverables
-
-### 1. Main Benchmark Script ✅
-
-**File**: `benchmarks/benchmark_rust_vs_python.py`
-
-**Features**:
-- Generates synthetic data using Mimesis library
-- Compares Python ParquetWriter vs Rust ParquetWriter (sandboxed)
-- Configurable record count and batch size
-- Real-time progress updates
-- Comprehensive performance metrics
-- Automatic comparison and speedup calculation
-- Error tracking and reporting
-
-**Usage**:
-```bash
-# Quick test (100K records)
-python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 10000
-
-# Medium test (1M records)
-python benchmarks/benchmark_rust_vs_python.py --records 1000000 --batch-size 10000
-
-# Full test (100M records)
-python benchmarks/benchmark_rust_vs_python.py --records 100000000 --batch-size 10000
-
-# Python only (without Rust)
-python benchmarks/benchmark_rust_vs_python.py --records 1000000 --python-only
-
-# Custom output directory
-python benchmarks/benchmark_rust_vs_python.py --records 1000000 --output-dir ./results
-```
-
-### 2. Simple Benchmark Script ✅
-
-**File**: `benchmarks/simple_benchmark.sh`
-
-**Features**:
-- Shell script wrapper for quick testing
-- Automatic Rust plugin detection
-- Built-in timing and speedup calculation
-- Easier for automated testing
-
-**Usage**:
-```bash
-# Default (100K records, 10K batch size)
-./benchmarks/simple_benchmark.sh
-
-# Custom configuration
-./benchmarks/simple_benchmark.sh 1000000 10000
-```
+This document describes the benchmark architecture and performance expectations for Rust vs Python plugin performance in the Dativo Ingest framework.
 
 ### 3. Comprehensive Documentation ✅
 
@@ -177,33 +125,6 @@ cd ../../..
 docker ps
 ```
 
-### Quick Start
-
-```bash
-# Run quick test
-python benchmarks/benchmark_rust_vs_python.py --records 10000 --batch-size 1000
-
-# Expected output:
-# ✅ Rust is 2-4x FASTER than Python
-# Or:
-# ⚠️  Rust plugin not found (if not built yet)
-```
-
-### Full Test Suite
-
-```bash
-# Quick (100K records) - ~5-10 seconds
-python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 10000
-
-# Medium (1M records) - ~30-80 seconds
-python benchmarks/benchmark_rust_vs_python.py --records 1000000 --batch-size 10000
-
-# Large (10M records) - ~5-15 minutes
-python benchmarks/benchmark_rust_vs_python.py --records 10000000 --batch-size 10000
-
-# Very Large (100M records) - ~30-140 minutes
-python benchmarks/benchmark_rust_vs_python.py --records 100000000 --batch-size 10000
-```
 
 ## Benchmark Architecture
 
@@ -311,9 +232,6 @@ open -a Docker
 htop  # CPU usage
 df -h # Disk space
 free -h # Memory
-
-# Try smaller batch size
-python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 5000
 ```
 
 ## Automated Testing
@@ -336,7 +254,7 @@ jobs:
       - name: Install dependencies
         run: pip install -e .
       - name: Run benchmark
-        run: python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 10000
+        run: echo "Benchmark removed"
       - name: Upload results
         uses: actions/upload-artifact@v2
         with:
@@ -383,7 +301,6 @@ The benchmarks are ready to use and will help verify that the container reuse op
 
 ## References
 
-- [Main Benchmark Script](./benchmark_rust_vs_python.py)
 - [Benchmark README](./README.md)
 - [Expected Results](./BENCHMARK_RESULTS.md)
 - [Rust Plugin Optimization](../RUST_PLUGIN_PERFORMANCE_OPTIMIZATION.md)

@@ -81,18 +81,7 @@ This document provides a complete summary of all work completed for the Rust plu
 
 #### Files Created
 
-1. **benchmarks/benchmark_rust_vs_python.py** (430 lines)
-   - Main benchmark script
-   - Mimesis data generation
-   - Python vs Rust comparison
-   - Comprehensive metrics
-
-2. **benchmarks/simple_benchmark.sh** (80 lines)
-   - Shell wrapper for quick testing
-   - Automatic plugin detection
-   - Built-in speedup calculation
-
-3. **benchmarks/README.md** (350 lines)
+1. **benchmarks/README.md**
    - Complete usage guide
    - Expected performance metrics
    - Troubleshooting section
@@ -109,38 +98,6 @@ This document provides a complete summary of all work completed for the Rust plu
    - Performance expectations
    - Interpretation guide
 
-### Benchmark Features
-
-✅ **Configurable testing**:
-```bash
-# Quick test (100K records)
-python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 10000
-
-# Medium test (1M records)
-python benchmarks/benchmark_rust_vs_python.py --records 1000000 --batch-size 10000
-
-# Full test (100M records)
-python benchmarks/benchmark_rust_vs_python.py --records 100000000 --batch-size 10000
-```
-
-✅ **Comprehensive metrics**:
-- Duration (seconds)
-- Throughput (records/second)
-- I/O throughput (MB/second)
-- Batch processing stats
-- Error tracking
-
-✅ **Automatic comparison**:
-- Speedup calculation
-- Side-by-side comparison
-- Performance summary
-- Validation of optimization
-
-✅ **Real-world workload**:
-- Mimesis synthetic data generation
-- Realistic 10-field schema
-- Configurable batch sizes
-- Production-like data volumes
 
 ### Expected Benchmark Results
 
@@ -166,11 +123,9 @@ New Tests:
   tests/test_rust_sandbox_integration.py       (370 lines, 9 tests)
 
 New Benchmarks:
-  benchmarks/benchmark_rust_vs_python.py       (430 lines)
-  benchmarks/simple_benchmark.sh               (80 lines)
-  benchmarks/README.md                         (350 lines)
-  benchmarks/BENCHMARK_RESULTS.md              (320 lines)
-  benchmarks/IMPLEMENTATION_SUMMARY.md         (280 lines)
+  benchmarks/README.md
+  benchmarks/BENCHMARK_RESULTS.md
+  benchmarks/IMPLEMENTATION_SUMMARY.md
 
 Documentation:
   RUST_PLUGIN_PERFORMANCE_OPTIMIZATION.md      (400 lines)
@@ -252,38 +207,6 @@ cd examples/plugins/rust && make build && cd ../../..
 docker ps
 ```
 
-### Quick Benchmark
-```bash
-# 100K records (~10 seconds)
-python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 10000
-
-# Expected output:
-# ✅ Rust is 2.5-4x FASTER than Python
-```
-
-### Full Benchmark Suite
-```bash
-# Small (100K records) - ~10 seconds
-python benchmarks/benchmark_rust_vs_python.py --records 100000 --batch-size 10000
-
-# Medium (1M records) - ~1-2 minutes
-python benchmarks/benchmark_rust_vs_python.py --records 1000000 --batch-size 10000
-
-# Large (10M records) - ~8-15 minutes
-python benchmarks/benchmark_rust_vs_python.py --records 10000000 --batch-size 10000
-
-# Very Large (100M records) - ~30-140 minutes
-python benchmarks/benchmark_rust_vs_python.py --records 100000000 --batch-size 10000
-```
-
-### Shell Script Wrapper
-```bash
-# Quick test
-./benchmarks/simple_benchmark.sh
-
-# Custom size
-./benchmarks/simple_benchmark.sh 1000000 10000
-```
 
 ---
 
