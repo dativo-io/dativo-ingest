@@ -838,13 +838,17 @@ class RustPluginSandbox:
                     )
 
                 # Build request JSON
+                # CRITICAL: Entire batch is bundled into one JSON message.
+                # For write_batch/extract_batch, all records are passed as a complete list
+                # in kwargs (e.g., records=serializable_records) and serialized once here.
+                # This ensures optimal amortized cost per record as batch size grows.
                 request = {
                     "method": method_name,
                     **kwargs,
                 }
                 request_json = json.dumps(
                     request, separators=(",", ":")
-                )  # Compact JSON
+                )  # Compact JSON - entire batch in one message
 
                 # Send request via persistent socket
                 # This socket connection maintains the rust-plugin-runner process state

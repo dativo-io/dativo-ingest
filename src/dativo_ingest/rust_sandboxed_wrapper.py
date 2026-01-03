@@ -339,10 +339,13 @@ class SandboxedRustWriterWrapper(BaseWriter):
         config_json = json.dumps(config_dict, separators=(",", ":"))
 
         # Write batch - the plugin runner will create writer if needed
+        # CRITICAL: Entire batch (serializable_records) is passed as one complete list.
+        # The sandbox.execute() method bundles the entire batch into a single JSON message,
+        # ensuring optimal amortized cost per record as batch size grows.
         result = self.sandbox.execute(
             "write_batch",
             config=config_json,  # Pass config so writer can be created if needed
-            records=serializable_records,
+            records=serializable_records,  # Complete batch - no fragmentation
             file_counter=file_counter,
         )
 
