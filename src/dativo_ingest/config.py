@@ -489,6 +489,66 @@ class PluginConfig(BaseModel):
     sandbox: Optional[PluginSandboxConfig] = None
 
 
+class PrometheusConfig(BaseModel):
+    """Prometheus metrics configuration."""
+
+    enabled: bool = True
+    host: str = "0.0.0.0"
+    port: int = 9400
+    multiproc_dir: Optional[str] = Field(
+        default=None,
+        description="Directory for multiprocess metrics (required for orchestrated mode with subprocesses)",
+    )
+
+
+class OtelConfig(BaseModel):
+    """OpenTelemetry metrics configuration."""
+
+    enabled: bool = False
+    protocol: str = Field(default="grpc", pattern="^(grpc|http)$")
+    endpoint: Optional[str] = Field(
+        default=None, description="OTLP endpoint (e.g., http://localhost:4317 for grpc, http://localhost:4318 for http)"
+    )
+    headers: Optional[Dict[str, str]] = Field(
+        default=None, description="Additional headers for OTLP export (e.g., authentication)"
+    )
+    export_interval_seconds: int = Field(
+        default=60, ge=1, le=3600, description="Metrics export interval in seconds"
+    )
+    timeout_seconds: int = Field(
+        default=10, ge=1, le=60, description="Export timeout in seconds"
+    )
+    max_export_batch_size: int = Field(
+        default=512, ge=1, le=2048, description="Maximum batch size for export"
+    )
+
+
+class MetricsLabelsConfig(BaseModel):
+    """Configuration for metric labels."""
+
+    include_env: bool = Field(
+        default=False, description="Include environment label (increases cardinality)"
+    )
+    include_mode: bool = Field(
+        default=True, description="Include mode label (oneshot/orchestrated)"
+    )
+
+
+class MetricsConfig(BaseModel):
+    """Metrics and observability configuration.
+
+    Supports both Prometheus and OpenTelemetry backends.
+    Configuration precedence: env vars > JobConfig.metrics > RunnerConfig.metrics > defaults
+    """
+
+    enabled: bool = Field(
+        default=True, description="Enable metrics collection globally"
+    )
+    prometheus: PrometheusConfig = Field(default_factory=PrometheusConfig)
+    otel: OtelConfig = Field(default_factory=OtelConfig)
+    labels: MetricsLabelsConfig = Field(default_factory=MetricsLabelsConfig)
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -529,6 +589,9 @@ class JobConfig(BaseModel):
 
     # Plugin configuration
     plugins: Optional[PluginConfig] = None
+
+    # Metrics configuration
+    metrics: Optional[MetricsConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":
@@ -1124,6 +1187,9 @@ class RunnerConfig(BaseModel):
 
     mode: str = Field(default="orchestrated", pattern="^(orchestrated|oneshot)$")
     orchestrator: OrchestratorConfig
+    metrics: Optional[MetricsConfig] = Field(
+        default=None, description="Global metrics configuration for orchestrated mode"
+    )
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "RunnerConfig":

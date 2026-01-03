@@ -1,19 +1,19 @@
 """OpenTelemetry metrics configuration and export.
 
-Supports OTLP export to collectors like Grafana Agent, OTEL Collector, etc.
+Supports OTLP export to collectors via gRPC or HTTP protocols.
+Includes bounded retry logic and graceful degradation.
 """
 
 import os
+import time
 from typing import Optional
 
+from .config import OtelConfig
 from .logging import get_logger
 
 # Optional imports for OpenTelemetry
 try:
     from opentelemetry import metrics
-    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
-        OTLPMetricExporter,
-    )
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.sdk.resources import Resource
@@ -22,68 +22,175 @@ try:
 except ImportError:
     OPENTELEMETRY_AVAILABLE = False
 
+# Track last export failure time for throttled warnings
+_last_export_failure_log = 0
+_export_failure_log_interval = 300  # Log at most once per 5 minutes
+
+
+def _get_otel_exporter(config: OtelConfig):
+    """Get appropriate OTEL exporter based on protocol.
+
+    Args:
+        config: OTEL configuration
+
+    Returns:
+        OTLP exporter instance
+
+    Raises:
+        ImportError: If required exporter package not available
+        ValueError: If endpoint not configured
+    """
+    if not config.endpoint:
+        raise ValueError("OTEL endpoint not configured")
+
+    if config.protocol == "grpc":
+        try:
+            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+                OTLPMetricExporter,
+            )
+
+            return OTLPMetricExporter(
+                endpoint=config.endpoint,
+                headers=config.headers or {},
+                timeout=config.timeout_seconds,
+            )
+        except ImportError:
+            raise ImportError(
+                "opentelemetry-exporter-otlp-proto-grpc not installed. "
+                "Install with: pip install opentelemetry-exporter-otlp-proto-grpc"
+            )
+    elif config.protocol == "http":
+        try:
+            from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+                OTLPMetricExporter,
+            )
+
+            return OTLPMetricExporter(
+                endpoint=config.endpoint,
+                headers=config.headers or {},
+                timeout=config.timeout_seconds,
+            )
+        except ImportError:
+            raise ImportError(
+                "opentelemetry-exporter-otlp-proto-http not installed. "
+                "Install with: pip install opentelemetry-exporter-otlp-proto-http"
+            )
+    else:
+        raise ValueError(f"Unknown OTEL protocol: {config.protocol}")
+
+
+class ThrottledExportMetricReader(PeriodicExportingMetricReader):
+    """Metric reader with throttled error logging.
+
+    Prevents log spam when OTEL collector is down.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.logger = get_logger()
+        self._consecutive_failures = 0
+
+    def _export(self):
+        """Override export to add throttled logging."""
+        global _last_export_failure_log
+
+        try:
+            result = super()._export()
+            # Reset failure counter on success
+            if self._consecutive_failures > 0:
+                self.logger.info(
+                    "OTEL export resumed successfully",
+                    extra={"event_type": "otel_export_resumed"},
+                )
+            self._consecutive_failures = 0
+            return result
+        except Exception as e:
+            self._consecutive_failures += 1
+
+            # Log failures with throttling
+            current_time = time.time()
+            should_log = (current_time - _last_export_failure_log) > _export_failure_log_interval
+
+            if should_log or self._consecutive_failures == 1:
+                self.logger.warning(
+                    f"OTEL metrics export failed (consecutive failures: {self._consecutive_failures}): {e}",
+                    extra={
+                        "event_type": "otel_export_failed",
+                        "consecutive_failures": self._consecutive_failures,
+                    },
+                )
+                _last_export_failure_log = current_time
+
+            # Don't crash the job, just skip this export
+            return
+
 
 def configure_otel_metrics(
-    endpoint: Optional[str] = None,
-    export_interval_millis: int = 60000,
+    config: OtelConfig,
     service_name: str = "dativo-ingest",
     service_version: str = "0.5.1",
+    environment: Optional[str] = None,
 ) -> bool:
     """Configure OpenTelemetry metrics with OTLP exporter.
 
     Args:
-        endpoint: OTLP endpoint (e.g., 'http://localhost:4317')
-        export_interval_millis: Export interval in milliseconds (default: 60s)
+        config: OTEL configuration
         service_name: Service name for resource attributes
         service_version: Service version for resource attributes
+        environment: Deployment environment (from job config)
 
     Returns:
         True if configured successfully, False otherwise
     """
     logger = get_logger()
 
-    # Check if OTEL is enabled
-    if os.getenv("DATIVO_METRICS_OTEL", "false").lower() != "true":
+    # Silent return if not enabled
+    if not config.enabled:
         logger.debug(
-            "OpenTelemetry metrics disabled (DATIVO_METRICS_OTEL=false)",
+            "OpenTelemetry metrics disabled by configuration",
             extra={"event_type": "otel_disabled"},
         )
         return False
 
     if not OPENTELEMETRY_AVAILABLE:
         logger.warning(
-            "OpenTelemetry SDK not available. Install opentelemetry-sdk and "
-            "opentelemetry-exporter-otlp to enable OTEL metrics.",
+            "OpenTelemetry SDK not available. Install opentelemetry-sdk to enable OTEL metrics.",
             extra={"event_type": "otel_unavailable"},
         )
         return False
 
-    # Get OTLP endpoint from environment or parameter
-    otlp_endpoint = endpoint or os.getenv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"
-    )
+    if not config.endpoint:
+        logger.warning(
+            "OTEL endpoint not configured. Set otel.endpoint in config or OTEL_EXPORTER_OTLP_ENDPOINT env var.",
+            extra={"event_type": "otel_no_endpoint"},
+        )
+        return False
 
     try:
         # Create resource with service metadata
-        resource = Resource.create(
-            {
-                "service.name": service_name,
-                "service.version": service_version,
-                "deployment.environment": os.getenv("DATIVO_ENVIRONMENT", "production"),
-            }
-        )
+        resource_attrs = {
+            "service.name": service_name,
+            "service.version": service_version,
+        }
 
-        # Create OTLP exporter
-        otlp_exporter = OTLPMetricExporter(
-            endpoint=otlp_endpoint,
-            insecure=os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "false").lower()
-            == "true",
-        )
+        # Add environment if provided
+        if environment:
+            resource_attrs["deployment.environment"] = environment
+        else:
+            resource_attrs["deployment.environment"] = os.getenv(
+                "DATIVO_ENVIRONMENT", "production"
+            )
 
-        # Create metric reader with periodic export
-        metric_reader = PeriodicExportingMetricReader(
+        resource = Resource.create(resource_attrs)
+
+        # Create OTLP exporter (protocol-specific)
+        otlp_exporter = _get_otel_exporter(config)
+
+        # Create metric reader with throttled error handling
+        metric_reader = ThrottledExportMetricReader(
             exporter=otlp_exporter,
-            export_interval_millis=export_interval_millis,
+            export_interval_millis=config.export_interval_seconds * 1000,
+            export_timeout_millis=config.timeout_seconds * 1000,
         )
 
         # Create and set meter provider
@@ -94,23 +201,34 @@ def configure_otel_metrics(
         metrics.set_meter_provider(meter_provider)
 
         logger.info(
-            f"OpenTelemetry metrics configured with endpoint: {otlp_endpoint}",
+            f"OpenTelemetry metrics configured with {config.protocol} endpoint: {config.endpoint}",
             extra={
                 "event_type": "otel_configured",
-                "endpoint": otlp_endpoint,
-                "export_interval_ms": export_interval_millis,
+                "endpoint": config.endpoint,
+                "protocol": config.protocol,
+                "export_interval_seconds": config.export_interval_seconds,
                 "service_name": service_name,
             },
         )
 
         return True
 
+    except ImportError as e:
+        logger.error(
+            f"Failed to configure OpenTelemetry metrics: {e}",
+            extra={
+                "event_type": "otel_import_error",
+                "error": str(e),
+            },
+        )
+        return False
     except Exception as e:
         logger.error(
             f"Failed to configure OpenTelemetry metrics: {e}",
             extra={
                 "event_type": "otel_configuration_error",
-                "endpoint": otlp_endpoint,
+                "endpoint": config.endpoint,
+                "protocol": config.protocol,
                 "error": str(e),
             },
             exc_info=True,
@@ -135,129 +253,3 @@ def get_otel_meter(name: str = "dativo_ingest") -> Optional[object]:
         return meter_provider.get_meter(name)
     except Exception:
         return None
-
-
-class OTELMetricsHelper:
-    """Helper class for creating and managing OTEL metrics."""
-
-    def __init__(self, meter_name: str = "dativo_ingest"):
-        """Initialize OTEL metrics helper.
-
-        Args:
-            meter_name: Name for the meter
-        """
-        self.logger = get_logger()
-        self.meter = get_otel_meter(meter_name)
-        self.instruments = {}
-
-        if not self.meter:
-            self.logger.warning(
-                "OTEL meter not available",
-                extra={"event_type": "otel_meter_unavailable"},
-            )
-
-    def create_counter(
-        self, name: str, description: str = "", unit: str = ""
-    ) -> Optional[object]:
-        """Create or get a counter instrument.
-
-        Args:
-            name: Counter name
-            description: Counter description
-            unit: Unit of measurement
-
-        Returns:
-            Counter instrument or None if not available
-        """
-        if not self.meter:
-            return None
-
-        key = f"counter_{name}"
-        if key not in self.instruments:
-            self.instruments[key] = self.meter.create_counter(
-                name=name,
-                description=description,
-                unit=unit,
-            )
-
-        return self.instruments[key]
-
-    def create_histogram(
-        self, name: str, description: str = "", unit: str = ""
-    ) -> Optional[object]:
-        """Create or get a histogram instrument.
-
-        Args:
-            name: Histogram name
-            description: Histogram description
-            unit: Unit of measurement
-
-        Returns:
-            Histogram instrument or None if not available
-        """
-        if not self.meter:
-            return None
-
-        key = f"histogram_{name}"
-        if key not in self.instruments:
-            self.instruments[key] = self.meter.create_histogram(
-                name=name,
-                description=description,
-                unit=unit,
-            )
-
-        return self.instruments[key]
-
-    def create_up_down_counter(
-        self, name: str, description: str = "", unit: str = ""
-    ) -> Optional[object]:
-        """Create or get an up-down counter instrument.
-
-        Args:
-            name: Up-down counter name
-            description: Counter description
-            unit: Unit of measurement
-
-        Returns:
-            Up-down counter instrument or None if not available
-        """
-        if not self.meter:
-            return None
-
-        key = f"updowncounter_{name}"
-        if key not in self.instruments:
-            self.instruments[key] = self.meter.create_up_down_counter(
-                name=name,
-                description=description,
-                unit=unit,
-            )
-
-        return self.instruments[key]
-
-    def create_observable_gauge(
-        self, name: str, callbacks: list, description: str = "", unit: str = ""
-    ) -> Optional[object]:
-        """Create or get an observable gauge instrument.
-
-        Args:
-            name: Gauge name
-            callbacks: List of callback functions
-            description: Gauge description
-            unit: Unit of measurement
-
-        Returns:
-            Observable gauge instrument or None if not available
-        """
-        if not self.meter:
-            return None
-
-        key = f"gauge_{name}"
-        if key not in self.instruments:
-            self.instruments[key] = self.meter.create_observable_gauge(
-                name=name,
-                callbacks=callbacks,
-                description=description,
-                unit=unit,
-            )
-
-        return self.instruments[key]

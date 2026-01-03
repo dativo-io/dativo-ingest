@@ -1,13 +1,16 @@
 """Prometheus metrics HTTP server for orchestrated mode.
 
 Exposes /metrics endpoint on configurable port for Prometheus scraping.
+Only starts when explicitly enabled (orchestrated mode default: enabled, oneshot default: disabled).
+Supports multiprocess mode for collecting metrics from subprocess job runs.
 """
 
 import os
-import threading
 from typing import Optional
 
+from .config import PrometheusConfig
 from .logging import get_logger
+from .metrics import get_multiprocess_registry
 
 # Optional import for Prometheus
 try:
@@ -19,27 +22,38 @@ except ImportError:
 
 
 class MetricsServer:
-    """HTTP server for Prometheus metrics endpoint."""
+    """HTTP server for Prometheus metrics endpoint.
 
-    def __init__(self, port: int = 9400, host: str = "0.0.0.0"):
+    Supports both standard and multiprocess modes.
+    """
+
+    def __init__(self, config: PrometheusConfig):
         """Initialize metrics server.
 
         Args:
-            port: Port to listen on (default: 9400)
-            host: Host to bind to (default: 0.0.0.0)
+            config: Prometheus configuration
         """
-        self.port = port
-        self.host = host
+        self.config = config
         self.logger = get_logger()
-        self._server_thread: Optional[threading.Thread] = None
         self._started = False
 
     def start(self) -> None:
-        """Start the metrics HTTP server in a background thread."""
+        """Start the metrics HTTP server.
+
+        Only starts if Prometheus is available and enabled.
+        Uses multiprocess registry if configured.
+        """
         if not PROMETHEUS_AVAILABLE:
             self.logger.warning(
                 "Prometheus client not available. Install prometheus_client to enable metrics server.",
                 extra={"event_type": "metrics_server_unavailable"},
+            )
+            return
+
+        if not self.config.enabled:
+            self.logger.debug(
+                "Metrics server disabled by configuration",
+                extra={"event_type": "metrics_server_disabled"},
             )
             return
 
@@ -51,17 +65,28 @@ class MetricsServer:
             return
 
         try:
-            # Start Prometheus HTTP server
-            start_http_server(port=self.port, addr=self.host, registry=REGISTRY)
+            # Get appropriate registry (multiprocess or standard)
+            registry = get_multiprocess_registry()
+            if registry is None:
+                registry = REGISTRY
+                mode = "standard"
+            else:
+                mode = "multiprocess"
+
+            # Start HTTP server
+            start_http_server(
+                port=self.config.port, addr=self.config.host, registry=registry
+            )
             self._started = True
 
             self.logger.info(
-                f"Metrics server started on {self.host}:{self.port}/metrics",
+                f"Metrics server started on {self.config.host}:{self.config.port}/metrics (mode: {mode})",
                 extra={
                     "event_type": "metrics_server_started",
-                    "port": self.port,
-                    "host": self.host,
-                    "endpoint": f"http://{self.host}:{self.port}/metrics",
+                    "port": self.config.port,
+                    "host": self.config.host,
+                    "mode": mode,
+                    "endpoint": f"http://{self.config.host}:{self.config.port}/metrics",
                 },
             )
         except OSError as e:
@@ -69,7 +94,7 @@ class MetricsServer:
                 f"Failed to start metrics server: {e}",
                 extra={
                     "event_type": "metrics_server_error",
-                    "port": self.port,
+                    "port": self.config.port,
                     "error": str(e),
                 },
             )
@@ -107,23 +132,29 @@ def get_metrics_text() -> str:
     if not PROMETHEUS_AVAILABLE:
         return "# Prometheus client not available\n"
 
-    return generate_latest(REGISTRY).decode("utf-8")
+    try:
+        # Use multiprocess registry if configured
+        registry = get_multiprocess_registry()
+        if registry is None:
+            registry = REGISTRY
+
+        return generate_latest(registry).decode("utf-8")
+    except Exception as e:
+        return f"# Error generating metrics: {e}\n"
 
 
-def start_metrics_server(
-    port: Optional[int] = None, host: Optional[str] = None
+def start_metrics_server_from_config(
+    config: PrometheusConfig,
 ) -> Optional[MetricsServer]:
-    """Start metrics server with configuration from environment or defaults.
+    """Start metrics server from configuration.
 
     Args:
-        port: Port to listen on (overrides DATIVO_METRICS_PORT env var)
-        host: Host to bind to (overrides DATIVO_METRICS_HOST env var)
+        config: Prometheus configuration
 
     Returns:
         MetricsServer instance if started, None if disabled or unavailable
     """
-    # Check if metrics server is enabled
-    if os.getenv("DATIVO_METRICS_PROMETHEUS", "true").lower() != "true":
+    if not config.enabled:
         return None
 
     if not PROMETHEUS_AVAILABLE:
@@ -134,12 +165,8 @@ def start_metrics_server(
         )
         return None
 
-    # Get configuration from environment or use defaults
-    server_port = port or int(os.getenv("DATIVO_METRICS_PORT", "9400"))
-    server_host = host or os.getenv("DATIVO_METRICS_HOST", "0.0.0.0")
-
     # Create and start server
-    server = MetricsServer(port=server_port, host=server_host)
+    server = MetricsServer(config)
     server.start()
 
     return server

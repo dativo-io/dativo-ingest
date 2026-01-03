@@ -18,7 +18,7 @@ from dagster import (
 from .config import JobConfig, RunnerConfig
 from .logging import get_logger, setup_logging
 from .metrics_otel import configure_otel_metrics
-from .metrics_server import start_metrics_server
+from .metrics_server import start_metrics_server_from_config
 from .retry_policy import RetryPolicy as CustomRetryPolicy
 from .validator import ConnectorValidator
 
@@ -372,28 +372,37 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
         extra={"event_type": "orchestrator_initializing"},
     )
 
-    # Start Prometheus metrics server if enabled
+    # Start Prometheus metrics server if enabled in config
+    # Default for orchestrated mode: enabled (unless explicitly disabled)
     metrics_server = None
-    try:
-        metrics_server = start_metrics_server()
-        if metrics_server:
-            logger.info(
-                "Metrics server started successfully",
-                extra={
-                    "event_type": "metrics_server_started",
-                    "endpoint": f"http://0.0.0.0:{os.getenv('DATIVO_METRICS_PORT', '9400')}/metrics",
-                },
-            )
-    except Exception as e:
-        logger.warning(
-            f"Failed to start metrics server: {e}. Metrics will not be exposed.",
-            extra={"event_type": "metrics_server_warning", "error": str(e)},
-        )
-
-    # Configure OpenTelemetry metrics if enabled
-    if os.getenv("DATIVO_METRICS_OTEL", "false").lower() == "true":
+    if runner_config.metrics:
+        prometheus_config = runner_config.metrics.prometheus
         try:
-            otel_configured = configure_otel_metrics()
+            metrics_server = start_metrics_server_from_config(prometheus_config)
+            if metrics_server:
+                logger.info(
+                    "Metrics server started successfully",
+                    extra={
+                        "event_type": "metrics_server_started",
+                        "endpoint": f"http://{prometheus_config.host}:{prometheus_config.port}/metrics",
+                    },
+                )
+        except Exception as e:
+            logger.warning(
+                f"Failed to start metrics server: {e}. Metrics will not be exposed.",
+                extra={"event_type": "metrics_server_warning", "error": str(e)},
+            )
+
+    # Configure OpenTelemetry metrics if enabled in config
+    if runner_config.metrics and runner_config.metrics.otel.enabled:
+        try:
+            # Get environment from runner config if available
+            environment = os.getenv("DATIVO_ENVIRONMENT", "production")
+
+            otel_configured = configure_otel_metrics(
+                config=runner_config.metrics.otel,
+                environment=environment,
+            )
             if otel_configured:
                 logger.info(
                     "OpenTelemetry metrics configured successfully",

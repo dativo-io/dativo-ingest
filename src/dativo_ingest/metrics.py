@@ -1,20 +1,31 @@
 """Metrics collection for job execution and observability.
 
 Supports multiple backends:
-- Logging (default)
-- Prometheus (via prometheus_client)
-- OpenTelemetry (via opentelemetry SDK)
+- Logging (always enabled)
+- Prometheus (configurable, supports multiprocess mode for orchestrated)
+- OpenTelemetry (optional, with bounded retry)
+
+Configuration is YAML-first with env var overrides.
 """
 
 import os
 import time
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
 
+from .config import MetricsConfig
 from .logging import get_logger
 
 # Optional imports for Prometheus and OpenTelemetry
 try:
-    from prometheus_client import Counter, Gauge, Histogram, Summary
+    from prometheus_client import (
+        REGISTRY,
+        CollectorRegistry,
+        Counter,
+        Gauge,
+        Histogram,
+        multiprocess,
+    )
 
     PROMETHEUS_AVAILABLE = True
 except ImportError:
@@ -22,125 +33,197 @@ except ImportError:
 
 try:
     from opentelemetry import metrics as otel_metrics
-    from opentelemetry.sdk.metrics import MeterProvider
-    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
     OPENTELEMETRY_AVAILABLE = True
 except ImportError:
     OPENTELEMETRY_AVAILABLE = False
 
 
+# Canonical metric names (stable schema)
+METRIC_NAMES = {
+    "records_total": "dativo_ingest_records_total",
+    "bytes_total": "dativo_ingest_bytes_total",
+    "retries_total": "dativo_ingest_retries_total",
+    "api_calls_total": "dativo_ingest_api_calls_total",
+    "extract_seconds": "dativo_ingest_extract_seconds",
+    "load_seconds": "dativo_ingest_load_seconds",
+    "runtime_seconds": "dativo_ingest_runtime_seconds",
+    "job_running": "dativo_ingest_job_running",
+    "last_success_timestamp": "dativo_ingest_last_success_timestamp_seconds",
+}
+
+# Standardized histogram buckets (in seconds)
+# Covers jobs from 1s to 1 hour with reasonable granularity
+HISTOGRAM_BUCKETS = (1, 2, 5, 10, 30, 60, 120, 300, 600, 1800, 3600)
+
+# Label cardinality limits to prevent explosion
+KNOWN_API_TYPES = {"stripe", "hubspot", "salesforce", "postgres", "mysql", "http", "grpc", "unknown"}
+KNOWN_ERROR_TYPES = {"timeout", "auth", "rate_limit", "validation", "connection", "unknown"}
+KNOWN_PHASES = {"extracted", "written", "invalid", "committed"}
+
 # Global Prometheus metrics (initialized once)
 _prometheus_initialized = False
 _prom_metrics = {}
+_multiproc_mode = False
 
 
-def _initialize_prometheus_metrics():
-    """Initialize Prometheus metrics collectors."""
+def _validate_label_value(value: str, known_set: Set[str], default: str = "unknown") -> str:
+    """Validate and normalize label values to prevent cardinality explosion.
+
+    Args:
+        value: Label value to validate
+        known_set: Set of known/allowed values
+        default: Default value if not in known set
+
+    Returns:
+        Validated label value
+    """
+    if not value:
+        return default
+    # Normalize to lowercase and limit length
+    normalized = value.lower()[:50]
+    return normalized if normalized in known_set else default
+
+
+def _setup_multiprocess_mode(multiproc_dir: Optional[str]) -> bool:
+    """Set up Prometheus multiprocess mode if configured.
+
+    Args:
+        multiproc_dir: Directory for multiprocess metrics
+
+    Returns:
+        True if multiprocess mode enabled
+    """
+    global _multiproc_mode
+
+    if not PROMETHEUS_AVAILABLE or not multiproc_dir:
+        return False
+
+    try:
+        # Create directory if it doesn't exist
+        multiproc_path = Path(multiproc_dir)
+        multiproc_path.mkdir(parents=True, exist_ok=True)
+
+        # Set environment variable for prometheus_client
+        os.environ["PROMETHEUS_MULTIPROC_DIR"] = str(multiproc_path)
+
+        _multiproc_mode = True
+        return True
+    except Exception as e:
+        logger = get_logger()
+        logger.warning(
+            f"Failed to setup Prometheus multiprocess mode: {e}",
+            extra={"event_type": "metrics_multiproc_setup_failed"},
+        )
+        return False
+
+
+def _initialize_prometheus_metrics(multiproc_dir: Optional[str] = None) -> None:
+    """Initialize Prometheus metrics collectors.
+
+    Args:
+        multiproc_dir: Optional directory for multiprocess mode
+    """
     global _prometheus_initialized, _prom_metrics
 
     if _prometheus_initialized or not PROMETHEUS_AVAILABLE:
         return
 
-    # Counters
-    _prom_metrics["records_extracted_total"] = Counter(
-        "dativo_records_extracted_total",
-        "Total number of records extracted",
-        ["job_name", "tenant_id", "connector_type"],
-    )
-    _prom_metrics["records_valid_total"] = Counter(
-        "dativo_records_valid_total",
-        "Total number of valid records",
-        ["job_name", "tenant_id", "connector_type"],
-    )
-    _prom_metrics["records_invalid_total"] = Counter(
-        "dativo_records_invalid_total",
-        "Total number of invalid records",
-        ["job_name", "tenant_id", "connector_type"],
-    )
-    _prom_metrics["bytes_written_total"] = Counter(
-        "dativo_bytes_written_total",
-        "Total bytes written to storage",
-        ["job_name", "tenant_id", "connector_type"],
-    )
-    _prom_metrics["files_written_total"] = Counter(
-        "dativo_files_written_total",
-        "Total files written",
-        ["job_name", "tenant_id", "connector_type"],
-    )
-    _prom_metrics["api_calls_total"] = Counter(
-        "dativo_api_calls_total",
-        "Total API calls made",
-        ["job_name", "tenant_id", "connector_type", "api_type"],
-    )
-    _prom_metrics["job_runs_total"] = Counter(
-        "dativo_job_runs_total",
-        "Total job runs",
-        ["job_name", "tenant_id", "connector_type", "status"],
-    )
-    _prom_metrics["retries_total"] = Counter(
-        "dativo_retries_total",
-        "Total number of retries",
-        ["job_name", "tenant_id", "connector_type"],
-    )
-    _prom_metrics["errors_total"] = Counter(
-        "dativo_errors_total",
-        "Total errors by type",
-        ["job_name", "tenant_id", "connector_type", "error_type"],
+    # Set up multiprocess mode if configured
+    _setup_multiprocess_mode(multiproc_dir)
+
+    # Use multiprocess-compatible registry if in multiprocess mode
+    if _multiproc_mode:
+        registry = CollectorRegistry()
+        multiprocess.MultiProcessCollector(registry)
+    else:
+        registry = REGISTRY
+
+    # Counters with phase label
+    _prom_metrics["records_total"] = Counter(
+        METRIC_NAMES["records_total"],
+        "Total number of records processed",
+        ["job_name", "tenant_id", "connector_type", "mode", "phase"],
+        registry=registry,
     )
 
-    # Histograms for timing
-    _prom_metrics["extraction_duration_seconds"] = Histogram(
-        "dativo_extraction_duration_seconds",
-        "Time spent extracting data",
-        ["job_name", "tenant_id", "connector_type"],
-        buckets=(1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600),
+    _prom_metrics["bytes_total"] = Counter(
+        METRIC_NAMES["bytes_total"],
+        "Total bytes processed",
+        ["job_name", "tenant_id", "connector_type", "mode", "phase"],
+        registry=registry,
     )
-    _prom_metrics["job_duration_seconds"] = Histogram(
-        "dativo_job_duration_seconds",
-        "Total job execution time",
-        ["job_name", "tenant_id", "connector_type"],
-        buckets=(1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600),
+
+    _prom_metrics["retries_total"] = Counter(
+        METRIC_NAMES["retries_total"],
+        "Total number of retries",
+        ["job_name", "tenant_id", "connector_type", "mode"],
+        registry=registry,
     )
-    _prom_metrics["batch_processing_seconds"] = Histogram(
-        "dativo_batch_processing_seconds",
-        "Time to process a batch",
-        ["job_name", "tenant_id", "connector_type"],
-        buckets=(0.1, 0.5, 1, 2, 5, 10, 30, 60),
+
+    _prom_metrics["api_calls_total"] = Counter(
+        METRIC_NAMES["api_calls_total"],
+        "Total API calls made",
+        ["job_name", "tenant_id", "connector_type", "mode", "api_type"],
+        registry=registry,
+    )
+
+    # Histograms for timing (standardized buckets)
+    _prom_metrics["extract_seconds"] = Histogram(
+        METRIC_NAMES["extract_seconds"],
+        "Time spent in extraction phase (seconds)",
+        ["job_name", "tenant_id", "connector_type", "mode"],
+        buckets=HISTOGRAM_BUCKETS,
+        registry=registry,
+    )
+
+    _prom_metrics["load_seconds"] = Histogram(
+        METRIC_NAMES["load_seconds"],
+        "Time spent in load/commit phase (seconds)",
+        ["job_name", "tenant_id", "connector_type", "mode"],
+        buckets=HISTOGRAM_BUCKETS,
+        registry=registry,
+    )
+
+    _prom_metrics["runtime_seconds"] = Histogram(
+        METRIC_NAMES["runtime_seconds"],
+        "Total job runtime (seconds)",
+        ["job_name", "tenant_id", "connector_type", "mode", "status"],
+        buckets=HISTOGRAM_BUCKETS,
+        registry=registry,
     )
 
     # Gauges for current state
     _prom_metrics["job_running"] = Gauge(
-        "dativo_job_running",
+        METRIC_NAMES["job_running"],
         "Whether a job is currently running (1=running, 0=not running)",
-        ["job_name", "tenant_id", "connector_type"],
-    )
-    _prom_metrics["last_success_timestamp"] = Gauge(
-        "dativo_last_success_timestamp_seconds",
-        "Timestamp of last successful job run",
-        ["job_name", "tenant_id", "connector_type"],
+        ["job_name", "tenant_id", "connector_type", "mode"],
+        registry=registry,
     )
 
-    # Summary for percentiles
-    _prom_metrics["records_per_batch"] = Summary(
-        "dativo_records_per_batch",
-        "Number of records per batch",
-        ["job_name", "tenant_id", "connector_type"],
+    _prom_metrics["last_success_timestamp"] = Gauge(
+        METRIC_NAMES["last_success_timestamp"],
+        "Unix timestamp of last successful job run",
+        ["job_name", "tenant_id", "connector_type", "mode"],
+        registry=registry,
     )
 
     _prometheus_initialized = True
 
 
 class MetricsCollector:
-    """Collects and emits metrics for job execution."""
+    """Collects and emits metrics for job execution.
+
+    Configuration precedence: env vars > job config > runner config > defaults
+    """
 
     def __init__(
         self,
         job_name: str,
         tenant_id: str,
-        connector_type: str = "unknown",
-        enable_prometheus: bool = True,
-        enable_otel: bool = False,
+        connector_type: str,
+        mode: str = "oneshot",
+        config: Optional[MetricsConfig] = None,
     ):
         """Initialize metrics collector.
 
@@ -148,45 +231,88 @@ class MetricsCollector:
             job_name: Name of the job
             tenant_id: Tenant identifier
             connector_type: Type of connector being used
-            enable_prometheus: Whether to emit Prometheus metrics
-            enable_otel: Whether to emit OpenTelemetry metrics
+            mode: Execution mode (oneshot or orchestrated)
+            config: Metrics configuration (YAML-first)
         """
         self.job_name = job_name
         self.tenant_id = tenant_id
         self.connector_type = connector_type
+        self.mode = mode
         self.logger = get_logger()
+
+        # Load configuration with precedence: env > config > defaults
+        self.config = config or MetricsConfig()
+        self._apply_env_overrides()
+
+        # Timing trackers
         self.start_time: Optional[float] = None
-        self.extraction_start_time: Optional[float] = None
+        self.extract_start_time: Optional[float] = None
+        self.load_start_time: Optional[float] = None
+
+        # Metrics data
         self.metrics: Dict[str, Any] = {}
 
         # Backend flags
-        self.enable_prometheus = (
-            enable_prometheus
+        self.metrics_enabled = self.config.enabled
+        self.prometheus_enabled = (
+            self.metrics_enabled
             and PROMETHEUS_AVAILABLE
-            and os.getenv("DATIVO_METRICS_PROMETHEUS", "true").lower() == "true"
+            and self.config.prometheus.enabled
         )
-        self.enable_otel = (
-            enable_otel
-            and OPENTELEMETRY_AVAILABLE
-            and os.getenv("DATIVO_METRICS_OTEL", "false").lower() == "true"
+        self.otel_enabled = (
+            self.metrics_enabled and OPENTELEMETRY_AVAILABLE and self.config.otel.enabled
         )
 
-        # Initialize Prometheus metrics if enabled
-        if self.enable_prometheus:
-            _initialize_prometheus_metrics()
+        # Initialize Prometheus if enabled
+        if self.prometheus_enabled:
+            _initialize_prometheus_metrics(self.config.prometheus.multiproc_dir)
 
-        # Initialize OpenTelemetry meter if enabled
-        self.otel_meter = None
-        if self.enable_otel:
-            meter_provider = otel_metrics.get_meter_provider()
-            self.otel_meter = meter_provider.get_meter("dativo_ingest")
-
-        # Label set for metrics
+        # Base labels for metrics
         self.labels = {
             "job_name": self.job_name,
             "tenant_id": self.tenant_id,
             "connector_type": self.connector_type,
+            "mode": self.mode,
         }
+
+        # Add optional labels if configured
+        if self.config.labels.include_env:
+            env = os.getenv("DATIVO_ENVIRONMENT", "production")
+            self.labels["environment"] = env
+
+    def _apply_env_overrides(self) -> None:
+        """Apply environment variable overrides to configuration."""
+        # Prometheus overrides
+        if os.getenv("DATIVO_METRICS_PROMETHEUS") is not None:
+            self.config.prometheus.enabled = (
+                os.getenv("DATIVO_METRICS_PROMETHEUS", "true").lower() == "true"
+            )
+
+        if os.getenv("DATIVO_METRICS_PORT") is not None:
+            try:
+                self.config.prometheus.port = int(os.getenv("DATIVO_METRICS_PORT"))
+            except ValueError:
+                pass
+
+        if os.getenv("DATIVO_METRICS_HOST") is not None:
+            self.config.prometheus.host = os.getenv("DATIVO_METRICS_HOST")
+
+        if os.getenv("PROMETHEUS_MULTIPROC_DIR") is not None:
+            self.config.prometheus.multiproc_dir = os.getenv("PROMETHEUS_MULTIPROC_DIR")
+
+        # OTEL overrides
+        if os.getenv("DATIVO_METRICS_OTEL") is not None:
+            self.config.otel.enabled = (
+                os.getenv("DATIVO_METRICS_OTEL", "false").lower() == "true"
+            )
+
+        if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") is not None:
+            self.config.otel.endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+
+        if os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL") is not None:
+            protocol = os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+            if protocol in ("grpc", "http"):
+                self.config.otel.protocol = protocol
 
     def start(self) -> None:
         """Start metrics collection."""
@@ -195,239 +321,111 @@ class MetricsCollector:
             "job_name": self.job_name,
             "tenant_id": self.tenant_id,
             "connector_type": self.connector_type,
+            "mode": self.mode,
             "start_time": self.start_time,
         }
 
         # Set Prometheus gauge
-        if self.enable_prometheus and "job_running" in _prom_metrics:
+        if self.prometheus_enabled and "job_running" in _prom_metrics:
             _prom_metrics["job_running"].labels(**self.labels).set(1)
 
     def start_extraction(self) -> None:
         """Mark the start of extraction phase."""
-        self.extraction_start_time = time.time()
+        self.extract_start_time = time.time()
 
     def end_extraction(self) -> None:
         """Mark the end of extraction phase and record duration."""
-        if self.extraction_start_time is None:
+        if self.extract_start_time is None:
             return
 
-        duration = time.time() - self.extraction_start_time
-        self.metrics["extraction_duration_seconds"] = duration
+        duration = time.time() - self.extract_start_time
+        self.metrics["extract_seconds"] = duration
 
         # Record Prometheus histogram
-        if self.enable_prometheus and "extraction_duration_seconds" in _prom_metrics:
-            _prom_metrics["extraction_duration_seconds"].labels(**self.labels).observe(
-                duration
-            )
+        if self.prometheus_enabled and "extract_seconds" in _prom_metrics:
+            _prom_metrics["extract_seconds"].labels(**self.labels).observe(duration)
 
-    def record_extraction(self, records_count: int, files_count: int = 0) -> None:
-        """Record extraction metrics.
+    def start_load(self) -> None:
+        """Mark the start of load/commit phase."""
+        self.load_start_time = time.time()
 
-        Args:
-            records_count: Number of records extracted
-            files_count: Number of files processed
-        """
-        self.metrics["records_extracted"] = records_count
-        self.metrics["files_processed"] = files_count
+    def end_load(self) -> None:
+        """Mark the end of load phase and record duration."""
+        if self.load_start_time is None:
+            return
 
-        # Prometheus counters
-        if self.enable_prometheus and "records_extracted_total" in _prom_metrics:
-            _prom_metrics["records_extracted_total"].labels(**self.labels).inc(
-                records_count
-            )
+        duration = time.time() - self.load_start_time
+        self.metrics["load_seconds"] = duration
 
-        # Build extra dict - exclude tenant_id and job_name to avoid conflicts with log factory
-        extra = {
-            "event_type": "metrics_extraction",
-            "records_count": records_count,
-            "files_count": files_count,
-        }
+        # Record Prometheus histogram
+        if self.prometheus_enabled and "load_seconds" in _prom_metrics:
+            _prom_metrics["load_seconds"].labels(**self.labels).observe(duration)
 
-        self.logger.info("Extraction metrics recorded", extra=extra)
-
-    def record_validation(
-        self, valid_records: int, invalid_records: int, total_records: int
-    ) -> None:
-        """Record validation metrics.
+    def record_records(self, count: int, phase: str = "extracted") -> None:
+        """Record records processed.
 
         Args:
-            valid_records: Number of valid records
-            invalid_records: Number of invalid records
-            total_records: Total records validated
+            count: Number of records
+            phase: Processing phase (extracted, written, invalid, committed)
         """
-        self.metrics["records_valid"] = valid_records
-        self.metrics["records_invalid"] = invalid_records
-        self.metrics["records_total"] = total_records
+        phase = _validate_label_value(phase, KNOWN_PHASES, "extracted")
+        key = f"records_{phase}"
+        self.metrics[key] = self.metrics.get(key, 0) + count
 
-        validation_rate = (
-            (valid_records / total_records * 100) if total_records > 0 else 0
-        )
+        # Prometheus counter
+        if self.prometheus_enabled and "records_total" in _prom_metrics:
+            labels = {**self.labels, "phase": phase}
+            _prom_metrics["records_total"].labels(**labels).inc(count)
 
-        # Prometheus counters
-        if self.enable_prometheus:
-            if "records_valid_total" in _prom_metrics:
-                _prom_metrics["records_valid_total"].labels(**self.labels).inc(
-                    valid_records
-                )
-            if "records_invalid_total" in _prom_metrics:
-                _prom_metrics["records_invalid_total"].labels(**self.labels).inc(
-                    invalid_records
-                )
-
-        # Build extra dict
-        extra = {
-            "event_type": "metrics_validation",
-            "valid_records": valid_records,
-            "invalid_records": invalid_records,
-            "total_records": total_records,
-            "validation_rate_percent": validation_rate,
-        }
-
-        self.logger.info("Validation metrics recorded", extra=extra)
-
-    def record_writing(
-        self, files_written: int, total_bytes: int, file_sizes: Optional[list] = None
-    ) -> None:
-        """Record writing metrics.
+    def record_bytes(self, count: int, phase: str = "written") -> None:
+        """Record bytes processed.
 
         Args:
-            files_written: Number of files written
-            total_bytes: Total bytes written
-            file_sizes: List of individual file sizes (optional)
+            count: Number of bytes
+            phase: Processing phase (written, committed)
         """
-        self.metrics["files_written"] = files_written
-        self.metrics["bytes_written"] = total_bytes
-        self.metrics["file_sizes"] = file_sizes or []
+        phase = _validate_label_value(phase, KNOWN_PHASES, "written")
+        key = f"bytes_{phase}"
+        self.metrics[key] = self.metrics.get(key, 0) + count
 
-        total_mb = total_bytes / (1024 * 1024) if total_bytes > 0 else 0
+        # Prometheus counter
+        if self.prometheus_enabled and "bytes_total" in _prom_metrics:
+            labels = {**self.labels, "phase": phase}
+            _prom_metrics["bytes_total"].labels(**labels).inc(count)
 
-        # Prometheus counters
-        if self.enable_prometheus:
-            if "files_written_total" in _prom_metrics:
-                _prom_metrics["files_written_total"].labels(**self.labels).inc(
-                    files_written
-                )
-            if "bytes_written_total" in _prom_metrics:
-                _prom_metrics["bytes_written_total"].labels(**self.labels).inc(
-                    total_bytes
-                )
-
-        # Build extra dict
-        extra = {
-            "event_type": "metrics_writing",
-            "files_written": files_written,
-            "bytes_written": total_bytes,
-            "total_mb": total_mb,
-        }
-
-        self.logger.info("Writing metrics recorded", extra=extra)
-
-    def record_api_calls(self, api_calls: int, api_type: Optional[str] = None) -> None:
-        """Record API call metrics.
+    def record_api_calls(self, count: int, api_type: str = "unknown") -> None:
+        """Record API calls.
 
         Args:
-            api_calls: Number of API calls made
-            api_type: Type of API (e.g., 'stripe', 'hubspot')
+            count: Number of API calls
+            api_type: Type of API (validated against known set)
         """
+        api_type = _validate_label_value(api_type, KNOWN_API_TYPES, "unknown")
+
         if "api_calls" not in self.metrics:
             self.metrics["api_calls"] = {}
-        if api_type:
-            self.metrics["api_calls"][api_type] = api_calls
-        else:
-            self.metrics["api_calls"]["total"] = api_calls
-
-        # Prometheus counter
-        if self.enable_prometheus and "api_calls_total" in _prom_metrics:
-            labels = {**self.labels, "api_type": api_type or "unknown"}
-            _prom_metrics["api_calls_total"].labels(**labels).inc(api_calls)
-
-        # Build extra dict
-        extra = {
-            "event_type": "metrics_api_calls",
-            "api_calls": api_calls,
-            "api_type": api_type,
-        }
-
-        self.logger.info("API call metrics recorded", extra=extra)
-
-    def record_error(self, error_type: str, error_count: int = 1) -> None:
-        """Record error metrics.
-
-        Args:
-            error_type: Type of error
-            error_count: Number of errors
-        """
-        if "errors" not in self.metrics:
-            self.metrics["errors"] = {}
-        self.metrics["errors"][error_type] = (
-            self.metrics["errors"].get(error_type, 0) + error_count
+        self.metrics["api_calls"][api_type] = (
+            self.metrics["api_calls"].get(api_type, 0) + count
         )
 
         # Prometheus counter
-        if self.enable_prometheus and "errors_total" in _prom_metrics:
-            labels = {**self.labels, "error_type": error_type}
-            _prom_metrics["errors_total"].labels(**labels).inc(error_count)
+        if self.prometheus_enabled and "api_calls_total" in _prom_metrics:
+            labels = {**self.labels, "api_type": api_type}
+            _prom_metrics["api_calls_total"].labels(**labels).inc(count)
 
-        # Build extra dict
-        extra = {
-            "event_type": "metrics_error",
-            "error_type": error_type,
-            "error_count": error_count,
-        }
-
-        self.logger.warning("Error metrics recorded", extra=extra)
-
-    def record_retry(self, attempt: int, exit_code: Optional[int] = None) -> None:
-        """Record retry metrics.
-
-        Args:
-            attempt: Retry attempt number
-            exit_code: Exit code that triggered retry
-        """
-        if "retries" not in self.metrics:
-            self.metrics["retries"] = {"count": 0, "attempts": []}
-        self.metrics["retries"]["count"] += 1
-        self.metrics["retries"]["attempts"].append(
-            {"attempt": attempt, "exit_code": exit_code}
-        )
+    def record_retry(self) -> None:
+        """Record a retry attempt."""
+        self.metrics["retries"] = self.metrics.get("retries", 0) + 1
 
         # Prometheus counter
-        if self.enable_prometheus and "retries_total" in _prom_metrics:
+        if self.prometheus_enabled and "retries_total" in _prom_metrics:
             _prom_metrics["retries_total"].labels(**self.labels).inc()
-
-        # Build extra dict
-        extra = {
-            "event_type": "metrics_retry",
-            "retry_count": self.metrics["retries"]["count"],
-            "attempt": attempt,
-            "exit_code": exit_code,
-        }
-
-        self.logger.info("Retry metrics recorded", extra=extra)
-
-    def record_batch(self, batch_size: int, processing_time: float) -> None:
-        """Record batch processing metrics.
-
-        Args:
-            batch_size: Number of records in the batch
-            processing_time: Time taken to process the batch (seconds)
-        """
-        # Prometheus metrics
-        if self.enable_prometheus:
-            if "records_per_batch" in _prom_metrics:
-                _prom_metrics["records_per_batch"].labels(**self.labels).observe(
-                    batch_size
-                )
-            if "batch_processing_seconds" in _prom_metrics:
-                _prom_metrics["batch_processing_seconds"].labels(
-                    **self.labels
-                ).observe(processing_time)
 
     def finish(self, status: str = "success") -> Dict[str, Any]:
         """Finish metrics collection and return summary.
 
         Args:
-            status: Final job status (success, partial, failure)
+            status: Final job status (success, failure, partial)
 
         Returns:
             Complete metrics dictionary
@@ -435,38 +433,23 @@ class MetricsCollector:
         if self.start_time is None:
             self.logger.warning(
                 "Metrics collection finished without start",
-                extra={"event_type": "metrics_warning", "job_name": self.job_name},
+                extra={"event_type": "metrics_warning"},
             )
             return self.metrics
 
         end_time = time.time()
-        execution_time = end_time - self.start_time
+        runtime = end_time - self.start_time
 
         self.metrics["end_time"] = end_time
-        self.metrics["execution_time_seconds"] = execution_time
+        self.metrics["runtime_seconds"] = runtime
         self.metrics["status"] = status
 
-        # Calculate rates
-        if "records_extracted" in self.metrics:
-            records_per_second = (
-                self.metrics["records_extracted"] / execution_time
-                if execution_time > 0
-                else 0
-            )
-            self.metrics["records_per_second"] = records_per_second
-
         # Prometheus metrics
-        if self.enable_prometheus:
-            # Record job run counter
-            if "job_runs_total" in _prom_metrics:
+        if self.prometheus_enabled:
+            # Record runtime histogram
+            if "runtime_seconds" in _prom_metrics:
                 labels = {**self.labels, "status": status}
-                _prom_metrics["job_runs_total"].labels(**labels).inc()
-
-            # Record job duration
-            if "job_duration_seconds" in _prom_metrics:
-                _prom_metrics["job_duration_seconds"].labels(**self.labels).observe(
-                    execution_time
-                )
+                _prom_metrics["runtime_seconds"].labels(**labels).observe(runtime)
 
             # Update running gauge
             if "job_running" in _prom_metrics:
@@ -478,19 +461,33 @@ class MetricsCollector:
                     end_time
                 )
 
-        # Build extra dict
+        # Emit final metrics to logs
         extra = {
             "event_type": "metrics_complete",
             "status": status,
-            "execution_time_seconds": execution_time,
-            **{
-                k: v
-                for k, v in self.metrics.items()
-                if k not in ["start_time", "end_time", "tenant_id", "job_name"]
-            },
+            "runtime_seconds": runtime,
+            **{k: v for k, v in self.metrics.items() if k not in ["start_time", "end_time"]},
         }
 
-        # Emit final metrics
         self.logger.info("Job execution metrics", extra=extra)
 
         return self.metrics
+
+
+def get_multiprocess_registry() -> Optional[object]:
+    """Get Prometheus multiprocess registry for HTTP server.
+
+    Returns:
+        CollectorRegistry configured for multiprocess mode, or None
+    """
+    if not PROMETHEUS_AVAILABLE or not _multiproc_mode:
+        return None
+
+    try:
+        from prometheus_client import CollectorRegistry, multiprocess
+
+        registry = CollectorRegistry()
+        multiprocess.MultiProcessCollector(registry)
+        return registry
+    except Exception:
+        return None

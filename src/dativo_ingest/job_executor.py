@@ -54,19 +54,22 @@ class JobExecutor:
         )
 
     def _initialize_metrics(self) -> None:
-        """Initialize metrics collector."""
+        """Initialize metrics collector with config."""
         # Get connector type
         connector_type = "unknown"
         if self.source_config:
             connector_type = self.source_config.type
 
-        # Initialize metrics collector
+        # Determine execution mode (map self_hosted to oneshot for metrics)
+        metrics_mode = "orchestrated" if self.mode == "orchestrated" else "oneshot"
+
+        # Initialize metrics collector with config
         self.metrics_collector = MetricsCollector(
             job_name=self.job_config.asset or "unknown",
             tenant_id=self.tenant_id,
             connector_type=connector_type,
-            enable_prometheus=True,
-            enable_otel=False,  # Can be enabled via env var
+            mode=metrics_mode,
+            config=self.job_config.metrics,  # Use YAML config
         )
         self.metrics_collector.start()
 
@@ -77,6 +80,7 @@ class JobExecutor:
                 "job_name": self.job_config.asset,
                 "tenant_id": self.tenant_id,
                 "connector_type": connector_type,
+                "mode": metrics_mode,
             },
         )
 
@@ -578,7 +582,7 @@ class JobExecutor:
                 },
             )
 
-            # Mark extraction start time
+            # Mark extraction start time (covers extract + validate + write)
             if self.metrics_collector:
                 self.metrics_collector.start_extraction()
 
@@ -597,7 +601,6 @@ class JobExecutor:
                 state_manager=self.state_manager,
                 checkpoint_context=checkpoint_context,
             ):
-                batch_start_time = time.time()
                 batch_count += 1
                 total_records += len(batch_records)
 
@@ -674,13 +677,6 @@ class JobExecutor:
                         },
                     )
 
-                    # Record batch metrics
-                    batch_processing_time = time.time() - batch_start_time
-                    if self.metrics_collector:
-                        self.metrics_collector.record_batch(
-                            len(valid_records), batch_processing_time
-                        )
-
                     # Update WAL checkpoint after successful batch write
                     # Only update if extractor hasn't already updated with a specific checkpoint type
                     # Extractors update checkpoints with types like: chunk_based, offset_based,
@@ -732,7 +728,7 @@ class JobExecutor:
                         },
                     )
 
-            # Mark extraction end time
+            # Mark extraction end time (after all batches processed)
             if self.metrics_collector:
                 self.metrics_collector.end_extraction()
 
@@ -756,14 +752,17 @@ class JobExecutor:
                     },
                 )
 
-            # Record extraction metrics
+            # Record extraction and validation metrics using new API
             if self.metrics_collector:
-                self.metrics_collector.record_extraction(total_records)
-                self.metrics_collector.record_validation(
-                    total_valid_records,
-                    total_records - total_valid_records,
-                    total_records,
+                self.metrics_collector.record_records(total_records, phase="extracted")
+                self.metrics_collector.record_records(total_valid_records, phase="written")
+                self.metrics_collector.record_records(
+                    total_records - total_valid_records, phase="invalid"
                 )
+
+            # Mark load/commit start time
+            if self.metrics_collector:
+                self.metrics_collector.start_load()
 
             # Finalize WAL before committing (on successful extraction)
             if self.wal_manager:
@@ -784,6 +783,10 @@ class JobExecutor:
                 batch_count,
             )
 
+            # Mark load/commit end time
+            if self.metrics_collector:
+                self.metrics_collector.end_load()
+
             # Cleanup WAL after successful commit
             if exit_code == 0 and self.wal_manager:
                 self.wal_manager.cleanup_wal()
@@ -802,6 +805,11 @@ class JobExecutor:
                 },
                 exc_info=True,
             )
+
+            # Record failure metrics
+            if self.metrics_collector:
+                self.metrics_collector.finish("failure")
+
             return 2
 
     def _transform_markdown_kv(
@@ -1033,14 +1041,9 @@ class JobExecutor:
             else 0
         )
 
-        # Record writing metrics
+        # Record writing metrics using new API
         if self.metrics_collector:
-            file_sizes = [
-                file_meta.get("size_bytes", 0) for file_meta in all_file_metadata
-            ]
-            self.metrics_collector.record_writing(
-                total_files_written, total_bytes, file_sizes
-            )
+            self.metrics_collector.record_bytes(total_bytes, phase="written")
 
         # Emit enhanced metadata
         self.logger.info(
@@ -1243,9 +1246,8 @@ class JobExecutor:
                     exc_info=True,
                 )
 
-            # Record error in metrics
+            # Record error in metrics (ensure finish is called even on exception)
             if self.metrics_collector:
-                self.metrics_collector.record_error("execution_error")
                 self.metrics_collector.finish("failure")
 
             return 2
