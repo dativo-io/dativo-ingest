@@ -1,5 +1,5 @@
 # Prometheus configuration for scraping Dativo-Ingest metrics
-# Place this file in your Prometheus configuration directory
+# Updated for canonical metric names (dativo_ingest_*)
 
 global:
   scrape_interval: 30s      # How frequently to scrape targets
@@ -23,10 +23,12 @@ scrape_configs:
   # Dativo-Ingest metrics endpoint
   - job_name: 'dativo-ingest'
     static_configs:
-      - targets: ['localhost:9400']
+      - targets: ['dativo-ingest:9400']  # Use service name in Docker
         labels:
-          environment: 'production'
+          environment: 'development'
           service: 'dativo-ingest'
+    scrape_interval: 30s
+    scrape_timeout: 10s
     
     # Optional: Use service discovery for Kubernetes
     # kubernetes_sd_configs:
@@ -38,8 +40,15 @@ scrape_configs:
     #   - source_labels: [__meta_kubernetes_pod_label_app]
     #     regex: dativo-ingest
     #     action: keep
-    #   - source_labels: [__meta_kubernetes_pod_name]
-    #     target_label: pod_name
+    #   - source_labels: [__meta_kubernetes_pod_container_port_number]
+    #     regex: "9400"
+    #     action: keep
+
+  # Optional: OTEL Collector Prometheus exporter
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['otel-collector:8889']
+    scrape_interval: 15s
 
   # Optional: Prometheus self-monitoring
   - job_name: 'prometheus'

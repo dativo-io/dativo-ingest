@@ -1,20 +1,25 @@
 # Dativo-Ingest Observability Examples
 
-This directory contains example configurations for monitoring Dativo-Ingest with Prometheus, OpenTelemetry, and Grafana.
+This directory contains working examples for monitoring Dativo-Ingest with Prometheus, OpenTelemetry, and Grafana.
 
 ## Files
 
+### Configuration Files
+- `runner-with-metrics.yaml` - Runner config with metrics enabled
+- `job-with-metrics.yaml` - Job config with metrics override
 - `prometheus.yml` - Prometheus scrape configuration
 - `otel-collector-config.yaml` - OpenTelemetry Collector configuration
 - `alerts.yml` - Prometheus alerting rules
-- `docker-compose.yml` - Complete observability stack with Docker Compose
+
+### Stack Files
+- `docker-compose.yml` - Complete observability stack
 - `grafana-datasources.yml` - Grafana datasource provisioning
 - `grafana-dashboards.yml` - Grafana dashboard provisioning
-- `grafana-dashboard.json` - Pre-built Grafana dashboard
+- `grafana-dashboard.json` - Pre-built dashboard
 
 ## Quick Start
 
-### 1. Start the Full Stack
+### 1. Start the Stack
 
 ```bash
 cd examples/observability
@@ -22,42 +27,77 @@ docker-compose up -d
 ```
 
 This starts:
-- Dativo-Ingest (metrics on port 9400)
-- Prometheus (UI on port 9090)
-- Grafana (UI on port 3000)
-- OpenTelemetry Collector (OTLP on port 4317)
-- MinIO (S3-compatible storage)
-- Nessie (Iceberg catalog)
+- **Dativo-Ingest** - Metrics on port 9400
+- **Prometheus** - UI on port 9090
+- **Grafana** - UI on port 3000
+- **OTEL Collector** - OTLP on ports 4317 (gRPC) and 4318 (HTTP)
+- **MinIO** - S3-compatible storage
+- **Nessie** - Iceberg catalog
 
-### 2. Access the Services
+### 2. Verify Metrics
+
+**Check metrics endpoint:**
+```bash
+curl http://localhost:9400/metrics
+```
+
+Expected output:
+```
+# HELP dativo_ingest_records_total Total number of records processed
+# TYPE dativo_ingest_records_total counter
+dativo_ingest_records_total{connector_type="stripe",mode="orchestrated",phase="extracted"} 1000.0
+...
+```
+
+**Check OTEL Collector health:**
+```bash
+curl http://localhost:13133
+```
+
+### 3. Access Services
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Grafana | http://localhost:3000 | admin / admin |
-| Prometheus | http://localhost:9090 | - |
-| Dativo Metrics | http://localhost:9400/metrics | - |
-| MinIO Console | http://localhost:9001 | minioadmin / minioadmin |
+| **Metrics Endpoint** | http://localhost:9400/metrics | - |
+| **Prometheus** | http://localhost:9090 | - |
+| **Grafana** | http://localhost:3000 | admin / admin |
+| **OTEL Collector** | http://localhost:13133 (health) | - |
+| **MinIO Console** | http://localhost:9001 | minioadmin / minioadmin |
 
-### 3. View Metrics
+### 4. Explore Metrics in Prometheus
 
-**Prometheus:**
-Visit http://localhost:9090 and try queries like:
+Visit http://localhost:9090/graph and try these queries:
+
 ```promql
-dativo_job_runs_total
-rate(dativo_records_extracted_total[5m])
-histogram_quantile(0.95, rate(dativo_job_duration_seconds_bucket[5m]))
+# Records processed per second
+rate(dativo_ingest_records_total{phase="extracted"}[5m])
+
+# Job success rate
+rate(dativo_ingest_runtime_seconds_count{status="success"}[5m])
+
+# 95th percentile job duration
+histogram_quantile(0.95, rate(dativo_ingest_runtime_seconds_bucket[5m]))
+
+# Bytes written per minute
+rate(dativo_ingest_bytes_total{phase="written"}[1m]) * 60
+
+# Jobs currently running
+sum(dativo_ingest_job_running)
 ```
 
-**Grafana:**
-1. Visit http://localhost:3000
-2. Login with admin/admin
-3. Navigate to Dashboards → Browse
-4. Open "Dativo-Ingest Monitoring"
+### 5. View Grafana Dashboard
 
-### 4. Test Alerts
+1. Open http://localhost:3000
+2. Login: **admin / admin**
+3. Navigate to **Dashboards → Browse**
+4. Open **"Dativo-Ingest Monitoring"**
 
-View configured alerts in Prometheus:
-http://localhost:9090/alerts
+Dashboard includes:
+- Job success rate
+- Records processed
+- Job duration percentiles
+- Data volume
+- Error rates
 
 ## Standalone Setup
 

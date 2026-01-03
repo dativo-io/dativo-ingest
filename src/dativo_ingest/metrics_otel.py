@@ -200,6 +200,7 @@ def configure_otel_metrics(
         )
         metrics.set_meter_provider(meter_provider)
 
+        # Log configuration (do NOT log headers - may contain secrets)
         logger.info(
             f"OpenTelemetry metrics configured with {config.protocol} endpoint: {config.endpoint}",
             extra={
@@ -208,6 +209,7 @@ def configure_otel_metrics(
                 "protocol": config.protocol,
                 "export_interval_seconds": config.export_interval_seconds,
                 "service_name": service_name,
+                "headers_configured": bool(config.headers),  # Log presence, not values
             },
         )
 

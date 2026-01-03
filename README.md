@@ -835,6 +835,7 @@ docs/                # Documentation
 - [Catalog Integration](docs/CATALOG_INTEGRATION.md)
 - [WAL Checkpointing](docs/WAL_CHECKPOINTING.md)
 - [Tag Propagation](docs/TAG_PROPAGATION.md)
+- [Observability: Metrics](docs/OBSERVABILITY_METRICS.md) - Prometheus + OpenTelemetry integration
 
 **Roadmap:**
 - [Roadmap](docs/roadmap.md)

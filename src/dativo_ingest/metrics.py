@@ -85,11 +85,12 @@ def _validate_label_value(value: str, known_set: Set[str], default: str = "unkno
     return normalized if normalized in known_set else default
 
 
-def _setup_multiprocess_mode(multiproc_dir: Optional[str]) -> bool:
+def _setup_multiprocess_mode(multiproc_dir: Optional[str], cleanup_on_startup: bool = False) -> bool:
     """Set up Prometheus multiprocess mode if configured.
 
     Args:
         multiproc_dir: Directory for multiprocess metrics
+        cleanup_on_startup: If True, delete stale *.db files at startup
 
     Returns:
         True if multiprocess mode enabled
@@ -99,30 +100,67 @@ def _setup_multiprocess_mode(multiproc_dir: Optional[str]) -> bool:
     if not PROMETHEUS_AVAILABLE or not multiproc_dir:
         return False
 
+    logger = get_logger()
+
     try:
         # Create directory if it doesn't exist
         multiproc_path = Path(multiproc_dir)
         multiproc_path.mkdir(parents=True, exist_ok=True)
 
+        # Test write permission
+        test_file = multiproc_path / ".write_test"
+        try:
+            test_file.touch()
+            test_file.unlink()
+        except (OSError, PermissionError) as e:
+            logger.warning(
+                f"Prometheus multiprocess directory not writable: {multiproc_dir}. "
+                f"Disabling multiprocess mode. Error: {e}",
+                extra={"event_type": "metrics_multiproc_not_writable"},
+            )
+            return False
+
+        # Cleanup stale files if requested
+        if cleanup_on_startup:
+            try:
+                stale_files = list(multiproc_path.glob("*.db"))
+                if stale_files:
+                    for db_file in stale_files:
+                        db_file.unlink()
+                    logger.info(
+                        f"Cleaned up {len(stale_files)} stale multiprocess db files",
+                        extra={"event_type": "metrics_multiproc_cleanup", "count": len(stale_files)},
+                    )
+            except Exception as cleanup_error:
+                logger.warning(
+                    f"Failed to cleanup stale multiprocess files: {cleanup_error}",
+                    extra={"event_type": "metrics_multiproc_cleanup_failed"},
+                )
+
         # Set environment variable for prometheus_client
         os.environ["PROMETHEUS_MULTIPROC_DIR"] = str(multiproc_path)
 
         _multiproc_mode = True
+        logger.debug(
+            f"Prometheus multiprocess mode enabled: {multiproc_dir}",
+            extra={"event_type": "metrics_multiproc_enabled"},
+        )
         return True
+
     except Exception as e:
-        logger = get_logger()
         logger.warning(
-            f"Failed to setup Prometheus multiprocess mode: {e}",
+            f"Failed to setup Prometheus multiprocess mode: {e}. Disabling multiprocess mode.",
             extra={"event_type": "metrics_multiproc_setup_failed"},
         )
         return False
 
 
-def _initialize_prometheus_metrics(multiproc_dir: Optional[str] = None) -> None:
+def _initialize_prometheus_metrics(multiproc_dir: Optional[str] = None, cleanup_on_startup: bool = False) -> None:
     """Initialize Prometheus metrics collectors.
 
     Args:
         multiproc_dir: Optional directory for multiprocess mode
+        cleanup_on_startup: If True, cleanup stale db files
     """
     global _prometheus_initialized, _prom_metrics
 
@@ -130,7 +168,7 @@ def _initialize_prometheus_metrics(multiproc_dir: Optional[str] = None) -> None:
         return
 
     # Set up multiprocess mode if configured
-    _setup_multiprocess_mode(multiproc_dir)
+    _setup_multiprocess_mode(multiproc_dir, cleanup_on_startup)
 
     # Use multiprocess-compatible registry if in multiprocess mode
     if _multiproc_mode:
@@ -265,17 +303,21 @@ class MetricsCollector:
 
         # Initialize Prometheus if enabled
         if self.prometheus_enabled:
-            _initialize_prometheus_metrics(self.config.prometheus.multiproc_dir)
+            _initialize_prometheus_metrics(
+                self.config.prometheus.multiproc_dir,
+                self.config.prometheus.cleanup_on_startup
+            )
 
-        # Base labels for metrics
+        # Base labels for metrics (cardinality-aware)
+        # Use "disabled" for high-cardinality labels when not included to keep schema stable
         self.labels = {
-            "job_name": self.job_name,
-            "tenant_id": self.tenant_id,
-            "connector_type": self.connector_type,
-            "mode": self.mode,
+            "job_name": self.job_name if self.config.labels.include_job_name else "disabled",
+            "tenant_id": self.tenant_id if self.config.labels.include_tenant_id else "disabled",
+            "connector_type": self.connector_type,  # Always included (low cardinality)
+            "mode": self.mode if self.config.labels.include_mode else "disabled",
         }
 
-        # Add optional labels if configured
+        # Add optional environment label if configured
         if self.config.labels.include_env:
             env = os.getenv("DATIVO_ENVIRONMENT", "production")
             self.labels["environment"] = env

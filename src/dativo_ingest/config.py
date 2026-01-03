@@ -499,6 +499,10 @@ class PrometheusConfig(BaseModel):
         default=None,
         description="Directory for multiprocess metrics (required for orchestrated mode with subprocesses)",
     )
+    cleanup_on_startup: bool = Field(
+        default=False,
+        description="Delete stale multiprocess *.db files on startup (use with caution)",
+    )
 
 
 class OtelConfig(BaseModel):
@@ -524,13 +528,26 @@ class OtelConfig(BaseModel):
 
 
 class MetricsLabelsConfig(BaseModel):
-    """Configuration for metric labels."""
+    """Configuration for metric labels.
+    
+    Defaults favor low cardinality for production safety.
+    Set include_tenant_id=true and include_job_name=true only if:
+    - You have a small number of tenants (< 100)
+    - You have a small number of jobs (< 100)
+    - Your Prometheus can handle the cardinality
+    """
 
+    include_tenant_id: bool = Field(
+        default=False, description="Include tenant_id label (HIGH cardinality - use with caution)"
+    )
+    include_job_name: bool = Field(
+        default=False, description="Include job_name label (HIGH cardinality - use with caution)"
+    )
     include_env: bool = Field(
         default=False, description="Include environment label (increases cardinality)"
     )
     include_mode: bool = Field(
-        default=True, description="Include mode label (oneshot/orchestrated)"
+        default=True, description="Include mode label (oneshot/orchestrated - low cardinality)"
     )
 
 

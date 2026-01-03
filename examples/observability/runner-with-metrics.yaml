@@ -1,0 +1,53 @@
+# Runner configuration with metrics enabled
+# This example shows how to configure metrics in orchestrated mode
+
+mode: orchestrated
+
+orchestrator:
+  type: dagster
+  concurrency_per_tenant: 1
+  
+  schedules:
+    - name: stripe_payments_hourly
+      enabled: true
+      cron: "0 * * * *"
+      config: /app/jobs/stripe_payments.yaml
+      tags:
+        team: data-platform
+        priority: high
+
+# Metrics configuration (orchestrated mode)
+metrics:
+  enabled: true
+  
+  # Prometheus configuration
+  prometheus:
+    enabled: true
+    host: "0.0.0.0"
+    port: 9400
+    # Required for multiprocess mode (Dagster subprocesses)
+    multiproc_dir: /tmp/prometheus_multiproc
+    # Optional: cleanup stale db files on startup
+    cleanup_on_startup: false
+  
+  # OpenTelemetry configuration (optional)
+  otel:
+    enabled: false  # Set to true to enable OTEL export
+    protocol: grpc  # or "http"
+    endpoint: http://otel-collector:4317
+    export_interval_seconds: 60
+    timeout_seconds: 10
+    max_export_batch_size: 512
+    # Optional: authentication headers
+    # headers:
+    #   x-api-key: "your-key-here"
+  
+  # Label configuration (cardinality control)
+  labels:
+    # High-cardinality labels (disabled by default for safety)
+    include_tenant_id: false  # ⚠️ Enable only with < 100 tenants
+    include_job_name: false   # ⚠️ Enable only with < 100 jobs
+    
+    # Low-cardinality labels (safe to enable)
+    include_mode: true        # oneshot/orchestrated
+    include_env: false        # Optional environment label

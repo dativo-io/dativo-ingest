@@ -1,5 +1,10 @@
 # Docker Compose setup for Dativo-Ingest with full observability stack
 # Includes: Dativo-Ingest, Prometheus, Grafana, OTEL Collector
+#
+# Usage:
+#   docker-compose up -d
+#   curl http://localhost:9400/metrics
+#   open http://localhost:3000 (Grafana: admin/admin)
 
 version: '3.8'
 
@@ -8,15 +13,9 @@ services:
   dativo-ingest:
     image: dativo/dativo-ingest:latest
     container_name: dativo-ingest
-    command: dativo start orchestrated --runner-config /app/configs/runner.yaml
+    command: dativo start orchestrated --runner-config /app/configs/runner-with-metrics.yaml
     environment:
-      # Metrics configuration
-      - DATIVO_METRICS_PROMETHEUS=true
-      - DATIVO_METRICS_PORT=9400
-      - DATIVO_METRICS_HOST=0.0.0.0
-      - DATIVO_METRICS_OTEL=true
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-      - OTEL_EXPORTER_OTLP_INSECURE=true
+      # Environment overrides (optional - config file is preferred)
       - DATIVO_ENVIRONMENT=development
       
       # Storage configuration
@@ -28,9 +27,11 @@ services:
       # Database configuration
       - NESSIE_URI=http://nessie:19120/api/v1
     volumes:
-      - ./configs:/app/configs
-      - ./jobs:/app/jobs
-      - ./secrets:/secrets
+      - ./runner-with-metrics.yaml:/app/configs/runner-with-metrics.yaml
+      - ./job-with-metrics.yaml:/app/jobs/example.yaml
+      # Multiprocess metrics directory (tmpfs for performance)
+      - type: tmpfs
+        target: /tmp/prometheus_multiproc
     ports:
       - "9400:9400"  # Metrics endpoint
     depends_on:
@@ -40,21 +41,25 @@ services:
     networks:
       - dativo-network
 
-  # OpenTelemetry Collector
+  # OpenTelemetry Collector (receives metrics from Dativo)
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.91.0
+    image: otel/opentelemetry-collector-contrib:0.93.0
     container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-      - "8889:8889"   # Prometheus exporter
+      - "4317:4317"   # OTLP gRPC (Dativo → Collector)
+      - "4318:4318"   # OTLP HTTP (alternative)
+      - "8889:8889"   # Prometheus exporter (Prometheus → Collector)
       - "13133:13133" # Health check
-      - "55679:55679" # zPages
     networks:
       - dativo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:13133"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   # Prometheus
   prometheus:

@@ -132,14 +132,22 @@ def get_metrics_text() -> str:
     if not PROMETHEUS_AVAILABLE:
         return "# Prometheus client not available\n"
 
+    logger = get_logger()
+
     try:
         # Use multiprocess registry if configured
         registry = get_multiprocess_registry()
         if registry is None:
             registry = REGISTRY
 
-        return generate_latest(registry).decode("utf-8")
+        metrics_bytes = generate_latest(registry)
+        return metrics_bytes.decode("utf-8")
     except Exception as e:
+        # Log once (avoid spam)
+        logger.warning(
+            f"Failed to generate Prometheus metrics: {e}",
+            extra={"event_type": "metrics_generation_failed"},
+        )
         return f"# Error generating metrics: {e}\n"
 
 
