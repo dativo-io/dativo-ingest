@@ -1,0 +1,227 @@
+# Prometheus alerting rules for Dativo-Ingest
+# Place this file alongside prometheus.yml and reference in rule_files
+
+groups:
+  - name: dativo_job_health
+    interval: 30s
+    rules:
+      # Alert when job failure rate exceeds 10%
+      - alert: DativoJobFailureRate
+        expr: |
+          (
+            rate(dativo_job_runs_total{status="failure"}[5m])
+            / 
+            rate(dativo_job_runs_total[5m])
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: dativo-ingest
+        annotations:
+          summary: "High job failure rate for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} (tenant: {{ $labels.tenant_id }}) 
+            has a failure rate of {{ $value | humanizePercentage }} over the last 5 minutes.
+
+      # Alert when job hasn't run successfully in 2 hours
+      - alert: DativoJobNotRunning
+        expr: |
+          (time() - dativo_last_success_timestamp_seconds) > 7200
+        for: 10m
+        labels:
+          severity: critical
+          component: dativo-ingest
+        annotations:
+          summary: "Job {{ $labels.job_name }} hasn't run successfully"
+          description: |
+            Job {{ $labels.job_name }} (tenant: {{ $labels.tenant_id }}) 
+            hasn't completed successfully in over 2 hours.
+            Last success: {{ $value | humanizeDuration }} ago.
+
+      # Alert when a job is stuck running for too long
+      - alert: DativoJobStuckRunning
+        expr: |
+          dativo_job_running == 1
+        for: 2h
+        labels:
+          severity: warning
+          component: dativo-ingest
+        annotations:
+          summary: "Job {{ $labels.job_name }} stuck running"
+          description: |
+            Job {{ $labels.job_name }} (tenant: {{ $labels.tenant_id }}) 
+            has been running for over 2 hours. It may be stuck.
+
+  - name: dativo_performance
+    interval: 30s
+    rules:
+      # Alert when job duration exceeds 30 minutes (95th percentile)
+      - alert: DativoSlowJobExecution
+        expr: |
+          histogram_quantile(0.95,
+            rate(dativo_job_duration_seconds_bucket[10m])
+          ) > 1800
+        for: 10m
+        labels:
+          severity: warning
+          component: dativo-ingest
+        annotations:
+          summary: "Slow job execution for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} (tenant: {{ $labels.tenant_id }}) 
+            95th percentile execution time is {{ $value | humanizeDuration }}, 
+            exceeding 30 minute threshold.
+
+      # Alert when batch processing is slow
+      - alert: DativoBatchProcessingSlow
+        expr: |
+          histogram_quantile(0.95,
+            rate(dativo_batch_processing_seconds_bucket[5m])
+          ) > 60
+        for: 10m
+        labels:
+          severity: info
+          component: dativo-ingest
+        annotations:
+          summary: "Slow batch processing for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} batch processing 
+            95th percentile time is {{ $value | humanizeDuration }}, 
+            exceeding 60 second threshold.
+
+  - name: dativo_data_quality
+    interval: 30s
+    rules:
+      # Alert when invalid record rate exceeds 5%
+      - alert: DativoHighInvalidRecords
+        expr: |
+          (
+            rate(dativo_records_invalid_total[5m])
+            /
+            rate(dativo_records_extracted_total[5m])
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: dativo-ingest
+        annotations:
+          summary: "High invalid record rate for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} (tenant: {{ $labels.tenant_id }}) 
+            has {{ $value | humanizePercentage }} invalid records, 
+            exceeding 5% threshold.
+
+      # Alert when no records are being extracted
+      - alert: DativoNoRecordsExtracted
+        expr: |
+          rate(dativo_records_extracted_total[5m]) == 0
+          and
+          dativo_job_running == 1
+        for: 10m
+        labels:
+          severity: warning
+          component: dativo-ingest
+        annotations:
+          summary: "No records extracted for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} (tenant: {{ $labels.tenant_id }}) 
+            is running but no records are being extracted.
+
+  - name: dativo_errors
+    interval: 30s
+    rules:
+      # Alert on high error rate
+      - alert: DativoHighErrorRate
+        expr: |
+          rate(dativo_errors_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: dativo-ingest
+        annotations:
+          summary: "High error rate for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} (tenant: {{ $labels.tenant_id }}) 
+            has {{ $value }} errors per minute, 
+            exceeding threshold of 10/min.
+
+      # Alert on specific error types
+      - alert: DativoValidationErrors
+        expr: |
+          rate(dativo_errors_total{error_type="validation_error"}[5m]) > 5
+        for: 5m
+        labels:
+          severity: info
+          component: dativo-ingest
+        annotations:
+          summary: "Validation errors for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} is experiencing 
+            {{ $value }} validation errors per minute.
+
+      # Alert on connection errors
+      - alert: DativoConnectionErrors
+        expr: |
+          rate(dativo_errors_total{error_type="connection_error"}[5m]) > 1
+        for: 5m
+        labels:
+          severity: critical
+          component: dativo-ingest
+        annotations:
+          summary: "Connection errors for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} is experiencing connection errors. 
+            Rate: {{ $value }} errors/min.
+
+  - name: dativo_retries
+    interval: 30s
+    rules:
+      # Alert on high retry rate
+      - alert: DativoHighRetryRate
+        expr: |
+          rate(dativo_retries_total[5m]) > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: dativo-ingest
+        annotations:
+          summary: "High retry rate for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} (tenant: {{ $labels.tenant_id }}) 
+            has {{ $value }} retries per minute, 
+            indicating potential instability.
+
+  - name: dativo_capacity
+    interval: 30s
+    rules:
+      # Alert when throughput drops significantly
+      - alert: DativoLowThroughput
+        expr: |
+          (
+            rate(dativo_records_extracted_total[5m])
+            /
+            rate(dativo_records_extracted_total[5m] offset 1h)
+          ) < 0.5
+        for: 15m
+        labels:
+          severity: info
+          component: dativo-ingest
+        annotations:
+          summary: "Low throughput for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} throughput has dropped to 
+            {{ $value | humanizePercentage }} of normal rate.
+
+      # Alert when bytes written is unusually low
+      - alert: DativoLowDataVolume
+        expr: |
+          rate(dativo_bytes_written_total[10m]) < 1048576
+        for: 30m
+        labels:
+          severity: info
+          component: dativo-ingest
+        annotations:
+          summary: "Low data volume for {{ $labels.job_name }}"
+          description: |
+            Job {{ $labels.job_name }} is writing less than 1MB/min 
+            ({{ $value | humanize1024 }}B/s), which may indicate an issue.

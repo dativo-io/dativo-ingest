@@ -2,11 +2,13 @@
 
 import os
 import sys
+import time
 from typing import Any, Dict, List, Optional
 
 from .config import AssetDefinition, JobConfig, SourceConfig, TargetConfig
 from .connectors.factory import ExtractorFactory
 from .logging import get_logger, update_logging_settings
+from .metrics import MetricsCollector
 from .plugins import PluginLoader, extract_sandbox_config
 from .schema_validator import SchemaValidator
 from .utils import expand_env_variable
@@ -38,6 +40,7 @@ class JobExecutor:
         self.state_manager: Optional[IncrementalStateManager] = None
         self.wal_manager: Optional[WALManager] = None
         self.source_tags: Optional[Dict[str, Any]] = None
+        self.metrics_collector: Optional[MetricsCollector] = None
 
     def _setup_logging(self) -> None:
         """Set up logging for the job."""
@@ -48,6 +51,33 @@ class JobExecutor:
             level=log_level,
             redact_secrets=redact,
             tenant_id=self.job_config.tenant_id,
+        )
+
+    def _initialize_metrics(self) -> None:
+        """Initialize metrics collector."""
+        # Get connector type
+        connector_type = "unknown"
+        if self.source_config:
+            connector_type = self.source_config.type
+
+        # Initialize metrics collector
+        self.metrics_collector = MetricsCollector(
+            job_name=self.job_config.asset or "unknown",
+            tenant_id=self.tenant_id,
+            connector_type=connector_type,
+            enable_prometheus=True,
+            enable_otel=False,  # Can be enabled via env var
+        )
+        self.metrics_collector.start()
+
+        self.logger.info(
+            "Metrics collection initialized",
+            extra={
+                "event_type": "metrics_initialized",
+                "job_name": self.job_config.asset,
+                "tenant_id": self.tenant_id,
+                "connector_type": connector_type,
+            },
         )
 
     def _validate_job(self) -> int:
@@ -548,6 +578,10 @@ class JobExecutor:
                 },
             )
 
+            # Mark extraction start time
+            if self.metrics_collector:
+                self.metrics_collector.start_extraction()
+
             # Prepare checkpoint context for extractor
             checkpoint_context = None
             if self.wal_manager:
@@ -563,6 +597,7 @@ class JobExecutor:
                 state_manager=self.state_manager,
                 checkpoint_context=checkpoint_context,
             ):
+                batch_start_time = time.time()
                 batch_count += 1
                 total_records += len(batch_records)
 
@@ -639,6 +674,13 @@ class JobExecutor:
                         },
                     )
 
+                    # Record batch metrics
+                    batch_processing_time = time.time() - batch_start_time
+                    if self.metrics_collector:
+                        self.metrics_collector.record_batch(
+                            len(valid_records), batch_processing_time
+                        )
+
                     # Update WAL checkpoint after successful batch write
                     # Only update if extractor hasn't already updated with a specific checkpoint type
                     # Extractors update checkpoints with types like: chunk_based, offset_based,
@@ -690,6 +732,10 @@ class JobExecutor:
                         },
                     )
 
+            # Mark extraction end time
+            if self.metrics_collector:
+                self.metrics_collector.end_extraction()
+
             # Log extraction summary
             if batch_count == 0:
                 self.logger.warning(
@@ -708,6 +754,15 @@ class JobExecutor:
                         "total_valid_records": total_valid_records,
                         "event_type": "extraction_complete",
                     },
+                )
+
+            # Record extraction metrics
+            if self.metrics_collector:
+                self.metrics_collector.record_extraction(total_records)
+                self.metrics_collector.record_validation(
+                    total_valid_records,
+                    total_records - total_valid_records,
+                    total_records,
                 )
 
             # Finalize WAL before committing (on successful extraction)
@@ -978,6 +1033,15 @@ class JobExecutor:
             else 0
         )
 
+        # Record writing metrics
+        if self.metrics_collector:
+            file_sizes = [
+                file_meta.get("size_bytes", 0) for file_meta in all_file_metadata
+            ]
+            self.metrics_collector.record_writing(
+                total_files_written, total_bytes, file_sizes
+            )
+
         # Emit enhanced metadata
         self.logger.info(
             "Job execution completed",
@@ -1115,6 +1179,9 @@ class JobExecutor:
             # Set up logging
             self._setup_logging()
 
+            # Initialize metrics (after logging is set up)
+            self._initialize_metrics()
+
             # Validate job
             exit_code = self._validate_job()
             if exit_code != 0:
@@ -1159,6 +1226,11 @@ class JobExecutor:
             # Push to catalog (for both success and partial success)
             self._push_to_catalog()
 
+            # Finalize metrics
+            if self.metrics_collector:
+                status_map = {0: "success", 1: "partial", 2: "failure"}
+                self.metrics_collector.finish(status_map.get(exit_code, "unknown"))
+
             return exit_code
 
         except Exception as e:
@@ -1170,4 +1242,10 @@ class JobExecutor:
                     },
                     exc_info=True,
                 )
+
+            # Record error in metrics
+            if self.metrics_collector:
+                self.metrics_collector.record_error("execution_error")
+                self.metrics_collector.finish("failure")
+
             return 2

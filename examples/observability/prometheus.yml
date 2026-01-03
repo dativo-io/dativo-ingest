@@ -1,0 +1,47 @@
+# Prometheus configuration for scraping Dativo-Ingest metrics
+# Place this file in your Prometheus configuration directory
+
+global:
+  scrape_interval: 30s      # How frequently to scrape targets
+  scrape_timeout: 10s       # How long until a scrape request times out
+  evaluation_interval: 30s  # How frequently to evaluate rules
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "alerts.yml"
+  # - "recording_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Dativo-Ingest metrics endpoint
+  - job_name: 'dativo-ingest'
+    static_configs:
+      - targets: ['localhost:9400']
+        labels:
+          environment: 'production'
+          service: 'dativo-ingest'
+    
+    # Optional: Use service discovery for Kubernetes
+    # kubernetes_sd_configs:
+    #   - role: pod
+    #     namespaces:
+    #       names:
+    #         - dativo
+    # relabel_configs:
+    #   - source_labels: [__meta_kubernetes_pod_label_app]
+    #     regex: dativo-ingest
+    #     action: keep
+    #   - source_labels: [__meta_kubernetes_pod_name]
+    #     target_label: pod_name
+
+  # Optional: Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

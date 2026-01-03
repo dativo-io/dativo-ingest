@@ -1,5 +1,6 @@
 """Dagster orchestration with tenant-level serialization."""
 
+import os
 import subprocess
 import sys
 import time
@@ -16,6 +17,8 @@ from dagster import (
 
 from .config import JobConfig, RunnerConfig
 from .logging import get_logger, setup_logging
+from .metrics_otel import configure_otel_metrics
+from .metrics_server import start_metrics_server
 from .retry_policy import RetryPolicy as CustomRetryPolicy
 from .validator import ConnectorValidator
 
@@ -369,6 +372,39 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
         extra={"event_type": "orchestrator_initializing"},
     )
 
+    # Start Prometheus metrics server if enabled
+    metrics_server = None
+    try:
+        metrics_server = start_metrics_server()
+        if metrics_server:
+            logger.info(
+                "Metrics server started successfully",
+                extra={
+                    "event_type": "metrics_server_started",
+                    "endpoint": f"http://0.0.0.0:{os.getenv('DATIVO_METRICS_PORT', '9400')}/metrics",
+                },
+            )
+    except Exception as e:
+        logger.warning(
+            f"Failed to start metrics server: {e}. Metrics will not be exposed.",
+            extra={"event_type": "metrics_server_warning", "error": str(e)},
+        )
+
+    # Configure OpenTelemetry metrics if enabled
+    if os.getenv("DATIVO_METRICS_OTEL", "false").lower() == "true":
+        try:
+            otel_configured = configure_otel_metrics()
+            if otel_configured:
+                logger.info(
+                    "OpenTelemetry metrics configured successfully",
+                    extra={"event_type": "otel_configured"},
+                )
+        except Exception as e:
+            logger.warning(
+                f"Failed to configure OpenTelemetry metrics: {e}",
+                extra={"event_type": "otel_warning", "error": str(e)},
+            )
+
     # Create Dagster definitions
     try:
         defs = create_dagster_assets(runner_config)
@@ -434,6 +470,9 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
                 "Orchestrator stopping",
                 extra={"event_type": "orchestrator_stopping"},
             )
+            # Stop metrics server if running
+            if metrics_server:
+                metrics_server.stop()
 
     except ImportError:
         logger.warning(

@@ -27,12 +27,19 @@ dependencies = [
     "google-auth>=2.0.0",
     "mimesis>=18.0.0",  # Synthetic data generation
     # Catalog integrations - requests and boto3 already included above
+    # Metrics and observability
+    "prometheus-client>=0.20.0",  # Prometheus metrics exporter
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
     "pytest-mock>=3.0.0",
+]
+otel = [
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
 ]
 
 [build-system]
