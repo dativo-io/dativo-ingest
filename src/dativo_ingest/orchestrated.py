@@ -373,43 +373,48 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
     )
 
     # Start Prometheus metrics server (orchestrated mode only)
+    # Hard rule: server ONLY starts here, nowhere else
+    from .metrics_config import log_resolved_metrics_config, resolve_metrics_config
+    
     metrics_server = None
-    if runner_config.metrics and runner_config.metrics.prometheus.enabled:
-        from .metrics_config import log_resolved_metrics_config
-        
-        # Log resolved config
-        log_resolved_metrics_config(runner_config.metrics, "orchestrated")
-        
-        # Start server (best-effort, won't crash if port busy)
+    effective_metrics = resolve_metrics_config(
+        job_metrics=None,  # No job-level override at orchestrator level
+        runner_metrics=runner_config.metrics if runner_config.metrics else None,
+        mode="orchestrated",
+    )
+    
+    # Log resolved metrics config
+    log_resolved_metrics_config(effective_metrics, "orchestrated")
+    
+    # Start server only if enabled
+    if effective_metrics.enabled and effective_metrics.prometheus.enabled:
         metrics_server = start_metrics_server_from_config(
-            runner_config.metrics.prometheus,
+            effective_metrics.prometheus,
             mode="orchestrated"
         )
         if metrics_server and metrics_server.is_running():
             logger.info(
-                f"Metrics server started: http://{runner_config.metrics.prometheus.host}:{runner_config.metrics.prometheus.port}/metrics",
+                f"Metrics server started: http://{effective_metrics.prometheus.host}:{effective_metrics.prometheus.port}/metrics",
                 extra={"event_type": "metrics_server_started"},
             )
 
-    # Configure OpenTelemetry metrics if enabled in config
-    if runner_config.metrics and runner_config.metrics.otel.enabled:
+    # Configure OpenTelemetry metrics if enabled
+    if effective_metrics.enabled and effective_metrics.otel.enabled:
         try:
-            # Get environment from runner config if available
             environment = os.getenv("DATIVO_ENVIRONMENT", "production")
-
             otel_configured = configure_otel_metrics(
-                config=runner_config.metrics.otel,
+                config=effective_metrics.otel,
                 environment=environment,
             )
             if otel_configured:
                 logger.info(
-                    "OpenTelemetry metrics configured successfully",
+                    "OpenTelemetry metrics configured",
                     extra={"event_type": "otel_configured"},
                 )
         except Exception as e:
             logger.warning(
-                f"Failed to configure OpenTelemetry metrics: {e}",
-                extra={"event_type": "otel_warning", "error": str(e)},
+                f"Failed to configure OTEL: {e}",
+                extra={"event_type": "otel_failed"},
             )
 
     # Create Dagster definitions

@@ -1,61 +1,59 @@
 """Metrics configuration resolution (MVP).
 
-Simple precedence rule: job config > runner config > None
+Simple precedence rule: job config > runner config > disabled
 """
 
 from typing import Optional
 
-from .config import JobConfig, MetricsConfig, RunnerConfig
+from .config import MetricsConfig
 from .logging import get_logger
 
 
 def resolve_metrics_config(
-    job_config: JobConfig,
-    runner_config: Optional[RunnerConfig] = None,
-) -> Optional[MetricsConfig]:
+    job_metrics: Optional[MetricsConfig],
+    runner_metrics: Optional[MetricsConfig],
+    mode: str,
+) -> MetricsConfig:
     """Resolve effective metrics configuration.
     
-    Precedence: job config > runner config > None
+    Explicit precedence rule:
+    1. If job_metrics provided → use it
+    2. Else if runner_metrics provided → use it  
+    3. Else → return disabled config
     
     Args:
-        job_config: Job configuration (may have metrics override)
-        runner_config: Runner configuration (orchestrated mode only)
+        job_metrics: Job-level metrics config (may be None)
+        runner_metrics: Runner-level metrics config (may be None)
+        mode: Execution mode (orchestrated/oneshot)
         
     Returns:
-        Effective MetricsConfig or None if metrics disabled
+        Effective MetricsConfig (never None, but may be disabled)
     """
-    # Job config takes precedence
-    if job_config.metrics is not None:
-        return job_config.metrics
+    # 1. Job config takes precedence
+    if job_metrics is not None:
+        return job_metrics
     
-    # Fall back to runner config (orchestrated mode)
-    if runner_config is not None and runner_config.metrics is not None:
-        return runner_config.metrics
+    # 2. Fall back to runner config
+    if runner_metrics is not None:
+        return runner_metrics
     
-    # No metrics config
-    return None
+    # 3. Default: disabled
+    return MetricsConfig(enabled=False)
 
 
 def log_resolved_metrics_config(
-    config: Optional[MetricsConfig],
+    config: MetricsConfig,
     mode: str,
 ) -> None:
     """Log resolved metrics configuration at startup.
     
     Args:
-        config: Resolved metrics config (or None)
+        config: Resolved metrics config (never None)
         mode: Execution mode (orchestrated/oneshot)
     """
     logger = get_logger()
     
-    if config is None:
-        logger.info(
-            f"Metrics: disabled mode={mode}",
-            extra={"event_type": "metrics_config_resolved"},
-        )
-        return
-    
-    # Log resolved config (DO NOT log OTEL headers - secrets)
+    # Log resolved config (DO NOT log OTEL headers - may contain secrets)
     logger.info(
         f"Metrics: enabled={config.enabled} "
         f"prometheus={config.prometheus.enabled} "

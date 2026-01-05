@@ -53,13 +53,10 @@ class JobExecutor:
             tenant_id=self.job_config.tenant_id,
         )
 
-    def _initialize_metrics(self) -> None:
+    def _initialize_metrics(self, runner_metrics: Optional["MetricsConfig"] = None) -> None:
         """Initialize metrics collector with resolved config.
         
-        Config resolution (simple):
-        1. Use job_config.metrics if present
-        2. Else use default MetricsConfig (enabled=True) if orchestrated mode
-        3. Else disabled
+        Config precedence: job > runner > disabled
         
         BEHAVIOR:
         - orchestrated: HTTP server started by orchestrated.py from runner config
@@ -70,8 +67,8 @@ class JobExecutor:
         - Prometheus multiprocess cleanup
         - Per-API-call / per-retry instrumentation (partial only)
         """
-        from .config import MetricsConfig
-        from .metrics_config import log_resolved_metrics_config
+        from .metrics import MetricsCollector
+        from .metrics_config import log_resolved_metrics_config, resolve_metrics_config
 
         # Get connector type
         connector_type = "unknown"
@@ -81,32 +78,29 @@ class JobExecutor:
         # Determine execution mode
         metrics_mode = "orchestrated" if self.mode == "orchestrated" else "oneshot"
 
-        # Simple resolution: job config > defaults for orchestrated > disabled
-        if self.job_config.metrics is not None:
-            metrics_config = self.job_config.metrics
-        elif metrics_mode == "orchestrated":
-            # In orchestrated mode, enable metrics by default (server started separately)
-            metrics_config = MetricsConfig(enabled=True)
-        else:
-            # Oneshot mode: disabled by default
-            metrics_config = None
+        # Resolve config: job > runner > disabled
+        effective_metrics = resolve_metrics_config(
+            job_metrics=self.job_config.metrics,
+            runner_metrics=runner_metrics,
+            mode=metrics_mode,
+        )
         
-        if metrics_config is None or not metrics_config.enabled:
-            log_resolved_metrics_config(metrics_config, metrics_mode)
+        # Log resolved config
+        log_resolved_metrics_config(effective_metrics, metrics_mode)
+        
+        # If disabled, skip initialization
+        if not effective_metrics.enabled:
             return
         
-        # Initialize metrics collector
+        # Initialize metrics collector with resolved config
         self.metrics_collector = MetricsCollector(
             job_name=self.job_config.asset or "unknown",
             tenant_id=self.tenant_id,
             connector_type=connector_type,
             mode=metrics_mode,
-            config=metrics_config,
+            config=effective_metrics,
         )
         self.metrics_collector.start()
-
-        # Log resolved config
-        log_resolved_metrics_config(metrics_config, metrics_mode)
 
     def _validate_job(self) -> int:
         """Validate job configuration.

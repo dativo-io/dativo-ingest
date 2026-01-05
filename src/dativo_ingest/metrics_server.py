@@ -174,7 +174,7 @@ def start_metrics_server_from_config(
         mode: Execution mode (must be "orchestrated")
 
     Returns:
-        MetricsServer instance (may not be running if port busy)
+        MetricsServer instance if started, None otherwise
     """
     logger = get_logger()
     
@@ -196,5 +196,6 @@ def start_metrics_server_from_config(
     # Create and start server (best-effort, won't crash)
     server = MetricsServer(config)
     server.start()
-
+    
+    # Return server object (critical for tests and orchestrated mode)
     return server
