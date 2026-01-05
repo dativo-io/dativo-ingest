@@ -54,34 +54,45 @@ class JobExecutor:
         )
 
     def _initialize_metrics(self) -> None:
-        """Initialize metrics collector with config."""
+        """Initialize metrics collector (MVP).
+        
+        BEHAVIOR:
+        - orchestrated: HTTP server started by orchestrated.py
+        - oneshot: NO HTTP server, metrics logged only
+        - OTEL: exports if configured, never crashes job
+        
+        NOT YET SUPPORTED:
+        - Prometheus multiprocess cleanup
+        - Per-API-call / per-retry instrumentation
+        """
         # Get connector type
         connector_type = "unknown"
         if self.source_config:
             connector_type = self.source_config.type
 
-        # Determine execution mode (map self_hosted to oneshot for metrics)
+        # Determine execution mode
         metrics_mode = "orchestrated" if self.mode == "orchestrated" else "oneshot"
 
-        # Initialize metrics collector with config
+        # Simple config precedence: job config > runner config > defaults
+        metrics_config = self.job_config.metrics
+        
+        # Initialize metrics collector
         self.metrics_collector = MetricsCollector(
             job_name=self.job_config.asset or "unknown",
             tenant_id=self.tenant_id,
             connector_type=connector_type,
             mode=metrics_mode,
-            config=self.job_config.metrics,  # Use YAML config
+            config=metrics_config,
         )
         self.metrics_collector.start()
 
+        # Log startup
         self.logger.info(
-            "Metrics collection initialized",
-            extra={
-                "event_type": "metrics_initialized",
-                "job_name": self.job_config.asset,
-                "tenant_id": self.tenant_id,
-                "connector_type": connector_type,
-                "mode": metrics_mode,
-            },
+            f"Metrics: enabled={metrics_config.enabled if metrics_config else False} "
+            f"prometheus={metrics_config.prometheus.enabled if metrics_config else False} "
+            f"otel={metrics_config.otel.enabled if metrics_config else False} "
+            f"mode={metrics_mode}",
+            extra={"event_type": "metrics_initialized"},
         )
 
     def _validate_job(self) -> int:
@@ -1043,7 +1054,7 @@ class JobExecutor:
 
         # Record writing metrics using new API
         if self.metrics_collector:
-            self.metrics_collector.record_bytes(total_bytes, phase="written")
+            self.metrics_collector.record_bytes(total_bytes, phase="written")  # bytes_total{phase=written}
 
         # Emit enhanced metadata
         self.logger.info(

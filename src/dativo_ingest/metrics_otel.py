@@ -28,7 +28,7 @@ _export_failure_log_interval = 300  # Log at most once per 5 minutes
 
 
 def _get_otel_exporter(config: OtelConfig):
-    """Get appropriate OTEL exporter based on protocol.
+    """Get OTEL exporter (MVP: gRPC only).
 
     Args:
         config: OTEL configuration
@@ -37,53 +37,30 @@ def _get_otel_exporter(config: OtelConfig):
         OTLP exporter instance
 
     Raises:
-        ImportError: If required exporter package not available
+        ImportError: If exporter package not available
         ValueError: If endpoint not configured
     """
     if not config.endpoint:
         raise ValueError("OTEL endpoint not configured")
 
-    if config.protocol == "grpc":
-        try:
-            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
-                OTLPMetricExporter,
-            )
+    try:
+        from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+            OTLPMetricExporter,
+        )
 
-            return OTLPMetricExporter(
-                endpoint=config.endpoint,
-                headers=config.headers or {},
-                timeout=config.timeout_seconds,
-            )
-        except ImportError:
-            raise ImportError(
-                "opentelemetry-exporter-otlp-proto-grpc not installed. "
-                "Install with: pip install opentelemetry-exporter-otlp-proto-grpc"
-            )
-    elif config.protocol == "http":
-        try:
-            from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
-                OTLPMetricExporter,
-            )
-
-            return OTLPMetricExporter(
-                endpoint=config.endpoint,
-                headers=config.headers or {},
-                timeout=config.timeout_seconds,
-            )
-        except ImportError:
-            raise ImportError(
-                "opentelemetry-exporter-otlp-proto-http not installed. "
-                "Install with: pip install opentelemetry-exporter-otlp-proto-http"
-            )
-    else:
-        raise ValueError(f"Unknown OTEL protocol: {config.protocol}")
+        return OTLPMetricExporter(
+            endpoint=config.endpoint,
+            headers=config.headers or {},
+        )
+    except ImportError:
+        raise ImportError(
+            "opentelemetry-exporter-otlp-proto-grpc not installed. "
+            "Install with: pip install opentelemetry-exporter-otlp-proto-grpc"
+        )
 
 
 class ThrottledExportMetricReader(PeriodicExportingMetricReader):
-    """Metric reader with throttled error logging.
-
-    Prevents log spam when OTEL collector is down.
-    """
+    """Metric reader with throttled error logging (MVP)."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -96,7 +73,6 @@ class ThrottledExportMetricReader(PeriodicExportingMetricReader):
 
         try:
             result = super()._export()
-            # Reset failure counter on success
             if self._consecutive_failures > 0:
                 self.logger.info(
                     "OTEL export resumed successfully",
@@ -186,11 +162,11 @@ def configure_otel_metrics(
         # Create OTLP exporter (protocol-specific)
         otlp_exporter = _get_otel_exporter(config)
 
-        # Create metric reader with throttled error handling
+        # Create metric reader with fixed intervals (MVP)
         metric_reader = ThrottledExportMetricReader(
             exporter=otlp_exporter,
-            export_interval_millis=config.export_interval_seconds * 1000,
-            export_timeout_millis=config.timeout_seconds * 1000,
+            export_interval_millis=60000,  # 60 seconds
+            export_timeout_millis=10000,   # 10 seconds
         )
 
         # Create and set meter provider
@@ -202,14 +178,12 @@ def configure_otel_metrics(
 
         # Log configuration (do NOT log headers - may contain secrets)
         logger.info(
-            f"OpenTelemetry metrics configured with {config.protocol} endpoint: {config.endpoint}",
+            f"OpenTelemetry metrics configured: {config.endpoint}",
             extra={
                 "event_type": "otel_configured",
                 "endpoint": config.endpoint,
-                "protocol": config.protocol,
-                "export_interval_seconds": config.export_interval_seconds,
                 "service_name": service_name,
-                "headers_configured": bool(config.headers),  # Log presence, not values
+                "headers_configured": bool(config.headers),
             },
         )
 

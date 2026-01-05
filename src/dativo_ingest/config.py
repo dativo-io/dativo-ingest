@@ -495,72 +495,32 @@ class PrometheusConfig(BaseModel):
     enabled: bool = True
     host: str = "0.0.0.0"
     port: int = 9400
-    multiproc_dir: Optional[str] = Field(
-        default=None,
-        description="Directory for multiprocess metrics (required for orchestrated mode with subprocesses)",
-    )
-    cleanup_on_startup: bool = Field(
-        default=False,
-        description="Delete stale multiprocess *.db files on startup (use with caution)",
-    )
 
 
 class OtelConfig(BaseModel):
-    """OpenTelemetry metrics configuration."""
+    """OpenTelemetry metrics configuration (minimal MVP)."""
 
     enabled: bool = False
-    protocol: str = Field(default="grpc", pattern="^(grpc|http)$")
     endpoint: Optional[str] = Field(
-        default=None, description="OTLP endpoint (e.g., http://localhost:4317 for grpc, http://localhost:4318 for http)"
-    )
-    headers: Optional[Dict[str, str]] = Field(
-        default=None, description="Additional headers for OTLP export (e.g., authentication)"
-    )
-    export_interval_seconds: int = Field(
-        default=60, ge=1, le=3600, description="Metrics export interval in seconds"
-    )
-    timeout_seconds: int = Field(
-        default=10, ge=1, le=60, description="Export timeout in seconds"
-    )
-    max_export_batch_size: int = Field(
-        default=512, ge=1, le=2048, description="Maximum batch size for export"
+        default=None, description="OTLP endpoint (e.g., http://localhost:4317)"
     )
 
 
 class MetricsLabelsConfig(BaseModel):
-    """Configuration for metric labels.
-    
-    Defaults favor low cardinality for production safety.
-    Set include_tenant_id=true and include_job_name=true only if:
-    - You have a small number of tenants (< 100)
-    - You have a small number of jobs (< 100)
-    - Your Prometheus can handle the cardinality
-    """
+    """Configuration for metric labels."""
 
-    include_tenant_id: bool = Field(
-        default=False, description="Include tenant_id label (HIGH cardinality - use with caution)"
-    )
-    include_job_name: bool = Field(
-        default=False, description="Include job_name label (HIGH cardinality - use with caution)"
-    )
     include_env: bool = Field(
-        default=False, description="Include environment label (increases cardinality)"
-    )
-    include_mode: bool = Field(
-        default=True, description="Include mode label (oneshot/orchestrated - low cardinality)"
+        default=False, description="Include environment label"
     )
 
 
 class MetricsConfig(BaseModel):
-    """Metrics and observability configuration.
-
-    Supports both Prometheus and OpenTelemetry backends.
-    Configuration precedence: env vars > JobConfig.metrics > RunnerConfig.metrics > defaults
+    """Metrics configuration (minimal MVP).
+    
+    Precedence: JobConfig.metrics > RunnerConfig.metrics > defaults
     """
 
-    enabled: bool = Field(
-        default=True, description="Enable metrics collection globally"
-    )
+    enabled: bool = Field(default=True, description="Enable metrics collection")
     prometheus: PrometheusConfig = Field(default_factory=PrometheusConfig)
     otel: OtelConfig = Field(default_factory=OtelConfig)
     labels: MetricsLabelsConfig = Field(default_factory=MetricsLabelsConfig)
