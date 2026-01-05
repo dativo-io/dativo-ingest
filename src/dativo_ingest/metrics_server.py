@@ -20,6 +20,11 @@ try:
 except ImportError:
     PROMETHEUS_AVAILABLE = False
 
+# Module-level guard against multiple server starts
+import threading
+_SERVER_STARTED = False
+_SERVER_LOCK = threading.Lock()
+
 
 class MetricsServer:
     """HTTP server for Prometheus metrics endpoint.
@@ -38,11 +43,13 @@ class MetricsServer:
         self._started = False
 
     def start(self) -> None:
-        """Start the metrics HTTP server.
+        """Start the metrics HTTP server (best-effort, orchestrated mode only).
 
-        Only starts if Prometheus is available and enabled.
-        Uses multiprocess registry if configured.
+        Won't crash if port is busy - logs warning and continues.
+        Uses module-level lock to prevent multiple starts.
         """
+        global _SERVER_STARTED
+        
         if not PROMETHEUS_AVAILABLE:
             self.logger.warning(
                 "Prometheus client not available. Install prometheus_client to enable metrics server.",
@@ -57,48 +64,53 @@ class MetricsServer:
             )
             return
 
-        if self._started:
-            self.logger.warning(
-                "Metrics server already started",
-                extra={"event_type": "metrics_server_warning"},
-            )
-            return
+        # Module-level guard against double-start
+        with _SERVER_LOCK:
+            if _SERVER_STARTED:
+                self.logger.debug("Metrics server already started globally, skipping")
+                return
+                
+            if self._started:
+                self.logger.debug("Metrics server already started on this instance, skipping")
+                return
 
-        try:
-            # Get appropriate registry (multiprocess or standard)
-            registry = get_multiprocess_registry()
-            if registry is None:
-                registry = REGISTRY
-                mode = "standard"
-            else:
-                mode = "multiprocess"
+            try:
+                # Get appropriate registry (multiprocess or standard)
+                registry = get_multiprocess_registry()
+                if registry is None:
+                    registry = REGISTRY
+                    mode = "standard"
+                else:
+                    mode = "multiprocess"
 
-            # Start HTTP server
-            start_http_server(
-                port=self.config.port, addr=self.config.host, registry=registry
-            )
-            self._started = True
+                # Start HTTP server (best-effort)
+                start_http_server(
+                    port=self.config.port, addr=self.config.host, registry=registry
+                )
+                _SERVER_STARTED = True
+                self._started = True
 
-            self.logger.info(
-                f"Metrics server started on {self.config.host}:{self.config.port}/metrics (mode: {mode})",
-                extra={
-                    "event_type": "metrics_server_started",
-                    "port": self.config.port,
-                    "host": self.config.host,
-                    "mode": mode,
-                    "endpoint": f"http://{self.config.host}:{self.config.port}/metrics",
-                },
-            )
-        except OSError as e:
-            self.logger.error(
-                f"Failed to start metrics server: {e}",
-                extra={
-                    "event_type": "metrics_server_error",
-                    "port": self.config.port,
-                    "error": str(e),
-                },
-            )
-            raise
+                self.logger.info(
+                    f"Metrics server started on {self.config.host}:{self.config.port}/metrics (mode: {mode})",
+                    extra={
+                        "event_type": "metrics_server_started",
+                        "port": self.config.port,
+                        "host": self.config.host,
+                        "mode": mode,
+                        "endpoint": f"http://{self.config.host}:{self.config.port}/metrics",
+                    },
+                )
+            except OSError as e:
+                # Port busy or bind error - log warning but DON'T CRASH
+                self.logger.warning(
+                    f"Failed to start metrics server (port {self.config.port} may be in use): {e}. "
+                    f"Metrics collection will continue but HTTP endpoint unavailable.",
+                    extra={
+                        "event_type": "metrics_server_bind_failed",
+                        "port": self.config.port,
+                        "error": str(e),
+                    },
+                )
 
     def stop(self) -> None:
         """Stop the metrics HTTP server.
@@ -153,27 +165,35 @@ def get_metrics_text() -> str:
 
 def start_metrics_server_from_config(
     config: PrometheusConfig,
+    mode: str = "orchestrated",
 ) -> Optional[MetricsServer]:
-    """Start metrics server from configuration.
+    """Start metrics server (orchestrated mode only).
 
     Args:
         config: Prometheus configuration
+        mode: Execution mode (must be "orchestrated")
 
     Returns:
-        MetricsServer instance if started, None if disabled or unavailable
+        MetricsServer instance (may not be running if port busy)
     """
+    logger = get_logger()
+    
+    # Only start in orchestrated mode
+    if mode != "orchestrated":
+        logger.debug(f"Metrics server not started: mode={mode} (orchestrated only)")
+        return None
+    
     if not config.enabled:
         return None
 
     if not PROMETHEUS_AVAILABLE:
-        logger = get_logger()
         logger.warning(
             "Prometheus client not available. Install prometheus_client to enable metrics.",
             extra={"event_type": "metrics_unavailable"},
         )
         return None
 
-    # Create and start server
+    # Create and start server (best-effort, won't crash)
     server = MetricsServer(config)
     server.start()
 

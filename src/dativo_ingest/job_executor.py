@@ -54,17 +54,25 @@ class JobExecutor:
         )
 
     def _initialize_metrics(self) -> None:
-        """Initialize metrics collector (MVP).
+        """Initialize metrics collector with resolved config.
+        
+        Config resolution (simple):
+        1. Use job_config.metrics if present
+        2. Else use default MetricsConfig (enabled=True) if orchestrated mode
+        3. Else disabled
         
         BEHAVIOR:
-        - orchestrated: HTTP server started by orchestrated.py
+        - orchestrated: HTTP server started by orchestrated.py from runner config
         - oneshot: NO HTTP server, metrics logged only
         - OTEL: exports if configured, never crashes job
         
         NOT YET SUPPORTED:
         - Prometheus multiprocess cleanup
-        - Per-API-call / per-retry instrumentation
+        - Per-API-call / per-retry instrumentation (partial only)
         """
+        from .config import MetricsConfig
+        from .metrics_config import log_resolved_metrics_config
+
         # Get connector type
         connector_type = "unknown"
         if self.source_config:
@@ -73,8 +81,19 @@ class JobExecutor:
         # Determine execution mode
         metrics_mode = "orchestrated" if self.mode == "orchestrated" else "oneshot"
 
-        # Simple config precedence: job config > runner config > defaults
-        metrics_config = self.job_config.metrics
+        # Simple resolution: job config > defaults for orchestrated > disabled
+        if self.job_config.metrics is not None:
+            metrics_config = self.job_config.metrics
+        elif metrics_mode == "orchestrated":
+            # In orchestrated mode, enable metrics by default (server started separately)
+            metrics_config = MetricsConfig(enabled=True)
+        else:
+            # Oneshot mode: disabled by default
+            metrics_config = None
+        
+        if metrics_config is None or not metrics_config.enabled:
+            log_resolved_metrics_config(metrics_config, metrics_mode)
+            return
         
         # Initialize metrics collector
         self.metrics_collector = MetricsCollector(
@@ -86,14 +105,8 @@ class JobExecutor:
         )
         self.metrics_collector.start()
 
-        # Log startup
-        self.logger.info(
-            f"Metrics: enabled={metrics_config.enabled if metrics_config else False} "
-            f"prometheus={metrics_config.prometheus.enabled if metrics_config else False} "
-            f"otel={metrics_config.otel.enabled if metrics_config else False} "
-            f"mode={metrics_mode}",
-            extra={"event_type": "metrics_initialized"},
-        )
+        # Log resolved config
+        log_resolved_metrics_config(metrics_config, metrics_mode)
 
     def _validate_job(self) -> int:
         """Validate job configuration.

@@ -1,8 +1,6 @@
-# Observability: Metrics Export (MVP)
+# Observability: Metrics Export
 
 Dativo-Ingest exposes job execution metrics via Prometheus and OpenTelemetry.
-
-> **Note**: This is a minimal metrics MVP. Per-API-call and retry-level metrics may be added later.
 
 ## Quick Start
 
@@ -10,16 +8,10 @@ Dativo-Ingest exposes job execution metrics via Prometheus and OpenTelemetry.
 
 ```yaml
 # runner.yaml
-mode: orchestrated
-
 metrics:
-  enabled: true
   prometheus:
     enabled: true
     port: 9400
-  otel:
-    enabled: false
-    endpoint: http://otel-collector:4317
 ```
 
 ```bash
@@ -31,31 +23,35 @@ curl http://localhost:9400/metrics
 
 ### Oneshot Mode
 
+Metrics are logged internally only (no HTTP server):
+
 ```bash
-# No HTTP server started (metrics in logs only)
 dativo ingest --config jobs/example.yaml
 ```
 
 ## Configuration
 
-### In runner.yaml (orchestrated)
+### Runner Configuration (Orchestrated)
 
 ```yaml
+# runner.yaml
 metrics:
   enabled: true
+  
   prometheus:
     enabled: true
     host: "0.0.0.0"
     port: 9400
+  
   otel:
     enabled: false
-    endpoint: http://localhost:4317
+    endpoint: http://otel-collector:4317
 ```
 
-### In job.yaml (optional override)
+### Job Configuration (Optional Override)
 
 ```yaml
-# jobs/example.yaml
+# jobs/my-job.yaml
 tenant_id: acme
 source_connector_path: connectors/stripe.yaml
 target_connector_path: connectors/iceberg.yaml
@@ -69,42 +65,41 @@ metrics:
     endpoint: http://custom-collector:4317
 ```
 
-**Precedence:** job config > runner config > defaults
+**Config Precedence:** job config > runner config > defaults
 
 ## Available Metrics
 
 ### Counters
 - `dativo_ingest_records_total{phase}` - Records processed (extracted/written/invalid)
-- `dativo_ingest_bytes_total{phase}` - Bytes processed (written/committed)
-- `dativo_ingest_retries_total` - Retry attempts
-- `dativo_ingest_api_calls_total{api_type}` - API calls by type
+- `dativo_ingest_bytes_total{phase}` - Bytes processed
+- `dativo_ingest_retries_total` - Retry attempts *(may be zero)*
+- `dativo_ingest_api_calls_total{api_type}` - API calls *(may be zero)*
 
-### Histograms (Timing)
-- `dativo_ingest_extract_seconds` - Extraction phase duration
-- `dativo_ingest_load_seconds` - Load/commit phase duration
+### Histograms
+- `dativo_ingest_extract_seconds` - Extraction duration
+- `dativo_ingest_load_seconds` - Load/commit duration
 - `dativo_ingest_runtime_seconds` - Total job runtime
 
 ### Gauges
-- `dativo_ingest_job_running` - Job running status
-- `dativo_ingest_last_success_timestamp_seconds` - Last successful run timestamp
+- `dativo_ingest_job_running` - Job status (0/1)
+- `dativo_ingest_last_success_timestamp_seconds` - Last success time
 
 **Labels:** job_name, tenant_id, connector_type, mode
 
-## Example Metrics Output
+## Example Output
 
 ```
 # HELP dativo_ingest_records_total Total records processed
 # TYPE dativo_ingest_records_total counter
 dativo_ingest_records_total{connector_type="stripe",job_name="payments",mode="orchestrated",phase="extracted",tenant_id="acme"} 1000.0
 
-# HELP dativo_ingest_runtime_seconds Job runtime in seconds
+# HELP dativo_ingest_runtime_seconds Job runtime
 # TYPE dativo_ingest_runtime_seconds histogram
-dativo_ingest_runtime_seconds_bucket{connector_type="stripe",job_name="payments",mode="orchestrated",status="success",tenant_id="acme",le="10.0"} 1.0
 dativo_ingest_runtime_seconds_sum{connector_type="stripe",job_name="payments",mode="orchestrated",status="success",tenant_id="acme"} 8.5
 dativo_ingest_runtime_seconds_count{connector_type="stripe",job_name="payments",mode="orchestrated",status="success",tenant_id="acme"} 1.0
 ```
 
-## Prometheus Integration
+## Prometheus Setup
 
 ### Scrape Configuration
 
@@ -120,19 +115,19 @@ scrape_configs:
 ### Example Queries
 
 ```promql
-# Records processed per second
+# Records per second
 rate(dativo_ingest_records_total{phase="extracted"}[5m])
 
 # 95th percentile job duration
 histogram_quantile(0.95, rate(dativo_ingest_runtime_seconds_bucket[5m]))
 
-# Job success rate
+# Success rate
 rate(dativo_ingest_runtime_seconds_count{status="success"}[5m])
 ```
 
-## OpenTelemetry Integration
+## OpenTelemetry Setup
 
-### Enable OTEL Export
+### Enable OTEL
 
 ```yaml
 metrics:
@@ -162,54 +157,55 @@ service:
       exporters: [prometheus]
 ```
 
-### Safety
-
-OTEL export failures **never crash jobs**. If the collector is unreachable, a warning is logged and the job continues.
-
 ## Behavior
 
-### Orchestrated Mode
-- ✅ HTTP server started on port 9400
-- ✅ `/metrics` endpoint exposed
-- ✅ Metrics from all jobs
+- **Orchestrated mode:** HTTP server on port 9400, metrics from all jobs
+- **Oneshot mode:** No HTTP server, metrics logged only
+- **OTEL failures:** Never crash jobs, warning logged
 
-### Oneshot Mode
-- ✅ NO HTTP server started
-- ✅ Metrics recorded internally
-- ✅ Metrics logged as structured JSON
-- ✅ OTEL export if configured
+## Limitations (MVP)
+
+- `retries_total` and `api_calls_total` may remain zero (require manual instrumentation)
+- Prometheus multiprocess cleanup not automated
+- Per-API-call instrumentation not automatic
 
 ## Troubleshooting
 
 ### No metrics showing
 
 ```bash
-# Check if server is running (orchestrated mode only)
+# Check server (orchestrated mode)
 curl http://localhost:9400/metrics
 
 # Check logs
-docker logs dativo-ingest | grep metrics_initialized
+docker logs dativo-ingest | grep metrics
 ```
 
-### OTEL export failures
+### OTEL failures
 
-OTEL failures are logged but **do not crash jobs**. Check logs:
+OTEL export failures are logged but don't crash jobs. Check logs:
 
 ```bash
 docker logs dativo-ingest | grep otel
 ```
 
-## Limitations (MVP)
+### Port already in use
 
-This is a minimal metrics MVP. The following are **NOT YET SUPPORTED**:
+If port 9400 is busy, the server won't start but jobs continue. Check logs for:
 
-- Prometheus multiprocess cleanup
-- Automatic retry-level instrumentation
-- Per-API-call automatic instrumentation
+```
+metrics_server_bind_failed
+```
 
-These may be added in future releases based on user feedback.
+Change port in runner.yaml:
+
+```yaml
+metrics:
+  prometheus:
+    port: 9401
+```
 
 ## See Also
 
-- [Runner & Orchestration](RUNNER_AND_ORCHESTRATION.md) - Dagster setup
 - [Configuration Reference](CONFIG_REFERENCE.md) - Full config options
+- [Runner & Orchestration](RUNNER_AND_ORCHESTRATION.md) - Dagster setup

@@ -372,25 +372,23 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
         extra={"event_type": "orchestrator_initializing"},
     )
 
-    # Start Prometheus metrics server if enabled in config
-    # Default for orchestrated mode: enabled (unless explicitly disabled)
+    # Start Prometheus metrics server (orchestrated mode only)
     metrics_server = None
-    if runner_config.metrics:
-        prometheus_config = runner_config.metrics.prometheus
-        try:
-            metrics_server = start_metrics_server_from_config(prometheus_config)
-            if metrics_server:
-                logger.info(
-                    "Metrics server started successfully",
-                    extra={
-                        "event_type": "metrics_server_started",
-                        "endpoint": f"http://{prometheus_config.host}:{prometheus_config.port}/metrics",
-                    },
-                )
-        except Exception as e:
-            logger.warning(
-                f"Failed to start metrics server: {e}. Metrics will not be exposed.",
-                extra={"event_type": "metrics_server_warning", "error": str(e)},
+    if runner_config.metrics and runner_config.metrics.prometheus.enabled:
+        from .metrics_config import log_resolved_metrics_config
+        
+        # Log resolved config
+        log_resolved_metrics_config(runner_config.metrics, "orchestrated")
+        
+        # Start server (best-effort, won't crash if port busy)
+        metrics_server = start_metrics_server_from_config(
+            runner_config.metrics.prometheus,
+            mode="orchestrated"
+        )
+        if metrics_server and metrics_server.is_running():
+            logger.info(
+                f"Metrics server started: http://{runner_config.metrics.prometheus.host}:{runner_config.metrics.prometheus.port}/metrics",
+                extra={"event_type": "metrics_server_started"},
             )
 
     # Configure OpenTelemetry metrics if enabled in config
