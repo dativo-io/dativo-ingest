@@ -3,6 +3,9 @@
 import os
 import sys
 import time
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .config import (
@@ -16,6 +19,14 @@ from .connectors.factory import ExtractorFactory
 from .logging import get_logger, update_logging_settings
 from .metrics import MetricsCollector
 from .plugins import PluginLoader, extract_sandbox_config
+from .run_summary import (
+    RunSummary,
+    RunAssetInfo,
+    RunConnectorInfo,
+    RunMetrics,
+    RunCommitInfo,
+    RunErrorInfo,
+)
 from .schema_validator import SchemaValidator
 from .utils import expand_env_variable
 from .validator import ConnectorValidator, IncrementalStateManager
@@ -47,6 +58,7 @@ class JobExecutor:
         self.wal_manager: Optional[WALManager] = None
         self.source_tags: Optional[Dict[str, Any]] = None
         self.metrics_collector: Optional[MetricsCollector] = None
+        self.run_summary: Optional[RunSummary] = None
 
     def _setup_logging(self) -> None:
         """Set up logging for the job."""
@@ -154,6 +166,12 @@ class JobExecutor:
                     "event_type": "job_error",
                 },
             )
+            if self.run_summary:
+                self.run_summary.error = RunErrorInfo(
+                    has_errors=True,
+                    error_message="Schema validation failed",
+                    error_type="JobValidationError"
+                )
             return e.code if e.code else 2
 
         # Validate connector and mode restrictions
@@ -175,6 +193,12 @@ class JobExecutor:
                     "event_type": "job_error",
                 },
             )
+            if self.run_summary:
+                self.run_summary.error = RunErrorInfo(
+                    has_errors=True,
+                    error_message="Connector validation failed",
+                    error_type="JobValidationError"
+                )
             return e.code if e.code else 2
 
         return 0
@@ -236,6 +260,12 @@ class JobExecutor:
                     "event_type": "asset_error",
                 },
             )
+            if self.run_summary:
+                self.run_summary.error = RunErrorInfo(
+                    has_errors=True,
+                    error_message=str(e),
+                    error_type="AssetLoadError"
+                )
             return 2
         return 0
 
@@ -335,6 +365,8 @@ class JobExecutor:
                 mode=self.mode,
                 asset_definition=self.asset_definition,  # Pass asset_definition for mimesis connector
             )
+            if self.run_summary and self.extractor:
+                 self.run_summary.connector.extractor_class = self.extractor.__class__.__name__
         except ValueError as e:
             error_msg = f"Failed to initialize extractor: {e}"
             print(f"ERROR: {error_msg}", file=sys.stderr)
@@ -358,6 +390,12 @@ class JobExecutor:
                 },
                 exc_info=True,
             )
+            if self.run_summary:
+                self.run_summary.error = RunErrorInfo(
+                    has_errors=True,
+                    error_message=str(e),
+                    error_type="ExtractorInitError"
+                )
             return 2
         return 0
 
@@ -386,6 +424,12 @@ class JobExecutor:
                     "event_type": "validator_error",
                 },
             )
+            if self.run_summary:
+                self.run_summary.error = RunErrorInfo(
+                    has_errors=True,
+                    error_message=str(e),
+                    error_type="ValidatorInitError"
+                )
             return 2
         return 0
 
@@ -464,6 +508,9 @@ class JobExecutor:
                     self.asset_definition, self.target_config, output_base
                 )
 
+                if self.run_summary and self.writer:
+                     self.run_summary.connector.writer_class = self.writer.__class__.__name__
+
                 self.logger.info(
                     "Custom writer initialized",
                     extra={
@@ -505,6 +552,9 @@ class JobExecutor:
                         validation_mode=validation_mode,
                     )
 
+                    if self.run_summary and self.writer:
+                         self.run_summary.connector.writer_class = self.writer.__class__.__name__
+
                     self.logger.info(
                         "Spark writer initialized",
                         extra={
@@ -525,6 +575,9 @@ class JobExecutor:
                         validation_mode=validation_mode,
                     )
 
+                    if self.run_summary and self.writer:
+                         self.run_summary.connector.writer_class = self.writer.__class__.__name__
+
                     self.logger.info(
                         "Parquet writer initialized",
                         extra={
@@ -542,6 +595,12 @@ class JobExecutor:
                 },
                 exc_info=True,
             )
+            if self.run_summary:
+                self.run_summary.error = RunErrorInfo(
+                    has_errors=True,
+                    error_message=str(e),
+                    error_type="WriterInitError"
+                )
             return 2
         return 0
 
@@ -975,6 +1034,17 @@ class JobExecutor:
         Returns:
             Exit code (0=success, 1=partial, 2=failure)
         """
+        if self.run_summary:
+            self.run_summary.metrics.records_extracted = total_records
+            self.run_summary.metrics.records_written = total_valid_records
+            self.run_summary.metrics.records_invalid = total_records - total_valid_records
+            self.run_summary.metrics.files_written = total_files_written
+            
+            if has_errors:
+                self.run_summary.error = RunErrorInfo(has_errors=True)
+                if self.validator:
+                    self.run_summary.error.error_summary = self.validator.get_error_summary()
+
         if all_file_metadata:
             # Check if writer has custom commit_files method
             if self.target_config.custom_writer and hasattr(
@@ -992,6 +1062,11 @@ class JobExecutor:
                             "event_type": "custom_writer_commit_success",
                         },
                     )
+                    if self.run_summary:
+                        self.run_summary.commit = RunCommitInfo(
+                            files_added=commit_result.get("files_added", len(all_file_metadata)),
+                            partition_stats=commit_result.get("partition_stats"),
+                        )
                 except Exception as e:
                     self.logger.error(
                         f"Failed to commit files using custom writer: {e}",
@@ -999,6 +1074,12 @@ class JobExecutor:
                             "event_type": "custom_writer_commit_failed",
                         },
                     )
+                    if self.run_summary:
+                        self.run_summary.error = RunErrorInfo(
+                            has_errors=True,
+                            error_message=str(e),
+                            error_type="CommitError"
+                        )
                     return 2
             elif self.committer:
                 try:
@@ -1013,6 +1094,14 @@ class JobExecutor:
                             "event_type": "commit_success",
                         },
                     )
+                    if self.run_summary:
+                        self.run_summary.commit = RunCommitInfo(
+                            commit_id=commit_result.get("commit_id"),
+                            files_added=commit_result.get("files_added"),
+                            table_name=commit_result.get("table_name"),
+                            branch=commit_result.get("branch"),
+                            partition_stats=commit_result.get("summary"),
+                        )
                 except Exception as e:
                     self.logger.warning(
                         f"Failed to commit files to Iceberg catalog: {e}. "
@@ -1022,6 +1111,12 @@ class JobExecutor:
                             "files_uploaded": len(all_file_metadata),
                         },
                     )
+                    if self.run_summary:
+                         self.run_summary.error = RunErrorInfo(
+                            has_errors=True,
+                            error_message=f"Iceberg commit failed: {str(e)}",
+                            error_type="IcebergCommitError"
+                        )
             else:
                 # No catalog and no custom writer - still need to upload files to S3/MinIO
                 from .iceberg_committer import IcebergCommitter
@@ -1046,6 +1141,10 @@ class JobExecutor:
                             "event_type": "files_written_no_catalog",
                         },
                     )
+                    if self.run_summary:
+                        self.run_summary.commit = RunCommitInfo(
+                            files_added=upload_result.get("files_added", len(all_file_metadata)),
+                        )
                 except Exception as e:
                     self.logger.error(
                         f"Failed to upload files to S3: {e}",
@@ -1053,6 +1152,12 @@ class JobExecutor:
                             "event_type": "upload_failed",
                         },
                     )
+                    if self.run_summary:
+                        self.run_summary.error = RunErrorInfo(
+                            has_errors=True,
+                            error_message=str(e),
+                            error_type="UploadError"
+                        )
                     return 2
         else:
             self.logger.warning(
@@ -1080,6 +1185,9 @@ class JobExecutor:
             if all_file_metadata
             else 0
         )
+        
+        if self.run_summary:
+            self.run_summary.metrics.bytes_written = total_bytes
 
         # Record writing metrics using new API
         if self.metrics_collector:
@@ -1110,6 +1218,70 @@ class JobExecutor:
         )
 
         return exit_code
+
+    def _write_run_summary(self, exit_code: Optional[int] = None) -> None:
+        """Write run summary to file."""
+        if not self.run_summary:
+            return
+
+        try:
+            # Finalize summary
+            self.run_summary.end_time = datetime.now(timezone.utc)
+            if self.run_summary.start_time:
+                duration = (self.run_summary.end_time - self.run_summary.start_time).total_seconds()
+                self.run_summary.duration_seconds = duration
+
+            self.run_summary.exit_code = exit_code
+            
+            if exit_code == 0:
+                self.run_summary.status = "success"
+            elif exit_code == 1:
+                self.run_summary.status = "partial"
+            elif exit_code == 2:
+                self.run_summary.status = "failure"
+            else:
+                self.run_summary.status = "unknown"
+
+            # Determine path
+            # state/<tenant>/<job>/runs/run-<timestamp>.json
+            # Use local state dir if configured, otherwise default to .local/state
+            state_dir = os.getenv("STATE_DIR", ".local/state")
+            if not os.path.isabs(state_dir):
+                state_dir = os.path.abspath(state_dir)
+            
+            job_name = self.job_config.asset or "unknown-job"
+            run_timestamp = self.run_summary.start_time.strftime("%Y%m%dT%H%M%SZ")
+            
+            # Sanitize names for path
+            tenant_safe = self.tenant_id.replace("/", "_")
+            job_safe = job_name.replace("/", "_")
+            
+            summary_dir = Path(state_dir) / tenant_safe / job_safe / "runs"
+            summary_dir.mkdir(parents=True, exist_ok=True)
+            
+            summary_file = summary_dir / f"run-{run_timestamp}.json"
+            
+            # Write to file
+            with open(summary_file, "w") as f:
+                f.write(self.run_summary.model_dump_json(indent=2))
+                
+            self.logger.info(
+                f"Run summary written to {summary_file}",
+                extra={
+                    "summary_file": str(summary_file),
+                    "event_type": "run_summary_written"
+                }
+            )
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.error(
+                    f"Failed to write run summary: {e}",
+                    extra={"event_type": "run_summary_error"},
+                    exc_info=True
+                )
+            else:
+                print(f"ERROR: Failed to write run summary: {e}", file=sys.stderr)
 
     def _push_to_catalog(self) -> None:
         """Push lineage and metadata to catalog if configured."""
@@ -1224,6 +1396,19 @@ class JobExecutor:
             # Set up logging
             self._setup_logging()
 
+            # Initialize run summary
+            self.run_summary = RunSummary(
+                tenant_id=self.tenant_id,
+                job_name=self.job_config.asset or "unknown",
+                run_id=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+                start_time=datetime.now(timezone.utc),
+                asset=RunAssetInfo(name=self.job_config.asset or "unknown", version="0.0.0"),
+                connector=RunConnectorInfo(
+                    source_type=self.source_config.type if self.source_config else "unknown",
+                    target_type=self.target_config.type if self.target_config else "unknown"
+                )
+            )
+
             # Initialize metrics (after logging is set up)
             self._initialize_metrics()
 
@@ -1232,6 +1417,7 @@ class JobExecutor:
             if exit_code != 0:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
+                self._write_run_summary(exit_code)
                 return exit_code
 
             # Load asset
@@ -1239,7 +1425,15 @@ class JobExecutor:
             if exit_code != 0:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
+                self._write_run_summary(exit_code)
                 return exit_code
+
+            if self.run_summary and self.asset_definition:
+                 self.run_summary.asset = RunAssetInfo(
+                     id=self.asset_definition.id,
+                     name=self.asset_definition.name,
+                     version=self.asset_definition.version
+                 )
 
             # Initialize state manager
             self._initialize_state_manager()
@@ -1249,6 +1443,7 @@ class JobExecutor:
             if exit_code != 0:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
+                self._write_run_summary(exit_code)
                 return exit_code
 
             # Initialize WAL manager (after extractor is initialized for metadata)
@@ -1259,6 +1454,7 @@ class JobExecutor:
             if exit_code != 0:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
+                self._write_run_summary(exit_code)
                 return exit_code
 
             # Initialize writer
@@ -1266,6 +1462,7 @@ class JobExecutor:
             if exit_code != 0:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
+                self._write_run_summary(exit_code)
                 return exit_code
 
             # Initialize committer
@@ -1278,6 +1475,7 @@ class JobExecutor:
             if exit_code == 2:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
+                self._write_run_summary(exit_code)
                 return exit_code
 
             # Push to catalog (for both success and partial success)
@@ -1285,6 +1483,7 @@ class JobExecutor:
 
             # Finalize metrics
             self._finish_metrics(exit_code)
+            self._write_run_summary(exit_code)
 
             return exit_code
 
@@ -1297,9 +1496,17 @@ class JobExecutor:
                     },
                     exc_info=True,
                 )
+            
+            if self.run_summary:
+                self.run_summary.error = RunErrorInfo(
+                    has_errors=True,
+                    error_message=str(e),
+                    error_type=type(e).__name__
+                )
 
             # Record error in metrics (ensure finish is called even on exception)
             if self.metrics_collector:
                 self.metrics_collector.finish("failure")
 
+            self._write_run_summary(2)
             return 2
