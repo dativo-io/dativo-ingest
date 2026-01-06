@@ -153,6 +153,7 @@ def _initialize_prometheus_metrics(multiproc_dir: Optional[str] = None) -> None:
         ["job_name", "tenant_id", "connector_type", "mode", "phase"],
         registry=registry,
     )
+    # Note: bytes_total may be zero if file size_bytes is unavailable in metadata.
 
     _prom_metrics["retries_total"] = Counter(
         METRIC_NAMES["retries_total"],
@@ -160,6 +161,7 @@ def _initialize_prometheus_metrics(multiproc_dir: Optional[str] = None) -> None:
         ["job_name", "tenant_id", "connector_type", "mode"],
         registry=registry,
     )
+    # Note: retries_total may remain zero unless connector instruments explicitly.
 
     _prom_metrics["api_calls_total"] = Counter(
         METRIC_NAMES["api_calls_total"],
@@ -167,6 +169,7 @@ def _initialize_prometheus_metrics(multiproc_dir: Optional[str] = None) -> None:
         ["job_name", "tenant_id", "connector_type", "mode", "api_type"],
         registry=registry,
     )
+    # Note: api_calls_total may remain zero unless connector instruments explicitly.
 
     # Histograms for timing (standardized buckets)
     _prom_metrics["extract_seconds"] = Histogram(
@@ -318,11 +321,19 @@ class MetricsCollector:
             _prom_metrics["extract_seconds"].labels(**self.labels).observe(duration)
 
     def start_load(self) -> None:
-        """Mark the start of load/commit phase."""
+        """Mark the start of load phase (writing/commit phase).
+
+        Load phase is defined as: writing files to storage and committing to catalog.
+        This includes file uploads and Iceberg catalog commits.
+        """
         self.load_start_time = time.time()
 
     def end_load(self) -> None:
-        """Mark the end of load phase and record duration."""
+        """Mark the end of load phase (writing/commit phase) and record duration.
+
+        Load phase is defined as: writing files to storage and committing to catalog.
+        This includes file uploads and Iceberg catalog commits.
+        """
         if self.load_start_time is None:
             return
 
@@ -434,6 +445,31 @@ class MetricsCollector:
                 )
 
         # Emit final metrics to logs
+        # Exclude LogRecord reserved fields and fields already in labels
+        log_record_reserved = {
+            "message",
+            "asctime",
+            "name",
+            "levelname",
+            "levelno",
+            "pathname",
+            "filename",
+            "module",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+            "exc_info",
+            "exc_text",
+            "stack_info",
+        }
+        # Also exclude fields that are already in self.labels (job_name, tenant_id, connector_type, mode)
+        label_fields = {"job_name", "tenant_id", "connector_type", "mode"}
         extra = {
             "event_type": "metrics_complete",
             "status": status,
@@ -442,6 +478,8 @@ class MetricsCollector:
                 k: v
                 for k, v in self.metrics.items()
                 if k not in ["start_time", "end_time"]
+                and k not in log_record_reserved
+                and k not in label_fields
             },
         }
 
