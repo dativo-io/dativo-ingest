@@ -1,272 +1,272 @@
-# Dativo-Ingest Codebase Rules for Cloud Cursor
+# Dativo-Ingest Codebase Rules for Cloud Cursor (v2)
 
-## Project Overview
+## 0. Purpose of These Rules
 
-Dativo-Ingest is a headless, config-driven ELT framework for data ingestion. It's designed for GitOps, CI/CD, and infrastructure-as-code workflows with strong governance and schema validation.
+These rules exist to ensure that AI-assisted changes:
+- are **correct**, **minimal**, and **reviewable**
+- satisfy **explicit acceptance criteria**
+- respect Dativo-Ingest’s **config-driven, GitOps-first** design
+- do **not** evolve into frameworks, platforms, or reports
 
-**Key Principles:**
-- One asset per job (simpler governance & isolation)
-- Config-driven (YAML for everything)
-- Multi-tenant first (built-in tenant isolation)
-- Iceberg-native (modern data lake integration)
-- Plugin architecture (Python and Rust support)
+Cursor must optimize for **shipping small, correct changes**, not architectural elegance.
 
-## Python Version Requirement
+---
 
-**CRITICAL:** This project requires **Python 3.10 or higher**. Python 3.9 and below will NOT work.
+## 1. Project Overview
 
-Always check Python version in setup instructions and error messages.
+Dativo-Ingest is a **headless, config-driven ELT framework** for data ingestion.
 
-## CLI Command Conventions
+It is designed for:
+- GitOps & CI/CD
+- Infrastructure-as-Code
+- Strong governance and schema validation
+- Multi-tenant, enterprise-grade operation
 
-**Primary Command:** `dativo` (shortest, preferred)
-**Alternative Command:** `dativo-ingest` (matches package name)
-**Module Invocation:** `python -m dativo_ingest.cli` (fallback when package not installed)
+### Core Principles (NON-NEGOTIABLE)
+- One asset per job
+- YAML / Pydantic config for everything
+- Multi-tenant first (tenant isolation always)
+- Iceberg-native
+- Plugin-based (Python + Rust)
 
-**Available Commands:**
-- `dativo ingest` - Execute ingestion job (primary action, recommended)
-- `dativo run` - Execute ingestion job (legacy alias, maintained for backward compatibility)
-- `dativo check` - Validate configuration
-- `dativo discover` - Discover schema from connector
-- `dativo start` - Start orchestrated mode (Dagster)
-- `dativo connectors` - Manage connector registry (list, inspect, sync)
+---
 
-**IMPORTANT:** Never use `dativo_ingest` (with underscore) as a CLI command - that's the Python module name, not a command. Always use `dativo` or `dativo-ingest`.
+## 2. Python Version Requirement
 
-## Code Structure
+**CRITICAL:** Python **3.10+ only**  
+Python 3.9 and below are unsupported.
 
-```
+Always:
+- Check Python version in setup code
+- Mention Python 3.10+ in docs and errors when relevant
+
+---
+
+## 3. Acceptance-Criteria-First Development (MANDATORY)
+
+Before writing code, always identify **explicit acceptance criteria**.
+
+### Rules
+1. Every acceptance criterion MUST be provable via:
+   - a test, or
+   - an executable/manual verification path
+2. Features are **not complete** if acceptance is only “conceptually” satisfied.
+3. Prefer tests that validate **observable behavior**:
+   - CLI output
+   - HTTP endpoints
+   - files written
+   - logs emitted
+
+❌ Internal wiring alone is not proof  
+✅ User-visible behavior is proof
+
+---
+
+## 4. Minimal Change Principle (MANDATORY)
+
+**Default posture: minimal, surgical changes.**
+
+### Rules
+- Prefer:
+  - conditionals
+  - guard clauses
+  - small helpers
+- Avoid:
+  - new abstraction layers
+  - new frameworks
+  - refactors unrelated to the task
+- Do **not** future-proof unless explicitly requested
+
+Guiding question:
+> “What is the smallest change that satisfies acceptance criteria?”
+
+If scope grows unexpectedly, **stop and reassess**.
+
+---
+
+## 5. Configuration Precedence Rules (STRICT)
+
+Dativo-Ingest is **CONFIG-DRIVEN**.
+
+### Source of Truth
+1. `JobConfig`
+2. `RunnerConfig`
+3. Defaults
+4. Environment variable overrides (last resort)
+
+### Rules
+- YAML / Pydantic configs are the **primary control plane**
+- Environment variables:
+  - may override values
+  - must NEVER be the only enablement mechanism
+- Features must work with config alone
+
+❌ Do NOT gate core behavior solely on env vars
+
+---
+
+## 6. CLI Command Conventions
+
+**Primary command:** `dativo`  
+**Alternative:** `dativo-ingest`  
+**Fallback:** `python -m dativo_ingest.cli`
+
+### Commands
+- `dativo ingest` — primary execution command
+- `dativo run` — legacy alias (do not promote)
+- `dativo check`
+- `dativo discover`
+- `dativo start` — orchestrated mode (Dagster)
+- `dativo connectors`
+
+❌ Never use `dativo_ingest` (underscore) as a CLI command
+
+---
+
+## 7. Code Structure (Reference)
+
 src/dativo_ingest/
-├── cli.py                    # Main CLI entry point
-├── cli_commands.py          # CLI command implementations (check, discover)
-├── cli_connectors.py        # Connector management CLI
-├── config.py                 # Configuration models (JobConfig, SourceConfig, etc.)
-├── job_executor.py          # Core job execution logic
-├── validator.py             # Schema and connector validation
-├── connectors/              # Connector implementations
-│   ├── factory.py           # Connector factory
-│   ├── engine_config.py     # Engine configuration parsing
-│   └── *_extractor.py       # Individual connector extractors
-├── registry/                # Connector registry v2
-│   ├── connector_registry.py
-│   └── catalog_loader.py
-├── secrets/                 # Secret management backends
-│   └── managers/            # env, filesystem, vault, aws, gcp
-├── catalog/                 # Data catalog integrations
-│   └── (openmetadata, aws_glue, databricks_unity, nessie)
-├── plugins.py               # Plugin base classes
-├── parquet_writer.py        # Parquet file writing
-├── iceberg_committer.py    # Iceberg table management
-└── incremental/             # Incremental sync strategies
-```
+├── cli.py
+├── cli_commands.py
+├── cli_connectors.py
+├── config.py
+├── job_executor.py
+├── validator.py
+├── connectors/
+├── registry/
+├── secrets/
+├── catalog/
+├── plugins.py
+├── parquet_writer.py
+├── iceberg_committer.py
+└── incremental/
 
-## Configuration Patterns
+yaml
+Copy code
 
-**Job Configuration:**
-- Located in `configs/jobs/` or `jobs/`
-- References asset definitions in `configs/assets/` or `assets/`
-- References connector definitions in `connectors/`
+---
 
-**Asset Definitions:**
-- Follow ODCS v3.0.2 schema standard
-- Located in `configs/assets/` or `assets/`
-- Must include: schema, team owner, compliance classification
-- Example asset definitions may be in `assets/examples/` (for shipped examples)
+## 8. Testing Rules (Quality > Quantity)
 
-**Connector Definitions:**
-- Located in `connectors/` (core infrastructure, not examples)
-- Define connector capabilities, engines, and connection templates
-- Example job configs may reference example assets in `assets/examples/`
+### Test Intent Rules
+- Prefer **1–3 high-signal tests** over many low-signal tests
+- At least one test must validate **real user behavior**
+- Tests must map directly to acceptance criteria
 
-## Testing Conventions
+❌ Do NOT add tests that only verify internal wiring  
+✅ Add tests that prove user-visible outcomes
 
-**Test Structure:**
-- Unit tests: `tests/test_*.py`
-- Integration tests: `tests/integration/test_*.py`
-- Smoke tests: `tests/smoke_tests.sh`
-- Fixtures: `tests/fixtures/`
+### Test Structure
+- Unit: `tests/test_*.py`
+- Integration: `tests/integration/test_*.py`
+- Smoke: `tests/smoke_tests.sh`
 
-**Test Commands:**
-- `make test-unit` - Unit tests only
-- `make test-integration` - Integration tests
-- `make test-smoke` - End-to-end smoke tests
-- `make test` - All tests
+---
 
-**Test Data:**
-- Use `tests/fixtures/` for test data
-- Use Mimesis connector for synthetic data generation
-- Test secrets in `tests/fixtures/secrets/`
+## 9. Documentation Rules (STRICT)
 
-## Documentation Standards
+### Documentation Purpose
+Docs exist for **users**, not for reporting work done.
 
-**Documentation Location:**
-- Main docs: `docs/`
-- README files: Per-directory READMEs for context
-- Testing: `TESTING_PLAYBOOK.md`, `TESTING_GUIDE_INDEX.md`
+### Rules
+- Write **documentation**, not reports
+- Use present tense and user-focused language
+- Follow Diátaxis:
+  - Tutorials
+  - How-to Guides
+  - Reference
+  - Explanation
 
-**Documentation Writing Principles:**
+### Explicitly Forbidden
+❌ Status reports  
+❌ PR summaries  
+❌ “Final delivery” notes  
+❌ “MVP complete” markdown  
+❌ Agent progress logs  
 
-1. **Write Documentation, Not Reports**
-   - Documentation should be user-focused and task-oriented, not a record of what was implemented
-   - **Avoid report-style language:**
-     - ❌ "I updated...", "The agent accomplished...", "This change adds..."
-     - ❌ "The system can now...", "This enables...", "extends..."
-     - ❌ "Version: X", "Status: Implemented", "Date: YYYY-MM-DD" (reserve for CHANGELOG.md)
-     - ❌ "Feature X was added", "Implemented Y"
-   - **Use documentation-style language:**
-     - ✅ "You can...", "The system does...", "To accomplish X, do Y"
-     - ✅ "Catalogs provide...", "Connectors support...", "Use this to..."
-     - ✅ Write in present tense, addressing the user directly
-     - ✅ Focus on what users need to know and how to use features, not what was changed
-   - **Structure:**
-     - Start with what the feature does for the user, not how it was implemented
-     - Lead with use cases and benefits, not technical details
-     - Remove implementation history from user-facing docs
+Allowed:
+- One concise feature doc in `docs/`
+- Updates to existing user docs
 
-2. **Follow Diátaxis Framework** (https://diataxis.fr/)
-   - Organize documentation into four distinct types based on user needs:
-     - **Tutorials**: Learning-oriented, step-by-step lessons for beginners
-       - Structure: "Let's learn...", "Getting started with...", progressive learning path
-       - Goal: Help users learn by doing, building understanding step-by-step
-     - **How-to Guides**: Task-oriented, problem-solving instructions
-       - Structure: "How to...", "Setting up...", "Configuring..."
-       - Goal: Help users accomplish specific tasks, assume they know the basics
-     - **Reference**: Information-oriented, technical descriptions
-       - Structure: Organized, scannable format (tables, lists, API docs)
-       - Goal: Provide complete, accurate technical information for lookup
-     - **Explanation**: Understanding-oriented, conceptual discussions
-       - Structure: "Understanding...", "Why...", "How X works"
-       - Goal: Help users understand concepts, rationale, and architecture
-   - **Document organization:**
-     - Each document should clearly identify its primary type
-     - Mix types within a document only when necessary, with clear section headers
-     - Structure content around user needs and goals, not implementation details
-     - Use appropriate tone: Tutorials are friendly, Reference is formal, How-to is practical
+If a document doesn’t help a user **do something**, it should not exist.
 
-3. **Content Guidelines:**
-   - Always use `dativo` as the primary command (not `dativo-ingest` or `dativo_ingest`)
-   - Use `dativo ingest` as the primary action command (not `dativo run`)
-   - `dativo run` is a legacy alias and should not be mentioned as alternative
-   - Include Python version requirement (3.10+)
-   - Provide both `--config` and `--job-dir` examples when relevant
-   - Include fallback: `python -m dativo_ingest.cli` when command not found
-   - Use active voice and imperative mood for instructions
-   - Avoid passive voice and past tense unless describing historical context
+---
 
-## Code Patterns
+## 10. Patch Size & Reviewability
 
-**Error Handling:**
-- Use custom exceptions from `exceptions.py`
-- Return exit codes: 0=success, 1=partial, 2=failure
-- Log errors with structured logging (`get_logger()`)
+### Guidelines
+- Prefer ≤ 5–7 files changed
+- Prefer ≤ 300–500 LOC net diff
+- Avoid mixing:
+  - feature logic
+  - refactors
+  - docs
+  in one commit unless necessary
 
-**Logging:**
-- Use structured JSON logging via `logging.py`
-- Include `event_type` in log extras
-- Use `get_logger()` from `logging.py`
+If exceeded:
+- split PRs, or
+- explicitly justify scope
 
-**Configuration Loading:**
-- Use Pydantic models from `config.py`
-- Validate against schemas in `schemas/`
-- Use `ConnectorValidator` for connector validation
+---
 
-**Secret Management:**
-- Support multiple backends: env, filesystem, vault, aws, gcp
-- Use `DATIVO_SECRET__{TENANT}__{SECRET_NAME}__[json|env|text]` pattern for env backend
-- Load via `load_secrets_and_set_env()` from `secrets/`
+## 11. Logging & Errors
 
-## Common Tasks
+- Use structured JSON logging
+- Always include `event_type`
+- Use `get_logger()`
+- Exit codes:
+  - 0 = success
+  - 1 = partial
+  - 2 = failure
+- Redact secrets in production logs
 
-**Adding a New Connector:**
-1. Create extractor in `connectors/*_extractor.py`
-2. Register in `connectors/factory.py`
-3. Add to `registry/connectors.yaml`
-4. Create example connector definition in `connectors/examples/`
-5. Add tests in `tests/test_*_extractor.py`
+---
 
-**Adding a New CLI Command:**
-1. Add parser in `cli.py`
-2. Implement command function
-3. Route in `main()` function
-4. Add tests
-5. Update documentation
+## 12. Multi-Tenant Safety
 
-**Adding a New Secret Manager:**
-1. Create manager in `secrets/managers/`
-2. Inherit from `BaseSecretManager`
-3. Register in `secrets/__init__.py`
-4. Add to CLI choices in `cli.py`
-5. Add tests
+Always consider:
+- tenant isolation
+- secrets scoping
+- state paths
+- labels / metrics cardinality
 
-## Important Gotchas
+Never introduce tenant-unsafe defaults.
 
-1. **Python 3.10+ Required:** Always check version in setup
-2. **One Asset Per Job:** Don't create multi-asset jobs
-3. **CLI Command:** Use `dativo`, not `dativo_ingest` (module name)
-4. **Path Resolution:** Use `Path` from `pathlib`, handle both absolute and relative paths
-5. **Tenant Isolation:** Always consider tenant context in state, secrets, and data paths
-6. **Schema Validation:** Assets must reference ODCS schema in `schemas/`
-7. **Secret Redaction:** Use `setup_logging(redact_secrets=True)` in production
-8. **Docker Images:** Plugin sandboxes require Docker images (`dativo/python-plugin-runner`, `dativo/rust-plugin-runner`)
+---
 
-## File Naming Conventions
+## 13. Cursor Strict Mode (OPTIONAL, BUT RECOMMENDED)
 
-- Python files: `snake_case.py`
-- YAML configs: `kebab-case.yaml`
-- Test files: `test_*.py` or `test_*_integration.py`
-- Documentation: `UPPER_SNAKE_CASE.md` or `kebab-case.md`
+Enable explicitly for large or risky PRs.
 
-## Code Style
+### Strict Mode Rules
+- Implement only what is requested
+- Stop once acceptance criteria are met
+- No future-proofing
+- No extra docs or examples
+- No refactors for elegance
 
-- Follow Black formatting (88 char line length)
-- Use isort for imports
-- Type hints required for public APIs
-- Use Pydantic models for configuration
-- Structured logging with JSON output
+Optimize for:
+- correctness
+- minimal diff
+- easy review
 
-## When Making Changes
+---
 
-1. **Always:**
-   - Run `make format` before committing
-   - Run `make test` to verify
-   - Update relevant documentation
-   - Check Python version requirements
-   - Use correct CLI command names (`dativo`, not `dativo_ingest`)
-   - Use `dativo ingest` as primary action (not `dativo run`)
+## 14. When Making Changes
 
-2. **For Breaking Changes:**
-   - Update CHANGELOG.md
-   - Consider backward compatibility
-   - Update migration guides if needed
+Always:
+- Run `make format`
+- Run `make test`
+- Update relevant docs
+- Use correct CLI commands
+- Respect config precedence
 
-3. **For New Features:**
-   - Add to appropriate registry/schema
-   - Add tests (unit + integration)
-   - Update documentation
-   - Consider multi-tenant implications
+Breaking changes require:
+- CHANGELOG update
+- migration notes if needed
 
-## Registry and Catalog System
+---
 
-**Connector Registry v2:**
-- Main registry: `registry/connectors.yaml`
-- External catalogs: `registry/catalogs/*.json`
-- Resolution priority: Job overrides > Catalog > Registry defaults
-- Use `ConnectorRegistry.from_default_paths()` to load
+### Final Guiding Principle
 
-**Catalog Formats:**
-- Airbyte format: `sources` array with `dockerRepository`, `dockerImageTag`
-- Generic format: `connectors` array with `name`, `external_id`, `docker_image_default`
-
-## Environment Variables
-
-**Common Variables:**
-- `DATIVO_SECRET_MANAGER` - Secret backend (env, filesystem, vault, aws, gcp)
-- `DATIVO_SECRET_MANAGER_CONFIG` - Secret manager config (JSON or path)
-- `S3_ENDPOINT`, `S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` - S3/MinIO
-- `NESSIE_URI` - Nessie catalog URI
-- `STATE_DIR` - State directory path
-
-**Secret Pattern:**
-- `DATIVO_SECRET__{TENANT}__{SECRET_NAME}__[json|env|text]` for env backend
-- `DATIVO_SECRET__GLOBAL__{SECRET_NAME}__text` for global secrets
-
+> **Ship small, prove correctness, avoid cleverness.**
