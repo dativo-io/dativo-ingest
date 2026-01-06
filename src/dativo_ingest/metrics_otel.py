@@ -131,7 +131,7 @@ def configure_otel_metrics(
     # Use package version from pyproject.toml as default (single source of truth)
     if service_version is None:
         service_version = __version__
-    
+
     logger = get_logger()
 
     # Silent return if not enabled
