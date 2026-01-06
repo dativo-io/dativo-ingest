@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-01-XX
+
+### Added
+- **Metrics Export**: Prometheus and OpenTelemetry metrics support
+  - Prometheus metrics server with configurable port (default: 9400)
+  - OpenTelemetry (OTLP) metrics export for integration with observability platforms
+  - Metrics configuration via `runner.yaml` (Prometheus) and `job.yaml` (OpenTelemetry)
+  - Comprehensive documentation in `docs/OBSERVABILITY_METRICS.md`
+  - Metrics server lifecycle management in orchestrated mode
+  - Structured metrics configuration with validation
+
+### Changed
+- Enhanced `JobExecutor` with metrics export capabilities
+- Extended `RunnerConfig` to support Prometheus metrics configuration
+- Extended `JobConfig` to support OpenTelemetry metrics configuration
+
 ## [0.5.1] - 2026-01-03
 
 ### Added

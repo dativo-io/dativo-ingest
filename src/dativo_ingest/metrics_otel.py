@@ -8,6 +8,7 @@ import os
 import time
 from typing import Optional
 
+from . import __version__
 from .config import OtelConfig
 from .logging import get_logger
 
@@ -113,7 +114,7 @@ else:
 def configure_otel_metrics(
     config: OtelConfig,
     service_name: str = "dativo-ingest",
-    service_version: str = "0.5.1",
+    service_version: Optional[str] = None,
     environment: Optional[str] = None,
 ) -> bool:
     """Configure OpenTelemetry metrics with OTLP exporter.
@@ -121,12 +122,16 @@ def configure_otel_metrics(
     Args:
         config: OTEL configuration
         service_name: Service name for resource attributes
-        service_version: Service version for resource attributes
+        service_version: Service version for resource attributes (defaults to package version from pyproject.toml)
         environment: Deployment environment (from job config)
 
     Returns:
         True if configured successfully, False otherwise
     """
+    # Use package version from pyproject.toml as default (single source of truth)
+    if service_version is None:
+        service_version = __version__
+    
     logger = get_logger()
 
     # Silent return if not enabled
