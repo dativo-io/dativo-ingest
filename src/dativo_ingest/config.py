@@ -504,6 +504,12 @@ class OtelConfig(BaseModel):
     endpoint: Optional[str] = Field(
         default=None, description="OTLP endpoint (e.g., http://localhost:4317)"
     )
+    headers: Optional[Dict[str, str]] = Field(
+        default=None, description="OTLP headers (e.g., for authentication)"
+    )
+    protocol: str = Field(
+        default="grpc", description="OTLP protocol (currently only 'grpc' supported)"
+    )
 
 
 class MetricsLabelsConfig(BaseModel):
