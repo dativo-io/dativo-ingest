@@ -191,7 +191,7 @@ class TestMetricsCollector:
 
     def test_metrics_collector_start(self):
         """Test metrics collector initialization."""
-        collector = MetricsCollector("test_job", "acme")
+        collector = MetricsCollector("test_job", "acme", "postgres")
         collector.start()
         assert collector.start_time is not None
         assert collector.metrics["job_name"] == "test_job"
@@ -199,37 +199,40 @@ class TestMetricsCollector:
 
     def test_metrics_collector_extraction(self):
         """Test extraction metrics recording."""
-        collector = MetricsCollector("test_job", "acme")
+        collector = MetricsCollector("test_job", "acme", "postgres")
         collector.start()
-        collector.record_extraction(1000, 5)
+        collector.start_extraction()
+        collector.record_records(1000, phase="extracted")
+        collector.end_extraction()
         assert collector.metrics["records_extracted"] == 1000
-        assert collector.metrics["files_processed"] == 5
+        assert "extract_seconds" in collector.metrics
 
     def test_metrics_collector_validation(self):
         """Test validation metrics recording."""
-        collector = MetricsCollector("test_job", "acme")
+        collector = MetricsCollector("test_job", "acme", "postgres")
         collector.start()
-        collector.record_validation(950, 50, 1000)
-        assert collector.metrics["records_valid"] == 950
+        collector.record_records(1000, phase="extracted")
+        collector.record_records(950, phase="written")
+        collector.record_records(50, phase="invalid")
+        assert collector.metrics["records_extracted"] == 1000
+        assert collector.metrics["records_written"] == 950
         assert collector.metrics["records_invalid"] == 50
-        assert collector.metrics["records_total"] == 1000
 
     def test_metrics_collector_writing(self):
         """Test writing metrics recording."""
-        collector = MetricsCollector("test_job", "acme")
+        collector = MetricsCollector("test_job", "acme", "postgres")
         collector.start()
-        collector.record_writing(2, 1048576)  # 2 files, 1 MB
-        assert collector.metrics["files_written"] == 2
+        collector.record_bytes(1048576, phase="written")  # 1 MB
         assert collector.metrics["bytes_written"] == 1048576
 
     def test_metrics_collector_finish(self):
         """Test metrics collector finish."""
-        collector = MetricsCollector("test_job", "acme")
+        collector = MetricsCollector("test_job", "acme", "postgres")
         collector.start()
-        collector.record_extraction(1000, 5)
+        collector.record_records(1000, phase="extracted")
         metrics = collector.finish("success")
         assert metrics["status"] == "success"
-        assert "execution_time_seconds" in metrics
+        assert "runtime_seconds" in metrics
         assert metrics["records_extracted"] == 1000
 
 

@@ -2,11 +2,19 @@
 
 import os
 import sys
+import time
 from typing import Any, Dict, List, Optional
 
-from .config import AssetDefinition, JobConfig, SourceConfig, TargetConfig
+from .config import (
+    AssetDefinition,
+    JobConfig,
+    MetricsConfig,
+    SourceConfig,
+    TargetConfig,
+)
 from .connectors.factory import ExtractorFactory
 from .logging import get_logger, update_logging_settings
+from .metrics import MetricsCollector
 from .plugins import PluginLoader, extract_sandbox_config
 from .schema_validator import SchemaValidator
 from .utils import expand_env_variable
@@ -38,6 +46,7 @@ class JobExecutor:
         self.state_manager: Optional[IncrementalStateManager] = None
         self.wal_manager: Optional[WALManager] = None
         self.source_tags: Optional[Dict[str, Any]] = None
+        self.metrics_collector: Optional[MetricsCollector] = None
 
     def _setup_logging(self) -> None:
         """Set up logging for the job."""
@@ -49,6 +58,69 @@ class JobExecutor:
             redact_secrets=redact,
             tenant_id=self.job_config.tenant_id,
         )
+
+    def _initialize_metrics(
+        self, runner_metrics: Optional[MetricsConfig] = None
+    ) -> None:
+        """Initialize metrics collector with resolved config.
+
+        Config precedence: job > runner > disabled
+
+        BEHAVIOR:
+        - orchestrated: HTTP server started by orchestrated.py from runner config
+        - oneshot: NO HTTP server, metrics logged only
+        - OTEL: exports if configured, never crashes job
+
+        NOT YET SUPPORTED:
+        - Prometheus multiprocess cleanup
+        - Per-API-call / per-retry instrumentation (partial only)
+        """
+        from .metrics import MetricsCollector
+        from .metrics_config import log_resolved_metrics_config, resolve_metrics_config
+
+        # Get connector type
+        connector_type = "unknown"
+        if self.source_config:
+            connector_type = self.source_config.type
+
+        # Determine execution mode
+        metrics_mode = "orchestrated" if self.mode == "orchestrated" else "oneshot"
+
+        # Resolve config: job > runner > disabled
+        effective_metrics = resolve_metrics_config(
+            job_metrics=self.job_config.metrics,
+            runner_metrics=runner_metrics,
+            mode=metrics_mode,
+        )
+
+        # Log resolved config
+        log_resolved_metrics_config(effective_metrics, metrics_mode)
+
+        # If disabled, skip initialization
+        if not effective_metrics.enabled:
+            return
+
+        # Initialize metrics collector with resolved config
+        self.metrics_collector = MetricsCollector(
+            job_name=self.job_config.asset or "unknown",
+            tenant_id=self.tenant_id,
+            connector_type=connector_type,
+            mode=metrics_mode,
+            config=effective_metrics,
+        )
+        self.metrics_collector.start()
+
+    def _finish_metrics(self, exit_code: int) -> None:
+        """Finish metrics collection with status based on exit code.
+
+        Ensures the Prometheus gauge is reset to 0 on all exit paths.
+
+        Args:
+            exit_code: Job exit code (0=success, 1=partial, 2=failure)
+        """
+        if self.metrics_collector:
+            status_map = {0: "success", 1: "partial", 2: "failure"}
+            self.metrics_collector.finish(status_map.get(exit_code, "failure"))
 
     def _validate_job(self) -> int:
         """Validate job configuration.
@@ -548,6 +620,10 @@ class JobExecutor:
                 },
             )
 
+            # Mark extraction start time (covers extract + validate + write)
+            if self.metrics_collector:
+                self.metrics_collector.start_extraction()
+
             # Prepare checkpoint context for extractor
             checkpoint_context = None
             if self.wal_manager:
@@ -690,6 +766,10 @@ class JobExecutor:
                         },
                     )
 
+            # Mark extraction end time (after all batches processed)
+            if self.metrics_collector:
+                self.metrics_collector.end_extraction()
+
             # Log extraction summary
             if batch_count == 0:
                 self.logger.warning(
@@ -710,6 +790,20 @@ class JobExecutor:
                     },
                 )
 
+            # Record extraction and validation metrics using new API
+            if self.metrics_collector:
+                self.metrics_collector.record_records(total_records, phase="extracted")
+                self.metrics_collector.record_records(
+                    total_valid_records, phase="written"
+                )
+                self.metrics_collector.record_records(
+                    total_records - total_valid_records, phase="invalid"
+                )
+
+            # Mark load/commit start time
+            if self.metrics_collector:
+                self.metrics_collector.start_load()
+
             # Finalize WAL before committing (on successful extraction)
             if self.wal_manager:
                 self.wal_manager.finalize_wal()
@@ -729,6 +823,10 @@ class JobExecutor:
                 batch_count,
             )
 
+            # Mark load/commit end time
+            if self.metrics_collector:
+                self.metrics_collector.end_load()
+
             # Cleanup WAL after successful commit
             if exit_code == 0 and self.wal_manager:
                 self.wal_manager.cleanup_wal()
@@ -747,6 +845,11 @@ class JobExecutor:
                 },
                 exc_info=True,
             )
+
+            # Record failure metrics
+            if self.metrics_collector:
+                self.metrics_collector.finish("failure")
+
             return 2
 
     def _transform_markdown_kv(
@@ -978,6 +1081,12 @@ class JobExecutor:
             else 0
         )
 
+        # Record writing metrics using new API
+        if self.metrics_collector:
+            self.metrics_collector.record_bytes(
+                total_bytes, phase="written"
+            )  # bytes_total{phase=written}
+
         # Emit enhanced metadata
         self.logger.info(
             "Job execution completed",
@@ -1115,14 +1224,21 @@ class JobExecutor:
             # Set up logging
             self._setup_logging()
 
+            # Initialize metrics (after logging is set up)
+            self._initialize_metrics()
+
             # Validate job
             exit_code = self._validate_job()
             if exit_code != 0:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Load asset
             exit_code = self._load_asset()
             if exit_code != 0:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Initialize state manager
@@ -1131,6 +1247,8 @@ class JobExecutor:
             # Initialize extractor
             exit_code = self._initialize_extractor()
             if exit_code != 0:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Initialize WAL manager (after extractor is initialized for metadata)
@@ -1139,11 +1257,15 @@ class JobExecutor:
             # Initialize validator
             exit_code = self._initialize_validator()
             if exit_code != 0:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Initialize writer
             exit_code = self._initialize_writer()
             if exit_code != 0:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Initialize committer
@@ -1154,10 +1276,15 @@ class JobExecutor:
             # Only return early for actual failures (exit_code == 2)
             # Partial success (exit_code == 1) should still push to catalog
             if exit_code == 2:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Push to catalog (for both success and partial success)
             self._push_to_catalog()
+
+            # Finalize metrics
+            self._finish_metrics(exit_code)
 
             return exit_code
 
@@ -1170,4 +1297,9 @@ class JobExecutor:
                     },
                     exc_info=True,
                 )
+
+            # Record error in metrics (ensure finish is called even on exception)
+            if self.metrics_collector:
+                self.metrics_collector.finish("failure")
+
             return 2

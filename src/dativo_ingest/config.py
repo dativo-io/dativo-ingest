@@ -489,6 +489,47 @@ class PluginConfig(BaseModel):
     sandbox: Optional[PluginSandboxConfig] = None
 
 
+class PrometheusConfig(BaseModel):
+    """Prometheus metrics configuration."""
+
+    enabled: bool = True
+    host: str = "0.0.0.0"
+    port: int = 9400
+
+
+class OtelConfig(BaseModel):
+    """OpenTelemetry metrics configuration (minimal MVP)."""
+
+    enabled: bool = False
+    endpoint: Optional[str] = Field(
+        default=None, description="OTLP endpoint (e.g., http://localhost:4317)"
+    )
+    headers: Optional[Dict[str, str]] = Field(
+        default=None, description="OTLP headers (e.g., for authentication)"
+    )
+    protocol: str = Field(
+        default="grpc", description="OTLP protocol (currently only 'grpc' supported)"
+    )
+
+
+class MetricsLabelsConfig(BaseModel):
+    """Configuration for metric labels."""
+
+    include_env: bool = Field(default=False, description="Include environment label")
+
+
+class MetricsConfig(BaseModel):
+    """Metrics configuration (minimal MVP).
+
+    Precedence: JobConfig.metrics > RunnerConfig.metrics > defaults
+    """
+
+    enabled: bool = Field(default=True, description="Enable metrics collection")
+    prometheus: PrometheusConfig = Field(default_factory=PrometheusConfig)
+    otel: OtelConfig = Field(default_factory=OtelConfig)
+    labels: MetricsLabelsConfig = Field(default_factory=MetricsLabelsConfig)
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -529,6 +570,9 @@ class JobConfig(BaseModel):
 
     # Plugin configuration
     plugins: Optional[PluginConfig] = None
+
+    # Metrics configuration
+    metrics: Optional[MetricsConfig] = None
 
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":
@@ -1124,6 +1168,9 @@ class RunnerConfig(BaseModel):
 
     mode: str = Field(default="orchestrated", pattern="^(orchestrated|oneshot)$")
     orchestrator: OrchestratorConfig
+    metrics: Optional[MetricsConfig] = Field(
+        default=None, description="Global metrics configuration for orchestrated mode"
+    )
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "RunnerConfig":

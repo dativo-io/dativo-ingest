@@ -1,5 +1,6 @@
 """Dagster orchestration with tenant-level serialization."""
 
+import os
 import subprocess
 import sys
 import time
@@ -16,6 +17,8 @@ from dagster import (
 
 from .config import JobConfig, RunnerConfig
 from .logging import get_logger, setup_logging
+from .metrics_otel import configure_otel_metrics
+from .metrics_server import start_metrics_server_from_config
 from .retry_policy import RetryPolicy as CustomRetryPolicy
 from .validator import ConnectorValidator
 
@@ -369,6 +372,59 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
         extra={"event_type": "orchestrator_initializing"},
     )
 
+    # Start Prometheus metrics server (orchestrated mode only)
+    # Hard rule: server ONLY starts here, nowhere else
+    metrics_server = None
+
+    # Use runner_config.metrics as the main source of truth
+    if runner_config.metrics and runner_config.metrics.enabled:
+        metrics_config = runner_config.metrics
+
+        # Log metrics startup configuration
+        logger.info(
+            f"Metrics: enabled={metrics_config.enabled} "
+            f"prometheus={metrics_config.prometheus.enabled} "
+            f"otel={metrics_config.otel.enabled} "
+            f"mode=orchestrated",
+            extra={
+                "event_type": "metrics_startup",
+                "metrics_enabled": metrics_config.enabled,
+                "prometheus_enabled": metrics_config.prometheus.enabled,
+                "otel_enabled": metrics_config.otel.enabled,
+                "mode": "orchestrated",
+            },
+        )
+
+        # Start Prometheus metrics server if enabled
+        if metrics_config.prometheus.enabled:
+            metrics_server = start_metrics_server_from_config(
+                metrics_config.prometheus, mode="orchestrated"
+            )
+            if metrics_server and metrics_server.is_running():
+                logger.info(
+                    f"Metrics server started: http://{metrics_config.prometheus.host}:{metrics_config.prometheus.port}/metrics",
+                    extra={"event_type": "metrics_server_started"},
+                )
+
+        # Configure OpenTelemetry metrics if enabled
+        if metrics_config.otel.enabled:
+            try:
+                environment = os.getenv("DATIVO_ENVIRONMENT", "production")
+                otel_configured = configure_otel_metrics(
+                    config=metrics_config.otel,
+                    environment=environment,
+                )
+                if otel_configured:
+                    logger.info(
+                        "OpenTelemetry metrics configured",
+                        extra={"event_type": "otel_configured"},
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to configure OTEL: {e}",
+                    extra={"event_type": "otel_failed"},
+                )
+
     # Create Dagster definitions
     try:
         defs = create_dagster_assets(runner_config)
@@ -434,6 +490,9 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
                 "Orchestrator stopping",
                 extra={"event_type": "orchestrator_stopping"},
             )
+            # Stop metrics server if running
+            if metrics_server:
+                metrics_server.stop()
 
     except ImportError:
         logger.warning(

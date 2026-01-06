@@ -18,7 +18,9 @@ from .cli_connectors import (
 )
 from .config import JobConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
-from .logging import setup_logging
+from .logging import get_logger, setup_logging
+from .metrics_config import resolve_metrics_config
+from .metrics_otel import configure_otel_metrics
 from .secrets import load_secret_manager_config, load_secrets_and_set_env
 from .startup import startup_sequence
 from .validator import ConnectorValidator
@@ -54,6 +56,42 @@ def run_command(args: argparse.Namespace) -> int:
         except ValueError as e:
             print(f"ERROR: Startup sequence failed: {e}", file=sys.stderr)
             return 2
+
+        # Configure OTEL metrics if enabled (oneshot mode, once for all jobs)
+        # Use first job's metrics config if available (all jobs should share same config)
+        if jobs:
+            first_job = jobs[0]
+            effective_metrics = resolve_metrics_config(
+                job_metrics=first_job.metrics,
+                runner_metrics=None,  # No runner_config in oneshot mode
+                mode="oneshot",
+            )
+
+            # Configure OTEL if enabled (must not crash job execution)
+            if effective_metrics.enabled and effective_metrics.otel.enabled:
+                logger = get_logger()
+                try:
+                    environment = first_job.environment or os.getenv(
+                        "DATIVO_ENVIRONMENT", "production"
+                    )
+                    otel_configured = configure_otel_metrics(
+                        config=effective_metrics.otel,
+                        environment=environment,
+                    )
+                    if otel_configured:
+                        logger.info(
+                            "OpenTelemetry metrics configured for oneshot mode (job directory)",
+                            extra={"event_type": "otel_configured_oneshot"},
+                        )
+                except Exception as e:
+                    # Log warning but don't crash job execution
+                    logger.warning(
+                        f"Failed to configure OpenTelemetry metrics: {e}. Job execution will continue.",
+                        extra={
+                            "event_type": "otel_configuration_warning",
+                            "error": str(e),
+                        },
+                    )
 
         # Execute all jobs sequentially
         results = []
@@ -100,6 +138,39 @@ def run_command(args: argparse.Namespace) -> int:
                 "No secrets loaded (may be optional)",
                 extra={"event_type": "secrets_warning"},
             )
+
+        # Configure OTEL metrics if enabled (oneshot mode)
+        # Resolve effective metrics config: job_config.metrics > disabled
+        effective_metrics = resolve_metrics_config(
+            job_metrics=job_config.metrics,
+            runner_metrics=None,  # No runner_config in oneshot mode
+            mode="oneshot",
+        )
+
+        # Configure OTEL if enabled (must not crash job execution)
+        if effective_metrics.enabled and effective_metrics.otel.enabled:
+            try:
+                environment = job_config.environment or os.getenv(
+                    "DATIVO_ENVIRONMENT", "production"
+                )
+                otel_configured = configure_otel_metrics(
+                    config=effective_metrics.otel,
+                    environment=environment,
+                )
+                if otel_configured:
+                    logger.info(
+                        "OpenTelemetry metrics configured for oneshot mode",
+                        extra={"event_type": "otel_configured_oneshot"},
+                    )
+            except Exception as e:
+                # Log warning but don't crash job execution
+                logger.warning(
+                    f"Failed to configure OpenTelemetry metrics: {e}. Job execution will continue.",
+                    extra={
+                        "event_type": "otel_configuration_warning",
+                        "error": str(e),
+                    },
+                )
 
         return _execute_single_job(job_config, args.mode)
 
