@@ -21,6 +21,7 @@ try:
     OPENTELEMETRY_AVAILABLE = True
 except ImportError:
     OPENTELEMETRY_AVAILABLE = False
+    PeriodicExportingMetricReader = None  # type: ignore
 
 # Track last export failure time for throttled warnings
 _last_export_failure_log = 0
@@ -59,46 +60,54 @@ def _get_otel_exporter(config: OtelConfig):
         )
 
 
-class ThrottledExportMetricReader(PeriodicExportingMetricReader):
-    """Metric reader with throttled error logging (MVP)."""
+if OPENTELEMETRY_AVAILABLE and PeriodicExportingMetricReader:
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.logger = get_logger()
-        self._consecutive_failures = 0
+    class ThrottledExportMetricReader(PeriodicExportingMetricReader):
+        """Metric reader with throttled error logging (MVP)."""
 
-    def _export(self):
-        """Override export to add throttled logging."""
-        global _last_export_failure_log
-
-        try:
-            result = super()._export()
-            if self._consecutive_failures > 0:
-                self.logger.info(
-                    "OTEL export resumed successfully",
-                    extra={"event_type": "otel_export_resumed"},
-                )
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.logger = get_logger()
             self._consecutive_failures = 0
-            return result
-        except Exception as e:
-            self._consecutive_failures += 1
 
-            # Log failures with throttling
-            current_time = time.time()
-            should_log = (current_time - _last_export_failure_log) > _export_failure_log_interval
+        def _export(self):
+            """Override export to add throttled logging."""
+            global _last_export_failure_log
 
-            if should_log or self._consecutive_failures == 1:
-                self.logger.warning(
-                    f"OTEL metrics export failed (consecutive failures: {self._consecutive_failures}): {e}",
-                    extra={
-                        "event_type": "otel_export_failed",
-                        "consecutive_failures": self._consecutive_failures,
-                    },
-                )
-                _last_export_failure_log = current_time
+            try:
+                result = super()._export()
+                if self._consecutive_failures > 0:
+                    self.logger.info(
+                        "OTEL export resumed successfully",
+                        extra={"event_type": "otel_export_resumed"},
+                    )
+                self._consecutive_failures = 0
+                return result
+            except Exception as e:
+                self._consecutive_failures += 1
 
-            # Don't crash the job, just skip this export
-            return
+                # Log failures with throttling
+                current_time = time.time()
+                should_log = (
+                    current_time - _last_export_failure_log
+                ) > _export_failure_log_interval
+
+                if should_log or self._consecutive_failures == 1:
+                    self.logger.warning(
+                        f"OTEL metrics export failed (consecutive failures: {self._consecutive_failures}): {e}",
+                        extra={
+                            "event_type": "otel_export_failed",
+                            "consecutive_failures": self._consecutive_failures,
+                        },
+                    )
+                    _last_export_failure_log = current_time
+
+                # Don't crash the job, just skip this export
+                return
+
+else:
+    # Dummy class when OpenTelemetry is not available
+    ThrottledExportMetricReader = None  # type: ignore
 
 
 def configure_otel_metrics(
@@ -163,10 +172,12 @@ def configure_otel_metrics(
         otlp_exporter = _get_otel_exporter(config)
 
         # Create metric reader with fixed intervals (MVP)
+        if ThrottledExportMetricReader is None:
+            raise ImportError("ThrottledExportMetricReader not available")
         metric_reader = ThrottledExportMetricReader(
             exporter=otlp_exporter,
             export_interval_millis=60000,  # 60 seconds
-            export_timeout_millis=10000,   # 10 seconds
+            export_timeout_millis=10000,  # 10 seconds
         )
 
         # Create and set meter provider

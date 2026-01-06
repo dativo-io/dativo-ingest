@@ -57,8 +57,24 @@ METRIC_NAMES = {
 HISTOGRAM_BUCKETS = (1, 2, 5, 10, 30, 60, 120, 300, 600, 1800, 3600)
 
 # Label cardinality limits to prevent explosion
-KNOWN_API_TYPES = {"stripe", "hubspot", "salesforce", "postgres", "mysql", "http", "grpc", "unknown"}
-KNOWN_ERROR_TYPES = {"timeout", "auth", "rate_limit", "validation", "connection", "unknown"}
+KNOWN_API_TYPES = {
+    "stripe",
+    "hubspot",
+    "salesforce",
+    "postgres",
+    "mysql",
+    "http",
+    "grpc",
+    "unknown",
+}
+KNOWN_ERROR_TYPES = {
+    "timeout",
+    "auth",
+    "rate_limit",
+    "validation",
+    "connection",
+    "unknown",
+}
 KNOWN_PHASES = {"extracted", "written", "invalid", "committed"}
 
 # Global Prometheus metrics (initialized once)
@@ -67,7 +83,9 @@ _prom_metrics = {}
 _multiproc_mode = False
 
 
-def _validate_label_value(value: str, known_set: Set[str], default: str = "unknown") -> str:
+def _validate_label_value(
+    value: str, known_set: Set[str], default: str = "unknown"
+) -> str:
     """Validate and normalize label values to prevent cardinality explosion.
 
     Args:
@@ -87,7 +105,7 @@ def _validate_label_value(value: str, known_set: Set[str], default: str = "unkno
 
 def _setup_multiprocess_mode(multiproc_dir: Optional[str]) -> bool:
     """Set up Prometheus multiprocess mode if configured.
-    
+
     NOTE: Multiprocess cleanup is NOT implemented in this MVP.
     """
     global _multiproc_mode
@@ -242,7 +260,9 @@ class MetricsCollector:
             and self.config.prometheus.enabled
         )
         self.otel_enabled = (
-            self.metrics_enabled and OPENTELEMETRY_AVAILABLE and self.config.otel.enabled
+            self.metrics_enabled
+            and OPENTELEMETRY_AVAILABLE
+            and self.config.otel.enabled
         )
 
         # Initialize Prometheus if enabled
@@ -418,7 +438,11 @@ class MetricsCollector:
             "event_type": "metrics_complete",
             "status": status,
             "runtime_seconds": runtime,
-            **{k: v for k, v in self.metrics.items() if k not in ["start_time", "end_time"]},
+            **{
+                k: v
+                for k, v in self.metrics.items()
+                if k not in ["start_time", "end_time"]
+            },
         }
 
         self.logger.info("Job execution metrics", extra=extra)

@@ -22,6 +22,7 @@ except ImportError:
 
 # Module-level guard against multiple server starts
 import threading
+
 _SERVER_STARTED = False
 _SERVER_LOCK = threading.Lock()
 
@@ -49,7 +50,7 @@ class MetricsServer:
         Uses module-level lock to prevent multiple starts.
         """
         global _SERVER_STARTED
-        
+
         if not PROMETHEUS_AVAILABLE:
             self.logger.warning(
                 "Prometheus client not available. Install prometheus_client to enable metrics server.",
@@ -69,9 +70,11 @@ class MetricsServer:
             if _SERVER_STARTED:
                 self.logger.debug("Metrics server already started globally, skipping")
                 return
-                
+
             if self._started:
-                self.logger.debug("Metrics server already started on this instance, skipping")
+                self.logger.debug(
+                    "Metrics server already started on this instance, skipping"
+                )
                 return
 
             try:
@@ -177,12 +180,12 @@ def start_metrics_server_from_config(
         MetricsServer instance if started, None otherwise
     """
     logger = get_logger()
-    
+
     # Only start in orchestrated mode
     if mode != "orchestrated":
         logger.debug(f"Metrics server not started: mode={mode} (orchestrated only)")
         return None
-    
+
     if not config.enabled:
         return None
 
@@ -196,6 +199,6 @@ def start_metrics_server_from_config(
     # Create and start server (best-effort, won't crash)
     server = MetricsServer(config)
     server.start()
-    
+
     # Return server object (critical for tests and orchestrated mode)
     return server

@@ -374,48 +374,56 @@ def start_orchestrated(runner_config: RunnerConfig) -> None:
 
     # Start Prometheus metrics server (orchestrated mode only)
     # Hard rule: server ONLY starts here, nowhere else
-    from .metrics_config import log_resolved_metrics_config, resolve_metrics_config
-    
     metrics_server = None
-    effective_metrics = resolve_metrics_config(
-        job_metrics=None,  # No job-level override at orchestrator level
-        runner_metrics=runner_config.metrics if runner_config.metrics else None,
-        mode="orchestrated",
-    )
-    
-    # Log resolved metrics config
-    log_resolved_metrics_config(effective_metrics, "orchestrated")
-    
-    # Start server only if enabled
-    if effective_metrics.enabled and effective_metrics.prometheus.enabled:
-        metrics_server = start_metrics_server_from_config(
-            effective_metrics.prometheus,
-            mode="orchestrated"
-        )
-        if metrics_server and metrics_server.is_running():
-            logger.info(
-                f"Metrics server started: http://{effective_metrics.prometheus.host}:{effective_metrics.prometheus.port}/metrics",
-                extra={"event_type": "metrics_server_started"},
-            )
 
-    # Configure OpenTelemetry metrics if enabled
-    if effective_metrics.enabled and effective_metrics.otel.enabled:
-        try:
-            environment = os.getenv("DATIVO_ENVIRONMENT", "production")
-            otel_configured = configure_otel_metrics(
-                config=effective_metrics.otel,
-                environment=environment,
+    # Use runner_config.metrics as the main source of truth
+    if runner_config.metrics and runner_config.metrics.enabled:
+        metrics_config = runner_config.metrics
+
+        # Log metrics startup configuration
+        logger.info(
+            f"Metrics: enabled={metrics_config.enabled} "
+            f"prometheus={metrics_config.prometheus.enabled} "
+            f"otel={metrics_config.otel.enabled} "
+            f"mode=orchestrated",
+            extra={
+                "event_type": "metrics_startup",
+                "metrics_enabled": metrics_config.enabled,
+                "prometheus_enabled": metrics_config.prometheus.enabled,
+                "otel_enabled": metrics_config.otel.enabled,
+                "mode": "orchestrated",
+            },
+        )
+
+        # Start Prometheus metrics server if enabled
+        if metrics_config.prometheus.enabled:
+            metrics_server = start_metrics_server_from_config(
+                metrics_config.prometheus, mode="orchestrated"
             )
-            if otel_configured:
+            if metrics_server and metrics_server.is_running():
                 logger.info(
-                    "OpenTelemetry metrics configured",
-                    extra={"event_type": "otel_configured"},
+                    f"Metrics server started: http://{metrics_config.prometheus.host}:{metrics_config.prometheus.port}/metrics",
+                    extra={"event_type": "metrics_server_started"},
                 )
-        except Exception as e:
-            logger.warning(
-                f"Failed to configure OTEL: {e}",
-                extra={"event_type": "otel_failed"},
-            )
+
+        # Configure OpenTelemetry metrics if enabled
+        if metrics_config.otel.enabled:
+            try:
+                environment = os.getenv("DATIVO_ENVIRONMENT", "production")
+                otel_configured = configure_otel_metrics(
+                    config=metrics_config.otel,
+                    environment=environment,
+                )
+                if otel_configured:
+                    logger.info(
+                        "OpenTelemetry metrics configured",
+                        extra={"event_type": "otel_configured"},
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to configure OTEL: {e}",
+                    extra={"event_type": "otel_failed"},
+                )
 
     # Create Dagster definitions
     try:

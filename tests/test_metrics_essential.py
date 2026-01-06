@@ -17,7 +17,7 @@ def get_free_port():
 
 def test_prometheus_endpoint_non_zero_counters():
     """AC1: Orchestrated mode - /metrics returns non-zero counters.
-    
+
     Tests:
     - Server starts
     - Job execution records metrics
@@ -26,6 +26,7 @@ def test_prometheus_endpoint_non_zero_counters():
     """
     try:
         import requests
+
         from dativo_ingest.config import MetricsConfig, PrometheusConfig
         from dativo_ingest.metrics import MetricsCollector
         from dativo_ingest.metrics_server import MetricsServer
@@ -36,7 +37,7 @@ def test_prometheus_endpoint_non_zero_counters():
     port = get_free_port()
     prom_config = PrometheusConfig(enabled=True, host="127.0.0.1", port=port)
     metrics_config = MetricsConfig(enabled=True, prometheus=prom_config)
-    
+
     server = MetricsServer(prom_config)
     server.start()
 
@@ -58,12 +59,12 @@ def test_prometheus_endpoint_non_zero_counters():
         collector.start_extraction()
         time.sleep(0.01)
         collector.end_extraction()
-        
+
         # Record metrics (ensures non-zero)
         collector.record_records(1000, phase="extracted")
         collector.record_records(950, phase="written")
         collector.record_bytes(104857600, phase="written")
-        
+
         collector.start_load()
         time.sleep(0.01)
         collector.end_load()
@@ -97,7 +98,7 @@ def test_oneshot_no_server():
     from dativo_ingest.metrics import MetricsCollector
 
     metrics_config = MetricsConfig(enabled=True)
-    
+
     collector = MetricsCollector(
         job_name="oneshot_job",
         tenant_id="test",
@@ -115,26 +116,23 @@ def test_oneshot_no_server():
     # Assert job completed successfully
     assert metrics["status"] == "success"
     assert "runtime_seconds" in metrics
-    
+
     # Note: Server start is controlled by orchestrated.py, not collector
     # In oneshot, no server should be started
 
 
 def test_otel_failure_no_crash():
     """AC3: OTEL - export failure doesn't crash job.
-    
+
     Tests with mocked exporter that fails.
     """
     from dativo_ingest.config import MetricsConfig, OtelConfig
     from dativo_ingest.metrics import MetricsCollector
 
     # Configure OTEL (will fail silently)
-    otel_config = OtelConfig(
-        enabled=True,
-        endpoint="http://unreachable-host:4317"
-    )
+    otel_config = OtelConfig(enabled=True, endpoint="http://unreachable-host:4317")
     metrics_config = MetricsConfig(enabled=True, otel=otel_config)
-    
+
     collector = MetricsCollector(
         job_name="otel_test",
         tenant_id="test",

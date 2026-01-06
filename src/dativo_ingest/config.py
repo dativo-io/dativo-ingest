@@ -509,14 +509,12 @@ class OtelConfig(BaseModel):
 class MetricsLabelsConfig(BaseModel):
     """Configuration for metric labels."""
 
-    include_env: bool = Field(
-        default=False, description="Include environment label"
-    )
+    include_env: bool = Field(default=False, description="Include environment label")
 
 
 class MetricsConfig(BaseModel):
     """Metrics configuration (minimal MVP).
-    
+
     Precedence: JobConfig.metrics > RunnerConfig.metrics > defaults
     """
 

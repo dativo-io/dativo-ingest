@@ -53,16 +53,18 @@ class JobExecutor:
             tenant_id=self.job_config.tenant_id,
         )
 
-    def _initialize_metrics(self, runner_metrics: Optional["MetricsConfig"] = None) -> None:
+    def _initialize_metrics(
+        self, runner_metrics: Optional["MetricsConfig"] = None
+    ) -> None:
         """Initialize metrics collector with resolved config.
-        
+
         Config precedence: job > runner > disabled
-        
+
         BEHAVIOR:
         - orchestrated: HTTP server started by orchestrated.py from runner config
         - oneshot: NO HTTP server, metrics logged only
         - OTEL: exports if configured, never crashes job
-        
+
         NOT YET SUPPORTED:
         - Prometheus multiprocess cleanup
         - Per-API-call / per-retry instrumentation (partial only)
@@ -84,14 +86,14 @@ class JobExecutor:
             runner_metrics=runner_metrics,
             mode=metrics_mode,
         )
-        
+
         # Log resolved config
         log_resolved_metrics_config(effective_metrics, metrics_mode)
-        
+
         # If disabled, skip initialization
         if not effective_metrics.enabled:
             return
-        
+
         # Initialize metrics collector with resolved config
         self.metrics_collector = MetricsCollector(
             job_name=self.job_config.asset or "unknown",
@@ -773,7 +775,9 @@ class JobExecutor:
             # Record extraction and validation metrics using new API
             if self.metrics_collector:
                 self.metrics_collector.record_records(total_records, phase="extracted")
-                self.metrics_collector.record_records(total_valid_records, phase="written")
+                self.metrics_collector.record_records(
+                    total_valid_records, phase="written"
+                )
                 self.metrics_collector.record_records(
                     total_records - total_valid_records, phase="invalid"
                 )
@@ -1061,7 +1065,9 @@ class JobExecutor:
 
         # Record writing metrics using new API
         if self.metrics_collector:
-            self.metrics_collector.record_bytes(total_bytes, phase="written")  # bytes_total{phase=written}
+            self.metrics_collector.record_bytes(
+                total_bytes, phase="written"
+            )  # bytes_total{phase=written}
 
         # Emit enhanced metadata
         self.logger.info(
