@@ -110,6 +110,18 @@ class JobExecutor:
         )
         self.metrics_collector.start()
 
+    def _finish_metrics(self, exit_code: int) -> None:
+        """Finish metrics collection with status based on exit code.
+
+        Ensures the Prometheus gauge is reset to 0 on all exit paths.
+
+        Args:
+            exit_code: Job exit code (0=success, 1=partial, 2=failure)
+        """
+        if self.metrics_collector:
+            status_map = {0: "success", 1: "partial", 2: "failure"}
+            self.metrics_collector.finish(status_map.get(exit_code, "failure"))
+
     def _validate_job(self) -> int:
         """Validate job configuration.
 
@@ -1218,11 +1230,15 @@ class JobExecutor:
             # Validate job
             exit_code = self._validate_job()
             if exit_code != 0:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Load asset
             exit_code = self._load_asset()
             if exit_code != 0:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Initialize state manager
@@ -1231,6 +1247,8 @@ class JobExecutor:
             # Initialize extractor
             exit_code = self._initialize_extractor()
             if exit_code != 0:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Initialize WAL manager (after extractor is initialized for metadata)
@@ -1239,11 +1257,15 @@ class JobExecutor:
             # Initialize validator
             exit_code = self._initialize_validator()
             if exit_code != 0:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Initialize writer
             exit_code = self._initialize_writer()
             if exit_code != 0:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Initialize committer
@@ -1254,15 +1276,15 @@ class JobExecutor:
             # Only return early for actual failures (exit_code == 2)
             # Partial success (exit_code == 1) should still push to catalog
             if exit_code == 2:
+                # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
                 return exit_code
 
             # Push to catalog (for both success and partial success)
             self._push_to_catalog()
 
             # Finalize metrics
-            if self.metrics_collector:
-                status_map = {0: "success", 1: "partial", 2: "failure"}
-                self.metrics_collector.finish(status_map.get(exit_code, "unknown"))
+            self._finish_metrics(exit_code)
 
             return exit_code
 
