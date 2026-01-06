@@ -125,7 +125,7 @@ def _setup_multiprocess_mode(multiproc_dir: Optional[str]) -> bool:
 
 def _initialize_prometheus_metrics(multiproc_dir: Optional[str] = None) -> None:
     """Initialize Prometheus metrics collectors."""
-    global _prometheus_initialized, _prom_metrics
+    global _prometheus_initialized
 
     if _prometheus_initialized or not PROMETHEUS_AVAILABLE:
         return

@@ -5,7 +5,13 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
-from .config import AssetDefinition, JobConfig, SourceConfig, TargetConfig
+from .config import (
+    AssetDefinition,
+    JobConfig,
+    MetricsConfig,
+    SourceConfig,
+    TargetConfig,
+)
 from .connectors.factory import ExtractorFactory
 from .logging import get_logger, update_logging_settings
 from .metrics import MetricsCollector
@@ -54,7 +60,7 @@ class JobExecutor:
         )
 
     def _initialize_metrics(
-        self, runner_metrics: Optional["MetricsConfig"] = None
+        self, runner_metrics: Optional[MetricsConfig] = None
     ) -> None:
         """Initialize metrics collector with resolved config.
 
