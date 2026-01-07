@@ -11,7 +11,9 @@ class RunInfo(BaseModel):
     job_name: str
     triggered_by: Optional[str] = None
     environment: Optional[str] = None
-    # Replay metadata
+    
+    # Replay metadata - Placeholder for v1.2 replay mode.
+    # Must remain null until replay execution is implemented.
     replay_reason: Optional[str] = None
 
 class IngestionInfo(BaseModel):
@@ -31,7 +33,9 @@ class VolumeInfo(BaseModel):
 class TimeInfo(BaseModel):
     event_time_field: Optional[str] = None
     watermark: Optional[Dict[str, Any]] = None
-    # Replay metadata
+    
+    # Replay metadata - Placeholder for v1.2 replay mode.
+    # Must remain null until replay execution is implemented.
     replay_range_start: Optional[datetime] = None
     replay_range_end: Optional[datetime] = None
 
@@ -68,9 +72,12 @@ class RunAssetInfo(BaseModel):
 
 class RunSummary(BaseModel):
     """
-    Run Summary Artifact.
+    Run Summary Artifact (Ingestion Facts Envelope).
 
-    Contains ingestion facts only. Interpretation is out of scope.
+    Contains ONLY observed or mechanically derived ingestion facts.
+    Interpretation (SLAs, quality, expectations) is explicitly out of scope.
+    
+    This artifact is a stable external-facing contract.
     Written once per run. Immutable.
     """
     run: RunInfo

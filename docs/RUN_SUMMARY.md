@@ -9,6 +9,7 @@ Dativo-Ingest generates a structured JSON summary after each job execution. Thes
 *   **Observed Facts Only**: Contains ingestion facts only. Interpretation, quality judgements, and semantic meaning are out of scope.
 *   **Immutable**: Written once per run. Never mutated. Corrections happen via new runs.
 *   **Mechanical Domains**: Fields are grouped by mechanical responsibility.
+*   **Forward Compatible**: Includes placeholders for future features like replay (v1.2).
 
 ## Location
 
@@ -34,7 +35,8 @@ The summary is a JSON file structured by domain:
     "tenant_id": "acme",
     "job_name": "customers",
     "environment": "prod",
-    "triggered_by": "orchestrated"
+    "triggered_by": "orchestrated",
+    "replay_reason": null
   },
   "ingestion": {
     "status": "success",
