@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Union
 from pydantic import BaseModel, Field
 
 class RunAssetInfo(BaseModel):
@@ -34,6 +34,16 @@ class RunErrorInfo(BaseModel):
     error_message: Optional[str] = None
     error_type: Optional[str] = None
 
+class RunContext(BaseModel):
+    run_type: str = "batch" # incremental, full, backfill, replay
+    environment: Optional[str] = None
+    triggered_by: Optional[str] = None
+
+class RunResourceUsage(BaseModel):
+    cpu_seconds: Optional[float] = None
+    memory_mb: Optional[float] = None
+    cost_estimate: Optional[Dict[str, float]] = None
+
 class RunSummary(BaseModel):
     tenant_id: str
     job_name: str
@@ -49,5 +59,9 @@ class RunSummary(BaseModel):
     metrics: RunMetrics = Field(default_factory=RunMetrics)
     commit: Optional[RunCommitInfo] = None
     error: Optional[RunErrorInfo] = None
+    
+    context: Optional[RunContext] = None
+    watermark: Optional[Dict[str, Any]] = None
+    resource_usage: Optional[RunResourceUsage] = None
     
     metadata: Dict[str, Any] = Field(default_factory=dict)

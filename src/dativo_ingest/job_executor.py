@@ -26,6 +26,8 @@ from .run_summary import (
     RunMetrics,
     RunCommitInfo,
     RunErrorInfo,
+    RunContext,
+    RunResourceUsage,
 )
 from .schema_validator import SchemaValidator
 from .utils import expand_env_variable
@@ -1242,6 +1244,28 @@ class JobExecutor:
             else:
                 self.run_summary.status = "unknown"
 
+            # Capture watermark if state manager is available
+            if self.state_manager and self.source_config.incremental:
+                state_path_str = self.source_config.incremental.get("state_path", "")
+                if state_path_str:
+                    try:
+                        # Use the static method directly since self.state_manager is an instance of IncrementalStateManager
+                        # but the methods are static on the class
+                        state = IncrementalStateManager.read_state(Path(state_path_str))
+                        self.run_summary.watermark = state
+                    except Exception as e:
+                         self.logger.warning(
+                            f"Failed to read state for summary: {e}",
+                            extra={"event_type": "run_summary_state_read_error"}
+                        )
+            
+            # Capture resource usage (placeholders for now)
+            self.run_summary.resource_usage = RunResourceUsage(
+                cpu_seconds=None, # Requires OS-level metrics
+                memory_mb=None,   # Requires OS-level metrics
+                cost_estimate=None # Requires cost model
+            )
+
             # Determine path
             # state/<tenant>/<job>/runs/run-<timestamp>.json
             # Use local state dir if configured, otherwise default to .local/state
@@ -1406,6 +1430,11 @@ class JobExecutor:
                 connector=RunConnectorInfo(
                     source_type=self.source_config.type if self.source_config else "unknown",
                     target_type=self.target_config.type if self.target_config else "unknown"
+                ),
+                context=RunContext(
+                    run_type="incremental" if self.source_config and self.source_config.incremental else "full",
+                    environment=self.job_config.environment or os.getenv("DATIVO_ENV", "dev"),
+                    triggered_by=self.mode
                 )
             )
 

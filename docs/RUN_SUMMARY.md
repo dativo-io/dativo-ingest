@@ -26,6 +26,9 @@ The summary is a JSON file containing the following sections:
 - **Metrics**: Record counts, file counts, byte counts.
 - **Commit Info**: Iceberg commit details (if applicable).
 - **Error Info**: Error details if the run failed.
+- **Context**: Run type, environment, trigger source.
+- **Watermark**: Incremental state (if applicable).
+- **Resource Usage**: CPU/Memory usage and cost estimates (if available).
 
 ### Example
 
@@ -48,6 +51,11 @@ The summary is a JSON file containing the following sections:
     "source_type": "mysql",
     "target_type": "iceberg"
   },
+  "context": {
+    "run_type": "incremental",
+    "environment": "prod",
+    "triggered_by": "orchestrated"
+  },
   "metrics": {
     "records_extracted": 50000,
     "records_written": 49950,
@@ -55,6 +63,17 @@ The summary is a JSON file containing the following sections:
     "files_written": 5,
     "bytes_written": 10485760,
     "retries": 0
+  },
+  "watermark": {
+    "customers.updated_at": {
+        "last_value": "2024-01-01T12:00:00Z",
+        "updated_at": "2024-01-01T12:05:00Z"
+    }
+  },
+  "resource_usage": {
+    "cpu_seconds": null,
+    "memory_mb": null,
+    "cost_estimate": null
   },
   "commit": {
     "commit_id": "834758934758934",
