@@ -21,13 +21,16 @@ from .metrics import MetricsCollector
 from .plugins import PluginLoader, extract_sandbox_config
 from .run_summary import (
     RunSummary,
-    RunAssetInfo,
-    RunConnectorInfo,
-    RunMetrics,
-    RunCommitInfo,
+    RunInfo,
+    IngestionInfo,
+    VolumeInfo,
+    TimeInfo,
+    SchemaInfo,
+    StorageInfo,
+    ResourceInfo,
+    CostInfo,
     RunErrorInfo,
-    RunContext,
-    RunResourceUsage,
+    RunAssetInfo,
 )
 from .schema_validator import SchemaValidator
 from .utils import expand_env_variable
@@ -169,7 +172,7 @@ class JobExecutor:
                 },
             )
             if self.run_summary:
-                self.run_summary.error = RunErrorInfo(
+                self.run_summary.ingestion.error = RunErrorInfo(
                     has_errors=True,
                     error_message="Schema validation failed",
                     error_type="JobValidationError"
@@ -196,7 +199,7 @@ class JobExecutor:
                 },
             )
             if self.run_summary:
-                self.run_summary.error = RunErrorInfo(
+                self.run_summary.ingestion.error = RunErrorInfo(
                     has_errors=True,
                     error_message="Connector validation failed",
                     error_type="JobValidationError"
@@ -263,7 +266,7 @@ class JobExecutor:
                 },
             )
             if self.run_summary:
-                self.run_summary.error = RunErrorInfo(
+                self.run_summary.ingestion.error = RunErrorInfo(
                     has_errors=True,
                     error_message=str(e),
                     error_type="AssetLoadError"
@@ -367,8 +370,6 @@ class JobExecutor:
                 mode=self.mode,
                 asset_definition=self.asset_definition,  # Pass asset_definition for mimesis connector
             )
-            if self.run_summary and self.extractor:
-                 self.run_summary.connector.extractor_class = self.extractor.__class__.__name__
         except ValueError as e:
             error_msg = f"Failed to initialize extractor: {e}"
             print(f"ERROR: {error_msg}", file=sys.stderr)
@@ -393,7 +394,7 @@ class JobExecutor:
                 exc_info=True,
             )
             if self.run_summary:
-                self.run_summary.error = RunErrorInfo(
+                self.run_summary.ingestion.error = RunErrorInfo(
                     has_errors=True,
                     error_message=str(e),
                     error_type="ExtractorInitError"
@@ -427,7 +428,7 @@ class JobExecutor:
                 },
             )
             if self.run_summary:
-                self.run_summary.error = RunErrorInfo(
+                self.run_summary.ingestion.error = RunErrorInfo(
                     has_errors=True,
                     error_message=str(e),
                     error_type="ValidatorInitError"
@@ -510,9 +511,6 @@ class JobExecutor:
                     self.asset_definition, self.target_config, output_base
                 )
 
-                if self.run_summary and self.writer:
-                     self.run_summary.connector.writer_class = self.writer.__class__.__name__
-
                 self.logger.info(
                     "Custom writer initialized",
                     extra={
@@ -554,9 +552,6 @@ class JobExecutor:
                         validation_mode=validation_mode,
                     )
 
-                    if self.run_summary and self.writer:
-                         self.run_summary.connector.writer_class = self.writer.__class__.__name__
-
                     self.logger.info(
                         "Spark writer initialized",
                         extra={
@@ -577,9 +572,6 @@ class JobExecutor:
                         validation_mode=validation_mode,
                     )
 
-                    if self.run_summary and self.writer:
-                         self.run_summary.connector.writer_class = self.writer.__class__.__name__
-
                     self.logger.info(
                         "Parquet writer initialized",
                         extra={
@@ -598,7 +590,7 @@ class JobExecutor:
                 exc_info=True,
             )
             if self.run_summary:
-                self.run_summary.error = RunErrorInfo(
+                self.run_summary.ingestion.error = RunErrorInfo(
                     has_errors=True,
                     error_message=str(e),
                     error_type="WriterInitError"
@@ -906,6 +898,13 @@ class JobExecutor:
                 },
                 exc_info=True,
             )
+            
+            if self.run_summary:
+                self.run_summary.ingestion.error = RunErrorInfo(
+                    has_errors=True,
+                    error_message=str(e),
+                    error_type=type(e).__name__
+                )
 
             # Record failure metrics
             if self.metrics_collector:
@@ -1037,15 +1036,15 @@ class JobExecutor:
             Exit code (0=success, 1=partial, 2=failure)
         """
         if self.run_summary:
-            self.run_summary.metrics.records_extracted = total_records
-            self.run_summary.metrics.records_written = total_valid_records
-            self.run_summary.metrics.records_invalid = total_records - total_valid_records
-            self.run_summary.metrics.files_written = total_files_written
+            self.run_summary.volume.records_extracted = total_records
+            self.run_summary.volume.records_written = total_valid_records
+            self.run_summary.volume.records_invalid = total_records - total_valid_records
+            self.run_summary.volume.files_written = total_files_written
             
             if has_errors:
-                self.run_summary.error = RunErrorInfo(has_errors=True)
+                self.run_summary.ingestion.error = RunErrorInfo(has_errors=True)
                 if self.validator:
-                    self.run_summary.error.error_summary = self.validator.get_error_summary()
+                    self.run_summary.ingestion.error.error_summary = self.validator.get_error_summary()
 
         if all_file_metadata:
             # Check if writer has custom commit_files method
@@ -1065,10 +1064,8 @@ class JobExecutor:
                         },
                     )
                     if self.run_summary:
-                        self.run_summary.commit = RunCommitInfo(
-                            files_added=commit_result.get("files_added", len(all_file_metadata)),
-                            partition_stats=commit_result.get("partition_stats"),
-                        )
+                        self.run_summary.storage.files_added = commit_result.get("files_added", len(all_file_metadata))
+                        self.run_summary.storage.partition_stats = commit_result.get("partition_stats")
                 except Exception as e:
                     self.logger.error(
                         f"Failed to commit files using custom writer: {e}",
@@ -1077,7 +1074,7 @@ class JobExecutor:
                         },
                     )
                     if self.run_summary:
-                        self.run_summary.error = RunErrorInfo(
+                        self.run_summary.ingestion.error = RunErrorInfo(
                             has_errors=True,
                             error_message=str(e),
                             error_type="CommitError"
@@ -1097,13 +1094,10 @@ class JobExecutor:
                         },
                     )
                     if self.run_summary:
-                        self.run_summary.commit = RunCommitInfo(
-                            commit_id=commit_result.get("commit_id"),
-                            files_added=commit_result.get("files_added"),
-                            table_name=commit_result.get("table_name"),
-                            branch=commit_result.get("branch"),
-                            partition_stats=commit_result.get("summary"),
-                        )
+                        self.run_summary.storage.commit_id = commit_result.get("commit_id")
+                        self.run_summary.storage.files_added = commit_result.get("files_added")
+                        self.run_summary.storage.branch = commit_result.get("branch")
+                        self.run_summary.storage.partition_stats = commit_result.get("summary")
                 except Exception as e:
                     self.logger.warning(
                         f"Failed to commit files to Iceberg catalog: {e}. "
@@ -1114,7 +1108,7 @@ class JobExecutor:
                         },
                     )
                     if self.run_summary:
-                         self.run_summary.error = RunErrorInfo(
+                         self.run_summary.ingestion.error = RunErrorInfo(
                             has_errors=True,
                             error_message=f"Iceberg commit failed: {str(e)}",
                             error_type="IcebergCommitError"
@@ -1144,9 +1138,7 @@ class JobExecutor:
                         },
                     )
                     if self.run_summary:
-                        self.run_summary.commit = RunCommitInfo(
-                            files_added=upload_result.get("files_added", len(all_file_metadata)),
-                        )
+                         self.run_summary.storage.files_added = upload_result.get("files_added", len(all_file_metadata))
                 except Exception as e:
                     self.logger.error(
                         f"Failed to upload files to S3: {e}",
@@ -1155,7 +1147,7 @@ class JobExecutor:
                         },
                     )
                     if self.run_summary:
-                        self.run_summary.error = RunErrorInfo(
+                        self.run_summary.ingestion.error = RunErrorInfo(
                             has_errors=True,
                             error_message=str(e),
                             error_type="UploadError"
@@ -1189,7 +1181,7 @@ class JobExecutor:
         )
         
         if self.run_summary:
-            self.run_summary.metrics.bytes_written = total_bytes
+            self.run_summary.volume.bytes_written = total_bytes
 
         # Record writing metrics using new API
         if self.metrics_collector:
@@ -1228,21 +1220,21 @@ class JobExecutor:
 
         try:
             # Finalize summary
-            self.run_summary.end_time = datetime.now(timezone.utc)
-            if self.run_summary.start_time:
-                duration = (self.run_summary.end_time - self.run_summary.start_time).total_seconds()
-                self.run_summary.duration_seconds = duration
+            self.run_summary.run.end_time = datetime.now(timezone.utc)
+            if self.run_summary.run.start_time:
+                duration = (self.run_summary.run.end_time - self.run_summary.run.start_time).total_seconds()
+                self.run_summary.ingestion.duration_seconds = duration
 
-            self.run_summary.exit_code = exit_code
+            self.run_summary.ingestion.exit_code = exit_code
             
             if exit_code == 0:
-                self.run_summary.status = "success"
+                self.run_summary.ingestion.status = "success"
             elif exit_code == 1:
-                self.run_summary.status = "partial"
+                self.run_summary.ingestion.status = "partial"
             elif exit_code == 2:
-                self.run_summary.status = "failure"
+                self.run_summary.ingestion.status = "failure"
             else:
-                self.run_summary.status = "unknown"
+                self.run_summary.ingestion.status = "unknown"
 
             # Capture watermark if state manager is available
             if self.state_manager and self.source_config.incremental:
@@ -1252,7 +1244,7 @@ class JobExecutor:
                         # Use the static method directly since self.state_manager is an instance of IncrementalStateManager
                         # but the methods are static on the class
                         state = IncrementalStateManager.read_state(Path(state_path_str))
-                        self.run_summary.watermark = state
+                        self.run_summary.time.watermark = state
                     except Exception as e:
                          self.logger.warning(
                             f"Failed to read state for summary: {e}",
@@ -1260,10 +1252,10 @@ class JobExecutor:
                         )
             
             # Capture resource usage (placeholders for now)
-            self.run_summary.resource_usage = RunResourceUsage(
+            self.run_summary.resources = ResourceInfo(
                 cpu_seconds=None, # Requires OS-level metrics
                 memory_mb=None,   # Requires OS-level metrics
-                cost_estimate=None # Requires cost model
+                api_calls=None # Requires API instrumentation
             )
 
             # Determine path
@@ -1274,7 +1266,7 @@ class JobExecutor:
                 state_dir = os.path.abspath(state_dir)
             
             job_name = self.job_config.asset or "unknown-job"
-            run_timestamp = self.run_summary.start_time.strftime("%Y%m%dT%H%M%SZ")
+            run_timestamp = self.run_summary.run.start_time.strftime("%Y%m%dT%H%M%SZ")
             
             # Sanitize names for path
             tenant_safe = self.tenant_id.replace("/", "_")
@@ -1287,7 +1279,7 @@ class JobExecutor:
             
             # Write to file
             with open(summary_file, "w") as f:
-                f.write(self.run_summary.model_dump_json(indent=2))
+                f.write(self.run_summary.model_dump_json(indent=2, by_alias=True))
                 
             self.logger.info(
                 f"Run summary written to {summary_file}",
@@ -1421,20 +1413,33 @@ class JobExecutor:
             self._setup_logging()
 
             # Initialize run summary
+            is_incremental = bool(self.source_config and self.source_config.incremental)
+            run_type = "incremental" if is_incremental else "full_refresh"
+            
             self.run_summary = RunSummary(
-                tenant_id=self.tenant_id,
-                job_name=self.job_config.asset or "unknown",
-                run_id=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
-                start_time=datetime.now(timezone.utc),
-                asset=RunAssetInfo(name=self.job_config.asset or "unknown", version="0.0.0"),
-                connector=RunConnectorInfo(
-                    source_type=self.source_config.type if self.source_config else "unknown",
-                    target_type=self.target_config.type if self.target_config else "unknown"
-                ),
-                context=RunContext(
-                    run_type="incremental" if self.source_config and self.source_config.incremental else "full",
+                run=RunInfo(
+                    id=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+                    type=run_type,
+                    start_time=datetime.now(timezone.utc),
+                    tenant_id=self.tenant_id,
+                    job_name=self.job_config.asset or "unknown",
                     environment=self.job_config.environment or os.getenv("DATIVO_ENV", "dev"),
                     triggered_by=self.mode
+                ),
+                ingestion=IngestionInfo(
+                    status="running"
+                ),
+                schema=SchemaInfo(
+                    version="0.0.0",
+                    enforcement_mode=self.job_config.schema_validation_mode or "strict"
+                ),
+                storage=StorageInfo(
+                    target_type=self.target_config.type if self.target_config else "unknown",
+                    format=self.target_config.file_format if self.target_config else None
+                ),
+                asset=RunAssetInfo(name=self.job_config.asset or "unknown", version="0.0.0"),
+                time=TimeInfo(
+                    event_time_field=self.source_config.incremental.get("cursor_field") if is_incremental and self.source_config.incremental else None
                 )
             )
 
@@ -1463,6 +1468,7 @@ class JobExecutor:
                      name=self.asset_definition.name,
                      version=self.asset_definition.version
                  )
+                 self.run_summary.schema_info.version = self.asset_definition.version
 
             # Initialize state manager
             self._initialize_state_manager()
@@ -1527,7 +1533,7 @@ class JobExecutor:
                 )
             
             if self.run_summary:
-                self.run_summary.error = RunErrorInfo(
+                self.run_summary.ingestion.error = RunErrorInfo(
                     has_errors=True,
                     error_message=str(e),
                     error_type=type(e).__name__

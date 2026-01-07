@@ -2,31 +2,58 @@ from datetime import datetime
 from typing import Any, Dict, Optional, List, Union
 from pydantic import BaseModel, Field
 
-class RunAssetInfo(BaseModel):
-    id: Optional[str] = None
-    name: str
-    version: str
+class RunInfo(BaseModel):
+    id: str
+    type: str = Field(..., description="Run type: incremental | replay | full_refresh")
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    tenant_id: str
+    job_name: str
+    triggered_by: Optional[str] = None
+    environment: Optional[str] = None
+    # Replay metadata
+    replay_reason: Optional[str] = None
 
-class RunConnectorInfo(BaseModel):
-    source_type: str
-    target_type: str
-    extractor_class: Optional[str] = None
-    writer_class: Optional[str] = None
+class IngestionInfo(BaseModel):
+    status: str
+    duration_seconds: Optional[float] = None
+    exit_code: Optional[int] = None
+    error: Optional['RunErrorInfo'] = None
 
-class RunMetrics(BaseModel):
+class VolumeInfo(BaseModel):
     records_extracted: int = 0
-    records_written: int = 0  # valid records
+    records_written: int = 0
     records_invalid: int = 0
     files_written: int = 0
     bytes_written: int = 0
     retries: int = 0
 
-class RunCommitInfo(BaseModel):
+class TimeInfo(BaseModel):
+    event_time_field: Optional[str] = None
+    watermark: Optional[Dict[str, Any]] = None
+    # Replay metadata
+    replay_range_start: Optional[datetime] = None
+    replay_range_end: Optional[datetime] = None
+
+class SchemaInfo(BaseModel):
+    version: str
+    enforcement_mode: str
+
+class StorageInfo(BaseModel):
+    format: Optional[str] = None
+    target_type: str
     commit_id: Optional[str] = None
     files_added: Optional[int] = None
-    table_name: Optional[str] = None
     branch: Optional[str] = None
     partition_stats: Optional[Dict[str, Any]] = None
+
+class ResourceInfo(BaseModel):
+    cpu_seconds: Optional[float] = None
+    memory_mb: Optional[float] = None
+    api_calls: Optional[int] = None
+
+class CostInfo(BaseModel):
+    estimated_usd: Optional[float] = None
 
 class RunErrorInfo(BaseModel):
     has_errors: bool = False
@@ -34,34 +61,29 @@ class RunErrorInfo(BaseModel):
     error_message: Optional[str] = None
     error_type: Optional[str] = None
 
-class RunContext(BaseModel):
-    run_type: str = "batch" # incremental, full, backfill, replay
-    environment: Optional[str] = None
-    triggered_by: Optional[str] = None
-
-class RunResourceUsage(BaseModel):
-    cpu_seconds: Optional[float] = None
-    memory_mb: Optional[float] = None
-    cost_estimate: Optional[Dict[str, float]] = None
+class RunAssetInfo(BaseModel):
+    id: Optional[str] = None
+    name: str
+    version: str
 
 class RunSummary(BaseModel):
-    tenant_id: str
-    job_name: str
-    run_id: str
-    start_time: datetime
-    end_time: Optional[datetime] = None
-    duration_seconds: Optional[float] = None
-    status: str = "running"
-    exit_code: Optional[int] = None
+    """
+    Run Summary Artifact.
+
+    Contains ingestion facts only. Interpretation is out of scope.
+    Written once per run. Immutable.
+    """
+    run: RunInfo
+    ingestion: IngestionInfo
+    volume: VolumeInfo = Field(default_factory=VolumeInfo)
+    time: TimeInfo = Field(default_factory=TimeInfo)
+    schema_info: SchemaInfo = Field(..., alias="schema")
+    storage: StorageInfo
+    resources: ResourceInfo = Field(default_factory=ResourceInfo)
+    cost: CostInfo = Field(default_factory=CostInfo)
     
+    # Asset info is critical for identification
     asset: RunAssetInfo
-    connector: RunConnectorInfo
-    metrics: RunMetrics = Field(default_factory=RunMetrics)
-    commit: Optional[RunCommitInfo] = None
-    error: Optional[RunErrorInfo] = None
-    
-    context: Optional[RunContext] = None
-    watermark: Optional[Dict[str, Any]] = None
-    resource_usage: Optional[RunResourceUsage] = None
-    
+
+    # Extra metadata if needed
     metadata: Dict[str, Any] = Field(default_factory=dict)

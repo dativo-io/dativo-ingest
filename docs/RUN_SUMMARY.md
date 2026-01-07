@@ -1,6 +1,14 @@
-# Run Summary Artifacts
+# Run Summary Artifacts (Ingestion Facts Envelope)
 
 Dativo-Ingest generates a structured JSON summary after each job execution. These summaries enable FinOps, catalog sync, debugging, and auditability.
+
+**This artifact is a stable external-facing contract.**
+
+## Core Principles
+
+*   **Observed Facts Only**: Contains ingestion facts only. Interpretation, quality judgements, and semantic meaning are out of scope.
+*   **Immutable**: Written once per run. Never mutated. Corrections happen via new runs.
+*   **Mechanical Domains**: Fields are grouped by mechanical responsibility.
 
 ## Location
 
@@ -10,53 +18,31 @@ The summary artifacts are stored in the state directory:
 state/<tenant>/<job>/runs/run-<timestamp>.json
 ```
 
-Where:
-- `state` is the configured state directory (defaults to `.local/state`).
-- `<tenant>` is the tenant ID.
-- `<job>` is the job name (asset name).
-- `<timestamp>` is the run start time in `YYYYMMDD-HHMMSS` format (UTC).
-
 ## Format
 
-The summary is a JSON file containing the following sections:
-
-- **Run Metadata**: ID, timestamps, duration, status.
-- **Asset Info**: Asset ID, name, version.
-- **Connector Info**: Source and target types.
-- **Metrics**: Record counts, file counts, byte counts.
-- **Commit Info**: Iceberg commit details (if applicable).
-- **Error Info**: Error details if the run failed.
-- **Context**: Run type, environment, trigger source.
-- **Watermark**: Incremental state (if applicable).
-- **Resource Usage**: CPU/Memory usage and cost estimates (if available).
+The summary is a JSON file structured by domain:
 
 ### Example
 
 ```json
 {
-  "tenant_id": "acme",
-  "job_name": "customers",
-  "run_id": "20240101T120000Z",
-  "start_time": "2024-01-01T12:00:00Z",
-  "end_time": "2024-01-01T12:05:30Z",
-  "duration_seconds": 330.5,
-  "status": "success",
-  "exit_code": 0,
-  "asset": {
-    "id": "urn:dativo:asset:customers",
-    "name": "customers",
-    "version": "1.0.0"
-  },
-  "connector": {
-    "source_type": "mysql",
-    "target_type": "iceberg"
-  },
-  "context": {
-    "run_type": "incremental",
+  "run": {
+    "id": "20240101T120000Z",
+    "type": "incremental",
+    "start_time": "2024-01-01T12:00:00Z",
+    "end_time": "2024-01-01T12:05:30Z",
+    "tenant_id": "acme",
+    "job_name": "customers",
     "environment": "prod",
     "triggered_by": "orchestrated"
   },
-  "metrics": {
+  "ingestion": {
+    "status": "success",
+    "duration_seconds": 330.5,
+    "exit_code": 0,
+    "error": null
+  },
+  "volume": {
     "records_extracted": 50000,
     "records_written": 49950,
     "records_invalid": 50,
@@ -64,37 +50,67 @@ The summary is a JSON file containing the following sections:
     "bytes_written": 10485760,
     "retries": 0
   },
-  "watermark": {
-    "customers.updated_at": {
-        "last_value": "2024-01-01T12:00:00Z",
-        "updated_at": "2024-01-01T12:05:00Z"
-    }
+  "time": {
+    "event_time_field": "updated_at",
+    "watermark": {
+        "customers.updated_at": {
+            "last_value": "2024-01-01T12:00:00Z"
+        }
+    },
+    "replay_range_start": null,
+    "replay_range_end": null
   },
-  "resource_usage": {
-    "cpu_seconds": null,
-    "memory_mb": null,
-    "cost_estimate": null
+  "schema": {
+    "version": "1.0.0",
+    "enforcement_mode": "strict"
   },
-  "commit": {
+  "storage": {
+    "format": "parquet",
+    "target_type": "iceberg",
     "commit_id": "834758934758934",
     "files_added": 5,
-    "table_name": "acme.customers",
     "branch": "main",
     "partition_stats": {
         "summary": "..."
     }
   },
-  "error": null,
+  "resources": {
+    "cpu_seconds": null,
+    "memory_mb": null,
+    "api_calls": null
+  },
+  "cost": {
+    "estimated_usd": null
+  },
+  "asset": {
+    "id": "urn:dativo:asset:customers",
+    "name": "customers",
+    "version": "1.0.0"
+  },
   "metadata": {}
 }
 ```
 
+## Field Groups
+
+| Group | Description |
+| :--- | :--- |
+| **run** | Identity and timing of the execution (ID, type, start/end). |
+| **ingestion** | Operational status and outcome (success/failure, duration). |
+| **volume** | Quantifiable data volume metrics (records, bytes, files). |
+| **time** | Temporal context (watermarks, event time fields, replay ranges). |
+| **schema** | Schema version and enforcement applied. |
+| **storage** | Output storage details (format, commit IDs, location). |
+| **resources** | Computational resources consumed (CPU, memory). |
+| **cost** | Financial impact estimates. |
+| **asset** | Identification of the asset being ingested. |
+
 ## Error Handling
 
-If a run fails, the `status` field will be `failure` (or `partial`), and the `error` object will contain details:
+If a run fails, the `ingestion.status` will be `failure` (or `partial`), and `ingestion.error` will contain details:
 
 ```json
-{
+"ingestion": {
   "status": "failure",
   "error": {
     "has_errors": true,
@@ -103,10 +119,3 @@ If a run fails, the `status` field will be `failure` (or `partial`), and the `er
   }
 }
 ```
-
-## Usage
-
-These artifacts can be consumed by:
-1. **FinOps Dashboards**: To calculate cost per job/tenant based on `bytes_written` and duration.
-2. **Audit Logs**: To track data lineage and job success rates.
-3. **Debugging**: To quickly identify why a job failed without parsing raw logs.
