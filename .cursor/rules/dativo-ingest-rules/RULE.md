@@ -1,3 +1,8 @@
+---
+description: "Dativo-Ingest codebase rules for correct, minimal, and reviewable AI-assisted changes respecting config-driven, GitOps-first design"
+alwaysApply: true
+---
+
 # Dativo-Ingest Codebase Rules for Cloud Cursor (v2)
 
 ## 0. Purpose of These Rules
@@ -5,7 +10,7 @@
 These rules exist to ensure that AI-assisted changes:
 - are **correct**, **minimal**, and **reviewable**
 - satisfy **explicit acceptance criteria**
-- respect Dativo-Ingest’s **config-driven, GitOps-first** design
+- respect Dativo-Ingest's **config-driven, GitOps-first** design
 - do **not** evolve into frameworks, platforms, or reports
 
 Cursor must optimize for **shipping small, correct changes**, not architectural elegance.
@@ -50,7 +55,7 @@ Before writing code, always identify **explicit acceptance criteria**.
 1. Every acceptance criterion MUST be provable via:
    - a test, or
    - an executable/manual verification path
-2. Features are **not complete** if acceptance is only “conceptually” satisfied.
+2. Features are **not complete** if acceptance is only "conceptually" satisfied.
 3. Prefer tests that validate **observable behavior**:
    - CLI output
    - HTTP endpoints
@@ -78,7 +83,7 @@ Before writing code, always identify **explicit acceptance criteria**.
 - Do **not** future-proof unless explicitly requested
 
 Guiding question:
-> “What is the smallest change that satisfies acceptance criteria?”
+> "What is the smallest change that satisfies acceptance criteria?"
 
 If scope grows unexpectedly, **stop and reassess**.
 
@@ -180,15 +185,15 @@ Docs exist for **users**, not for reporting work done.
 ### Explicitly Forbidden
 ❌ Status reports  
 ❌ PR summaries  
-❌ “Final delivery” notes  
-❌ “MVP complete” markdown  
+❌ "Final delivery" notes  
+❌ "MVP complete" markdown  
 ❌ Agent progress logs  
 
 Allowed:
 - One concise feature doc in `docs/`
 - Updates to existing user docs
 
-If a document doesn’t help a user **do something**, it should not exist.
+If a document doesn't help a user **do something**, it should not exist.
 
 ---
 
