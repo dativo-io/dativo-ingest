@@ -1,6 +1,8 @@
 from datetime import datetime
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, List, Optional, Union
+
 from pydantic import BaseModel, Field
+
 
 class RunInfo(BaseModel):
     id: str
@@ -11,16 +13,18 @@ class RunInfo(BaseModel):
     job_name: str
     triggered_by: Optional[str] = None
     environment: Optional[str] = None
-    
+
     # Replay metadata - Placeholder for v1.2 replay mode.
     # Must remain null until replay execution is implemented.
     replay_reason: Optional[str] = None
+
 
 class IngestionInfo(BaseModel):
     status: str
     duration_seconds: Optional[float] = None
     exit_code: Optional[int] = None
-    error: Optional['RunErrorInfo'] = None
+    error: Optional["RunErrorInfo"] = None
+
 
 class VolumeInfo(BaseModel):
     records_extracted: int = 0
@@ -30,18 +34,21 @@ class VolumeInfo(BaseModel):
     bytes_written: int = 0
     retries: int = 0
 
+
 class TimeInfo(BaseModel):
     event_time_field: Optional[str] = None
     watermark: Optional[Dict[str, Any]] = None
-    
+
     # Replay metadata - Placeholder for v1.2 replay mode.
     # Must remain null until replay execution is implemented.
     replay_range_start: Optional[datetime] = None
     replay_range_end: Optional[datetime] = None
 
+
 class SchemaInfo(BaseModel):
     version: str
     enforcement_mode: str
+
 
 class StorageInfo(BaseModel):
     format: Optional[str] = None
@@ -51,13 +58,16 @@ class StorageInfo(BaseModel):
     branch: Optional[str] = None
     partition_stats: Optional[Dict[str, Any]] = None
 
+
 class ResourceInfo(BaseModel):
     cpu_seconds: Optional[float] = None
     memory_mb: Optional[float] = None
     api_calls: Optional[int] = None
 
+
 class CostInfo(BaseModel):
     estimated_usd: Optional[float] = None
+
 
 class RunErrorInfo(BaseModel):
     has_errors: bool = False
@@ -65,10 +75,12 @@ class RunErrorInfo(BaseModel):
     error_message: Optional[str] = None
     error_type: Optional[str] = None
 
+
 class RunAssetInfo(BaseModel):
     id: Optional[str] = None
     name: str
     version: str
+
 
 class RunSummary(BaseModel):
     """
@@ -76,10 +88,11 @@ class RunSummary(BaseModel):
 
     Contains ONLY observed or mechanically derived ingestion facts.
     Interpretation (SLAs, quality, expectations) is explicitly out of scope.
-    
+
     This artifact is a stable external-facing contract.
     Written once per run. Immutable.
     """
+
     run: RunInfo
     ingestion: IngestionInfo
     volume: VolumeInfo = Field(default_factory=VolumeInfo)
@@ -88,7 +101,7 @@ class RunSummary(BaseModel):
     storage: StorageInfo
     resources: ResourceInfo = Field(default_factory=ResourceInfo)
     cost: CostInfo = Field(default_factory=CostInfo)
-    
+
     # Asset info is critical for identification
     asset: RunAssetInfo
 
