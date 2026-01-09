@@ -188,10 +188,26 @@ Docs exist for **users**, not for reporting work done.
 ❌ "Final delivery" notes  
 ❌ "MVP complete" markdown  
 ❌ Agent progress logs  
+❌ Planning documents, checklists, or "TODO" files (unless explicitly requested)
 
-Allowed:
-- One concise feature doc in `docs/`
-- Updates to existing user docs
+### Action-First Principle (MANDATORY)
+**DO THE WORK, DON'T DOCUMENT THE PLAN**
+
+When given a task:
+1. **Implement the solution immediately** - don't create plans or checklists
+2. **Delete any temporary files** created during work (checklists, scratch files, etc.)
+3. **Only create planning documents if explicitly requested** by the user
+
+❌ Do NOT create files like:
+- `verification_checklist.md`
+- `implementation_plan.md`
+- `TODO_list.md`
+- Any file that describes what to do instead of doing it
+
+✅ Instead:
+- Implement fixes directly
+- Delete temporary files after completion
+- Only document if the user explicitly asks for a plan
 
 If a document doesn't help a user **do something**, it should not exist.
 

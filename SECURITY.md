@@ -82,19 +82,80 @@ Security updates are released as **patch versions** (e.g., 0.3.1 → 0.3.2) to m
 - **Critical vulnerabilities** may trigger immediate patch releases
 - All security fixes are documented in the [CHANGELOG.md](CHANGELOG.md) with a security tag
 
+## Secret Handling and Redaction
+
+### Secret Storage
+
+Job configurations support multiple secret management approaches:
+
+- **Environment Variables**: Reference via `${VAR_NAME}` syntax in YAML configs
+- **Secret Files**: Store in `/secrets/{tenant_id}/` directory (`.env` or `.json` format)
+- **Secret Managers**: Use pluggable backends (HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager)
+
+**Never hardcode secrets** in YAML configuration files. Always use environment variables or secret files.
+
+**Example:**
+```yaml
+# Job config (safe - uses environment variable)
+target:
+  connection:
+    s3:
+      access_key_id: "${AWS_ACCESS_KEY_ID}"
+      secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+```
+
+### Log Redaction
+
+Dativo-Ingest includes built-in secret redaction to prevent credentials from appearing in logs.
+
+**Enable in job configuration:**
+```yaml
+logging:
+  redaction: true  # Redacts passwords, API keys, tokens, etc.
+```
+
+The redaction system automatically detects and redacts:
+- Passwords, API keys, tokens, secret keys
+- Fields containing "credential", "secret", "key", "token", or "password"
+- Long base64-like strings (20+ characters)
+
+Redacted values appear as `[REDACTED]` in log output.
+
+See [docs/LOG_REDACTION.md](docs/LOG_REDACTION.md) for complete redaction details.
+
+## Self-Hosted Deployment Model
+
+Dativo-Ingest is designed for **self-hosted deployments** where:
+
+- **Data stays in customer infrastructure**: No data transits through third-party services
+- **No hosted control planes**: Everything runs in your infrastructure, on your terms
+- **Customer responsibility**: You manage deployment, security, and operations
+- **Vendor lock-in free**: Critical for enterprises that cannot accept vendor lock-in
+
+This model enables:
+- Compliance with data residency requirements
+- Enterprise security policies (air-gapped deployments)
+- Full control over data pipelines
+- No external service dependencies
+
+**Deployment responsibility:**
+- You provide and manage infrastructure (Docker, Kubernetes, etc.)
+- You configure networking, firewalls, and access controls
+- You manage secrets and credentials
+- You monitor and maintain the deployment
+
+See [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) for production security guidance.
+
 ### Security Best Practices
 
 When using Dativo-Ingest in production:
 
-1. **Keep dependencies updated**: Regularly update Python packages and Rust plugins
-2. **Use secret managers**: Never hardcode credentials; use Vault, AWS Secrets Manager, or GCP Secret Manager
-3. **Enable log redaction**: Enable secret redaction in logging configuration to prevent credentials from appearing in logs
-4. **Enable sandboxing**: Use Docker-based sandboxing for Python plugins in cloud mode
-5. **Review plugin code**: Audit custom plugins before deploying to production
-6. **Monitor logs**: Enable structured logging and monitor for suspicious activity
-7. **Limit network access**: Restrict plugin network access using seccomp profiles
-8. **Rotate credentials**: Regularly rotate API keys and database passwords
-9. **Use least privilege**: Grant plugins only the minimum permissions needed
+1. **Use secret managers**: Never hardcode credentials; use Vault, AWS Secrets Manager, or GCP Secret Manager
+2. **Enable log redaction**: Enable secret redaction in logging configuration (`logging.redaction: true`)
+3. **Review plugin code**: Audit custom plugins before deploying to production
+4. **Monitor logs**: Enable structured logging and monitor for suspicious activity
+5. **Rotate credentials**: Regularly rotate API keys and database passwords
+6. **Secure Dagster UI**: Deploy behind reverse proxy with authentication (see [Runner and Orchestration](docs/RUNNER_AND_ORCHESTRATION.md))
 
 ### Vulnerability Scanning
 
@@ -122,51 +183,15 @@ pip-audit --format json --output report.json
 
 ### Known Security Considerations
 
-- **Python Plugin Sandboxing**: Python plugins run in Docker containers in cloud mode with resource limits and network isolation
-- **Secret Management**: Secrets are loaded via pluggable backends; ensure your secret manager is properly configured
-- **Log Redaction**: The logging system includes automatic secret redaction to prevent credentials from appearing in logs. Enable this feature via the `logging.redaction` configuration option in job configs or `--log-redaction` CLI flag.
-- **State Files**: State files may contain sensitive metadata; ensure proper file permissions
-- **Network Access**: Plugins may make external network calls; review plugin code and use network restrictions where possible
+- **Secret Management**: Secrets are loaded via pluggable backends (Vault, AWS Secrets Manager, GCP Secret Manager, filesystem). Ensure your secret manager is properly configured.
+- **Log Redaction**: The logging system includes automatic secret redaction. Enable via `logging.redaction: true` in job configs. See [docs/LOG_REDACTION.md](docs/LOG_REDACTION.md).
+- **State Files**: State files (`/state/{tenant_id}/`) may contain sensitive metadata (incremental cursors). Ensure proper file permissions (`chmod 700`).
 - **Dagster UI Security**: The Dagster web UI (port 3000) does not include built-in authentication. **For production deployments, you MUST secure the Dagster UI** by:
   - Deploying behind a reverse proxy (Nginx, Apache) with authentication (OAuth, SAML, LDAP, or basic auth)
   - Placing behind a VPN or private network
   - Enabling HTTPS/TLS encryption
   - Restricting access via firewall rules or network policies
-  - See [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) for detailed guidance
-
-### Encryption at Rest
-
-**Current Status**: State files (`/state/`) and WAL (Write-Ahead Log) files (`/wal/`) are **not encrypted at rest by default**. These files may contain sensitive metadata such as:
-
-- Incremental state cursors (e.g., `last_updated_at` timestamps)
-- Checkpoint information (chunk numbers, offsets, record counts)
-- Job run metadata and status information
-
-**Production Recommendations**:
-
-1. **Use Encrypted Volumes**: Store state and WAL directories on encrypted volumes/filesystems:
-   - **AWS**: Use EBS volumes with encryption enabled or EFS with encryption at rest
-   - **GCP**: Use Persistent Disks with customer-managed encryption keys (CMEK)
-   - **Azure**: Use Azure Disk Encryption or Azure Files with encryption
-   - **On-Premises**: Use LUKS, BitLocker, or filesystem-level encryption (e.g., ZFS encryption)
-
-2. **File Permissions**: Ensure proper file permissions are set:
-   ```bash
-   chmod 700 /app/state /app/wal  # Restrict access to owner only
-   ```
-
-3. **Network Storage**: If using network storage (NFS, S3, etc.), ensure:
-   - Network encryption (TLS/SSL) is enabled
-   - Access controls are properly configured
-   - Storage provider encryption is enabled
-
-**Roadmap**: Native encryption support for state and WAL files is planned for a future release. This will include:
-- Transparent encryption/decryption of state and WAL files
-- Support for multiple encryption backends (AWS KMS, GCP KMS, HashiCorp Vault)
-- Key rotation capabilities
-- Performance-optimized encryption for high-throughput scenarios
-
-Until native encryption is available, production deployments should rely on encrypted volumes/filesystems as described above.
+  - See [docs/RUNNER_AND_ORCHESTRATION.md](docs/RUNNER_AND_ORCHESTRATION.md) for details
 
 ### Security Updates
 
