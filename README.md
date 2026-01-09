@@ -271,8 +271,8 @@ We welcome contributions! Dativo-Ingest is open source and we're actively lookin
 - Review [Roadmap](docs/roadmap.md) for planned features
 
 **Ways to Contribute:**
-- 🐛 Report bugs via [GitHub Issues](https://github.com/YOUR_ORG/dativo-ingest/issues)
-- 💡 Suggest features via [GitHub Discussions](https://github.com/YOUR_ORG/dativo-ingest/discussions)
+- 🐛 Report bugs via [GitHub Issues](https://github.com/dativo-io/dativo-ingest/issues)
+- 💡 Suggest features via [GitHub Discussions](https://github.com/dativo-io/dativo-ingest/discussions)
 - 📝 Improve documentation
 - 🔌 Add new connectors or plugins
 - 🧪 Write tests
