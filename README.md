@@ -19,7 +19,7 @@ Finally, data remains fully in the customer's cloud. No data transits through th
 - ✅ Docker-deployed (runs in your infrastructure)
 - ✅ Two execution modes: **oneshot** (single job, exits after completion) and **orchestrated** (Dagster, scheduled jobs) - see [docs/RUNNER_AND_ORCHESTRATION.md](docs/RUNNER_AND_ORCHESTRATION.md#execution-modes)
 - ✅ Multi-tenant by design (required `tenant_id` in all job configs; per-tenant state, secrets, and data paths)
-- ✅ Writes Parquet and commits to Iceberg via Nessie (see [docs/architecture.md](docs/architecture.md#iceberg-nessie-committer))
+- ✅ Writes Parquet and commits to Iceberg via Nessie (see [docs/architecture.md](docs/architecture.md#icebergnessie-committer))
 - ✅ Schema-enforced (asset definitions with strict/warn validation modes) - see [docs/SCHEMA_VALIDATION.md](docs/SCHEMA_VALIDATION.md)
 - ✅ Extensible (Python and Rust plugins for custom logic) - see [docs/CUSTOM_PLUGINS.md](docs/CUSTOM_PLUGINS.md)
 
@@ -160,7 +160,7 @@ See [docs/connectors.md](docs/connectors.md) for the complete connector referenc
 Choose Dativo when:
 - **You need multi-tenant architecture**: Required `tenant_id` in all job configs; per-tenant state files (`state/{tenant_id}/`), secrets (`secrets/{tenant_id}/`), and data paths
 - **You require GitOps/CI/CD integration**: All configurations are YAML files (job configs, asset definitions, runner configs) stored in version control
-- **You're building on Apache Iceberg**: Commits Parquet files to Iceberg tables via Nessie catalog (see [docs/architecture.md](docs/architecture.md#iceberg-nessie-committer))
+- **You're building on Apache Iceberg**: Commits Parquet files to Iceberg tables via Nessie catalog (see [docs/architecture.md](docs/architecture.md#icebergnessie-committer))
 - **You need schema enforcement**: Asset definitions validated with strict/warn modes (see [docs/SCHEMA_VALIDATION.md](docs/SCHEMA_VALIDATION.md))
 - **You want to use Airbyte connectors without the UI**: Dativo uses Airbyte connectors via `AirbyteExtractor` class (see [docs/architecture.md](docs/architecture.md#connector-plugin-wrapper))
 
