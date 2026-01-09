@@ -15,10 +15,12 @@ Welcome to the Dativo Ingestion Platform documentation. This index provides orga
 - **[Connector Reference](connectors.md)** - Available connectors and capabilities
 - **[Secret Management](SECRET_MANAGEMENT.md)** - Secret manager backends and configuration
 - **[Schema Validation](SCHEMA_VALIDATION.md)** - Asset schema validation guide
+- **[CLI Reference](CLI_REFERENCE.md)** - Complete CLI command reference
 
 ### Architecture & Design
+- **[Architecture Overview](architecture.md)** - Component descriptions and system architecture
 - **[Data Flow Architecture](../DATA_FLOW_ARCHITECTURE.md)** - How data moves through the system
-- **[Design: One Asset Per Job](DESIGN_ONE_ASSET_PER_JOB.md)** - Design rationale
+- **[Design: One Asset Per Job](design/one-asset-per-job.md)** - Design rationale and specs-as-code relationship
 - **[Ingestion Execution](INGESTION_EXECUTION.md)** - ETL pipeline execution flow
 - **[Runner and Orchestration](RUNNER_AND_ORCHESTRATION.md)** - Orchestration with Dagster
 
@@ -37,6 +39,10 @@ Welcome to the Dativo Ingestion Platform documentation. This index provides orga
 - **[Catalog Limitations](CATALOG_LIMITATIONS.md)** - Known limitations and workarounds
 
 ### Advanced Features
+- **[Comparison: Dativo vs. Alternatives](comparisons.md)** - Detailed feature comparisons and migration guidance
+- **[FAQ](FAQ.md)** - Frequently asked questions
+- **[Performance & Scaling](PERFORMANCE.md)** - Performance benchmarks and scaling strategies
+- **[RBAC & Access Control](RBAC.md)** - Access control workarounds and limitations
 - **[WAL Checkpointing](WAL_CHECKPOINTING.md)** - Write-Ahead Log checkpointing
 - **[Tag Propagation](TAG_PROPAGATION.md)** - Governance tag propagation
 - **[Tag Precedence](TAG_PRECEDENCE.md)** - Tag precedence rules

@@ -4,7 +4,65 @@
 
 **One Job = One Asset = One Source Object**
 
-This is a hard invariant enforced by the platform. Each job configuration file must reference exactly one asset definition, and each asset definition corresponds to exactly one source object (e.g., "customers", "charges", "contacts").
+This is a hard invariant enforced by the platform. Each job configuration file must reference exactly one asset definition via `asset_path`, and each asset definition (specs-as-code) corresponds to exactly one source object (e.g., "customers", "charges", "contacts").
+
+## Relationship to Specs-as-Code
+
+Jobs reference exactly one `asset_definition` spec path (specs-as-code):
+
+```yaml
+# Job config references one asset definition
+tenant_id: acme
+asset_path: /app/assets/stripe/v1.0/customers.yaml  # One asset definition per job
+source:
+  object: customers  # Must match asset definition's object field
+```
+
+The asset definition is a versioned artifact that defines:
+- Schema validation rules
+- Governance metadata (ownership, classification, compliance)
+- Target configuration (format, partitioning)
+- Data contracts and SLAs
+
+This 1:1 relationship ensures that each job configuration maps directly to a single data contract, enabling:
+- Version-controlled schema changes
+- Per-asset governance and ownership
+- Clear lineage (one job → one table → one asset definition)
+
+## Orchestration Pattern
+
+The orchestrator (Dagster) schedules multiple single-asset jobs via `runner.yaml`:
+
+```yaml
+runner:
+  orchestrator:
+    type: dagster
+    schedules:
+      - name: stripe_customers_hourly
+        config: /app/jobs/acme/stripe_customers.yaml
+        cron: "0 * * * *"
+      - name: stripe_charges_hourly
+        config: /app/jobs/acme/stripe_charges.yaml
+        cron: "0 * * * *"
+      - name: stripe_invoices_daily
+        config: /app/jobs/acme/stripe_invoices.yaml
+        cron: "15 2 * * *"
+    concurrency_per_tenant: 1  # Serial execution per tenant
+```
+
+Each schedule references a separate job file, each with its own asset definition. This approach:
+- Enables independent scheduling per asset
+- Allows different cron patterns for different assets
+- Maintains clear separation of concerns
+- Supports orchestration-level dependencies if needed
+
+See [Runner and Orchestration](../RUNNER_AND_ORCHESTRATION.md) for complete orchestration details.
+
+## Serial Execution and Nessie Commits
+
+Serial execution per tenant protects Nessie commits from conflicts. As documented in [Runner and Orchestration](../RUNNER_AND_ORCHESTRATION.md), tenant-level serialization (`concurrency_per_tenant: 1`) ensures only one job runs per tenant at a time, preventing concurrent Nessie commit conflicts and ensuring data consistency.
+
+Given this serial execution model, multi-asset jobs don't provide concurrency benefits but do introduce complexity in failure handling and retry semantics. The one-asset-per-job pattern aligns with this execution model.
 
 ## Rationale
 
@@ -177,7 +235,7 @@ source:
   object: invoices
 ```
 
-Then group them in `runner.yaml`:
+Then schedule them in `runner.yaml`:
 
 ```yaml
 runner:
@@ -215,6 +273,8 @@ def stripe_full_sync():
 | **Testing** | ✅ Per-asset unit tests | ❌ Cross-asset integration tests needed |
 | **Scalability** | ✅ Simple configs, codegen-friendly | ❌ Complex configs, harder to scale |
 | **Dependencies** | ✅ Orchestration layer handles it | ❌ Need dependency logic in engine |
+| **Specs-as-Code** | ✅ 1:1 mapping to asset definitions | ❌ Breaks specs-as-code contract model |
+| **Orchestration** | ✅ Natural fit for Dagster scheduling | ❌ Requires complex orchestration logic |
 
 ## Conclusion
 
@@ -222,9 +282,18 @@ The one-asset-per-job pattern is the right choice for dativo-ingest because it:
 
 1. **Simplifies operations**: Clear failure semantics, straightforward retries, per-asset scheduling
 2. **Enables governance**: Per-asset observability, clear ownership, FinOps accountability
-3. **Improves developer experience**: Easy to reason about, debug, and test
-4. **Scales well**: Simple configs, orchestration handles dependencies
-5. **Aligns with industry best practices**: Matches dbt, modern data contracts, governance patterns
+3. **Aligns with specs-as-code**: Each job references exactly one asset definition, maintaining the 1:1 relationship between jobs and data contracts
+4. **Integrates with orchestration**: Dagster schedules multiple single-asset jobs naturally via `runner.yaml`
+5. **Protects Nessie commits**: Serial execution per tenant prevents commit conflicts
+6. **Improves developer experience**: Easy to reason about, debug, and test
+7. **Scales well**: Simple configs, orchestration handles dependencies
+8. **Aligns with industry best practices**: Matches dbt, modern data contracts, governance patterns
 
 If grouping is needed, use the orchestration layer (Dagster) rather than changing the core job model.
+
+## Related Documentation
+
+- [Runner and Orchestration](../RUNNER_AND_ORCHESTRATION.md) - Orchestration with Dagster and serial execution per tenant
+- [Configuration Reference](../CONFIG_REFERENCE.md) - Job and asset configuration details
+- [Asset Definitions](../CONFIG_REFERENCE.md#asset-definitions) - Specs-as-code asset definition format
 

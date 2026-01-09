@@ -218,7 +218,7 @@ class JobExecutor:
             self.asset_definition = self.job_config._resolve_asset()
 
             # Validate that source.object matches asset definition's object field
-            # DESIGN DECISION: One job = one asset = one source object (see docs/DESIGN_ONE_ASSET_PER_JOB.md)
+            # DESIGN DECISION: One job = one asset = one source object (see docs/design/one-asset-per-job.md)
             # This invariant ensures:
             # - Clear failure semantics (one job = one failure)
             # - Per-asset governance and FinOps metadata
