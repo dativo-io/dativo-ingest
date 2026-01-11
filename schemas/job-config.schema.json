@@ -143,8 +143,8 @@
           "description": "Connection configuration (connector-specific)"
         },
         "catalog": {
-          "type": "object",
-          "description": "Iceberg catalog configuration"
+          "type": ["object", "string"],
+          "description": "Iceberg catalog configuration or catalog name"
         },
         "markdown_kv_storage": {
           "type": "object",

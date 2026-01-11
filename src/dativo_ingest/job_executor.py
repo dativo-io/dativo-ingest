@@ -41,15 +41,22 @@ from .wal_manager import WALManager
 class JobExecutor:
     """Executes a single job configuration through the complete ETL pipeline."""
 
-    def __init__(self, job_config: JobConfig, mode: str = "self_hosted"):
+    def __init__(
+        self,
+        job_config: JobConfig,
+        mode: str = "self_hosted",
+        dry_run: bool = False,
+    ):
         """Initialize job executor.
 
         Args:
             job_config: Job configuration
             mode: Execution mode (default: self_hosted)
+            dry_run: Whether to perform a dry run (default: False)
         """
         self.job_config = job_config
         self.mode = mode
+        self.dry_run = dry_run
         self.tenant_id = job_config.tenant_id
         self.logger = None
         self.source_config: Optional[SourceConfig] = None
@@ -653,10 +660,11 @@ class JobExecutor:
         all_file_metadata = []
         has_errors = False
         validation_mode = self.job_config.schema_validation_mode or "strict"
+        dry_run_limit = 50 if self.dry_run else None
 
         try:
             # Ensure table exists (only if catalog is configured)
-            if self.committer:
+            if self.committer and not self.dry_run:
                 self.committer.ensure_table_exists()
                 self.logger.info(
                     "Iceberg table ensured",
@@ -669,9 +677,10 @@ class JobExecutor:
             # Extract, validate, and write in batches
             batch_count = 0
             self.logger.info(
-                "Starting data extraction",
+                "Starting data extraction" + (" (DRY RUN)" if self.dry_run else ""),
                 extra={
                     "event_type": "extraction_started",
+                    "dry_run": self.dry_run,
                 },
             )
 
@@ -690,11 +699,20 @@ class JobExecutor:
                     "stream_name": stream_name,
                 }
 
+            # For dry run, we might need to limit extraction.
+            # Some extractors might not support limit pushdown, so we break loop manually.
             for batch_records in self.extractor.extract(
                 state_manager=self.state_manager,
                 checkpoint_context=checkpoint_context,
             ):
                 batch_count += 1
+                
+                if self.dry_run and dry_run_limit:
+                     # Truncate batch if it exceeds remaining limit
+                     remaining = dry_run_limit - total_records
+                     if len(batch_records) > remaining:
+                         batch_records = batch_records[:remaining]
+                
                 total_records += len(batch_records)
 
                 # Transform to Markdown-KV format if configured
@@ -754,72 +772,113 @@ class JobExecutor:
                         )
                         return 2
 
-                # Write valid records to Parquet
-                if valid_records:
-                    file_metadata = self.writer.write_batch(valid_records, file_counter)
-                    all_file_metadata.extend(file_metadata)
-                    total_files_written += len(file_metadata)
-                    file_counter += len(file_metadata)
+                # Write valid records to Parquet (SKIP for dry run)
+                if not self.dry_run:
+                    if valid_records:
+                        file_metadata = self.writer.write_batch(valid_records, file_counter)
+                        all_file_metadata.extend(file_metadata)
+                        total_files_written += len(file_metadata)
+                        file_counter += len(file_metadata)
 
+                        self.logger.info(
+                            f"Wrote batch: {len(valid_records)} records, {len(file_metadata)} files",
+                            extra={
+                                "records": len(valid_records),
+                                "files": len(file_metadata),
+                                "event_type": "batch_written",
+                            },
+                        )
+
+                        # Update WAL checkpoint after successful batch write
+                        # Only update if extractor hasn't already updated with a specific checkpoint type
+                        # Extractors update checkpoints with types like: chunk_based, offset_based,
+                        # spreadsheet_based, state_based. We only use batch_based as a fallback for
+                        # extractors that don't implement checkpoint updates.
+                        if self.wal_manager and checkpoint_context:
+                            stream_name = checkpoint_context["stream_name"]
+                            current_checkpoint = self.wal_manager.get_checkpoint(
+                                stream_name
+                            )
+
+                            # Only update if checkpoint doesn't exist or is already batch_based
+                            # (meaning extractor hasn't updated it with a specific type)
+                            should_update = (
+                                current_checkpoint is None
+                                or current_checkpoint.get("type") == "batch_based"
+                            )
+
+                            if should_update:
+                                checkpoint_data = {
+                                    "type": "batch_based",
+                                    "last_batch": batch_count,
+                                    "records_processed": total_valid_records,
+                                }
+                                self.wal_manager.update_checkpoint(
+                                    stream_name, checkpoint_data
+                                )
+                            else:
+                                # Extractor has already updated checkpoint with specific type
+                                # Log for debugging but don't overwrite
+                                self.logger.debug(
+                                    f"Skipping batch_based checkpoint update - extractor already updated with type: {current_checkpoint.get('type')}",
+                                    extra={
+                                        "stream_name": stream_name,
+                                        "extractor_checkpoint_type": current_checkpoint.get(
+                                            "type"
+                                        ),
+                                        "event_type": "checkpoint_skipped_extractor_updated",
+                                    },
+                                )
+                    else:
+                        self.logger.warning(
+                            f"Batch {batch_count} had no valid records to write",
+                            extra={
+                                "batch_number": batch_count,
+                                "total_records_in_batch": len(batch_records),
+                                "valid_records": len(valid_records),
+                                "event_type": "batch_no_valid_records",
+                            },
+                        )
+                elif self.dry_run:
+                    # Log dry run progress
                     self.logger.info(
-                        f"Wrote batch: {len(valid_records)} records, {len(file_metadata)} files",
-                        extra={
-                            "records": len(valid_records),
-                            "files": len(file_metadata),
-                            "event_type": "batch_written",
-                        },
+                         f"DRY RUN: Batch {batch_count} validated. {len(valid_records)} valid records out of {len(batch_records)}.",
+                         extra={
+                             "batch_number": batch_count,
+                             "valid_records": len(valid_records),
+                             "event_type": "dry_run_batch_processed",
+                         }
                     )
+                    # Show sample data for the first batch
+                    if batch_count == 1 and batch_records:
+                        # Convert date/datetime objects to string for logging
+                        sample_data = []
+                        for record in batch_records[:3]:
+                            safe_record = {}
+                            for k, v in record.items():
+                                if hasattr(v, "isoformat"):
+                                    safe_record[k] = v.isoformat()
+                                else:
+                                    safe_record[k] = v
+                            sample_data.append(safe_record)
 
-                    # Update WAL checkpoint after successful batch write
-                    # Only update if extractor hasn't already updated with a specific checkpoint type
-                    # Extractors update checkpoints with types like: chunk_based, offset_based,
-                    # spreadsheet_based, state_based. We only use batch_based as a fallback for
-                    # extractors that don't implement checkpoint updates.
-                    if self.wal_manager and checkpoint_context:
-                        stream_name = checkpoint_context["stream_name"]
-                        current_checkpoint = self.wal_manager.get_checkpoint(
-                            stream_name
-                        )
-
-                        # Only update if checkpoint doesn't exist or is already batch_based
-                        # (meaning extractor hasn't updated it with a specific type)
-                        should_update = (
-                            current_checkpoint is None
-                            or current_checkpoint.get("type") == "batch_based"
-                        )
-
-                        if should_update:
-                            checkpoint_data = {
-                                "type": "batch_based",
-                                "last_batch": batch_count,
-                                "records_processed": total_valid_records,
+                        self.logger.info(
+                            "DRY RUN: Sample data (first 3 records):",
+                            extra={
+                                "sample_data": sample_data,
+                                "event_type": "dry_run_sample",
                             }
-                            self.wal_manager.update_checkpoint(
-                                stream_name, checkpoint_data
-                            )
-                        else:
-                            # Extractor has already updated checkpoint with specific type
-                            # Log for debugging but don't overwrite
-                            self.logger.debug(
-                                f"Skipping batch_based checkpoint update - extractor already updated with type: {current_checkpoint.get('type')}",
-                                extra={
-                                    "stream_name": stream_name,
-                                    "extractor_checkpoint_type": current_checkpoint.get(
-                                        "type"
-                                    ),
-                                    "event_type": "checkpoint_skipped_extractor_updated",
-                                },
-                            )
-                else:
-                    self.logger.warning(
-                        f"Batch {batch_count} had no valid records to write",
-                        extra={
-                            "batch_number": batch_count,
-                            "total_records_in_batch": len(batch_records),
-                            "valid_records": len(valid_records),
-                            "event_type": "batch_no_valid_records",
-                        },
+                        )
+
+                if self.dry_run and dry_run_limit and total_records >= dry_run_limit:
+                    self.logger.info(
+                        f"DRY RUN: Reached limit of {dry_run_limit} records. Stopping extraction.",
+                         extra={
+                             "limit": dry_run_limit,
+                             "event_type": "dry_run_limit_reached"
+                         }
                     )
+                    break
 
             # Mark extraction end time (after all batches processed)
             if self.metrics_collector:
@@ -860,30 +919,49 @@ class JobExecutor:
                 self.metrics_collector.start_load()
 
             # Finalize WAL before committing (on successful extraction)
-            if self.wal_manager:
+            if self.wal_manager and not self.dry_run:
                 self.wal_manager.finalize_wal()
                 self.logger.info(
                     "WAL finalized before commit",
                     extra={"event_type": "wal_finalized"},
                 )
+            elif self.dry_run:
+                self.logger.info("DRY RUN: Skipping WAL finalization")
 
             # Commit all files
-            exit_code = self._commit_files(
-                all_file_metadata,
-                total_records,
-                total_valid_records,
-                total_files_written,
-                has_errors,
-                validation_mode,
-                batch_count,
-            )
+            if not self.dry_run:
+                exit_code = self._commit_files(
+                    all_file_metadata,
+                    total_records,
+                    total_valid_records,
+                    total_files_written,
+                    has_errors,
+                    validation_mode,
+                    batch_count,
+                )
+            else:
+                self.logger.info("DRY RUN: Skipping file commit and catalog registration")
+                # Simulate success if no validation errors (or warn mode)
+                if has_errors and validation_mode == "strict":
+                     exit_code = 2
+                else:
+                     exit_code = 0
+                
+                # Update run summary for dry run
+                if self.run_summary:
+                    self.run_summary.volume.records_extracted = total_records
+                    self.run_summary.volume.records_written = 0 # none written
+                    self.run_summary.volume.records_invalid = (
+                        total_records - total_valid_records
+                    )
+                    self.run_summary.volume.files_written = 0
 
             # Mark load/commit end time
             if self.metrics_collector:
                 self.metrics_collector.end_load()
 
             # Cleanup WAL after successful commit
-            if exit_code == 0 and self.wal_manager:
+            if not self.dry_run and exit_code == 0 and self.wal_manager:
                 self.wal_manager.cleanup_wal()
                 self.logger.info(
                     "WAL cleaned up after successful commit",
@@ -1584,15 +1662,17 @@ class JobExecutor:
                 return exit_code
 
             # Initialize writer
-            exit_code = self._initialize_writer()
-            if exit_code != 0:
-                # Ensure metrics gauge is reset on early return
-                self._finish_metrics(exit_code)
-                self._write_run_summary(exit_code)
-                return exit_code
+            if not self.dry_run:
+                exit_code = self._initialize_writer()
+                if exit_code != 0:
+                    # Ensure metrics gauge is reset on early return
+                    self._finish_metrics(exit_code)
+                    self._write_run_summary(exit_code)
+                    return exit_code
 
             # Initialize committer
-            self._initialize_committer()
+            if not self.dry_run:
+                self._initialize_committer()
 
             # Execute ETL pipeline
             exit_code = self._execute_etl_pipeline()
@@ -1605,7 +1685,10 @@ class JobExecutor:
                 return exit_code
 
             # Push to catalog (for both success and partial success)
-            self._push_to_catalog()
+            if not self.dry_run:
+                self._push_to_catalog()
+            else:
+                self.logger.info("DRY RUN: Skipping catalog push (metadata/lineage)")
 
             # Finalize metrics
             self._finish_metrics(exit_code)

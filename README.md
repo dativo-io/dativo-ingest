@@ -132,6 +132,33 @@ runner:
 
 For detailed instructions, see [docs/quickstart.md](docs/quickstart.md) and [docs/RUNNER_AND_ORCHESTRATION.md](docs/RUNNER_AND_ORCHESTRATION.md).
 
+## Validation & Dry-Run
+
+Dativo provides CLI tools to validate configurations and test ingestion without writing data.
+
+### Validate Configuration
+Validate schema, connector references, and registry compatibility for a job configuration:
+
+```bash
+dativo validate config --path configs/jobs/stripe.yaml
+```
+
+### Validate Asset
+Validate asset definition against ODCS + Dativo extensions:
+
+```bash
+dativo validate asset --path assets/stripe/v1.0/customers.yaml
+```
+
+### Dry Run
+Perform discovery, schema negotiation, and fetch sample data (10-50 rows) without writing to storage:
+
+```bash
+dativo run --dry-run --config configs/jobs/stripe.yaml
+```
+
+This is useful for verifying connectivity and data shape before running production ingestion.
+
 ## Supported Connectors
 
 Connectors are registered in `/registry/connectors.yaml`. Current connectors:

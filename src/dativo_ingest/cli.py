@@ -16,6 +16,10 @@ from .cli_connectors import (
     connectors_list_command,
     connectors_sync_command,
 )
+from .cli_validation import (
+    validate_config_command,
+    validate_asset_command,
+)
 from .config import JobConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import get_logger, setup_logging
@@ -96,7 +100,7 @@ def run_command(args: argparse.Namespace) -> int:
         # Execute all jobs sequentially
         results = []
         for job_config in jobs:
-            result = _execute_single_job(job_config, args.mode)
+            result = _execute_single_job(job_config, args.mode, dry_run=args.dry_run if hasattr(args, 'dry_run') else False)
             results.append(result)
 
         # Return 0 if all succeeded, 2 if any failed
@@ -172,20 +176,21 @@ def run_command(args: argparse.Namespace) -> int:
                     },
                 )
 
-        return _execute_single_job(job_config, args.mode)
+        return _execute_single_job(job_config, args.mode, dry_run=args.dry_run if hasattr(args, 'dry_run') else False)
 
 
-def _execute_single_job(job_config: JobConfig, mode: str) -> int:
+def _execute_single_job(job_config: JobConfig, mode: str, dry_run: bool = False) -> int:
     """Execute a single job configuration.
 
     Args:
         job_config: Job configuration
         mode: Execution mode
+        dry_run: Whether to perform a dry run
 
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
-    executor = JobExecutor(job_config, mode=mode)
+    executor = JobExecutor(job_config, mode=mode, dry_run=dry_run)
     return executor.execute()
 
 
@@ -544,6 +549,11 @@ Examples:
         help="Execution mode (default: self_hosted). Database connectors are only "
         "allowed in self_hosted mode.",
     )
+    run_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform dry run (discovery, schema negotiation, sample fetch) without writing to storage.",
+    )
 
     # Ingest command (primary, recommended)
     ingest_parser = subparsers.add_parser(
@@ -590,6 +600,11 @@ Examples:
         help="Execution mode (default: self_hosted). Database connectors are only "
         "allowed in self_hosted mode.",
     )
+    ingest_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform dry run (discovery, schema negotiation, sample fetch) without writing to storage.",
+    )
 
     # Start command
     start_parser = subparsers.add_parser(
@@ -608,6 +623,36 @@ Examples:
         "--runner-config",
         default="/app/configs/runner.yaml",
         help="Path to runner configuration YAML file (default: /app/configs/runner.yaml)",
+    )
+
+    # Validate command
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate configuration and assets",
+        description="Validate job configurations and asset definitions.",
+    )
+    validate_subparsers = validate_parser.add_subparsers(
+        dest="validate_command", help="Validation target"
+    )
+
+    # validate config
+    validate_config_parser = validate_subparsers.add_parser(
+        "config", help="Validate job configuration"
+    )
+    validate_config_parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+
+    # validate asset
+    validate_asset_parser = validate_subparsers.add_parser(
+        "asset", help="Validate asset definition"
+    )
+    validate_asset_parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to asset definition YAML file",
     )
 
     # Check command
@@ -797,6 +842,14 @@ Examples:
         return run_command(args)
     elif args.command == "start":
         return start_command(args)
+    elif args.command == "validate":
+        if args.validate_command == "config":
+             return validate_config_command(args)
+        elif args.validate_command == "asset":
+             return validate_asset_command(args)
+        else:
+             validate_parser.print_help()
+             return 2
     elif args.command == "check":
         return check_command(args)
     elif args.command == "discover":
