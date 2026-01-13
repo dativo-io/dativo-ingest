@@ -23,7 +23,10 @@ def validate_config_command(args: argparse.Namespace) -> int:
     
     logger.info(
         f"Validating job configuration: {args.path}",
-        extra={"event_type": "validate_config_started"}
+        extra={
+            "event_type": "validate_config_started",
+            "mode": args.mode
+        }
     )
 
     try:
@@ -38,12 +41,9 @@ def validate_config_command(args: argparse.Namespace) -> int:
         # 3. Validate Connector References & Registry Compatibility
         # Using ConnectorValidator for more robust checks including mode and engine
         validator = ConnectorValidator()
-        validator.validate_job(job_config, mode="self_hosted") # defaulting to self_hosted for validation unless specified?
-        # Maybe we should expose mode argument in validate config too? 
-        # The requirements didn't specify, but it's good practice. 
-        # The validator uses "self_hosted" by default if not passed.
+        validator.validate_job(job_config, mode=args.mode)
         
-        logger.info("Connector references and registry compatibility validated.")
+        logger.info(f"Connector references and registry compatibility validated (mode: {args.mode}).")
         
         logger.info(
             "Configuration validation successful.",

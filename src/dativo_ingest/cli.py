@@ -644,6 +644,12 @@ Examples:
         required=True,
         help="Path to job configuration YAML file",
     )
+    validate_config_parser.add_argument(
+        "--mode",
+        choices=["self_hosted", "cloud"],
+        default="self_hosted",
+        help="Execution mode (default: self_hosted). Affects connector validation.",
+    )
 
     # validate asset
     validate_asset_parser = validate_subparsers.add_parser(

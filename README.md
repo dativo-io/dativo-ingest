@@ -143,6 +143,12 @@ Validate schema, connector references, and registry compatibility for a job conf
 dativo validate config --path configs/jobs/stripe.yaml
 ```
 
+By default, this validates against `self_hosted` mode restrictions. To validate for cloud deployment (which restricts certain connectors like PostgreSQL), use the `--mode` flag:
+
+```bash
+dativo validate config --path configs/jobs/stripe.yaml --mode cloud
+```
+
 ### Validate Asset
 Validate asset definition against ODCS + Dativo extensions:
 
