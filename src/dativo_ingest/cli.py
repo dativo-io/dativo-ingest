@@ -16,7 +16,9 @@ from .cli_connectors import (
     connectors_list_command,
     connectors_sync_command,
 )
+from .cli_validation import validate_asset_command, validate_config_command
 from .config import JobConfig, RunnerConfig, SourceConfig
+from .dry_run import DryRunExecutor
 from .job_executor import JobExecutor
 from .logging import get_logger, setup_logging
 from .metrics_config import resolve_metrics_config
@@ -96,7 +98,7 @@ def run_command(args: argparse.Namespace) -> int:
         # Execute all jobs sequentially
         results = []
         for job_config in jobs:
-            result = _execute_single_job(job_config, args.mode)
+            result = _execute_single_job(job_config, args)
             results.append(result)
 
         # Return 0 if all succeeded, 2 if any failed
@@ -172,21 +174,32 @@ def run_command(args: argparse.Namespace) -> int:
                     },
                 )
 
-        return _execute_single_job(job_config, args.mode)
+        return _execute_single_job(job_config, args)
 
 
-def _execute_single_job(job_config: JobConfig, mode: str) -> int:
+def _execute_single_job(job_config: JobConfig, args: argparse.Namespace) -> int:
     """Execute a single job configuration.
 
     Args:
         job_config: Job configuration
-        mode: Execution mode
+        args: Command line arguments
 
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
-    executor = JobExecutor(job_config, mode=mode)
-    return executor.execute()
+    if args.dry_run:
+        executor = DryRunExecutor(
+            job_config,
+            mode=args.mode,
+            sample_size=args.sample_size,
+            timeout=args.timeout,
+        )
+        exit_code = executor.execute_dry_run()
+        executor.print_results(json_output=args.json, verbose=args.verbose)
+        return exit_code
+    else:
+        executor = JobExecutor(job_config, mode=args.mode)
+        return executor.execute()
 
 
 def check_command(args: argparse.Namespace) -> int:
@@ -480,6 +493,23 @@ def connectors_command(args: argparse.Namespace) -> int:
         return 2
 
 
+def validate_command(args: argparse.Namespace) -> int:
+    """Validate configurations or assets.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=success, 2=failure)
+    """
+    if args.validate_command == "config":
+        return validate_config_command(args)
+    elif args.validate_command == "asset":
+        return validate_asset_command(args)
+    else:
+        return 2
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -544,6 +574,33 @@ Examples:
         help="Execution mode (default: self_hosted). Database connectors are only "
         "allowed in self_hosted mode.",
     )
+    run_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Enable dry-run mode (read-only smoke test)",
+    )
+    run_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=25,
+        help="Number of sample rows to fetch in dry-run mode (default: 25)",
+    )
+    run_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Timeout in seconds for dry-run mode (default: 300)",
+    )
+    run_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format (only for dry-run)",
+    )
+    run_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
 
     # Ingest command (primary, recommended)
     ingest_parser = subparsers.add_parser(
@@ -589,6 +646,33 @@ Examples:
         default="self_hosted",
         help="Execution mode (default: self_hosted). Database connectors are only "
         "allowed in self_hosted mode.",
+    )
+    ingest_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Enable dry-run mode (read-only smoke test)",
+    )
+    ingest_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=25,
+        help="Number of sample rows to fetch in dry-run mode (default: 25)",
+    )
+    ingest_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Timeout in seconds for dry-run mode (default: 300)",
+    )
+    ingest_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format (only for dry-run)",
+    )
+    ingest_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
     )
 
     # Start command
@@ -787,6 +871,68 @@ Examples:
         help="Enable verbose output",
     )
 
+    # Validate command
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate configurations or assets",
+        description="Validate job configurations against schemas and rules, or validate "
+        "asset definitions against ODCS specifications.",
+    )
+    validate_subparsers = validate_parser.add_subparsers(
+        dest="validate_command", help="Validation target"
+    )
+
+    # validate config
+    validate_config_parser = validate_subparsers.add_parser(
+        "config", help="Validate job configuration"
+    )
+    validate_config_parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+    validate_config_parser.add_argument(
+        "--mode",
+        choices=["self_hosted", "cloud"],
+        default="self_hosted",
+        help="Execution mode (self_hosted or cloud)",
+    )
+    validate_config_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    validate_config_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
+    # validate asset
+    validate_asset_parser = validate_subparsers.add_parser(
+        "asset", help="Validate asset definition"
+    )
+    validate_asset_parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to asset definition YAML file",
+    )
+    validate_asset_parser.add_argument(
+        "--skip-schema",
+        action="store_true",
+        help="Skip JSON schema validation",
+    )
+    validate_asset_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    validate_asset_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -803,6 +949,8 @@ Examples:
         return discover_command(args)
     elif args.command == "connectors":
         return connectors_command(args)
+    elif args.command == "validate":
+        return validate_command(args)
     else:
         parser.print_help()
         return 2

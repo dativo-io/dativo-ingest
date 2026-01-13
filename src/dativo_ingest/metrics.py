@@ -50,6 +50,8 @@ METRIC_NAMES = {
     "runtime_seconds": "dativo_ingest_runtime_seconds",
     "job_running": "dativo_ingest_job_running",
     "last_success_timestamp": "dativo_ingest_last_success_timestamp_seconds",
+    "validate_total": "dativo_validate_total",
+    "dry_run_total": "dativo_dry_run_total",
 }
 
 # Standardized histogram buckets (in seconds)
@@ -211,6 +213,20 @@ def _initialize_prometheus_metrics(multiproc_dir: Optional[str] = None) -> None:
         registry=registry,
     )
 
+    _prom_metrics["validate_total"] = Counter(
+        METRIC_NAMES["validate_total"],
+        "Total validate command executions",
+        ["validate_type", "result"],
+        registry=registry,
+    )
+
+    _prom_metrics["dry_run_total"] = Counter(
+        METRIC_NAMES["dry_run_total"],
+        "Total dry-run command executions",
+        ["result", "connector_type"],
+        registry=registry,
+    )
+
     _prometheus_initialized = True
 
 
@@ -304,106 +320,6 @@ class MetricsCollector:
         if self.prometheus_enabled and "job_running" in _prom_metrics:
             _prom_metrics["job_running"].labels(**self.labels).set(1)
 
-    def start_extraction(self) -> None:
-        """Mark the start of extraction phase."""
-        self.extract_start_time = time.time()
-
-    def end_extraction(self) -> None:
-        """Mark the end of extraction phase and record duration."""
-        if self.extract_start_time is None:
-            return
-
-        duration = time.time() - self.extract_start_time
-        self.metrics["extract_seconds"] = duration
-
-        # Record Prometheus histogram
-        if self.prometheus_enabled and "extract_seconds" in _prom_metrics:
-            _prom_metrics["extract_seconds"].labels(**self.labels).observe(duration)
-
-    def start_load(self) -> None:
-        """Mark the start of load phase (writing/commit phase).
-
-        Load phase is defined as: writing files to storage and committing to catalog.
-        This includes file uploads and Iceberg catalog commits.
-        """
-        self.load_start_time = time.time()
-
-    def end_load(self) -> None:
-        """Mark the end of load phase (writing/commit phase) and record duration.
-
-        Load phase is defined as: writing files to storage and committing to catalog.
-        This includes file uploads and Iceberg catalog commits.
-        """
-        if self.load_start_time is None:
-            return
-
-        duration = time.time() - self.load_start_time
-        self.metrics["load_seconds"] = duration
-
-        # Record Prometheus histogram
-        if self.prometheus_enabled and "load_seconds" in _prom_metrics:
-            _prom_metrics["load_seconds"].labels(**self.labels).observe(duration)
-
-    def record_records(self, count: int, phase: str = "extracted") -> None:
-        """Record records processed.
-
-        Args:
-            count: Number of records
-            phase: Processing phase (extracted, written, invalid, committed)
-        """
-        phase = _validate_label_value(phase, KNOWN_PHASES, "extracted")
-        key = f"records_{phase}"
-        self.metrics[key] = self.metrics.get(key, 0) + count
-
-        # Prometheus counter
-        if self.prometheus_enabled and "records_total" in _prom_metrics:
-            labels = {**self.labels, "phase": phase}
-            _prom_metrics["records_total"].labels(**labels).inc(count)
-
-    def record_bytes(self, count: int, phase: str = "written") -> None:
-        """Record bytes processed.
-
-        Args:
-            count: Number of bytes
-            phase: Processing phase (written, committed)
-        """
-        phase = _validate_label_value(phase, KNOWN_PHASES, "written")
-        key = f"bytes_{phase}"
-        self.metrics[key] = self.metrics.get(key, 0) + count
-
-        # Prometheus counter
-        if self.prometheus_enabled and "bytes_total" in _prom_metrics:
-            labels = {**self.labels, "phase": phase}
-            _prom_metrics["bytes_total"].labels(**labels).inc(count)
-
-    def record_api_calls(self, count: int, api_type: str = "unknown") -> None:
-        """Record API calls.
-
-        Args:
-            count: Number of API calls
-            api_type: Type of API (validated against known set)
-        """
-        api_type = _validate_label_value(api_type, KNOWN_API_TYPES, "unknown")
-
-        if "api_calls" not in self.metrics:
-            self.metrics["api_calls"] = {}
-        self.metrics["api_calls"][api_type] = (
-            self.metrics["api_calls"].get(api_type, 0) + count
-        )
-
-        # Prometheus counter
-        if self.prometheus_enabled and "api_calls_total" in _prom_metrics:
-            labels = {**self.labels, "api_type": api_type}
-            _prom_metrics["api_calls_total"].labels(**labels).inc(count)
-
-    def record_retry(self) -> None:
-        """Record a retry attempt."""
-        self.metrics["retries"] = self.metrics.get("retries", 0) + 1
-
-        # Prometheus counter
-        if self.prometheus_enabled and "retries_total" in _prom_metrics:
-            _prom_metrics["retries_total"].labels(**self.labels).inc()
-
     def finish(self, status: str = "success") -> Dict[str, Any]:
         """Finish metrics collection and return summary.
 
@@ -413,12 +329,20 @@ class MetricsCollector:
         Returns:
             Complete metrics dictionary
         """
+        # Ensure start_time is set even if start() wasn't called (e.g. error in init)
         if self.start_time is None:
+            self.start_time = time.time()
+            self.metrics = {
+                "job_name": self.job_name,
+                "tenant_id": self.tenant_id,
+                "connector_type": self.connector_type,
+                "mode": self.mode,
+                "start_time": self.start_time,
+            }
             self.logger.warning(
                 "Metrics collection finished without start",
                 extra={"event_type": "metrics_warning"},
             )
-            return self.metrics
 
         end_time = time.time()
         runtime = end_time - self.start_time
@@ -505,3 +429,39 @@ def get_multiprocess_registry() -> Optional[object]:
         return registry
     except Exception:
         return None
+
+
+def record_validate_metric(validate_type: str, result: str) -> None:
+    """Record validation metric.
+
+    Args:
+        validate_type: Type of validation (config, asset)
+        result: Result of validation (success, failure)
+    """
+    if not PROMETHEUS_AVAILABLE:
+        return
+
+    _initialize_prometheus_metrics()
+
+    if "validate_total" in _prom_metrics:
+        _prom_metrics["validate_total"].labels(
+            validate_type=validate_type, result=result
+        ).inc()
+
+
+def record_dry_run_metric(result: str, connector_type: str) -> None:
+    """Record dry-run metric.
+
+    Args:
+        result: Result of dry-run (success, failure, timeout)
+        connector_type: Type of source connector
+    """
+    if not PROMETHEUS_AVAILABLE:
+        return
+
+    _initialize_prometheus_metrics()
+
+    if "dry_run_total" in _prom_metrics:
+        _prom_metrics["dry_run_total"].labels(
+            result=result, connector_type=connector_type
+        ).inc()
