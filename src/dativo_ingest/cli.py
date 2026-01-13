@@ -16,6 +16,8 @@ from .cli_connectors import (
     connectors_list_command,
     connectors_sync_command,
 )
+from .cli_dry_run import dry_run_command
+from .cli_validation import validate_asset_command, validate_config_command
 from .config import JobConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import get_logger, setup_logging
@@ -35,6 +37,17 @@ def run_command(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
+    # Check if dry-run mode
+    if getattr(args, "dry_run", False):
+        return dry_run_command(
+            config_path=args.config,
+            mode=args.mode,
+            sample_size=getattr(args, "sample_size", 25),
+            timeout=getattr(args, "timeout", 300),
+            json_output=getattr(args, "json", False),
+            verbose=getattr(args, "verbose", False),
+        )
+
     try:
         manager_config = load_secret_manager_config(args.secret_manager_config)
     except ValueError as exc:
@@ -446,6 +459,34 @@ def start_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def validate_command(args: argparse.Namespace) -> int:
+    """Validate job configurations and asset definitions.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=valid, 2=invalid)
+    """
+    if args.validate_command == "config":
+        return validate_config_command(
+            config_path=args.path,
+            mode=args.mode,
+            json_output=args.json,
+            verbose=args.verbose,
+        )
+    elif args.validate_command == "asset":
+        return validate_asset_command(
+            asset_path=args.path,
+            skip_schema=args.skip_schema,
+            json_output=args.json,
+            verbose=args.verbose,
+        )
+    else:
+        print("ERROR: Please specify 'config' or 'asset' subcommand", file=sys.stderr)
+        return 2
+
+
 def connectors_command(args: argparse.Namespace) -> int:
     """Manage connector registry and catalogs.
 
@@ -544,6 +585,34 @@ Examples:
         help="Execution mode (default: self_hosted). Database connectors are only "
         "allowed in self_hosted mode.",
     )
+    run_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="dry_run",
+        help="Perform dry-run validation without writing to storage",
+    )
+    run_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=25,
+        help="Number of sample rows to fetch during dry-run (10-50, default: 25)",
+    )
+    run_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Timeout in seconds for dry-run (minimum: 30s, default: 300s/5min)",
+    )
+    run_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format (for dry-run mode)",
+    )
+    run_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output (for dry-run mode)",
+    )
 
     # Ingest command (primary, recommended)
     ingest_parser = subparsers.add_parser(
@@ -589,6 +658,34 @@ Examples:
         default="self_hosted",
         help="Execution mode (default: self_hosted). Database connectors are only "
         "allowed in self_hosted mode.",
+    )
+    ingest_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="dry_run",
+        help="Perform dry-run validation without writing to storage",
+    )
+    ingest_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=25,
+        help="Number of sample rows to fetch during dry-run (10-50, default: 25)",
+    )
+    ingest_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Timeout in seconds for dry-run (minimum: 30s, default: 300s/5min)",
+    )
+    ingest_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format (for dry-run mode)",
+    )
+    ingest_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output (for dry-run mode)",
     )
 
     # Start command
@@ -703,6 +800,70 @@ Examples:
         help="Enable verbose output with additional details",
     )
 
+    # Validate command
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate job configurations and asset definitions",
+        description="Validate YAML files against schemas and check for common configuration errors.",
+    )
+    validate_subparsers = validate_parser.add_subparsers(
+        dest="validate_command", help="Validation type"
+    )
+
+    # validate config
+    validate_config_parser = validate_subparsers.add_parser(
+        "config",
+        help="Validate job configuration YAML file",
+    )
+    validate_config_parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+    validate_config_parser.add_argument(
+        "--mode",
+        choices=["self_hosted", "cloud"],
+        default="self_hosted",
+        help="Execution mode for validation (default: self_hosted)",
+    )
+    validate_config_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    validate_config_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
+    # validate asset
+    validate_asset_parser = validate_subparsers.add_parser(
+        "asset",
+        help="Validate asset definition YAML file",
+    )
+    validate_asset_parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to asset definition YAML file",
+    )
+    validate_asset_parser.add_argument(
+        "--skip-schema",
+        action="store_true",
+        dest="skip_schema",
+        help="Skip JSON schema validation",
+    )
+    validate_asset_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    validate_asset_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output",
+    )
+
     # Connectors command
     connectors_parser = subparsers.add_parser(
         "connectors",
@@ -801,6 +962,8 @@ Examples:
         return check_command(args)
     elif args.command == "discover":
         return discover_command(args)
+    elif args.command == "validate":
+        return validate_command(args)
     elif args.command == "connectors":
         return connectors_command(args)
     else:

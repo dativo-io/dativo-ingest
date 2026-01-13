@@ -50,6 +50,9 @@ METRIC_NAMES = {
     "runtime_seconds": "dativo_ingest_runtime_seconds",
     "job_running": "dativo_ingest_job_running",
     "last_success_timestamp": "dativo_ingest_last_success_timestamp_seconds",
+    # Validation and dry-run metrics
+    "validate_total": "dativo_validate_total",
+    "dry_run_total": "dativo_dry_run_total",
 }
 
 # Standardized histogram buckets (in seconds)
@@ -208,6 +211,21 @@ def _initialize_prometheus_metrics(multiproc_dir: Optional[str] = None) -> None:
         METRIC_NAMES["last_success_timestamp"],
         "Unix timestamp of last successful job run",
         ["job_name", "tenant_id", "connector_type", "mode"],
+        registry=registry,
+    )
+
+    # Validation and dry-run metrics
+    _prom_metrics["validate_total"] = Counter(
+        METRIC_NAMES["validate_total"],
+        "Total validate command executions",
+        ["validate_type", "result"],
+        registry=registry,
+    )
+
+    _prom_metrics["dry_run_total"] = Counter(
+        METRIC_NAMES["dry_run_total"],
+        "Total dry-run command executions",
+        ["result", "connector_type"],
         registry=registry,
     )
 
@@ -505,3 +523,45 @@ def get_multiprocess_registry() -> Optional[object]:
         return registry
     except Exception:
         return None
+
+
+def record_validate_metric(validate_type: str, result: str) -> None:
+    """Record validation metric to Prometheus.
+
+    Args:
+        validate_type: Type of validation (config or asset)
+        result: Result of validation (success, failure)
+    """
+    if not PROMETHEUS_AVAILABLE:
+        return
+
+    _initialize_prometheus_metrics()
+
+    if "validate_total" in _prom_metrics:
+        try:
+            _prom_metrics["validate_total"].labels(
+                validate_type=validate_type, result=result
+            ).inc()
+        except Exception:
+            pass
+
+
+def record_dry_run_metric(result: str, connector_type: str) -> None:
+    """Record dry-run metric to Prometheus.
+
+    Args:
+        result: Result of dry-run (success, failure, timeout)
+        connector_type: Type of source connector
+    """
+    if not PROMETHEUS_AVAILABLE:
+        return
+
+    _initialize_prometheus_metrics()
+
+    if "dry_run_total" in _prom_metrics:
+        try:
+            _prom_metrics["dry_run_total"].labels(
+                result=result, connector_type=connector_type
+            ).inc()
+        except Exception:
+            pass
