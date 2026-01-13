@@ -42,7 +42,11 @@ dativo run --config <path> --mode <self_hosted|cloud>
 | `--secret-manager-config` | No | Path to YAML/JSON (or inline JSON string) with manager-specific settings. Defaults to `DATIVO_SECRET_MANAGER_CONFIG` |
 | `--secrets-dir` | No | Path to secrets directory (used only when `--secret-manager filesystem`). Default: `/secrets` |
 | `--tenant-id` | No | Tenant ID override (optional; if not provided, inferred from job configurations). If provided, validates all jobs belong to this tenant |
-| `--dry-run` | No | Perform discovery and schema validation without writing to storage. Fetches 10-50 sample rows and validates against data contract |
+| `--dry-run` | No | Perform discovery and schema validation without writing to storage |
+| `--sample-size` | No | Number of sample rows to fetch in dry-run mode (10-50, default: 50). Values outside this range will be rejected |
+| `--timeout` | No | Timeout for dry-run execution in seconds (default: 300). Values below 30 seconds will trigger a warning |
+| `--verbose` | No | Enable verbose output with phase timing details (for dry-run mode) |
+| `--json` | No | Output results in JSON format (for dry-run mode) |
 
 \* Either `--config` or `--job-dir` is required (mutually exclusive)
 
@@ -77,16 +81,45 @@ dativo ingest --config jobs/mytenant/my_job.yaml \
 dativo ingest --config jobs/acme/stripe_customers.yaml \
   --mode self_hosted \
   --dry-run
+
+# Dry-run with custom sample size
+dativo ingest --config jobs/acme/stripe_customers.yaml \
+  --mode self_hosted \
+  --dry-run --sample-size 25
+
+# Dry-run with JSON output (for CI/CD)
+dativo ingest --config jobs/acme/stripe_customers.yaml \
+  --mode self_hosted \
+  --dry-run --json
+
+# Dry-run with verbose phase timing
+dativo ingest --config jobs/acme/stripe_customers.yaml \
+  --mode self_hosted \
+  --dry-run --verbose
 ```
 
 ### Dry-Run Mode
 
 The `--dry-run` flag enables validation mode where:
 
-1. **Discovery**: Source schema and available streams are discovered
-2. **Sample Extraction**: 10-50 rows are fetched from the source
-3. **Data Contract Validation**: Sample data is validated against the asset schema
-4. **No Writing**: No data is written to Iceberg or object storage
+1. **Configuration Validation**: Job configuration is validated
+2. **Asset Loading**: Asset definition is loaded and validated
+3. **Extractor Initialization**: Source connector is initialized
+4. **Discovery**: Source schema and available streams are discovered
+5. **Schema Negotiation**: Source schema is matched against asset definition
+6. **Sample Extraction**: 10-50 rows are fetched from the source (configurable via `--sample-size`)
+7. **Data Contract Validation**: Sample data is validated against the asset schema
+
+**Safety Guarantees** (enforced at execution level):
+- ❌ Never writes to Iceberg or object storage
+- ❌ Never updates incremental state
+- ❌ Never commits transactions
+
+**Options:**
+- `--sample-size N`: Number of rows to fetch (10-50, default: 50). Values outside this range are rejected.
+- `--timeout SECONDS`: Execution timeout (default: 300s). Values below 30s trigger a warning.
+- `--verbose`: Show phase timing details
+- `--json`: Output structured JSON for CI/CD integration
 
 This is useful for:
 - Validating configurations before production runs
@@ -94,42 +127,63 @@ This is useful for:
 - Debugging schema mismatches
 - Pre-flight checks in CI/CD pipelines
 
-**Dry-Run Output Example:**
+**Dry-Run Output Example (Human-Readable):**
 ```
 ============================================================
-DRY-RUN MODE: No data will be written to storage
+DRY-RUN EXECUTION RESULTS
 ============================================================
-Step 1: Discovery and Schema Negotiation
-Asset schema defines 3 field(s):
-  - id: integer (required)
-  - name: string
-  - email: string
 
-Step 2: Extracting sample data (10-50 rows)
-Extracted batch 1: 25 records (total: 25)
+Status: ✅ PASSED
+Exit Code: 0
 
-Step 3: Data Contract Validation
-============================================================
-DATA CONTRACT VALIDATION RESULTS
-============================================================
-Total records validated: 25
-Valid records: 23
-Invalid records: 2
-Validation errors: 2
+Phases Completed: 4/7
 
-⚠️  Data contract validation has warnings (warn mode)
+Sample Metrics:
+  Records fetched: 25
+  Valid records: 25
+  Invalid records: 0
+
+🔒 Safety Assertions:
+  No writes attempted: ✓
+  No state updates: ✓
+  No commits: ✓
+
+Configuration:
+  Source: stripe
+  Target: iceberg
+  Asset: stripe_customers
 
 ============================================================
-DRY-RUN SUMMARY
-============================================================
-Source connector: stripe
-Target connector: iceberg
-Asset: stripe_customers
-Sample size: 25 row(s)
-Validation status: FAILED
+```
 
-⚠️  NO DATA WAS WRITTEN (dry-run mode)
-============================================================
+**Dry-Run Output Example (JSON):**
+```json
+{
+  "valid": true,
+  "exit_code": 0,
+  "errors": [],
+  "warnings": [],
+  "phases_completed": ["discovery", "schema_negotiation", "sample_fetch", "sample_validation"],
+  "phases": [
+    {"phase": "discovery", "status": "success", "duration_seconds": 0.012},
+    {"phase": "schema_negotiation", "status": "success", "duration_seconds": 0.001},
+    {"phase": "sample_fetch", "status": "success", "duration_seconds": 1.234},
+    {"phase": "sample_validation", "status": "success", "duration_seconds": 0.045}
+  ],
+  "metrics": {
+    "sample_size": 25,
+    "valid_records": 25,
+    "invalid_records": 0
+  },
+  "safety_assertions": {
+    "no_writes": true,
+    "no_state_updates": true,
+    "no_commits": true
+  },
+  "source_connector": "stripe",
+  "target_connector": "iceberg",
+  "asset_name": "stripe_customers"
+}
 ```
 
 ### Exit Codes

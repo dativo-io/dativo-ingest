@@ -41,21 +41,29 @@ from .wal_manager import WALManager
 class JobExecutor:
     """Executes a single job configuration through the complete ETL pipeline."""
 
-    # Constants for dry-run mode
+    # Constants for dry-run mode (kept for backward compatibility)
     DRY_RUN_SAMPLE_MIN = 10
     DRY_RUN_SAMPLE_MAX = 50
 
-    def __init__(self, job_config: JobConfig, mode: str = "self_hosted", dry_run: bool = False):
+    def __init__(
+        self,
+        job_config: JobConfig,
+        mode: str = "self_hosted",
+        dry_run: bool = False,
+        dry_run_config: Optional["DryRunConfig"] = None,
+    ):
         """Initialize job executor.
 
         Args:
             job_config: Job configuration
             mode: Execution mode (default: self_hosted)
             dry_run: If True, perform discovery and sample extraction without writing
+            dry_run_config: Optional configuration for dry-run mode (sample size, timeout)
         """
         self.job_config = job_config
         self.mode = mode
         self.dry_run = dry_run
+        self.dry_run_config = dry_run_config
         self.tenant_id = job_config.tenant_id
         self.logger = None
         self.source_config: Optional[SourceConfig] = None
@@ -70,6 +78,9 @@ class JobExecutor:
         self.source_tags: Optional[Dict[str, Any]] = None
         self.metrics_collector: Optional[MetricsCollector] = None
         self.run_summary: Optional[RunSummary] = None
+        
+        # Dry-run result tracking (for structured output)
+        self._dry_run_result: Optional["DryRunResult"] = None
 
     def _setup_logging(self) -> None:
         """Set up logging for the job."""
@@ -1387,311 +1398,321 @@ class JobExecutor:
         """Execute dry-run mode: discovery, schema negotiation, and sample extraction.
 
         Performs:
-        - Discovery and schema negotiation
-        - Fetches sample (10-50 rows) from source
-        - Validates data against schema (data contract validation)
+        - Configuration validation (phase tracking)
+        - Asset loading (phase tracking)
+        - Extractor initialization (phase tracking)
+        - Discovery and schema negotiation (phase tracking)
+        - Fetches sample rows from source (phase tracking)
+        - Validates data against schema (phase tracking)
         - Does NOT write to Iceberg or object storage
+
+        Safety guarantees:
+        - Never writes to storage
+        - Never updates incremental state
+        - Never commits transactions
 
         Returns:
             Exit code (0=success, 2=failure)
         """
-        self.logger.info(
-            "=" * 60,
-            extra={"event_type": "dry_run_header"},
+        from .dry_run import (
+            DryRunConfig,
+            DryRunPhase,
+            DryRunPhaseTracker,
+            DryRunResult,
+            PhaseStatus,
+            format_dry_run_output,
         )
-        self.logger.info(
-            "DRY-RUN MODE: No data will be written to storage",
-            extra={"event_type": "dry_run_started"},
-        )
-        self.logger.info(
-            "=" * 60,
-            extra={"event_type": "dry_run_header"},
-        )
+
+        # Initialize configuration
+        config = self.dry_run_config or DryRunConfig()
+        sample_limit = config.sample_size
+        verbose = config.verbose
+        json_output = getattr(config, "json_output", False)
+
+        # Initialize phase tracker and result
+        tracker = DryRunPhaseTracker(verbose=verbose, logger=self.logger)
+        result = DryRunResult()
+        result.source_connector = self.source_config.type if self.source_config else None
+        result.target_connector = self.target_config.type if self.target_config else None
+        result.asset_name = self.asset_definition.name if self.asset_definition else None
+
+        # Store result for potential external access
+        self._dry_run_result = result
 
         sample_records = []
+        valid_records = []
         validation_errors = []
-        total_sample_size = 0
+
+        # Log dry-run start (only in non-JSON mode)
+        if not json_output:
+            self.logger.info(
+                "=" * 60,
+                extra={"event_type": "dry_run_header"},
+            )
+            self.logger.info(
+                f"DRY-RUN MODE: No data will be written to storage (sample_size={sample_limit})",
+                extra={"event_type": "dry_run_started", "sample_size": sample_limit},
+            )
+            self.logger.info(
+                "=" * 60,
+                extra={"event_type": "dry_run_header"},
+            )
 
         try:
-            # Step 1: Discovery / Schema Negotiation
-            self.logger.info(
-                "Step 1: Discovery and Schema Negotiation",
-                extra={"event_type": "dry_run_discovery_started"},
+            # Phase 1: Configuration Validation (already done by execute(), skip here)
+            tracker.skip_phase(
+                DryRunPhase.CONFIGURATION_VALIDATION,
+                reason="Already validated during job initialization",
             )
 
-            # Log asset schema information
-            if self.asset_definition:
-                schema_fields = self.asset_definition.schema
-                self.logger.info(
-                    f"Asset schema defines {len(schema_fields)} field(s):",
-                    extra={
-                        "event_type": "dry_run_schema_info",
+            # Phase 2: Asset Loading (already done by execute(), skip here)
+            tracker.skip_phase(
+                DryRunPhase.ASSET_LOADING,
+                reason="Already loaded during job initialization",
+            )
+
+            # Phase 3: Extractor Initialization (already done by execute(), skip here)
+            tracker.skip_phase(
+                DryRunPhase.EXTRACTOR_INITIALIZATION,
+                reason="Already initialized during job initialization",
+            )
+
+            # Phase 4: Discovery
+            tracker.start_phase(DryRunPhase.DISCOVERY)
+            try:
+                if not json_output:
+                    self.logger.info(
+                        "Phase: Discovery",
+                        extra={"event_type": "dry_run_phase_discovery"},
+                    )
+
+                # Log asset schema information
+                schema_details = {}
+                if self.asset_definition:
+                    schema_fields = self.asset_definition.schema
+                    schema_details = {
                         "field_count": len(schema_fields),
-                    },
-                )
-                for field in schema_fields:
-                    field_info = f"  - {field.get('name')}: {field.get('type', 'string')}"
-                    if field.get("required"):
-                        field_info += " (required)"
+                        "fields": [
+                            {
+                                "name": f.get("name"),
+                                "type": f.get("type", "string"),
+                                "required": f.get("required", False),
+                            }
+                            for f in schema_fields
+                        ],
+                    }
+                    if not json_output:
+                        self.logger.info(
+                            f"Asset schema defines {len(schema_fields)} field(s)",
+                            extra={"event_type": "dry_run_schema_info", **schema_details},
+                        )
+
+                tracker.end_phase(PhaseStatus.SUCCESS, details=schema_details)
+            except Exception as e:
+                tracker.end_phase(PhaseStatus.FAILURE, error_message=str(e))
+                result.add_error(str(e), "DISCOVERY_ERROR", DryRunPhase.DISCOVERY.value)
+                raise
+
+            # Phase 5: Schema Negotiation
+            tracker.start_phase(DryRunPhase.SCHEMA_NEGOTIATION)
+            try:
+                if not json_output:
                     self.logger.info(
-                        field_info,
-                        extra={"event_type": "dry_run_schema_field"},
+                        "Phase: Schema Negotiation",
+                        extra={"event_type": "dry_run_phase_schema_negotiation"},
                     )
 
-            # Step 2: Sample Extraction
-            self.logger.info(
-                f"\nStep 2: Extracting sample data ({self.DRY_RUN_SAMPLE_MIN}-{self.DRY_RUN_SAMPLE_MAX} rows)",
-                extra={"event_type": "dry_run_extraction_started"},
-            )
+                # Schema negotiation is implicit - we have asset schema
+                negotiation_details = {
+                    "source_type": self.source_config.type if self.source_config else None,
+                    "asset_schema_available": self.asset_definition is not None,
+                }
+                tracker.end_phase(PhaseStatus.SUCCESS, details=negotiation_details)
+            except Exception as e:
+                tracker.end_phase(PhaseStatus.FAILURE, error_message=str(e))
+                result.add_error(str(e), "SCHEMA_NEGOTIATION_ERROR", DryRunPhase.SCHEMA_NEGOTIATION.value)
+                raise
 
-            batch_count = 0
-            for batch_records in self.extractor.extract(
-                state_manager=None,  # Don't use state manager in dry-run
-                checkpoint_context=None,  # Don't use checkpoints in dry-run
-            ):
-                batch_count += 1
-                sample_records.extend(batch_records)
-                total_sample_size = len(sample_records)
-
-                self.logger.info(
-                    f"Extracted batch {batch_count}: {len(batch_records)} records (total: {total_sample_size})",
-                    extra={
-                        "event_type": "dry_run_batch_extracted",
-                        "batch_number": batch_count,
-                        "batch_size": len(batch_records),
-                        "total_size": total_sample_size,
-                    },
-                )
-
-                # Stop after collecting enough samples
-                if total_sample_size >= self.DRY_RUN_SAMPLE_MAX:
+            # Phase 6: Sample Fetch
+            tracker.start_phase(DryRunPhase.SAMPLE_FETCH)
+            try:
+                if not json_output:
                     self.logger.info(
-                        f"Sample size limit reached ({self.DRY_RUN_SAMPLE_MAX} rows)",
-                        extra={"event_type": "dry_run_sample_limit_reached"},
+                        f"Phase: Sample Fetch (limit={sample_limit} rows)",
+                        extra={"event_type": "dry_run_phase_sample_fetch", "sample_limit": sample_limit},
                     )
-                    # Trim to max sample size
-                    sample_records = sample_records[: self.DRY_RUN_SAMPLE_MAX]
-                    break
 
-            if not sample_records:
-                self.logger.warning(
-                    "No records extracted from source",
-                    extra={"event_type": "dry_run_no_records"},
-                )
-            else:
-                self.logger.info(
-                    f"Sample extraction complete: {len(sample_records)} row(s)",
-                    extra={
-                        "event_type": "dry_run_extraction_complete",
-                        "sample_size": len(sample_records),
-                    },
-                )
+                batch_count = 0
+                total_sample_size = 0
 
-            # Step 3: Data Contract Validation
-            self.logger.info(
-                "\nStep 3: Data Contract Validation",
-                extra={"event_type": "dry_run_validation_started"},
-            )
+                # SAFETY: Explicitly pass None for state_manager and checkpoint_context
+                # to prevent any state updates during dry-run
+                for batch_records in self.extractor.extract(
+                    state_manager=None,  # SAFETY: Don't use state manager in dry-run
+                    checkpoint_context=None,  # SAFETY: Don't use checkpoints in dry-run
+                ):
+                    batch_count += 1
+                    sample_records.extend(batch_records)
+                    total_sample_size = len(sample_records)
 
-            if sample_records and self.validator:
-                valid_records, validation_errors = self.validator.validate_batch(
-                    sample_records
-                )
-
-                validation_summary = self.validator.get_error_summary()
-
-                self.logger.info(
-                    "=" * 60,
-                    extra={"event_type": "dry_run_validation_header"},
-                )
-                self.logger.info(
-                    "DATA CONTRACT VALIDATION RESULTS",
-                    extra={"event_type": "dry_run_validation_results_header"},
-                )
-                self.logger.info(
-                    "=" * 60,
-                    extra={"event_type": "dry_run_validation_header"},
-                )
-
-                self.logger.info(
-                    f"Total records validated: {len(sample_records)}",
-                    extra={
-                        "event_type": "dry_run_validation_total",
-                        "total_records": len(sample_records),
-                    },
-                )
-                self.logger.info(
-                    f"Valid records: {len(valid_records)}",
-                    extra={
-                        "event_type": "dry_run_validation_valid",
-                        "valid_records": len(valid_records),
-                    },
-                )
-                self.logger.info(
-                    f"Invalid records: {len(sample_records) - len(valid_records)}",
-                    extra={
-                        "event_type": "dry_run_validation_invalid",
-                        "invalid_records": len(sample_records) - len(valid_records),
-                    },
-                )
-                self.logger.info(
-                    f"Validation errors: {validation_summary['total_errors']}",
-                    extra={
-                        "event_type": "dry_run_validation_error_count",
-                        "error_count": validation_summary["total_errors"],
-                    },
-                )
-
-                if validation_errors:
-                    self.logger.warning(
-                        "\nValidation errors by type:",
-                        extra={"event_type": "dry_run_validation_errors_by_type"},
-                    )
-                    for error_type, count in validation_summary.get(
-                        "errors_by_type", {}
-                    ).items():
-                        self.logger.warning(
-                            f"  - {error_type}: {count}",
+                    if not json_output:
+                        self.logger.info(
+                            f"Extracted batch {batch_count}: {len(batch_records)} records (total: {total_sample_size})",
                             extra={
-                                "event_type": "dry_run_validation_error_type",
-                                "error_type": error_type,
-                                "count": count,
+                                "event_type": "dry_run_batch_extracted",
+                                "batch_number": batch_count,
+                                "batch_size": len(batch_records),
+                                "total_size": total_sample_size,
                             },
                         )
 
-                    self.logger.warning(
-                        "\nValidation errors by field:",
-                        extra={"event_type": "dry_run_validation_errors_by_field"},
+                    # Stop after collecting enough samples
+                    if total_sample_size >= sample_limit:
+                        sample_records = sample_records[:sample_limit]
+                        break
+
+                result.sample_size = len(sample_records)
+                fetch_details = {
+                    "records_fetched": len(sample_records),
+                    "batches_processed": batch_count,
+                }
+
+                if not sample_records:
+                    result.add_warning(
+                        "No records extracted from source",
+                        "NO_RECORDS_EXTRACTED",
+                        DryRunPhase.SAMPLE_FETCH.value,
                     )
-                    for field, count in validation_summary.get(
-                        "errors_by_field", {}
-                    ).items():
-                        self.logger.warning(
-                            f"  - {field}: {count}",
-                            extra={
-                                "event_type": "dry_run_validation_error_field",
-                                "field": field,
-                                "count": count,
-                            },
-                        )
 
-                    # Show first few errors
-                    sample_errors = validation_summary.get("errors", [])[:5]
-                    if sample_errors:
-                        self.logger.warning(
-                            "\nSample errors (first 5):",
-                            extra={"event_type": "dry_run_sample_errors"},
-                        )
-                        for error in sample_errors:
-                            self.logger.warning(
-                                f"  Record {error['record_index']}, Field '{error['field']}': {error['message']}",
-                                extra={
-                                    "event_type": "dry_run_sample_error",
-                                    "error": error,
-                                },
-                            )
+                tracker.end_phase(PhaseStatus.SUCCESS, details=fetch_details)
 
-                validation_passed = len(valid_records) == len(sample_records)
-                if validation_passed:
+            except Exception as e:
+                tracker.end_phase(PhaseStatus.FAILURE, error_message=str(e))
+                result.add_error(str(e), "SAMPLE_FETCH_ERROR", DryRunPhase.SAMPLE_FETCH.value)
+                raise
+
+            # Phase 7: Sample Validation
+            tracker.start_phase(DryRunPhase.SAMPLE_VALIDATION)
+            try:
+                if not json_output:
                     self.logger.info(
-                        "\n✅ Data contract validation PASSED",
-                        extra={"event_type": "dry_run_validation_passed"},
+                        "Phase: Sample Validation",
+                        extra={"event_type": "dry_run_phase_sample_validation"},
                     )
-                else:
-                    validation_mode = self.job_config.schema_validation_mode or "strict"
-                    if validation_mode == "strict":
-                        self.logger.error(
-                            "\n❌ Data contract validation FAILED (strict mode)",
-                            extra={"event_type": "dry_run_validation_failed_strict"},
-                        )
-                    else:
-                        self.logger.warning(
-                            "\n⚠️  Data contract validation has warnings (warn mode)",
-                            extra={"event_type": "dry_run_validation_failed_warn"},
-                        )
-            else:
-                self.logger.info(
-                    "No records to validate",
-                    extra={"event_type": "dry_run_no_records_to_validate"},
-                )
+
                 validation_passed = True
 
-            # Step 4: Summary
-            self.logger.info(
-                "\n" + "=" * 60,
-                extra={"event_type": "dry_run_summary_header"},
-            )
-            self.logger.info(
-                "DRY-RUN SUMMARY",
-                extra={"event_type": "dry_run_summary_title"},
-            )
-            self.logger.info(
-                "=" * 60,
-                extra={"event_type": "dry_run_summary_header"},
-            )
+                if sample_records and self.validator:
+                    valid_records, validation_errors = self.validator.validate_batch(
+                        sample_records
+                    )
+                    validation_summary = self.validator.get_error_summary()
 
-            self.logger.info(
-                f"Source connector: {self.source_config.type}",
-                extra={
-                    "event_type": "dry_run_summary_source",
-                    "connector_type": self.source_config.type,
-                },
-            )
-            self.logger.info(
-                f"Target connector: {self.target_config.type}",
-                extra={
-                    "event_type": "dry_run_summary_target",
-                    "connector_type": self.target_config.type,
-                },
-            )
-            self.logger.info(
-                f"Asset: {self.asset_definition.name if self.asset_definition else 'N/A'}",
-                extra={
-                    "event_type": "dry_run_summary_asset",
-                    "asset_name": self.asset_definition.name if self.asset_definition else None,
-                },
-            )
-            self.logger.info(
-                f"Sample size: {len(sample_records)} row(s)",
-                extra={
-                    "event_type": "dry_run_summary_sample_size",
-                    "sample_size": len(sample_records),
-                },
-            )
+                    result.valid_records = len(valid_records)
+                    result.invalid_records = len(sample_records) - len(valid_records)
+                    result.validation_errors_by_type = validation_summary.get("errors_by_type", {})
+                    result.validation_errors_by_field = validation_summary.get("errors_by_field", {})
+                    result.sample_validation_errors = validation_summary.get("errors", [])
 
-            validation_status = "PASSED" if validation_passed else "FAILED"
-            self.logger.info(
-                f"Validation status: {validation_status}",
-                extra={
-                    "event_type": "dry_run_summary_validation",
-                    "validation_status": validation_status,
-                },
-            )
+                    validation_passed = len(valid_records) == len(sample_records)
 
-            self.logger.info(
-                "\n⚠️  NO DATA WAS WRITTEN (dry-run mode)",
-                extra={"event_type": "dry_run_no_write_notice"},
-            )
-            self.logger.info(
-                "=" * 60,
-                extra={"event_type": "dry_run_summary_footer"},
-            )
+                    if not json_output:
+                        self.logger.info(
+                            f"Validation: {len(valid_records)}/{len(sample_records)} records valid",
+                            extra={
+                                "event_type": "dry_run_validation_summary",
+                                "valid_records": len(valid_records),
+                                "total_records": len(sample_records),
+                            },
+                        )
+
+                    if not validation_passed:
+                        validation_mode = self.job_config.schema_validation_mode or "strict"
+                        if validation_mode == "strict":
+                            result.add_error(
+                                f"Data contract validation failed: {result.invalid_records} invalid records",
+                                "VALIDATION_FAILED_STRICT",
+                                DryRunPhase.SAMPLE_VALIDATION.value,
+                            )
+                        else:
+                            result.add_warning(
+                                f"Data contract validation warnings: {result.invalid_records} invalid records",
+                                "VALIDATION_WARNINGS",
+                                DryRunPhase.SAMPLE_VALIDATION.value,
+                            )
+                else:
+                    result.valid_records = len(sample_records)
+                    result.invalid_records = 0
+
+                validation_details = {
+                    "total_records": len(sample_records),
+                    "valid_records": result.valid_records,
+                    "invalid_records": result.invalid_records,
+                    "validation_passed": validation_passed,
+                }
+
+                tracker.end_phase(PhaseStatus.SUCCESS, details=validation_details)
+
+            except Exception as e:
+                tracker.end_phase(PhaseStatus.FAILURE, error_message=str(e))
+                result.add_error(str(e), "VALIDATION_ERROR", DryRunPhase.SAMPLE_VALIDATION.value)
+                raise
+
+            # Finalize result
+            result.phases = [p.to_dict() for p in tracker.phases]
+            result.phases_completed = tracker.get_completed_phases()
+
+            # SAFETY ASSERTIONS: Verify no writes, state updates, or commits occurred
+            # These should always pass in dry-run mode - if they don't, it's a bug
+            result.assert_safety_guarantees()
 
             # Determine exit code
             validation_mode = self.job_config.schema_validation_mode or "strict"
-            if validation_passed:
-                return 0
-            elif validation_mode == "warn":
-                return 1  # Partial success with warnings
+            if not result.errors:
+                result.valid = True
+                result.exit_code = 0
+            elif validation_mode == "warn" and all(
+                e.get("code", "").startswith("VALIDATION_") for e in result.errors
+            ):
+                result.valid = True  # Warnings only
+                result.exit_code = 1
             else:
-                return 2  # Failure in strict mode
+                result.valid = False
+                result.exit_code = 2
+
+            # Output result
+            if json_output:
+                print(result.to_json())
+            else:
+                output = format_dry_run_output(result, json_output=False, verbose=verbose)
+                print(output)
+
+            return result.exit_code
 
         except Exception as e:
-            self.logger.error(
-                f"Dry-run execution failed: {e}",
-                extra={"event_type": "dry_run_error"},
-                exc_info=True,
-            )
+            # Handle unexpected errors
+            if self._dry_run_result:
+                self._dry_run_result.add_error(
+                    f"Unexpected error: {e}",
+                    "UNEXPECTED_ERROR",
+                    tracker._current_phase,
+                )
+                self._dry_run_result.phases = [p.to_dict() for p in tracker.phases]
+                self._dry_run_result.phases_completed = tracker.get_completed_phases()
+                self._dry_run_result.valid = False
+                self._dry_run_result.exit_code = 2
+
+                if json_output:
+                    print(self._dry_run_result.to_json())
+                else:
+                    self.logger.error(
+                        f"Dry-run execution failed: {e}",
+                        extra={"event_type": "dry_run_error"},
+                        exc_info=True,
+                    )
+                    output = format_dry_run_output(self._dry_run_result, json_output=False, verbose=verbose)
+                    print(output)
+
             return 2
 
     def _push_to_catalog(self) -> None:

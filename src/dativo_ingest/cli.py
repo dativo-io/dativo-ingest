@@ -41,6 +41,44 @@ def run_command(args: argparse.Namespace) -> int:
     """
     # Check for dry-run mode
     dry_run = getattr(args, "dry_run", False)
+    
+    # Validate dry-run options if in dry-run mode
+    dry_run_config = None
+    json_output = getattr(args, "json", False)
+    
+    if dry_run:
+        from .dry_run import DryRunConfig
+        
+        sample_size = getattr(args, "sample_size", DryRunConfig.SAMPLE_SIZE_MAX)
+        timeout = getattr(args, "timeout", DryRunConfig.TIMEOUT_DEFAULT_SECONDS)
+        verbose = getattr(args, "verbose", False)
+        
+        # Validate sample size (strict - reject invalid values)
+        is_valid, error_msg = DryRunConfig.validate_sample_size(sample_size)
+        if not is_valid:
+            if json_output:
+                import json
+                print(json.dumps({
+                    "valid": False,
+                    "exit_code": 2,
+                    "errors": [{"message": error_msg, "code": "INVALID_SAMPLE_SIZE"}],
+                    "warnings": [],
+                    "phases_completed": [],
+                }))
+            else:
+                print(f"ERROR: {error_msg}", file=sys.stderr)
+            return 2
+        
+        dry_run_config = DryRunConfig(
+            sample_size=sample_size,
+            timeout_seconds=timeout,
+            verbose=verbose,
+        )
+        dry_run_config.json_output = json_output  # Store for later use
+        
+        # Warn about low timeout (only in non-JSON mode)
+        if dry_run_config.timeout_warning and not json_output:
+            print(f"WARNING: {dry_run_config.timeout_warning}", file=sys.stderr)
 
     try:
         manager_config = load_secret_manager_config(args.secret_manager_config)
@@ -103,7 +141,9 @@ def run_command(args: argparse.Namespace) -> int:
         # Execute all jobs sequentially
         results = []
         for job_config in jobs:
-            result = _execute_single_job(job_config, args.mode, dry_run=dry_run)
+            result = _execute_single_job(
+                job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+            )
             results.append(result)
 
         # Return 0 if all succeeded, 2 if any failed
@@ -179,21 +219,29 @@ def run_command(args: argparse.Namespace) -> int:
                     },
                 )
 
-        return _execute_single_job(job_config, args.mode, dry_run=dry_run)
+        return _execute_single_job(
+            job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+        )
 
 
-def _execute_single_job(job_config: JobConfig, mode: str, dry_run: bool = False) -> int:
+def _execute_single_job(
+    job_config: JobConfig,
+    mode: str,
+    dry_run: bool = False,
+    dry_run_config: "DryRunConfig" = None,
+) -> int:
     """Execute a single job configuration.
 
     Args:
         job_config: Job configuration
         mode: Execution mode
         dry_run: If True, perform discovery and sample extraction without writing
+        dry_run_config: Optional dry-run configuration with sample size and timeout
 
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
-    executor = JobExecutor(job_config, mode=mode, dry_run=dry_run)
+    executor = JobExecutor(job_config, mode=mode, dry_run=dry_run, dry_run_config=dry_run_config)
     return executor.execute()
 
 
@@ -588,9 +636,35 @@ Examples:
     run_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Perform discovery and schema negotiation, fetch sample rows (10-50), "
+        help="Perform discovery and schema negotiation, fetch sample rows, "
         "but do not write to Iceberg or object storage. Useful for validating "
         "data contracts before production runs.",
+    )
+    run_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=50,
+        metavar="N",
+        help="Number of sample rows to fetch in dry-run mode (10-50, default: 50). "
+        "Values outside this range will be rejected.",
+    )
+    run_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        metavar="SECONDS",
+        help="Timeout for dry-run execution in seconds (default: 300). "
+        "Values below 30 seconds will trigger a warning.",
+    )
+    run_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with phase timing details (for dry-run mode).",
+    )
+    run_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format (for dry-run mode).",
     )
 
     # Ingest command (primary, recommended)
@@ -641,9 +715,35 @@ Examples:
     ingest_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Perform discovery and schema negotiation, fetch sample rows (10-50), "
+        help="Perform discovery and schema negotiation, fetch sample rows, "
         "but do not write to Iceberg or object storage. Useful for validating "
         "data contracts before production runs.",
+    )
+    ingest_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=50,
+        metavar="N",
+        help="Number of sample rows to fetch in dry-run mode (10-50, default: 50). "
+        "Values outside this range will be rejected.",
+    )
+    ingest_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        metavar="SECONDS",
+        help="Timeout for dry-run execution in seconds (default: 300). "
+        "Values below 30 seconds will trigger a warning.",
+    )
+    ingest_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with phase timing details (for dry-run mode).",
+    )
+    ingest_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format (for dry-run mode).",
     )
 
     # Start command
