@@ -11,6 +11,7 @@ dativo <command> [options]
 **Commands:**
 - `ingest` - Run a single job in oneshot mode (recommended)
 - `run` - Legacy alias for `ingest` (backward compatibility)
+- `validate` - Validate configuration files and asset definitions
 - `start` - Start orchestrated mode with Dagster
 - `check` - Test connectivity and credentials
 - `discover` - List available tables/streams from a connector
@@ -41,6 +42,7 @@ dativo run --config <path> --mode <self_hosted|cloud>
 | `--secret-manager-config` | No | Path to YAML/JSON (or inline JSON string) with manager-specific settings. Defaults to `DATIVO_SECRET_MANAGER_CONFIG` |
 | `--secrets-dir` | No | Path to secrets directory (used only when `--secret-manager filesystem`). Default: `/secrets` |
 | `--tenant-id` | No | Tenant ID override (optional; if not provided, inferred from job configurations). If provided, validates all jobs belong to this tenant |
+| `--dry-run` | No | Perform discovery and schema validation without writing to storage. Fetches 10-50 sample rows and validates against data contract |
 
 \* Either `--config` or `--job-dir` is required (mutually exclusive)
 
@@ -70,6 +72,64 @@ dativo ingest --config jobs/mytenant/my_job.yaml \
   --secret-manager vault \
   --secret-manager-config vault-config.yaml \
   --mode self_hosted
+
+# Dry-run mode (validate data contract without writing)
+dativo ingest --config jobs/acme/stripe_customers.yaml \
+  --mode self_hosted \
+  --dry-run
+```
+
+### Dry-Run Mode
+
+The `--dry-run` flag enables validation mode where:
+
+1. **Discovery**: Source schema and available streams are discovered
+2. **Sample Extraction**: 10-50 rows are fetched from the source
+3. **Data Contract Validation**: Sample data is validated against the asset schema
+4. **No Writing**: No data is written to Iceberg or object storage
+
+This is useful for:
+- Validating configurations before production runs
+- Testing data contracts with actual source data
+- Debugging schema mismatches
+- Pre-flight checks in CI/CD pipelines
+
+**Dry-Run Output Example:**
+```
+============================================================
+DRY-RUN MODE: No data will be written to storage
+============================================================
+Step 1: Discovery and Schema Negotiation
+Asset schema defines 3 field(s):
+  - id: integer (required)
+  - name: string
+  - email: string
+
+Step 2: Extracting sample data (10-50 rows)
+Extracted batch 1: 25 records (total: 25)
+
+Step 3: Data Contract Validation
+============================================================
+DATA CONTRACT VALIDATION RESULTS
+============================================================
+Total records validated: 25
+Valid records: 23
+Invalid records: 2
+Validation errors: 2
+
+⚠️  Data contract validation has warnings (warn mode)
+
+============================================================
+DRY-RUN SUMMARY
+============================================================
+Source connector: stripe
+Target connector: iceberg
+Asset: stripe_customers
+Sample size: 25 row(s)
+Validation status: FAILED
+
+⚠️  NO DATA WAS WRITTEN (dry-run mode)
+============================================================
 ```
 
 ### Exit Codes
@@ -118,6 +178,141 @@ dativo check --config jobs/acme/stripe_customers.yaml --verbose --mode self_host
 - Source connection and authentication
 - Target connection (S3 bucket access, etc.)
 - Returns detailed error information with retryable flags
+
+## Validate Configuration
+
+Validate job configurations and asset definitions against schemas and check connector registry compatibility. This command performs static validation without connecting to source/target systems.
+
+### Validate Job Configuration
+
+```bash
+dativo validate config --path <job.yaml> [--mode <mode>] [--json] [--verbose]
+```
+
+**Options:**
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--path` | Yes | Path to job configuration YAML file |
+| `--mode` | No | Execution mode for connector restriction validation (`self_hosted` or `cloud`). Default: `self_hosted` |
+| `--json` | No | Output results in JSON format |
+| `--verbose` | No | Show detailed validation information |
+
+**What It Validates:**
+- YAML syntax
+- Job configuration schema compliance
+- Source/target connector file existence
+- Connector type existence in registry
+- Mode restrictions (e.g., database connectors blocked in cloud mode)
+- Asset definition file existence
+
+**Examples:**
+```bash
+# Basic validation
+dativo validate config --path jobs/acme/stripe_customers.yaml
+
+# Validate for cloud mode restrictions
+dativo validate config --path jobs/acme/stripe_customers.yaml --mode cloud
+
+# JSON output for CI/CD integration
+dativo validate config --path jobs/acme/stripe_customers.yaml --json
+
+# Verbose output with all info messages
+dativo validate config --path jobs/acme/stripe_customers.yaml --verbose
+```
+
+### Validate Asset Definition
+
+```bash
+dativo validate asset --path <spec.yaml> [--json] [--verbose]
+```
+
+**Options:**
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--path` | Yes | Path to asset definition YAML file |
+| `--json` | No | Output results in JSON format |
+| `--verbose` | No | Show detailed validation information |
+
+**What It Validates:**
+- YAML syntax
+- ODCS v3.0.2 schema compliance
+- Required ODCS fields (name, version, schema, team)
+- Team owner presence (strong ownership requirement)
+- Dativo extensions (source_type, object)
+- Optional sections (compliance, finops, data_quality)
+
+**Examples:**
+```bash
+# Basic validation
+dativo validate asset --path assets/stripe/customers.yaml
+
+# JSON output
+dativo validate asset --path assets/stripe/customers.yaml --json
+
+# Verbose output with all info messages
+dativo validate asset --path assets/stripe/customers.yaml --verbose
+```
+
+### Validation Output
+
+**Human-readable output:**
+```
+============================================================
+Job Configuration Validation Results
+============================================================
+
+File: jobs/acme/stripe_customers.yaml
+Status: ✅ VALID
+
+Summary: 0 error(s), 1 warning(s)
+
+⚠️  Warnings:
+  - [SCHEMA_FILE_NOT_FOUND] Schema file not found, skipping JSON schema validation
+
+ℹ️  Info:
+  - [CONFIG_STRUCTURE_VALID] Job configuration structure validation passed
+  - [SOURCE_CONNECTOR_REGISTERED] Source connector 'stripe' found in registry
+
+============================================================
+```
+
+**JSON output:**
+```json
+{
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    {
+      "message": "Schema file not found, skipping JSON schema validation",
+      "code": "SCHEMA_FILE_NOT_FOUND",
+      "path": null,
+      "severity": "warning"
+    }
+  ],
+  "info": [
+    {
+      "message": "Job configuration structure validation passed",
+      "code": "CONFIG_STRUCTURE_VALID",
+      "path": null,
+      "severity": "info"
+    }
+  ],
+  "summary": {
+    "error_count": 0,
+    "warning_count": 1,
+    "info_count": 1
+  },
+  "path": "jobs/acme/stripe_customers.yaml",
+  "resource_type": "Job Configuration"
+}
+```
+
+### Exit Codes
+
+- `0`: Validation passed (no errors)
+- `2`: Validation failed (one or more errors)
 
 ## Discover Available Streams
 

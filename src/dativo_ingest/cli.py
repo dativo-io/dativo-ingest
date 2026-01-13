@@ -16,6 +16,10 @@ from .cli_connectors import (
     connectors_list_command,
     connectors_sync_command,
 )
+from .cli_validate import (
+    validate_asset_command,
+    validate_config_command,
+)
 from .config import JobConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import get_logger, setup_logging
@@ -35,6 +39,9 @@ def run_command(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
+    # Check for dry-run mode
+    dry_run = getattr(args, "dry_run", False)
+
     try:
         manager_config = load_secret_manager_config(args.secret_manager_config)
     except ValueError as exc:
@@ -96,7 +103,7 @@ def run_command(args: argparse.Namespace) -> int:
         # Execute all jobs sequentially
         results = []
         for job_config in jobs:
-            result = _execute_single_job(job_config, args.mode)
+            result = _execute_single_job(job_config, args.mode, dry_run=dry_run)
             results.append(result)
 
         # Return 0 if all succeeded, 2 if any failed
@@ -164,7 +171,7 @@ def run_command(args: argparse.Namespace) -> int:
                     )
             except Exception as e:
                 # Log warning but don't crash job execution
-                logger.warning(
+                    logger.warning(
                     f"Failed to configure OpenTelemetry metrics: {e}. Job execution will continue.",
                     extra={
                         "event_type": "otel_configuration_warning",
@@ -172,20 +179,21 @@ def run_command(args: argparse.Namespace) -> int:
                     },
                 )
 
-        return _execute_single_job(job_config, args.mode)
+        return _execute_single_job(job_config, args.mode, dry_run=dry_run)
 
 
-def _execute_single_job(job_config: JobConfig, mode: str) -> int:
+def _execute_single_job(job_config: JobConfig, mode: str, dry_run: bool = False) -> int:
     """Execute a single job configuration.
 
     Args:
         job_config: Job configuration
         mode: Execution mode
+        dry_run: If True, perform discovery and sample extraction without writing
 
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
-    executor = JobExecutor(job_config, mode=mode)
+    executor = JobExecutor(job_config, mode=mode, dry_run=dry_run)
     return executor.execute()
 
 
@@ -446,6 +454,39 @@ def start_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def validate_command(args: argparse.Namespace) -> int:
+    """Validate configuration files and asset definitions.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=valid, 2=invalid)
+    """
+    if not hasattr(args, "validate_command") or args.validate_command is None:
+        print("ERROR: Please specify a validation type: 'config' or 'asset'", file=sys.stderr)
+        print("Usage: dativo validate config --path <job.yaml>", file=sys.stderr)
+        print("       dativo validate asset --path <spec.yaml>", file=sys.stderr)
+        return 2
+
+    if args.validate_command == "config":
+        return validate_config_command(
+            path=args.path,
+            mode=args.mode,
+            json_output=args.json,
+            verbose=args.verbose,
+        )
+    elif args.validate_command == "asset":
+        return validate_asset_command(
+            path=args.path,
+            json_output=args.json,
+            verbose=args.verbose,
+        )
+    else:
+        print(f"ERROR: Unknown validation type: {args.validate_command}", file=sys.stderr)
+        return 2
+
+
 def connectors_command(args: argparse.Namespace) -> int:
     """Manage connector registry and catalogs.
 
@@ -544,6 +585,13 @@ Examples:
         help="Execution mode (default: self_hosted). Database connectors are only "
         "allowed in self_hosted mode.",
     )
+    run_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform discovery and schema negotiation, fetch sample rows (10-50), "
+        "but do not write to Iceberg or object storage. Useful for validating "
+        "data contracts before production runs.",
+    )
 
     # Ingest command (primary, recommended)
     ingest_parser = subparsers.add_parser(
@@ -589,6 +637,13 @@ Examples:
         default="self_hosted",
         help="Execution mode (default: self_hosted). Database connectors are only "
         "allowed in self_hosted mode.",
+    )
+    ingest_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform discovery and schema negotiation, fetch sample rows (10-50), "
+        "but do not write to Iceberg or object storage. Useful for validating "
+        "data contracts before production runs.",
     )
 
     # Start command
@@ -651,6 +706,69 @@ Examples:
         help="Output results in JSON format",
     )
     check_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with additional details",
+    )
+
+    # Validate command
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate configuration files and asset definitions",
+        description="Validate job configurations and asset definitions against schemas "
+        "and check connector registry compatibility.",
+    )
+    validate_subparsers = validate_parser.add_subparsers(
+        dest="validate_command", help="Validation type"
+    )
+
+    # validate config
+    validate_config_parser = validate_subparsers.add_parser(
+        "config",
+        help="Validate job configuration file",
+        description="Validate job configuration against JSON schema, check connector "
+        "references, and verify registry compatibility.",
+    )
+    validate_config_parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+    validate_config_parser.add_argument(
+        "--mode",
+        choices=["self_hosted", "cloud"],
+        default="self_hosted",
+        help="Execution mode for connector restriction validation (default: self_hosted)",
+    )
+    validate_config_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    validate_config_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with additional details",
+    )
+
+    # validate asset
+    validate_asset_parser = validate_subparsers.add_parser(
+        "asset",
+        help="Validate asset definition file",
+        description="Validate asset definition against ODCS v3.0.2 schema with "
+        "Dativo extensions.",
+    )
+    validate_asset_parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to asset definition YAML file",
+    )
+    validate_asset_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    validate_asset_parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose output with additional details",
@@ -801,6 +919,8 @@ Examples:
         return check_command(args)
     elif args.command == "discover":
         return discover_command(args)
+    elif args.command == "validate":
+        return validate_command(args)
     elif args.command == "connectors":
         return connectors_command(args)
     else:
