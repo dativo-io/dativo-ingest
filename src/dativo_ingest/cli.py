@@ -16,10 +16,7 @@ from .cli_connectors import (
     connectors_list_command,
     connectors_sync_command,
 )
-from .cli_validate import (
-    validate_asset_command,
-    validate_config_command,
-)
+from .cli_validate import validate_asset_command, validate_config_command
 from .config import JobConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import get_logger, setup_logging
@@ -40,20 +37,21 @@ def run_command(args: argparse.Namespace) -> int:
         Exit code (0=success, 1=general failure, 2=usage/validation error)
     """
     import json as json_module
+
     from .dry_run import DryRunConfig, create_error_result
-    
+
     # Check for dry-run mode
     dry_run = getattr(args, "dry_run", False)
     json_output = getattr(args, "json", False)
     verbose = getattr(args, "verbose", False)
-    
+
     # Validate dry-run options if in dry-run mode
     dry_run_config = None
-    
+
     if dry_run:
         sample_size = getattr(args, "sample_size", DryRunConfig.SAMPLE_SIZE_MAX)
         timeout = getattr(args, "timeout", DryRunConfig.TIMEOUT_DEFAULT_SECONDS)
-        
+
         # Validate timeout (hard error if below minimum)
         is_valid, error_msg = DryRunConfig.validate_timeout(timeout)
         if not is_valid:
@@ -63,7 +61,7 @@ def run_command(args: argparse.Namespace) -> int:
             else:
                 print(f"ERROR: {error_msg}", file=sys.stderr)
             return 2
-        
+
         # Create config (sample size will be clamped with warning, not rejected)
         dry_run_config = DryRunConfig(
             sample_size=sample_size,
@@ -71,7 +69,7 @@ def run_command(args: argparse.Namespace) -> int:
             verbose=verbose,
             json_output=json_output,
         )
-        
+
         # Emit clamping warning if sample size was adjusted
         if dry_run_config.was_sample_size_clamped:
             if json_output:
@@ -215,7 +213,7 @@ def run_command(args: argparse.Namespace) -> int:
                     )
             except Exception as e:
                 # Log warning but don't crash job execution
-                    logger.warning(
+                logger.warning(
                     f"Failed to configure OpenTelemetry metrics: {e}. Job execution will continue.",
                     extra={
                         "event_type": "otel_configuration_warning",
@@ -245,7 +243,9 @@ def _execute_single_job(
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
-    executor = JobExecutor(job_config, mode=mode, dry_run=dry_run, dry_run_config=dry_run_config)
+    executor = JobExecutor(
+        job_config, mode=mode, dry_run=dry_run, dry_run_config=dry_run_config
+    )
     return executor.execute()
 
 
@@ -516,7 +516,10 @@ def validate_command(args: argparse.Namespace) -> int:
         Exit code (0=valid, 2=invalid)
     """
     if not hasattr(args, "validate_command") or args.validate_command is None:
-        print("ERROR: Please specify a validation type: 'config' or 'asset'", file=sys.stderr)
+        print(
+            "ERROR: Please specify a validation type: 'config' or 'asset'",
+            file=sys.stderr,
+        )
         print("Usage: dativo validate config --path <job.yaml>", file=sys.stderr)
         print("       dativo validate asset --path <spec.yaml>", file=sys.stderr)
         return 2
@@ -535,7 +538,9 @@ def validate_command(args: argparse.Namespace) -> int:
             verbose=args.verbose,
         )
     else:
-        print(f"ERROR: Unknown validation type: {args.validate_command}", file=sys.stderr)
+        print(
+            f"ERROR: Unknown validation type: {args.validate_command}", file=sys.stderr
+        )
         return 2
 
 

@@ -5,7 +5,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-
 # Phase names as constants (no enum needed for simplicity)
 PHASE_DISCOVERY = "discovery"
 PHASE_SCHEMA_NEGOTIATION = "schema_negotiation"

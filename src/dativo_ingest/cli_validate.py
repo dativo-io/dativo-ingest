@@ -309,6 +309,15 @@ class AssetValidator:
             )
             return result
 
+        # Step 2.5: Validate that asset_data is a dictionary (not a list or scalar)
+        if not isinstance(asset_data, dict):
+            result.add_error(
+                f"Asset definition must be a YAML mapping/dictionary, got {type(asset_data).__name__}",
+                "INVALID_ASSET_TYPE",
+                str(asset_path),
+            )
+            return result
+
         # Step 3: Validate required ODCS fields
         self._validate_odcs_required_fields(result, asset_data)
 
@@ -316,7 +325,9 @@ class AssetValidator:
         try:
             # Ensure $schema is present for validation
             if "$schema" not in asset_data:
-                asset_data["$schema"] = "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json"
+                asset_data["$schema"] = (
+                    "schemas/odcs/dativo-odcs-3.0.2-extended.schema.json"
+                )
 
             AssetDefinition.validate_against_schema(asset_data)
             result.add_info(
@@ -336,7 +347,10 @@ class AssetValidator:
         except Exception as e:
             # Handle jsonschema resolution errors (network issues, etc.)
             error_str = str(e)
-            if "RefResolutionError" in type(e).__name__ or "RefResolutionError" in error_str:
+            if (
+                "RefResolutionError" in type(e).__name__
+                or "RefResolutionError" in error_str
+            ):
                 result.add_warning(
                     f"Schema reference resolution failed (network/file issue): {e}",
                     "SCHEMA_RESOLUTION_ERROR",
@@ -523,7 +537,9 @@ def _output_result(
         print(f"Status: {status}")
 
         # Summary
-        print(f"\nSummary: {len(result.errors)} error(s), {len(result.warnings)} warning(s)")
+        print(
+            f"\nSummary: {len(result.errors)} error(s), {len(result.warnings)} warning(s)"
+        )
 
         # Errors
         if result.errors:

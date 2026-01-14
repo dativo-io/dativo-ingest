@@ -78,21 +78,23 @@ class JobExecutor:
         self.source_tags: Optional[Dict[str, Any]] = None
         self.metrics_collector: Optional[MetricsCollector] = None
         self.run_summary: Optional[RunSummary] = None
-        
+
         # Dry-run result tracking (for structured output)
         self._dry_run_result: Optional["DryRunResult"] = None
 
     def _setup_logging(self) -> None:
         """Set up logging for the job.
-        
+
         In dry-run mode with verbose flag, DEBUG level is forced for diagnostic output.
         """
         # Dry-run verbose mode forces DEBUG level
         if self.dry_run and self.dry_run_config and self.dry_run_config.verbose:
             log_level = "DEBUG"
         else:
-            log_level = self.job_config.logging.level if self.job_config.logging else None
-        
+            log_level = (
+                self.job_config.logging.level if self.job_config.logging else None
+            )
+
         redact = self.job_config.logging.redaction if self.job_config.logging else None
 
         self.logger = update_logging_settings(
@@ -1420,12 +1422,12 @@ class JobExecutor:
             Exit code (0=success, 1=general failure, 2=usage/validation error)
         """
         from .dry_run import (
-            DryRunConfig,
-            DryRunResult,
             PHASE_DISCOVERY,
-            PHASE_SCHEMA_NEGOTIATION,
             PHASE_SAMPLE_FETCH,
             PHASE_SAMPLE_VALIDATION,
+            PHASE_SCHEMA_NEGOTIATION,
+            DryRunConfig,
+            DryRunResult,
             format_dry_run_output,
         )
 
@@ -1437,9 +1439,15 @@ class JobExecutor:
 
         # Initialize result with flattened structure
         result = DryRunResult()
-        result.source_connector = self.source_config.type if self.source_config else None
-        result.target_connector = self.target_config.type if self.target_config else None
-        result.asset_name = self.asset_definition.name if self.asset_definition else None
+        result.source_connector = (
+            self.source_config.type if self.source_config else None
+        )
+        result.target_connector = (
+            self.target_config.type if self.target_config else None
+        )
+        result.asset_name = (
+            self.asset_definition.name if self.asset_definition else None
+        )
 
         # Add clamping warning if sample size was adjusted
         if config.was_sample_size_clamped:
@@ -1474,7 +1482,10 @@ class JobExecutor:
                     schema_fields = self.asset_definition.schema
                     self.logger.debug(
                         f"Asset schema defines {len(schema_fields)} field(s)",
-                        extra={"event_type": "dry_run_schema_info", "field_count": len(schema_fields)},
+                        extra={
+                            "event_type": "dry_run_schema_info",
+                            "field_count": len(schema_fields),
+                        },
                     )
 
                 duration = time.perf_counter() - phase_start
@@ -1491,12 +1502,17 @@ class JobExecutor:
             try:
                 self.logger.debug(
                     f"Phase: {PHASE_SCHEMA_NEGOTIATION}",
-                    extra={"event_type": "dry_run_phase", "phase": PHASE_SCHEMA_NEGOTIATION},
+                    extra={
+                        "event_type": "dry_run_phase",
+                        "phase": PHASE_SCHEMA_NEGOTIATION,
+                    },
                 )
 
                 # Schema negotiation is implicit when asset schema is present
                 if not self.asset_definition:
-                    result.add_warning("No asset definition loaded; schema validation skipped")
+                    result.add_warning(
+                        "No asset definition loaded; schema validation skipped"
+                    )
 
                 duration = time.perf_counter() - phase_start
                 result.record_phase(PHASE_SCHEMA_NEGOTIATION, duration_seconds=duration)
@@ -1512,7 +1528,11 @@ class JobExecutor:
             try:
                 self.logger.debug(
                     f"Phase: {PHASE_SAMPLE_FETCH} (limit={sample_limit})",
-                    extra={"event_type": "dry_run_phase", "phase": PHASE_SAMPLE_FETCH, "limit": sample_limit},
+                    extra={
+                        "event_type": "dry_run_phase",
+                        "phase": PHASE_SAMPLE_FETCH,
+                        "limit": sample_limit,
+                    },
                 )
 
                 batch_count = 0
@@ -1562,20 +1582,25 @@ class JobExecutor:
             try:
                 self.logger.debug(
                     f"Phase: {PHASE_SAMPLE_VALIDATION}",
-                    extra={"event_type": "dry_run_phase", "phase": PHASE_SAMPLE_VALIDATION},
+                    extra={
+                        "event_type": "dry_run_phase",
+                        "phase": PHASE_SAMPLE_VALIDATION,
+                    },
                 )
 
                 validation_passed = True
 
                 if sample_records and self.validator:
-                    valid_records_list, validation_errors = self.validator.validate_batch(
-                        sample_records
+                    valid_records_list, validation_errors = (
+                        self.validator.validate_batch(sample_records)
                     )
 
                     result.valid_records = len(valid_records_list)
-                    result.invalid_records = len(sample_records) - len(valid_records_list)
+                    result.invalid_records = len(sample_records) - len(
+                        valid_records_list
+                    )
 
-                    validation_passed = (result.invalid_records == 0)
+                    validation_passed = result.invalid_records == 0
 
                     self.logger.debug(
                         f"Validation: {result.valid_records}/{len(sample_records)} valid",
@@ -1587,7 +1612,9 @@ class JobExecutor:
                     )
 
                     if not validation_passed:
-                        validation_mode = self.job_config.schema_validation_mode or "strict"
+                        validation_mode = (
+                            self.job_config.schema_validation_mode or "strict"
+                        )
                         if validation_mode == "strict":
                             result.add_error(
                                 f"Data contract validation failed: {result.invalid_records} invalid records"
@@ -1631,7 +1658,9 @@ class JobExecutor:
             if json_output:
                 print(result.to_json())
             else:
-                output = format_dry_run_output(result, json_output=False, verbose=verbose)
+                output = format_dry_run_output(
+                    result, json_output=False, verbose=verbose
+                )
                 print(output)
 
             return result.exit_code
@@ -1640,7 +1669,9 @@ class JobExecutor:
             # Catch-all: ensure we always output valid JSON when requested
             result.dry_run_duration_seconds = time.perf_counter() - dry_run_start_time
 
-            if current_phase and current_phase not in [p["name"] for p in result.phases]:
+            if current_phase and current_phase not in [
+                p["name"] for p in result.phases
+            ]:
                 # Record the failed phase if not already recorded
                 result.record_phase(current_phase, error=str(e))
 
@@ -1659,7 +1690,9 @@ class JobExecutor:
                     extra={"event_type": "dry_run_error"},
                     exc_info=True,
                 )
-                output = format_dry_run_output(result, json_output=False, verbose=verbose)
+                output = format_dry_run_output(
+                    result, json_output=False, verbose=verbose
+                )
                 print(output)
 
             return 2

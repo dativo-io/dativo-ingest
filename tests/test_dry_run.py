@@ -8,7 +8,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from src.dativo_ingest.config import AssetDefinition, JobConfig, SourceConfig, TargetConfig
+from src.dativo_ingest.config import (
+    AssetDefinition,
+    JobConfig,
+    SourceConfig,
+    TargetConfig,
+)
 from src.dativo_ingest.job_executor import JobExecutor
 
 
@@ -83,7 +88,7 @@ class TestJobExecutorDryRun:
     def test_dry_run_constants(self, mock_job_config):
         """Test dry-run sample size constants."""
         executor = JobExecutor(mock_job_config, dry_run=True)
-        
+
         assert executor.DRY_RUN_SAMPLE_MIN == 10
         assert executor.DRY_RUN_SAMPLE_MAX == 50
         assert executor.DRY_RUN_SAMPLE_MIN <= executor.DRY_RUN_SAMPLE_MAX
@@ -92,7 +97,7 @@ class TestJobExecutorDryRun:
         """Test that dry-run mode calls _execute_dry_run instead of full ETL."""
         # Create executor with dry_run=True
         executor = JobExecutor(mock_job_config, dry_run=True)
-        
+
         # Manually set up internal state to simulate a job after initialization
         executor.logger = MagicMock()
         executor.source_config = MagicMock()
@@ -115,16 +120,16 @@ class TestJobExecutorDryRun:
         }
         executor.run_summary = None
         executor.metrics_collector = None
-        
+
         # Execute dry run directly
         exit_code = executor._execute_dry_run()
-        
+
         # Should succeed
         assert exit_code == 0
-        
+
         # Verify extractor.extract was called
         executor.extractor.extract.assert_called()
-        
+
         # Verify validator was called
         executor.validator.validate_batch.assert_called()
 
@@ -132,10 +137,10 @@ class TestJobExecutorDryRun:
         """Test that normal mode sets up writer (different from dry-run)."""
         # Create executor with dry_run=False
         executor = JobExecutor(mock_job_config, dry_run=False)
-        
+
         # Verify dry_run is False
         assert executor.dry_run is False
-        
+
         # The actual execution would try to set up writer
         # We just verify the flag is set correctly here
 
@@ -146,16 +151,18 @@ class TestDryRunValidationResults:
     def test_dry_run_validates_records_against_schema(self, tmp_path, capsys):
         """Test that dry-run validates sample records against schema."""
         from src.dativo_ingest.dry_run import DryRunConfig
-        
+
         # Create a mock extractor that yields sample records
         mock_extractor = MagicMock()
-        mock_extractor.extract.return_value = iter([
+        mock_extractor.extract.return_value = iter(
             [
-                {"id": 1, "name": "Alice"},
-                {"id": 2, "name": "Bob"},
-                {"id": "invalid", "name": "Charlie"},  # Invalid id type
+                [
+                    {"id": 1, "name": "Alice"},
+                    {"id": 2, "name": "Bob"},
+                    {"id": "invalid", "name": "Charlie"},  # Invalid id type
+                ]
             ]
-        ])
+        )
 
         # Create mock asset definition with schema
         mock_asset = MagicMock()
@@ -175,7 +182,14 @@ class TestDryRunValidationResults:
             "total_errors": 1,
             "errors_by_type": {"type_mismatch": 1},
             "errors_by_field": {"id": 1},
-            "errors": [{"record_index": 2, "field": "id", "type": "type_mismatch", "message": "Invalid type"}],
+            "errors": [
+                {
+                    "record_index": 2,
+                    "field": "id",
+                    "type": "type_mismatch",
+                    "message": "Invalid type",
+                }
+            ],
         }
 
         # Create mock source/target configs
@@ -220,7 +234,7 @@ class TestDryRunSampleSizeLimit:
     def test_dry_run_respects_sample_limit(self, tmp_path, capsys):
         """Test that dry-run stops after collecting max sample size."""
         from src.dativo_ingest.dry_run import DryRunConfig
-        
+
         # Create a mock extractor that yields many records
         large_batch = [{"id": i, "name": f"Name{i}"} for i in range(100)]
         mock_extractor = MagicMock()
@@ -232,7 +246,10 @@ class TestDryRunSampleSizeLimit:
         mock_asset.schema = [{"name": "id", "type": "integer"}]
 
         mock_validator = MagicMock()
-        mock_validator.validate_batch.return_value = (large_batch[:50], [])  # Return valid records
+        mock_validator.validate_batch.return_value = (
+            large_batch[:50],
+            [],
+        )  # Return valid records
         mock_validator.get_error_summary.return_value = {
             "total_errors": 0,
             "errors_by_type": {},

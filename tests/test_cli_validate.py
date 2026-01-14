@@ -31,7 +31,7 @@ class TestValidationResult:
         """Test adding an error invalidates the result."""
         result = ValidationResult()
         result.add_error("Test error", "TEST_ERROR", "/test/path")
-        
+
         assert result.valid is False
         assert len(result.errors) == 1
         assert result.errors[0]["message"] == "Test error"
@@ -43,7 +43,7 @@ class TestValidationResult:
         """Test adding a warning does not invalidate the result."""
         result = ValidationResult()
         result.add_warning("Test warning", "TEST_WARNING")
-        
+
         assert result.valid is True
         assert len(result.warnings) == 1
         assert result.warnings[0]["message"] == "Test warning"
@@ -53,7 +53,7 @@ class TestValidationResult:
         """Test adding info does not invalidate the result."""
         result = ValidationResult()
         result.add_info("Test info", "TEST_INFO")
-        
+
         assert result.valid is True
         assert len(result.info) == 1
         assert result.info[0]["message"] == "Test info"
@@ -65,9 +65,9 @@ class TestValidationResult:
         result.add_error("Error 1", "ERR1")
         result.add_warning("Warning 1", "WARN1")
         result.add_info("Info 1", "INFO1")
-        
+
         data = result.to_dict()
-        
+
         assert data["valid"] is False
         assert len(data["errors"]) == 1
         assert len(data["warnings"]) == 1
@@ -84,7 +84,7 @@ class TestConfigValidator:
         """Test validation fails for non-existent file."""
         validator = ConfigValidator()
         result = validator.validate(tmp_path / "nonexistent.yaml")
-        
+
         assert result.valid is False
         assert any(e["code"] == "FILE_NOT_FOUND" for e in result.errors)
 
@@ -92,10 +92,10 @@ class TestConfigValidator:
         """Test validation fails for empty file."""
         config_file = tmp_path / "empty.yaml"
         config_file.write_text("")
-        
+
         validator = ConfigValidator()
         result = validator.validate(config_file)
-        
+
         assert result.valid is False
         assert any(e["code"] == "EMPTY_CONFIG" for e in result.errors)
 
@@ -103,10 +103,10 @@ class TestConfigValidator:
         """Test validation fails for invalid YAML."""
         config_file = tmp_path / "invalid.yaml"
         config_file.write_text("this: is: invalid: yaml: [")
-        
+
         validator = ConfigValidator()
         result = validator.validate(config_file)
-        
+
         assert result.valid is False
         assert any(e["code"] == "YAML_PARSE_ERROR" for e in result.errors)
 
@@ -119,10 +119,10 @@ class TestConfigValidator:
         config_file = tmp_path / "incomplete.yaml"
         with open(config_file, "w") as f:
             yaml.dump(config_data, f)
-        
+
         validator = ConfigValidator()
         result = validator.validate(config_file)
-        
+
         assert result.valid is False
         assert any("SCHEMA_VALIDATION_ERROR" in e["code"] for e in result.errors)
 
@@ -137,13 +137,15 @@ class TestConfigValidator:
         config_file = tmp_path / "valid_structure.yaml"
         with open(config_file, "w") as f:
             yaml.dump(config_data, f)
-        
+
         validator = ConfigValidator()
         result = validator.validate(config_file)
-        
+
         # Should have errors about missing connector/asset files
-        assert any("CONNECTOR_NOT_FOUND" in e["code"] or "ASSET_NOT_FOUND" in e["code"] 
-                   for e in result.errors)
+        assert any(
+            "CONNECTOR_NOT_FOUND" in e["code"] or "ASSET_NOT_FOUND" in e["code"]
+            for e in result.errors
+        )
 
 
 class TestAssetValidator:
@@ -153,7 +155,7 @@ class TestAssetValidator:
         """Test validation fails for non-existent file."""
         validator = AssetValidator()
         result = validator.validate(tmp_path / "nonexistent.yaml")
-        
+
         assert result.valid is False
         assert any(e["code"] == "FILE_NOT_FOUND" for e in result.errors)
 
@@ -161,10 +163,10 @@ class TestAssetValidator:
         """Test validation fails for empty file."""
         asset_file = tmp_path / "empty.yaml"
         asset_file.write_text("")
-        
+
         validator = AssetValidator()
         result = validator.validate(asset_file)
-        
+
         assert result.valid is False
         assert any(e["code"] == "EMPTY_ASSET" for e in result.errors)
 
@@ -172,12 +174,46 @@ class TestAssetValidator:
         """Test validation fails for invalid YAML."""
         asset_file = tmp_path / "invalid.yaml"
         asset_file.write_text("this: is: invalid: yaml: [")
-        
+
         validator = AssetValidator()
         result = validator.validate(asset_file)
-        
+
         assert result.valid is False
         assert any(e["code"] == "YAML_PARSE_ERROR" for e in result.errors)
+
+    def test_validate_yaml_list_returns_error(self, tmp_path):
+        """Test validation fails gracefully when YAML contains a list instead of dict."""
+        asset_file = tmp_path / "list.yaml"
+        asset_file.write_text("- item1\n- item2\n- item3")
+
+        validator = AssetValidator()
+        result = validator.validate(asset_file)
+
+        assert result.valid is False
+        assert any(e["code"] == "INVALID_ASSET_TYPE" for e in result.errors)
+        # Verify the error message mentions it's not a dictionary
+        error_messages = [e["message"] for e in result.errors]
+        assert any(
+            "mapping/dictionary" in msg.lower() or "list" in msg.lower()
+            for msg in error_messages
+        )
+
+    def test_validate_yaml_scalar_returns_error(self, tmp_path):
+        """Test validation fails gracefully when YAML contains a scalar instead of dict."""
+        asset_file = tmp_path / "scalar.yaml"
+        asset_file.write_text("just a string")
+
+        validator = AssetValidator()
+        result = validator.validate(asset_file)
+
+        assert result.valid is False
+        assert any(e["code"] == "INVALID_ASSET_TYPE" for e in result.errors)
+        # Verify the error message mentions it's not a dictionary
+        error_messages = [e["message"] for e in result.errors]
+        assert any(
+            "mapping/dictionary" in msg.lower() or "str" in msg.lower()
+            for msg in error_messages
+        )
 
     def test_validate_missing_required_odcs_fields(self, tmp_path):
         """Test validation fails for missing required ODCS fields."""
@@ -188,15 +224,17 @@ class TestAssetValidator:
         asset_file = tmp_path / "incomplete.yaml"
         with open(asset_file, "w") as f:
             yaml.dump(asset_data, f)
-        
+
         validator = AssetValidator()
         result = validator.validate(asset_file)
-        
+
         assert result.valid is False
         # Should have errors for missing required fields
         error_codes = [e["code"] for e in result.errors]
-        assert any("MISSING_REQUIRED_FIELD" in code or "MISSING_DATIVO_EXTENSION" in code 
-                   for code in error_codes)
+        assert any(
+            "MISSING_REQUIRED_FIELD" in code or "MISSING_DATIVO_EXTENSION" in code
+            for code in error_codes
+        )
 
     def test_validate_missing_team_owner(self, tmp_path):
         """Test validation fails for missing team owner."""
@@ -211,10 +249,10 @@ class TestAssetValidator:
         asset_file = tmp_path / "no_owner.yaml"
         with open(asset_file, "w") as f:
             yaml.dump(asset_data, f)
-        
+
         validator = AssetValidator()
         result = validator.validate(asset_file)
-        
+
         assert result.valid is False
         assert any("MISSING_TEAM_OWNER" in e["code"] for e in result.errors)
 
@@ -237,14 +275,16 @@ class TestAssetValidator:
         asset_file = tmp_path / "valid.yaml"
         with open(asset_file, "w") as f:
             yaml.dump(asset_data, f)
-        
+
         validator = AssetValidator()
         result = validator.validate(asset_file)
-        
+
         # Should pass structural validation (JSON schema may be missing)
         # Check for key success indicators
         info_codes = [i["code"] for i in result.info]
-        assert "SCHEMA_FIELD_COUNT" in info_codes or "ASSET_STRUCTURE_VALID" in info_codes
+        assert (
+            "SCHEMA_FIELD_COUNT" in info_codes or "ASSET_STRUCTURE_VALID" in info_codes
+        )
 
 
 class TestValidateConfigCommand:
@@ -254,9 +294,9 @@ class TestValidateConfigCommand:
         """Test command returns appropriate exit code."""
         config_file = tmp_path / "test.yaml"
         config_file.write_text("")
-        
+
         exit_code = validate_config_command(str(config_file))
-        
+
         # Empty file should fail
         assert exit_code == 2
 
@@ -264,12 +304,12 @@ class TestValidateConfigCommand:
         """Test JSON output format."""
         config_file = tmp_path / "test.yaml"
         config_file.write_text("tenant_id: test")
-        
+
         exit_code = validate_config_command(str(config_file), json_output=True)
-        
+
         captured = capsys.readouterr()
         output = captured.out
-        
+
         # Should be valid JSON
         data = json.loads(output)
         assert "valid" in data
@@ -297,9 +337,9 @@ class TestValidateAssetCommand:
         asset_file = tmp_path / "valid.yaml"
         with open(asset_file, "w") as f:
             yaml.dump(asset_data, f)
-        
+
         exit_code = validate_asset_command(str(asset_file))
-        
+
         # Should pass (may have warnings but no errors)
         # Note: may fail JSON schema validation if schema file not found
         captured = capsys.readouterr()
@@ -309,21 +349,21 @@ class TestValidateAssetCommand:
         """Test command returns 2 for invalid asset."""
         asset_file = tmp_path / "invalid.yaml"
         asset_file.write_text("")
-        
+
         exit_code = validate_asset_command(str(asset_file))
-        
+
         assert exit_code == 2
 
     def test_json_output(self, tmp_path, capsys):
         """Test JSON output format."""
         asset_file = tmp_path / "test.yaml"
         asset_file.write_text("name: test")
-        
+
         exit_code = validate_asset_command(str(asset_file), json_output=True)
-        
+
         captured = capsys.readouterr()
         output = captured.out
-        
+
         # Should be valid JSON
         data = json.loads(output)
         assert "valid" in data
@@ -346,9 +386,9 @@ class TestValidateAssetCommand:
         asset_file = tmp_path / "valid.yaml"
         with open(asset_file, "w") as f:
             yaml.dump(asset_data, f)
-        
+
         exit_code = validate_asset_command(str(asset_file), verbose=True)
-        
+
         captured = capsys.readouterr()
         # Verbose mode should show info messages
         assert "Info" in captured.out or "ℹ️" in captured.out or exit_code in [0, 2]
@@ -360,7 +400,7 @@ class TestValidatorModeRestrictions:
     def test_cloud_mode_restrictions(self, tmp_path):
         """Test cloud mode connector restrictions are checked."""
         validator = ConfigValidator(mode="cloud")
-        
+
         # Create a config that references a database connector (blocked in cloud)
         config_data = {
             "tenant_id": "test-tenant",
@@ -368,19 +408,19 @@ class TestValidatorModeRestrictions:
             "target_connector_path": str(tmp_path / "iceberg.yaml"),
             "asset_path": str(tmp_path / "asset.yaml"),
         }
-        
+
         # Create mock connector file with postgres type
         postgres_connector = {"name": "postgres", "type": "postgres"}
         postgres_file = tmp_path / "postgres.yaml"
         with open(postgres_file, "w") as f:
             yaml.dump(postgres_connector, f)
-        
+
         config_file = tmp_path / "config.yaml"
         with open(config_file, "w") as f:
             yaml.dump(config_data, f)
-        
+
         result = validator.validate(config_file)
-        
+
         # May have warning about registry or error about blocked connector
         # depending on whether registry is available
         assert result is not None

@@ -9,19 +9,20 @@ These tests validate behavioral guarantees:
 """
 
 import json
+
 import pytest
 
 from src.dativo_ingest.dry_run import (
-    DryRunConfig,
-    DryRunResult,
+    ALL_PHASES,
     PHASE_DISCOVERY,
-    PHASE_SCHEMA_NEGOTIATION,
     PHASE_SAMPLE_FETCH,
     PHASE_SAMPLE_VALIDATION,
-    ALL_PHASES,
+    PHASE_SCHEMA_NEGOTIATION,
+    DryRunConfig,
+    DryRunResult,
+    create_error_result,
     format_dry_run_output,
     format_phase_checklist,
-    create_error_result,
 )
 
 
