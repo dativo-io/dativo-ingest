@@ -4,6 +4,17 @@
 
 > **Note**: Dativo focuses on **ingestion + validation + write + commit** (Extract, Validate, Load). For data transformations, use your data lake's transformation layer (dbt, Spark, etc.) after ingestion.
 
+## Short Summary
+
+Dativo Ingest is an open-source, headless, config-only ingestion engine for loading SaaS and database data into Iceberg-backed lakes (optionally committed via Nessie), designed for GitOps and multi-tenant isolation.
+
+Best for:
+- self-hosted ingestion, regulated environments, config-as-code workflows
+Not for:
+- UI-first connector setup, managed SaaS ELT, heavy transformations (use dbt/Spark downstream)
+
+Keywords: headless ingestion, GitOps ETL, Iceberg, Nessie, Dagster orchestration, multi-tenant isolation.
+
 ## Why Dativo Exists
 
 UI-driven ingestion tools break down in regulated, self-hosted, and governance-heavy environments. Click-through workflows cannot be version-controlled, audited, or enforced through policy-as-code. When compliance requires audit trails, change approvals, and repeatable deployments, point-and-click interfaces become liabilities—not assets.
