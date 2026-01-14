@@ -37,48 +37,48 @@ def run_command(args: argparse.Namespace) -> int:
         args: Parsed command-line arguments
 
     Returns:
-        Exit code (0=success, 1=partial, 2=failure)
+        Exit code (0=success, 1=general failure, 2=usage/validation error)
     """
+    import json as json_module
+    from .dry_run import DryRunConfig, create_error_result
+    
     # Check for dry-run mode
     dry_run = getattr(args, "dry_run", False)
+    json_output = getattr(args, "json", False)
+    verbose = getattr(args, "verbose", False)
     
     # Validate dry-run options if in dry-run mode
     dry_run_config = None
-    json_output = getattr(args, "json", False)
     
     if dry_run:
-        from .dry_run import DryRunConfig
-        
         sample_size = getattr(args, "sample_size", DryRunConfig.SAMPLE_SIZE_MAX)
         timeout = getattr(args, "timeout", DryRunConfig.TIMEOUT_DEFAULT_SECONDS)
-        verbose = getattr(args, "verbose", False)
         
-        # Validate sample size (strict - reject invalid values)
-        is_valid, error_msg = DryRunConfig.validate_sample_size(sample_size)
+        # Validate timeout (hard error if below minimum)
+        is_valid, error_msg = DryRunConfig.validate_timeout(timeout)
         if not is_valid:
             if json_output:
-                import json
-                print(json.dumps({
-                    "valid": False,
-                    "exit_code": 2,
-                    "errors": [{"message": error_msg, "code": "INVALID_SAMPLE_SIZE"}],
-                    "warnings": [],
-                    "phases_completed": [],
-                }))
+                result = create_error_result(error_msg, exit_code=2)
+                print(result.to_json())
             else:
                 print(f"ERROR: {error_msg}", file=sys.stderr)
             return 2
         
+        # Create config (sample size will be clamped with warning, not rejected)
         dry_run_config = DryRunConfig(
             sample_size=sample_size,
             timeout_seconds=timeout,
             verbose=verbose,
+            json_output=json_output,
         )
-        dry_run_config.json_output = json_output  # Store for later use
         
-        # Warn about low timeout (only in non-JSON mode)
-        if dry_run_config.timeout_warning and not json_output:
-            print(f"WARNING: {dry_run_config.timeout_warning}", file=sys.stderr)
+        # Emit clamping warning if sample size was adjusted
+        if dry_run_config.was_sample_size_clamped:
+            if json_output:
+                # Warning will be included in the result
+                pass
+            else:
+                print(f"WARNING: {dry_run_config.clamping_warning}", file=sys.stderr)
 
     try:
         manager_config = load_secret_manager_config(args.secret_manager_config)
@@ -162,7 +162,11 @@ def run_command(args: argparse.Namespace) -> int:
             return 2
 
         # Set up logging for single job execution (no startup_sequence was called)
-        log_level = job_config.logging.level if job_config.logging else "INFO"
+        # --verbose flag overrides to DEBUG level for diagnostic output
+        if verbose:
+            log_level = "DEBUG"
+        else:
+            log_level = job_config.logging.level if job_config.logging else "INFO"
         redact = job_config.logging.redaction if job_config.logging else False
         logger = setup_logging(
             level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id

@@ -83,8 +83,16 @@ class JobExecutor:
         self._dry_run_result: Optional["DryRunResult"] = None
 
     def _setup_logging(self) -> None:
-        """Set up logging for the job."""
-        log_level = self.job_config.logging.level if self.job_config.logging else None
+        """Set up logging for the job.
+        
+        In dry-run mode with verbose flag, DEBUG level is forced for diagnostic output.
+        """
+        # Dry-run verbose mode forces DEBUG level
+        if self.dry_run and self.dry_run_config and self.dry_run_config.verbose:
+            log_level = "DEBUG"
+        else:
+            log_level = self.job_config.logging.level if self.job_config.logging else None
+        
         redact = self.job_config.logging.redaction if self.job_config.logging else None
 
         self.logger = update_logging_settings(
@@ -1398,12 +1406,9 @@ class JobExecutor:
         """Execute dry-run mode: discovery, schema negotiation, and sample extraction.
 
         Performs:
-        - Configuration validation (phase tracking)
-        - Asset loading (phase tracking)
-        - Extractor initialization (phase tracking)
-        - Discovery and schema negotiation (phase tracking)
-        - Fetches sample rows from source (phase tracking)
-        - Validates data against schema (phase tracking)
+        - Discovery and schema negotiation (inline phase tracking)
+        - Fetches sample rows from source (inline phase tracking)
+        - Validates data against schema (inline phase tracking)
         - Does NOT write to Iceberg or object storage
 
         Safety guarantees:
@@ -1412,14 +1417,15 @@ class JobExecutor:
         - Never commits transactions
 
         Returns:
-            Exit code (0=success, 2=failure)
+            Exit code (0=success, 1=general failure, 2=usage/validation error)
         """
         from .dry_run import (
             DryRunConfig,
-            DryRunPhase,
-            DryRunPhaseTracker,
             DryRunResult,
-            PhaseStatus,
+            PHASE_DISCOVERY,
+            PHASE_SCHEMA_NEGOTIATION,
+            PHASE_SAMPLE_FETCH,
+            PHASE_SAMPLE_VALIDATION,
             format_dry_run_output,
         )
 
@@ -1427,123 +1433,90 @@ class JobExecutor:
         config = self.dry_run_config or DryRunConfig()
         sample_limit = config.sample_size
         verbose = config.verbose
-        json_output = getattr(config, "json_output", False)
+        json_output = config.json_output
 
-        # Initialize phase tracker and result
-        tracker = DryRunPhaseTracker(verbose=verbose, logger=self.logger)
+        # Initialize result with flattened structure
         result = DryRunResult()
         result.source_connector = self.source_config.type if self.source_config else None
         result.target_connector = self.target_config.type if self.target_config else None
         result.asset_name = self.asset_definition.name if self.asset_definition else None
 
+        # Add clamping warning if sample size was adjusted
+        if config.was_sample_size_clamped:
+            result.add_warning(config.clamping_warning)
+
         # Store result for potential external access
         self._dry_run_result = result
 
         sample_records = []
-        valid_records = []
-        validation_errors = []
+        valid_records_list = []
+        dry_run_start_time = time.perf_counter()
+        current_phase = None
 
-        # Log dry-run start (only in non-JSON mode)
-        if not json_output:
-            self.logger.info(
-                "=" * 60,
-                extra={"event_type": "dry_run_header"},
-            )
-            self.logger.info(
-                f"DRY-RUN MODE: No data will be written to storage (sample_size={sample_limit})",
-                extra={"event_type": "dry_run_started", "sample_size": sample_limit},
-            )
-            self.logger.info(
-                "=" * 60,
-                extra={"event_type": "dry_run_header"},
-            )
+        # Log dry-run start
+        self.logger.debug(
+            f"DRY-RUN MODE: Starting (sample_size={sample_limit})",
+            extra={"event_type": "dry_run_started", "sample_size": sample_limit},
+        )
 
         try:
-            # Phase 1: Configuration Validation (already done by execute(), skip here)
-            tracker.skip_phase(
-                DryRunPhase.CONFIGURATION_VALIDATION,
-                reason="Already validated during job initialization",
-            )
-
-            # Phase 2: Asset Loading (already done by execute(), skip here)
-            tracker.skip_phase(
-                DryRunPhase.ASSET_LOADING,
-                reason="Already loaded during job initialization",
-            )
-
-            # Phase 3: Extractor Initialization (already done by execute(), skip here)
-            tracker.skip_phase(
-                DryRunPhase.EXTRACTOR_INITIALIZATION,
-                reason="Already initialized during job initialization",
-            )
-
-            # Phase 4: Discovery
-            tracker.start_phase(DryRunPhase.DISCOVERY)
+            # Phase 1: Discovery
+            current_phase = PHASE_DISCOVERY
+            phase_start = time.perf_counter()
             try:
-                if not json_output:
-                    self.logger.info(
-                        "Phase: Discovery",
-                        extra={"event_type": "dry_run_phase_discovery"},
-                    )
+                self.logger.debug(
+                    f"Phase: {PHASE_DISCOVERY}",
+                    extra={"event_type": "dry_run_phase", "phase": PHASE_DISCOVERY},
+                )
 
-                # Log asset schema information
-                schema_details = {}
+                # Discovery: inspect asset schema
                 if self.asset_definition:
                     schema_fields = self.asset_definition.schema
-                    schema_details = {
-                        "field_count": len(schema_fields),
-                        "fields": [
-                            {
-                                "name": f.get("name"),
-                                "type": f.get("type", "string"),
-                                "required": f.get("required", False),
-                            }
-                            for f in schema_fields
-                        ],
-                    }
-                    if not json_output:
-                        self.logger.info(
-                            f"Asset schema defines {len(schema_fields)} field(s)",
-                            extra={"event_type": "dry_run_schema_info", **schema_details},
-                        )
-
-                tracker.end_phase(PhaseStatus.SUCCESS, details=schema_details)
-            except Exception as e:
-                tracker.end_phase(PhaseStatus.FAILURE, error_message=str(e))
-                result.add_error(str(e), "DISCOVERY_ERROR", DryRunPhase.DISCOVERY.value)
-                raise
-
-            # Phase 5: Schema Negotiation
-            tracker.start_phase(DryRunPhase.SCHEMA_NEGOTIATION)
-            try:
-                if not json_output:
-                    self.logger.info(
-                        "Phase: Schema Negotiation",
-                        extra={"event_type": "dry_run_phase_schema_negotiation"},
+                    self.logger.debug(
+                        f"Asset schema defines {len(schema_fields)} field(s)",
+                        extra={"event_type": "dry_run_schema_info", "field_count": len(schema_fields)},
                     )
 
-                # Schema negotiation is implicit - we have asset schema
-                negotiation_details = {
-                    "source_type": self.source_config.type if self.source_config else None,
-                    "asset_schema_available": self.asset_definition is not None,
-                }
-                tracker.end_phase(PhaseStatus.SUCCESS, details=negotiation_details)
+                duration = time.perf_counter() - phase_start
+                result.record_phase(PHASE_DISCOVERY, duration_seconds=duration)
+
             except Exception as e:
-                tracker.end_phase(PhaseStatus.FAILURE, error_message=str(e))
-                result.add_error(str(e), "SCHEMA_NEGOTIATION_ERROR", DryRunPhase.SCHEMA_NEGOTIATION.value)
+                result.record_phase(PHASE_DISCOVERY, error=str(e))
+                result.add_error(f"Discovery failed: {e}")
                 raise
 
-            # Phase 6: Sample Fetch
-            tracker.start_phase(DryRunPhase.SAMPLE_FETCH)
+            # Phase 2: Schema Negotiation
+            current_phase = PHASE_SCHEMA_NEGOTIATION
+            phase_start = time.perf_counter()
             try:
-                if not json_output:
-                    self.logger.info(
-                        f"Phase: Sample Fetch (limit={sample_limit} rows)",
-                        extra={"event_type": "dry_run_phase_sample_fetch", "sample_limit": sample_limit},
-                    )
+                self.logger.debug(
+                    f"Phase: {PHASE_SCHEMA_NEGOTIATION}",
+                    extra={"event_type": "dry_run_phase", "phase": PHASE_SCHEMA_NEGOTIATION},
+                )
+
+                # Schema negotiation is implicit when asset schema is present
+                if not self.asset_definition:
+                    result.add_warning("No asset definition loaded; schema validation skipped")
+
+                duration = time.perf_counter() - phase_start
+                result.record_phase(PHASE_SCHEMA_NEGOTIATION, duration_seconds=duration)
+
+            except Exception as e:
+                result.record_phase(PHASE_SCHEMA_NEGOTIATION, error=str(e))
+                result.add_error(f"Schema negotiation failed: {e}")
+                raise
+
+            # Phase 3: Sample Fetch
+            current_phase = PHASE_SAMPLE_FETCH
+            phase_start = time.perf_counter()
+            try:
+                self.logger.debug(
+                    f"Phase: {PHASE_SAMPLE_FETCH} (limit={sample_limit})",
+                    extra={"event_type": "dry_run_phase", "phase": PHASE_SAMPLE_FETCH, "limit": sample_limit},
+                )
 
                 batch_count = 0
-                total_sample_size = 0
+                total_fetched = 0
 
                 # SAFETY: Explicitly pass None for state_manager and checkpoint_context
                 # to prevent any state updates during dry-run
@@ -1553,134 +1526,108 @@ class JobExecutor:
                 ):
                     batch_count += 1
                     sample_records.extend(batch_records)
-                    total_sample_size = len(sample_records)
+                    total_fetched = len(sample_records)
 
-                    if not json_output:
-                        self.logger.info(
-                            f"Extracted batch {batch_count}: {len(batch_records)} records (total: {total_sample_size})",
-                            extra={
-                                "event_type": "dry_run_batch_extracted",
-                                "batch_number": batch_count,
-                                "batch_size": len(batch_records),
-                                "total_size": total_sample_size,
-                            },
-                        )
+                    self.logger.debug(
+                        f"Batch {batch_count}: {len(batch_records)} records (total: {total_fetched})",
+                        extra={
+                            "event_type": "dry_run_batch",
+                            "batch": batch_count,
+                            "batch_size": len(batch_records),
+                            "total": total_fetched,
+                        },
+                    )
 
                     # Stop after collecting enough samples
-                    if total_sample_size >= sample_limit:
+                    if total_fetched >= sample_limit:
                         sample_records = sample_records[:sample_limit]
                         break
 
                 result.sample_size = len(sample_records)
-                fetch_details = {
-                    "records_fetched": len(sample_records),
-                    "batches_processed": batch_count,
-                }
 
                 if not sample_records:
-                    result.add_warning(
-                        "No records extracted from source",
-                        "NO_RECORDS_EXTRACTED",
-                        DryRunPhase.SAMPLE_FETCH.value,
-                    )
+                    result.add_warning("No records extracted from source")
 
-                tracker.end_phase(PhaseStatus.SUCCESS, details=fetch_details)
+                duration = time.perf_counter() - phase_start
+                result.record_phase(PHASE_SAMPLE_FETCH, duration_seconds=duration)
 
             except Exception as e:
-                tracker.end_phase(PhaseStatus.FAILURE, error_message=str(e))
-                result.add_error(str(e), "SAMPLE_FETCH_ERROR", DryRunPhase.SAMPLE_FETCH.value)
+                result.record_phase(PHASE_SAMPLE_FETCH, error=str(e))
+                result.add_error(f"Sample fetch failed: {e}")
                 raise
 
-            # Phase 7: Sample Validation
-            tracker.start_phase(DryRunPhase.SAMPLE_VALIDATION)
+            # Phase 4: Sample Validation
+            current_phase = PHASE_SAMPLE_VALIDATION
+            phase_start = time.perf_counter()
             try:
-                if not json_output:
-                    self.logger.info(
-                        "Phase: Sample Validation",
-                        extra={"event_type": "dry_run_phase_sample_validation"},
-                    )
+                self.logger.debug(
+                    f"Phase: {PHASE_SAMPLE_VALIDATION}",
+                    extra={"event_type": "dry_run_phase", "phase": PHASE_SAMPLE_VALIDATION},
+                )
 
                 validation_passed = True
 
                 if sample_records and self.validator:
-                    valid_records, validation_errors = self.validator.validate_batch(
+                    valid_records_list, validation_errors = self.validator.validate_batch(
                         sample_records
                     )
-                    validation_summary = self.validator.get_error_summary()
 
-                    result.valid_records = len(valid_records)
-                    result.invalid_records = len(sample_records) - len(valid_records)
-                    result.validation_errors_by_type = validation_summary.get("errors_by_type", {})
-                    result.validation_errors_by_field = validation_summary.get("errors_by_field", {})
-                    result.sample_validation_errors = validation_summary.get("errors", [])
+                    result.valid_records = len(valid_records_list)
+                    result.invalid_records = len(sample_records) - len(valid_records_list)
 
-                    validation_passed = len(valid_records) == len(sample_records)
+                    validation_passed = (result.invalid_records == 0)
 
-                    if not json_output:
-                        self.logger.info(
-                            f"Validation: {len(valid_records)}/{len(sample_records)} records valid",
-                            extra={
-                                "event_type": "dry_run_validation_summary",
-                                "valid_records": len(valid_records),
-                                "total_records": len(sample_records),
-                            },
-                        )
+                    self.logger.debug(
+                        f"Validation: {result.valid_records}/{len(sample_records)} valid",
+                        extra={
+                            "event_type": "dry_run_validation",
+                            "valid": result.valid_records,
+                            "invalid": result.invalid_records,
+                        },
+                    )
 
                     if not validation_passed:
                         validation_mode = self.job_config.schema_validation_mode or "strict"
                         if validation_mode == "strict":
                             result.add_error(
-                                f"Data contract validation failed: {result.invalid_records} invalid records",
-                                "VALIDATION_FAILED_STRICT",
-                                DryRunPhase.SAMPLE_VALIDATION.value,
+                                f"Data contract validation failed: {result.invalid_records} invalid records"
                             )
                         else:
                             result.add_warning(
-                                f"Data contract validation warnings: {result.invalid_records} invalid records",
-                                "VALIDATION_WARNINGS",
-                                DryRunPhase.SAMPLE_VALIDATION.value,
+                                f"Validation warnings: {result.invalid_records} invalid records"
                             )
                 else:
                     result.valid_records = len(sample_records)
                     result.invalid_records = 0
 
-                validation_details = {
-                    "total_records": len(sample_records),
-                    "valid_records": result.valid_records,
-                    "invalid_records": result.invalid_records,
-                    "validation_passed": validation_passed,
-                }
-
-                tracker.end_phase(PhaseStatus.SUCCESS, details=validation_details)
+                duration = time.perf_counter() - phase_start
+                result.record_phase(PHASE_SAMPLE_VALIDATION, duration_seconds=duration)
 
             except Exception as e:
-                tracker.end_phase(PhaseStatus.FAILURE, error_message=str(e))
-                result.add_error(str(e), "VALIDATION_ERROR", DryRunPhase.SAMPLE_VALIDATION.value)
+                result.record_phase(PHASE_SAMPLE_VALIDATION, error=str(e))
+                result.add_error(f"Sample validation failed: {e}")
                 raise
 
-            # Finalize result
-            result.phases = [p.to_dict() for p in tracker.phases]
-            result.phases_completed = tracker.get_completed_phases()
+            # Calculate total duration
+            result.dry_run_duration_seconds = time.perf_counter() - dry_run_start_time
 
-            # SAFETY ASSERTIONS: Verify no writes, state updates, or commits occurred
-            # These should always pass in dry-run mode - if they don't, it's a bug
-            result.assert_safety_guarantees()
-
-            # Determine exit code
+            # Determine exit code based on errors
+            # 0 = success, 1 = general failure (e.g., validation in warn mode), 2 = validation/usage error
             validation_mode = self.job_config.schema_validation_mode or "strict"
             if not result.errors:
                 result.valid = True
                 result.exit_code = 0
             elif validation_mode == "warn" and all(
-                e.get("code", "").startswith("VALIDATION_") for e in result.errors
+                "validation" in e.lower() for e in result.errors
             ):
-                result.valid = True  # Warnings only
+                # Validation errors in warn mode: exit 1 (general failure)
+                result.valid = True
                 result.exit_code = 1
             else:
                 result.valid = False
                 result.exit_code = 2
 
-            # Output result
+            # Output result (always valid JSON when --json)
             if json_output:
                 print(result.to_json())
             else:
@@ -1690,28 +1637,30 @@ class JobExecutor:
             return result.exit_code
 
         except Exception as e:
-            # Handle unexpected errors
-            if self._dry_run_result:
-                self._dry_run_result.add_error(
-                    f"Unexpected error: {e}",
-                    "UNEXPECTED_ERROR",
-                    tracker._current_phase,
-                )
-                self._dry_run_result.phases = [p.to_dict() for p in tracker.phases]
-                self._dry_run_result.phases_completed = tracker.get_completed_phases()
-                self._dry_run_result.valid = False
-                self._dry_run_result.exit_code = 2
+            # Catch-all: ensure we always output valid JSON when requested
+            result.dry_run_duration_seconds = time.perf_counter() - dry_run_start_time
 
-                if json_output:
-                    print(self._dry_run_result.to_json())
-                else:
-                    self.logger.error(
-                        f"Dry-run execution failed: {e}",
-                        extra={"event_type": "dry_run_error"},
-                        exc_info=True,
-                    )
-                    output = format_dry_run_output(self._dry_run_result, json_output=False, verbose=verbose)
-                    print(output)
+            if current_phase and current_phase not in [p["name"] for p in result.phases]:
+                # Record the failed phase if not already recorded
+                result.record_phase(current_phase, error=str(e))
+
+            if f"Unexpected error: {e}" not in result.errors:
+                result.add_error(f"Unexpected error: {e}")
+
+            result.valid = False
+            result.exit_code = 2
+
+            if json_output:
+                # Always output valid JSON, even on error
+                print(result.to_json())
+            else:
+                self.logger.error(
+                    f"Dry-run failed: {e}",
+                    extra={"event_type": "dry_run_error"},
+                    exc_info=True,
+                )
+                output = format_dry_run_output(result, json_output=False, verbose=verbose)
+                print(output)
 
             return 2
 

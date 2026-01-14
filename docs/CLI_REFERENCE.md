@@ -43,10 +43,10 @@ dativo run --config <path> --mode <self_hosted|cloud>
 | `--secrets-dir` | No | Path to secrets directory (used only when `--secret-manager filesystem`). Default: `/secrets` |
 | `--tenant-id` | No | Tenant ID override (optional; if not provided, inferred from job configurations). If provided, validates all jobs belong to this tenant |
 | `--dry-run` | No | Perform discovery and schema validation without writing to storage |
-| `--sample-size` | No | Number of sample rows to fetch in dry-run mode (10-50, default: 50). Values outside this range will be rejected |
-| `--timeout` | No | Timeout for dry-run execution in seconds (default: 300). Values below 30 seconds will trigger a warning |
-| `--verbose` | No | Enable verbose output with phase timing details (for dry-run mode) |
-| `--json` | No | Output results in JSON format (for dry-run mode) |
+| `--sample-size` | No | Number of sample rows to fetch in dry-run mode (10-50, default: 50). Values outside this range are clamped with a warning |
+| `--timeout` | No | Timeout for dry-run execution in seconds (default: 300). Values below 10 seconds are rejected (exit code 2) |
+| `--verbose` | No | Enable DEBUG logging and show phase checklist with timing details |
+| `--json` | No | Output results as flattened JSON for CI/CD integration (always valid JSON, even on errors) |
 
 \* Either `--config` or `--job-dir` is required (mutually exclusive)
 
@@ -102,24 +102,26 @@ dativo ingest --config jobs/acme/stripe_customers.yaml \
 
 The `--dry-run` flag enables validation mode where:
 
-1. **Configuration Validation**: Job configuration is validated
-2. **Asset Loading**: Asset definition is loaded and validated
-3. **Extractor Initialization**: Source connector is initialized
-4. **Discovery**: Source schema and available streams are discovered
-5. **Schema Negotiation**: Source schema is matched against asset definition
-6. **Sample Extraction**: 10-50 rows are fetched from the source (configurable via `--sample-size`)
-7. **Data Contract Validation**: Sample data is validated against the asset schema
+1. **Discovery**: Source schema and available streams are discovered
+2. **Schema Negotiation**: Source schema is matched against asset definition
+3. **Sample Fetch**: Sample rows are fetched from the source (10-50 rows, configurable)
+4. **Sample Validation**: Sample data is validated against the asset schema
 
 **Safety Guarantees** (enforced at execution level):
 - ❌ Never writes to Iceberg or object storage
 - ❌ Never updates incremental state
 - ❌ Never commits transactions
 
-**Options:**
-- `--sample-size N`: Number of rows to fetch (10-50, default: 50). Values outside this range are rejected.
-- `--timeout SECONDS`: Execution timeout (default: 300s). Values below 30s trigger a warning.
-- `--verbose`: Show phase timing details
-- `--json`: Output structured JSON for CI/CD integration
+**Guardrails:**
+- `--sample-size N`: Number of rows to fetch (10-50, default: 50). Values outside this range are **clamped** with a warning (not rejected).
+- `--timeout SECONDS`: Execution timeout (default: 300s). Values below 10s are **rejected** with exit code 2.
+- `--verbose`: Forces DEBUG logging level for diagnostic output plus phase checklist.
+- `--json`: Always outputs **valid JSON**, even on errors. Flattened structure for easy parsing.
+
+**Exit Codes:**
+- `0` = Success
+- `1` = General failure (e.g., validation warnings in warn mode)
+- `2` = Usage/validation error (e.g., timeout too low, schema validation failed in strict mode)
 
 This is useful for:
 - Validating configurations before production runs
@@ -130,23 +132,17 @@ This is useful for:
 **Dry-Run Output Example (Human-Readable):**
 ```
 ============================================================
-DRY-RUN EXECUTION RESULTS
+DRY-RUN RESULTS
 ============================================================
 
 Status: ✅ PASSED
-Exit Code: 0
+Duration: 0.25s
 
-Phases Completed: 4/7
+Phases: 4/4 completed
 
-Sample Metrics:
-  Records fetched: 25
-  Valid records: 25
-  Invalid records: 0
-
-🔒 Safety Assertions:
-  No writes attempted: ✓
-  No state updates: ✓
-  No commits: ✓
+Sample: 25 records fetched
+  Valid: 25
+  Invalid: 0
 
 Configuration:
   Source: stripe
@@ -156,7 +152,34 @@ Configuration:
 ============================================================
 ```
 
-**Dry-Run Output Example (JSON):**
+**Dry-Run Output Example (Verbose Mode with Phase Checklist):**
+```
+============================================================
+DRY-RUN RESULTS
+============================================================
+
+Status: ✅ PASSED
+Duration: 0.25s
+
+Dry-run phases:
+  [✓] discovery (0.012s)
+  [✓] schema_negotiation (0.001s)
+  [✓] sample_fetch (0.234s)
+  [✓] sample_validation (0.003s)
+
+Sample: 25 records fetched
+  Valid: 25
+  Invalid: 0
+
+Configuration:
+  Source: stripe
+  Target: iceberg
+  Asset: stripe_customers
+
+============================================================
+```
+
+**Dry-Run Output Example (JSON - Flattened Structure):**
 ```json
 {
   "valid": true,
@@ -165,24 +188,37 @@ Configuration:
   "warnings": [],
   "phases_completed": ["discovery", "schema_negotiation", "sample_fetch", "sample_validation"],
   "phases": [
-    {"phase": "discovery", "status": "success", "duration_seconds": 0.012},
-    {"phase": "schema_negotiation", "status": "success", "duration_seconds": 0.001},
-    {"phase": "sample_fetch", "status": "success", "duration_seconds": 1.234},
-    {"phase": "sample_validation", "status": "success", "duration_seconds": 0.045}
+    {"name": "discovery", "duration_seconds": 0.012},
+    {"name": "schema_negotiation", "duration_seconds": 0.001},
+    {"name": "sample_fetch", "duration_seconds": 0.234},
+    {"name": "sample_validation", "duration_seconds": 0.003}
   ],
-  "metrics": {
-    "sample_size": 25,
-    "valid_records": 25,
-    "invalid_records": 0
-  },
-  "safety_assertions": {
-    "no_writes": true,
-    "no_state_updates": true,
-    "no_commits": true
-  },
+  "dry_run_duration_seconds": 0.25,
+  "sample_size": 25,
+  "valid_records": 25,
+  "invalid_records": 0,
   "source_connector": "stripe",
   "target_connector": "iceberg",
   "asset_name": "stripe_customers"
+}
+```
+
+**JSON Output on Error (Always Valid JSON):**
+```json
+{
+  "valid": false,
+  "exit_code": 2,
+  "errors": ["Timeout too low; minimum is 10 seconds. Got: 5"],
+  "warnings": [],
+  "phases_completed": [],
+  "phases": [],
+  "dry_run_duration_seconds": 0.0,
+  "sample_size": 0,
+  "valid_records": 0,
+  "invalid_records": 0,
+  "source_connector": null,
+  "target_connector": null,
+  "asset_name": null
 }
 ```
 

@@ -1,393 +1,207 @@
-"""Dry-run execution support with structured phase reporting and safety guardrails."""
+"""Dry-run execution support with simplified phase tracking and safety guardrails."""
 
 import json
 import time
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, Dict, List, Optional
 
 
-class DryRunPhase(Enum):
-    """Phases of dry-run execution."""
-    
-    CONFIGURATION_VALIDATION = "configuration_validation"
-    ASSET_LOADING = "asset_loading"
-    EXTRACTOR_INITIALIZATION = "extractor_initialization"
-    DISCOVERY = "discovery"
-    SCHEMA_NEGOTIATION = "schema_negotiation"
-    SAMPLE_FETCH = "sample_fetch"
-    SAMPLE_VALIDATION = "sample_validation"
+# Phase names as constants (no enum needed for simplicity)
+PHASE_DISCOVERY = "discovery"
+PHASE_SCHEMA_NEGOTIATION = "schema_negotiation"
+PHASE_SAMPLE_FETCH = "sample_fetch"
+PHASE_SAMPLE_VALIDATION = "sample_validation"
 
-
-class PhaseStatus(Enum):
-    """Status of a dry-run phase."""
-    
-    SUCCESS = "success"
-    FAILURE = "failure"
-    SKIPPED = "skipped"
-    PENDING = "pending"
-
-
-@dataclass
-class PhaseResult:
-    """Result of a single dry-run phase."""
-    
-    phase: str
-    status: str
-    duration_seconds: float = 0.0
-    error_message: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
-        result = {
-            "phase": self.phase,
-            "status": self.status,
-            "duration_seconds": round(self.duration_seconds, 3),
-        }
-        if self.error_message:
-            result["error_message"] = self.error_message
-        if self.details:
-            result["details"] = self.details
-        return result
+# All phases in execution order
+ALL_PHASES = [
+    PHASE_DISCOVERY,
+    PHASE_SCHEMA_NEGOTIATION,
+    PHASE_SAMPLE_FETCH,
+    PHASE_SAMPLE_VALIDATION,
+]
 
 
 @dataclass
 class DryRunConfig:
     """Configuration for dry-run execution with safety guardrails."""
-    
-    # Sample size limits (enforced, not configurable beyond this range)
+
+    # Sample size limits
     SAMPLE_SIZE_MIN: int = 10
     SAMPLE_SIZE_MAX: int = 50
-    
+
     # Timeout limits
-    TIMEOUT_MIN_SECONDS: int = 30
+    TIMEOUT_MIN_SECONDS: int = 10
     TIMEOUT_DEFAULT_SECONDS: int = 300
-    
+
     # Actual configured values
     sample_size: int = 50
     timeout_seconds: int = 300
     verbose: bool = False
-    
+    json_output: bool = False
+
+    # Tracking for clamping
+    _sample_size_clamped: bool = field(default=False, init=False)
+    _original_sample_size: int = field(default=50, init=False)
+    _clamping_warning: Optional[str] = field(default=None, init=False)
+
     def __post_init__(self):
-        """Validate and clamp configuration values."""
-        # Clamp sample_size to safe range
-        original_sample_size = self.sample_size
-        self.sample_size = max(self.SAMPLE_SIZE_MIN, min(self.SAMPLE_SIZE_MAX, self.sample_size))
-        self._sample_size_clamped = original_sample_size != self.sample_size
-        self._original_sample_size = original_sample_size
-        
-        # Validate timeout (warn if unusually low, but allow it)
-        self._timeout_warning = None
-        if self.timeout_seconds < self.TIMEOUT_MIN_SECONDS:
-            self._timeout_warning = (
-                f"Timeout {self.timeout_seconds}s is below recommended minimum "
-                f"({self.TIMEOUT_MIN_SECONDS}s). This may cause premature termination."
+        """Clamp sample size to valid range and record warning."""
+        self._original_sample_size = self.sample_size
+
+        # Clamp sample_size to safe range (don't fail, just warn)
+        if self.sample_size < self.SAMPLE_SIZE_MIN:
+            self._sample_size_clamped = True
+            self._clamping_warning = (
+                f"Sample size {self.sample_size} is below minimum ({self.SAMPLE_SIZE_MIN}). "
+                f"Clamping to {self.SAMPLE_SIZE_MIN}."
             )
-    
+            self.sample_size = self.SAMPLE_SIZE_MIN
+        elif self.sample_size > self.SAMPLE_SIZE_MAX:
+            self._sample_size_clamped = True
+            self._clamping_warning = (
+                f"Sample size {self.sample_size} exceeds maximum ({self.SAMPLE_SIZE_MAX}). "
+                f"Clamping to {self.SAMPLE_SIZE_MAX}."
+            )
+            self.sample_size = self.SAMPLE_SIZE_MAX
+        else:
+            self._sample_size_clamped = False
+
     @classmethod
-    def validate_sample_size(cls, value: int) -> tuple[bool, str]:
-        """Validate sample size before configuration.
-        
-        Args:
-            value: Requested sample size
-            
-        Returns:
-            Tuple of (is_valid, error_message)
+    def validate_timeout(cls, value: int) -> tuple[bool, str]:
+        """Validate timeout value. Returns (is_valid, error_message).
+
+        Timeout below minimum is a hard error (exit code 2).
         """
-        if value < cls.SAMPLE_SIZE_MIN or value > cls.SAMPLE_SIZE_MAX:
+        if value < cls.TIMEOUT_MIN_SECONDS:
             return False, (
-                f"Sample size must be between {cls.SAMPLE_SIZE_MIN} and {cls.SAMPLE_SIZE_MAX}. "
+                f"Timeout too low; minimum is {cls.TIMEOUT_MIN_SECONDS} seconds. "
                 f"Got: {value}"
             )
         return True, ""
-    
+
     @property
     def was_sample_size_clamped(self) -> bool:
         """Check if sample size was clamped from original value."""
         return self._sample_size_clamped
-    
-    @property
-    def original_sample_size(self) -> int:
-        """Get the originally requested sample size."""
-        return self._original_sample_size
-    
-    @property
-    def timeout_warning(self) -> Optional[str]:
-        """Get timeout warning message if applicable."""
-        return self._timeout_warning
 
-
-class DryRunPhaseTracker:
-    """Tracks execution phases with timing and status."""
-    
-    def __init__(self, verbose: bool = False, logger: Any = None):
-        """Initialize phase tracker.
-        
-        Args:
-            verbose: Enable verbose logging
-            logger: Logger instance for observability
-        """
-        self.verbose = verbose
-        self.logger = logger
-        self.phases: List[PhaseResult] = []
-        self._current_phase: Optional[str] = None
-        self._phase_start_time: Optional[float] = None
-    
-    def start_phase(self, phase: DryRunPhase) -> None:
-        """Start tracking a new phase.
-        
-        Args:
-            phase: The phase being started
-        """
-        self._current_phase = phase.value
-        self._phase_start_time = time.perf_counter()
-        
-        if self.verbose and self.logger:
-            self.logger.info(
-                f"Phase started: {phase.value}",
-                extra={
-                    "event_type": "dry_run_phase_started",
-                    "phase": phase.value,
-                },
-            )
-    
-    def end_phase(
-        self,
-        status: PhaseStatus,
-        error_message: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-    ) -> PhaseResult:
-        """End the current phase and record results.
-        
-        Args:
-            status: Final status of the phase
-            error_message: Optional error message if failed
-            details: Optional additional details
-            
-        Returns:
-            PhaseResult for the completed phase
-        """
-        if not self._current_phase or self._phase_start_time is None:
-            raise RuntimeError("No phase currently in progress")
-        
-        duration = time.perf_counter() - self._phase_start_time
-        
-        result = PhaseResult(
-            phase=self._current_phase,
-            status=status.value,
-            duration_seconds=duration,
-            error_message=error_message,
-            details=details,
-        )
-        
-        self.phases.append(result)
-        
-        if self.verbose and self.logger:
-            self.logger.info(
-                f"Phase completed: {self._current_phase} ({status.value}) in {duration:.3f}s",
-                extra={
-                    "event_type": "dry_run_phase_completed",
-                    "phase": self._current_phase,
-                    "status": status.value,
-                    "duration_seconds": round(duration, 3),
-                },
-            )
-        
-        self._current_phase = None
-        self._phase_start_time = None
-        
-        return result
-    
-    def skip_phase(
-        self,
-        phase: DryRunPhase,
-        reason: Optional[str] = None,
-    ) -> PhaseResult:
-        """Record a skipped phase.
-        
-        Args:
-            phase: The phase being skipped
-            reason: Optional reason for skipping
-            
-        Returns:
-            PhaseResult for the skipped phase
-        """
-        result = PhaseResult(
-            phase=phase.value,
-            status=PhaseStatus.SKIPPED.value,
-            duration_seconds=0.0,
-            error_message=reason,
-        )
-        
-        self.phases.append(result)
-        
-        if self.verbose and self.logger:
-            self.logger.info(
-                f"Phase skipped: {phase.value}" + (f" ({reason})" if reason else ""),
-                extra={
-                    "event_type": "dry_run_phase_skipped",
-                    "phase": phase.value,
-                    "reason": reason,
-                },
-            )
-        
-        return result
-    
-    def get_completed_phases(self) -> List[str]:
-        """Get list of successfully completed phase names."""
-        return [
-            p.phase for p in self.phases 
-            if p.status == PhaseStatus.SUCCESS.value
-        ]
-    
-    def get_failed_phase(self) -> Optional[PhaseResult]:
-        """Get the first failed phase, if any."""
-        for p in self.phases:
-            if p.status == PhaseStatus.FAILURE.value:
-                return p
-        return None
-    
-    def all_phases_passed(self) -> bool:
-        """Check if all phases passed (success or skipped)."""
-        return all(
-            p.status in (PhaseStatus.SUCCESS.value, PhaseStatus.SKIPPED.value)
-            for p in self.phases
-        )
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert all phase results to dictionary."""
-        return {
-            "phases": [p.to_dict() for p in self.phases],
-            "phases_completed": self.get_completed_phases(),
-            "all_passed": self.all_phases_passed(),
-        }
+    @property
+    def clamping_warning(self) -> Optional[str]:
+        """Get clamping warning message if sample size was adjusted."""
+        return self._clamping_warning
 
 
 @dataclass
 class DryRunResult:
-    """Complete result of a dry-run execution."""
-    
+    """Complete result of a dry-run execution with flattened structure."""
+
     valid: bool = True
     exit_code: int = 0
-    errors: List[Dict[str, Any]] = field(default_factory=list)
-    warnings: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Simple flat lists for errors and warnings (strings only for simplicity)
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+
+    # Phases completed successfully (names only)
     phases_completed: List[str] = field(default_factory=list)
+
+    # All phases with timing (flattened: name + duration only, no status field)
+    # If duration_seconds is None, phase failed or was skipped
     phases: List[Dict[str, Any]] = field(default_factory=list)
-    
-    # Execution metrics
+
+    # Total duration
+    dry_run_duration_seconds: float = 0.0
+
+    # Metrics
     sample_size: int = 0
     valid_records: int = 0
     invalid_records: int = 0
-    
-    # Validation details
-    validation_errors_by_type: Dict[str, int] = field(default_factory=dict)
-    validation_errors_by_field: Dict[str, int] = field(default_factory=dict)
-    sample_validation_errors: List[Dict[str, Any]] = field(default_factory=list)
-    
-    # Safety assertions
-    writes_attempted: bool = False
-    state_updates_attempted: bool = False
-    commits_attempted: bool = False
-    
+
     # Source/target info
     source_connector: Optional[str] = None
     target_connector: Optional[str] = None
     asset_name: Optional[str] = None
-    
-    def add_error(self, message: str, code: str, phase: Optional[str] = None) -> None:
-        """Add an error to the result."""
+
+    def add_error(self, message: str) -> None:
+        """Add an error message. Sets valid=False."""
         self.valid = False
-        self.errors.append({
-            "message": message,
-            "code": code,
-            "phase": phase,
-        })
-    
-    def add_warning(self, message: str, code: str, phase: Optional[str] = None) -> None:
-        """Add a warning to the result."""
-        self.warnings.append({
-            "message": message,
-            "code": code,
-            "phase": phase,
-        })
-    
-    def assert_no_writes(self) -> None:
-        """Assert that no writes were attempted during dry-run.
-        
-        Raises:
-            AssertionError: If writes were attempted
+        self.errors.append(message)
+
+    def add_warning(self, message: str) -> None:
+        """Add a warning message. Does not affect valid status."""
+        self.warnings.append(message)
+
+    def record_phase(
+        self,
+        name: str,
+        duration_seconds: Optional[float] = None,
+        error: Optional[str] = None,
+    ) -> None:
+        """Record a phase result.
+
+        Args:
+            name: Phase name
+            duration_seconds: Duration in seconds (None if failed/skipped)
+            error: Error message if phase failed
         """
-        assert not self.writes_attempted, (
-            "SAFETY VIOLATION: Write operation was attempted during dry-run mode. "
-            "This indicates a bug in the dry-run implementation."
-        )
-    
-    def assert_no_state_updates(self) -> None:
-        """Assert that no state updates were attempted during dry-run.
-        
-        Raises:
-            AssertionError: If state updates were attempted
-        """
-        assert not self.state_updates_attempted, (
-            "SAFETY VIOLATION: State update was attempted during dry-run mode. "
-            "This indicates a bug in the dry-run implementation."
-        )
-    
-    def assert_no_commits(self) -> None:
-        """Assert that no commits were attempted during dry-run.
-        
-        Raises:
-            AssertionError: If commits were attempted
-        """
-        assert not self.commits_attempted, (
-            "SAFETY VIOLATION: Commit operation was attempted during dry-run mode. "
-            "This indicates a bug in the dry-run implementation."
-        )
-    
-    def assert_safety_guarantees(self) -> None:
-        """Assert all safety guarantees for dry-run mode.
-        
-        Raises:
-            AssertionError: If any safety guarantee is violated
-        """
-        self.assert_no_writes()
-        self.assert_no_state_updates()
-        self.assert_no_commits()
-    
+        phase_record: Dict[str, Any] = {"name": name}
+
+        if duration_seconds is not None:
+            phase_record["duration_seconds"] = round(duration_seconds, 3)
+            self.phases_completed.append(name)
+        elif error:
+            phase_record["error"] = error
+
+        self.phases.append(phase_record)
+
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
-        result = {
+        """Convert to flattened dictionary for JSON serialization."""
+        return {
             "valid": self.valid,
             "exit_code": self.exit_code,
             "errors": self.errors,
             "warnings": self.warnings,
             "phases_completed": self.phases_completed,
             "phases": self.phases,
-            "metrics": {
-                "sample_size": self.sample_size,
-                "valid_records": self.valid_records,
-                "invalid_records": self.invalid_records,
-            },
-            "validation": {
-                "errors_by_type": self.validation_errors_by_type,
-                "errors_by_field": self.validation_errors_by_field,
-                "sample_errors": self.sample_validation_errors[:10],  # Limit to 10
-            },
-            "safety_assertions": {
-                "no_writes": not self.writes_attempted,
-                "no_state_updates": not self.state_updates_attempted,
-                "no_commits": not self.commits_attempted,
-            },
+            "dry_run_duration_seconds": round(self.dry_run_duration_seconds, 3),
+            "sample_size": self.sample_size,
+            "valid_records": self.valid_records,
+            "invalid_records": self.invalid_records,
             "source_connector": self.source_connector,
             "target_connector": self.target_connector,
             "asset_name": self.asset_name,
         }
-        return result
-    
+
     def to_json(self, indent: int = 2) -> str:
         """Convert to JSON string."""
         return json.dumps(self.to_dict(), indent=indent)
+
+
+def format_phase_checklist(result: DryRunResult) -> str:
+    """Format a human-readable phase checklist for verbose output.
+
+    Args:
+        result: DryRunResult with phase information
+
+    Returns:
+        Formatted checklist string
+    """
+    lines = ["", "Dry-run phases:"]
+
+    for phase in result.phases:
+        name = phase["name"]
+        if "duration_seconds" in phase:
+            # Success
+            duration = phase["duration_seconds"]
+            lines.append(f"  [✓] {name} ({duration:.3f}s)")
+        elif "error" in phase:
+            # Failed
+            error = phase["error"]
+            lines.append(f"  [✗] {name} ({error})")
+        else:
+            # Skipped (no duration, no error)
+            lines.append(f"  [○] {name} (skipped)")
+
+    return "\n".join(lines)
 
 
 def format_dry_run_output(
@@ -396,88 +210,85 @@ def format_dry_run_output(
     verbose: bool = False,
 ) -> str:
     """Format dry-run result for output.
-    
+
     Args:
         result: DryRunResult to format
         json_output: Output as JSON
-        verbose: Include verbose details
-        
+        verbose: Include verbose details (phase checklist)
+
     Returns:
         Formatted string output
     """
     if json_output:
         return result.to_json()
-    
+
     lines = []
     lines.append("")
     lines.append("=" * 60)
-    lines.append("DRY-RUN EXECUTION RESULTS")
+    lines.append("DRY-RUN RESULTS")
     lines.append("=" * 60)
-    
+
     # Overall status
     status_icon = "✅" if result.valid else "❌"
     status_text = "PASSED" if result.valid else "FAILED"
     lines.append(f"\nStatus: {status_icon} {status_text}")
-    lines.append(f"Exit Code: {result.exit_code}")
-    
-    # Phase summary
-    lines.append(f"\nPhases Completed: {len(result.phases_completed)}/{len(result.phases)}")
-    
+    lines.append(f"Duration: {result.dry_run_duration_seconds:.2f}s")
+
+    # Phase checklist (always shown in verbose mode)
     if verbose:
-        lines.append("\nPhase Details:")
-        for phase in result.phases:
-            status_icon = "✓" if phase["status"] == "success" else "✗" if phase["status"] == "failure" else "○"
-            lines.append(f"  {status_icon} {phase['phase']}: {phase['status']} ({phase['duration_seconds']:.3f}s)")
-            if phase.get("error_message"):
-                lines.append(f"      Error: {phase['error_message']}")
-    
+        lines.append(format_phase_checklist(result))
+    else:
+        # Brief summary
+        lines.append(
+            f"\nPhases: {len(result.phases_completed)}/{len(result.phases)} completed"
+        )
+
     # Metrics
-    lines.append(f"\nSample Metrics:")
-    lines.append(f"  Records fetched: {result.sample_size}")
-    lines.append(f"  Valid records: {result.valid_records}")
-    lines.append(f"  Invalid records: {result.invalid_records}")
-    
+    lines.append(f"\nSample: {result.sample_size} records fetched")
+    if result.valid_records > 0 or result.invalid_records > 0:
+        lines.append(f"  Valid: {result.valid_records}")
+        lines.append(f"  Invalid: {result.invalid_records}")
+
     # Errors
     if result.errors:
         lines.append(f"\n❌ Errors ({len(result.errors)}):")
         for error in result.errors:
-            phase_info = f" [{error['phase']}]" if error.get("phase") else ""
-            lines.append(f"  - [{error['code']}]{phase_info} {error['message']}")
-    
+            lines.append(f"  - {error}")
+
     # Warnings
     if result.warnings:
         lines.append(f"\n⚠️  Warnings ({len(result.warnings)}):")
         for warning in result.warnings:
-            phase_info = f" [{warning['phase']}]" if warning.get("phase") else ""
-            lines.append(f"  - [{warning['code']}]{phase_info} {warning['message']}")
-    
-    # Validation errors detail
-    if result.validation_errors_by_type and verbose:
-        lines.append("\nValidation Errors by Type:")
-        for error_type, count in result.validation_errors_by_type.items():
-            lines.append(f"  - {error_type}: {count}")
-    
-    if result.validation_errors_by_field and verbose:
-        lines.append("\nValidation Errors by Field:")
-        for field_name, count in result.validation_errors_by_field.items():
-            lines.append(f"  - {field_name}: {count}")
-    
-    # Safety assertions
-    lines.append("\n🔒 Safety Assertions:")
-    lines.append(f"  No writes attempted: {'✓' if not result.writes_attempted else '✗'}")
-    lines.append(f"  No state updates: {'✓' if not result.state_updates_attempted else '✗'}")
-    lines.append(f"  No commits: {'✓' if not result.commits_attempted else '✗'}")
-    
-    # Source/target info
-    if result.source_connector or result.target_connector or result.asset_name:
-        lines.append("\nConfiguration:")
-        if result.source_connector:
-            lines.append(f"  Source: {result.source_connector}")
-        if result.target_connector:
-            lines.append(f"  Target: {result.target_connector}")
-        if result.asset_name:
-            lines.append(f"  Asset: {result.asset_name}")
-    
-    lines.append("\n" + "=" * 60)
-    
+            lines.append(f"  - {warning}")
+
+    # Configuration
+    lines.append("\nConfiguration:")
+    if result.source_connector:
+        lines.append(f"  Source: {result.source_connector}")
+    if result.target_connector:
+        lines.append(f"  Target: {result.target_connector}")
+    if result.asset_name:
+        lines.append(f"  Asset: {result.asset_name}")
+
+    lines.append("")
+    lines.append("=" * 60)
+
     return "\n".join(lines)
+
+
+def create_error_result(error_message: str, exit_code: int = 2) -> DryRunResult:
+    """Create a DryRunResult for an error condition.
+
+    Useful for producing valid JSON output even when errors occur early.
+
+    Args:
+        error_message: The error message
+        exit_code: Exit code (default: 2 for usage/validation errors)
+
+    Returns:
+        DryRunResult with the error recorded
+    """
+    result = DryRunResult()
+    result.add_error(error_message)
+    result.exit_code = exit_code
+    return result
