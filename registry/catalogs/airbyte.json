@@ -1,10 +1,10 @@
 {
   "catalog": "airbyte",
   "schema_version": 1,
-  "generated_at": "2026-01-14T17:03:38.428926Z",
+  "generated_at": "2026-01-14T17:46:54.733953Z",
   "meta": {
-    "fetched_at": "2026-01-14T17:03:38.428908Z",
-    "source_url": "file:///private/var/folders/rk/vtq2689j32l8s72hlknmwqhw0000gn/T/pytest-of-sergeyenin/pytest-176/test_connectors_sync_with_vali0/test_catalog.json",
+    "fetched_at": "2026-01-14T17:46:54.733937Z",
+    "source_url": "file:///private/var/folders/rk/vtq2689j32l8s72hlknmwqhw0000gn/T/pytest-of-sergeyenin/pytest-180/test_connectors_sync_with_vali0/test_catalog.json",
     "sha256": "785496e155157a1898bcccfe7be6882e854fbef69e8f34f18be3fa6fd4522d7b",
     "etag": null,
     "last_modified": null

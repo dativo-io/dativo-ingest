@@ -1638,10 +1638,21 @@ class JobExecutor:
             # Calculate total duration
             result.dry_run_duration_seconds = time.perf_counter() - dry_run_start_time
 
-            # Determine exit code based on errors
+            # Determine exit code based on errors and warnings
             # 0 = success, 1 = general failure (e.g., validation in warn mode), 2 = validation/usage error
             validation_mode = self.job_config.schema_validation_mode or "strict"
-            if not result.errors:
+
+            # Check for validation warnings in warn mode first
+            # (warnings are added instead of errors in warn mode)
+            if (
+                validation_mode == "warn"
+                and result.warnings
+                and any("validation" in w.lower() for w in result.warnings)
+            ):
+                # Validation warnings in warn mode: exit 1 (general failure)
+                result.valid = True
+                result.exit_code = 1
+            elif not result.errors:
                 result.valid = True
                 result.exit_code = 0
             elif validation_mode == "warn" and all(

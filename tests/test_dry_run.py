@@ -223,9 +223,9 @@ class TestDryRunValidationResults:
         # Verify validator was called
         mock_validator.validate_batch.assert_called_once()
 
-        # In warn mode with validation errors, should return 0 or 1
-        # (0 = success, 1 = general failure with warnings)
-        assert exit_code in [0, 1]
+        # In warn mode with validation errors, should return exit code 1
+        # (validation warnings in warn mode = exit code 1 per documentation)
+        assert exit_code == 1
 
 
 class TestDryRunSampleSizeLimit:
