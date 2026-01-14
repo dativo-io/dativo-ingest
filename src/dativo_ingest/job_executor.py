@@ -1436,6 +1436,7 @@ class JobExecutor:
         sample_limit = config.sample_size
         verbose = config.verbose
         json_output = config.json_output
+        timeout_seconds = config.timeout_seconds
 
         # Initialize result with flattened structure
         result = DryRunResult()
@@ -1461,14 +1462,36 @@ class JobExecutor:
         dry_run_start_time = time.perf_counter()
         current_phase = None
 
+        # Helper function to check timeout
+        def check_timeout(phase_name: str) -> None:
+            """Check if timeout has been exceeded and raise TimeoutError if so.
+
+            Args:
+                phase_name: Name of the current phase for error message
+
+            Raises:
+                TimeoutError: If elapsed time exceeds timeout_seconds
+            """
+            elapsed = time.perf_counter() - dry_run_start_time
+            if elapsed >= timeout_seconds:
+                raise TimeoutError(
+                    f"Dry-run timeout exceeded ({timeout_seconds}s) during {phase_name}. "
+                    f"Elapsed: {elapsed:.2f}s"
+                )
+
         # Log dry-run start
         self.logger.debug(
-            f"DRY-RUN MODE: Starting (sample_size={sample_limit})",
-            extra={"event_type": "dry_run_started", "sample_size": sample_limit},
+            f"DRY-RUN MODE: Starting (sample_size={sample_limit}, timeout={timeout_seconds}s)",
+            extra={
+                "event_type": "dry_run_started",
+                "sample_size": sample_limit,
+                "timeout_seconds": timeout_seconds,
+            },
         )
 
         try:
             # Phase 1: Discovery
+            check_timeout("discovery")
             current_phase = PHASE_DISCOVERY
             phase_start = time.perf_counter()
             try:
@@ -1497,6 +1520,7 @@ class JobExecutor:
                 raise
 
             # Phase 2: Schema Negotiation
+            check_timeout("schema_negotiation")
             current_phase = PHASE_SCHEMA_NEGOTIATION
             phase_start = time.perf_counter()
             try:
@@ -1523,6 +1547,7 @@ class JobExecutor:
                 raise
 
             # Phase 3: Sample Fetch
+            check_timeout("sample_fetch")
             current_phase = PHASE_SAMPLE_FETCH
             phase_start = time.perf_counter()
             try:
@@ -1544,6 +1569,9 @@ class JobExecutor:
                     state_manager=None,  # SAFETY: Don't use state manager in dry-run
                     checkpoint_context=None,  # SAFETY: Don't use checkpoints in dry-run
                 ):
+                    # Check timeout after each batch to prevent hanging on slow sources
+                    check_timeout("sample_fetch")
+
                     batch_count += 1
                     sample_records.extend(batch_records)
                     total_fetched = len(sample_records)
@@ -1577,6 +1605,7 @@ class JobExecutor:
                 raise
 
             # Phase 4: Sample Validation
+            check_timeout("sample_validation")
             current_phase = PHASE_SAMPLE_VALIDATION
             phase_start = time.perf_counter()
             try:
