@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ from .config import (
     AssetDefinition,
     JobConfig,
     MetricsConfig,
+    NotificationConfig,
     SourceConfig,
     TargetConfig,
 )
@@ -54,6 +56,8 @@ class JobExecutor:
         mode: str = "self_hosted",
         dry_run: bool = False,
         dry_run_config: Optional["DryRunConfig"] = None,
+        notifications: Optional[NotificationConfig] = None,
+        config_path: Optional[str] = None,
     ):
         """Initialize job executor.
 
@@ -62,11 +66,15 @@ class JobExecutor:
             mode: Execution mode (default: self_hosted)
             dry_run: If True, perform discovery and sample extraction without writing
             dry_run_config: Optional configuration for dry-run mode (sample size, timeout)
+            notifications: Optional notification configuration
+            config_path: Path to the job configuration file
         """
         self.job_config = job_config
         self.mode = mode
         self.dry_run = dry_run
         self.dry_run_config = dry_run_config
+        self.notifications = notifications
+        self.config_path = config_path
         self.tenant_id = job_config.tenant_id
         self.logger = None
         self.source_config: Optional[SourceConfig] = None
@@ -1318,10 +1326,14 @@ class JobExecutor:
 
         return exit_code
 
-    def _write_run_summary(self, exit_code: Optional[int] = None) -> None:
-        """Write run summary to file."""
+    def _write_run_summary(self, exit_code: Optional[int] = None) -> Optional[Path]:
+        """Write run summary to file.
+        
+        Returns:
+            Path to the written summary file, or None if failed/skipped.
+        """
         if not self.run_summary:
-            return
+            return None
 
         try:
             # Finalize summary
@@ -1396,6 +1408,7 @@ class JobExecutor:
                     "event_type": "run_summary_written",
                 },
             )
+            return summary_file
 
         except Exception as e:
             if self.logger:
@@ -1406,6 +1419,7 @@ class JobExecutor:
                 )
             else:
                 print(f"ERROR: Failed to write run summary: {e}", file=sys.stderr)
+            return None
 
     def _execute_dry_run(self) -> int:
         """Execute dry-run mode: discovery, schema negotiation, and sample extraction.
@@ -1814,6 +1828,130 @@ class JobExecutor:
             )
             # Don't fail the job if catalog push fails
 
+    def _execute_notification_hook(self, summary_path: Path) -> None:
+        """Execute notification hook if configured and job failed."""
+        if not self.notifications or not self.notifications.on_failure:
+            return
+
+        command_template = self.notifications.on_failure.get("command")
+        if not command_template:
+            return
+
+        env_config = self.notifications.on_failure.get("env", {})
+
+        # Create a simplified summary file for the hook
+        try:
+            notification_summary_path = summary_path.parent / f"notification-{summary_path.name}"
+
+            # Flatten summary for notification contract
+            flat_summary = {
+                "tenant_id": self.tenant_id,
+                "job_name": self.job_config.asset or "unknown",
+                "run_id": self.run_summary.run.id if self.run_summary else "unknown",
+                "status": self.run_summary.ingestion.status if self.run_summary else "failure",
+                "timestamp": (
+                    self.run_summary.run.start_time.isoformat()
+                    if self.run_summary and self.run_summary.run.start_time
+                    else datetime.now(timezone.utc).isoformat()
+                ),
+                "config_path": self.config_path or "unknown",
+                "error": (
+                    {
+                        "message": (
+                            self.run_summary.ingestion.error.error_message
+                            if self.run_summary.ingestion.error
+                            else "Unknown error"
+                        ),
+                        "type": (
+                            self.run_summary.ingestion.error.error_type
+                            if self.run_summary.ingestion.error
+                            else "UnknownError"
+                        ),
+                    }
+                    if self.run_summary
+                    and self.run_summary.ingestion.error
+                    and self.run_summary.ingestion.error.has_errors
+                    else None
+                ),
+            }
+
+            with open(notification_summary_path, "w") as f:
+                json.dump(flat_summary, f, indent=2)
+
+            summary_path_to_use = notification_summary_path
+
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to create notification summary file: {e}. Using standard summary file.",
+                extra={"event_type": "notification_summary_error"},
+            )
+            summary_path_to_use = summary_path
+
+        self.logger.info(
+            "Executing failure notification hook",
+            extra={
+                "command": command_template,
+                "event_type": "notification_hook_started",
+            },
+        )
+
+        try:
+            # Prepare environment variables
+            env = os.environ.copy()
+
+            # User provided env vars (with expansion)
+            for key, value in env_config.items():
+                env[key] = expand_env_variable(str(value))
+
+            # Required DATIVO_* vars (override user vars)
+            env["DATIVO_TENANT_ID"] = self.tenant_id
+            env["DATIVO_JOB_NAME"] = self.job_config.asset or "unknown"
+            env["DATIVO_RUN_ID"] = (
+                self.run_summary.run.id if self.run_summary else "unknown"
+            )
+            env["DATIVO_SUMMARY_PATH"] = str(summary_path_to_use)
+
+            # Execute command
+            result = subprocess.run(
+                command_template,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=20,  # 20s timeout
+            )
+
+            if result.returncode != 0:
+                self.logger.warning(
+                    f"Notification hook failed with exit code {result.returncode}",
+                    extra={
+                        "event_type": "notification_hook_failed",
+                        "exit_code": result.returncode,
+                        "stderr": result.stderr[:1000] if result.stderr else None,
+                    },
+                )
+            else:
+                self.logger.info(
+                    "Notification hook executed successfully",
+                    extra={
+                        "event_type": "notification_hook_success",
+                        "stdout": result.stdout[:1000] if result.stdout else None,
+                    },
+                )
+
+        except subprocess.TimeoutExpired:
+            self.logger.warning(
+                "Notification hook timed out",
+                extra={
+                    "event_type": "notification_hook_timeout",
+                    "timeout_seconds": 20,
+                },
+            )
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to execute notification hook: {e}",
+                extra={"event_type": "notification_hook_error", "error": str(e)},
+            )
+
     def execute(self) -> int:
         """Execute the complete job pipeline.
 
@@ -1979,7 +2117,11 @@ class JobExecutor:
 
             # Finalize metrics
             self._finish_metrics(exit_code)
-            self._write_run_summary(exit_code)
+            summary_path = self._write_run_summary(exit_code)
+
+            # Execute notification hook on failure
+            if exit_code == 2 and summary_path:
+                self._execute_notification_hook(summary_path)
 
             return exit_code
 
@@ -2002,5 +2144,7 @@ class JobExecutor:
             if self.metrics_collector:
                 self.metrics_collector.finish("failure")
 
-            self._write_run_summary(2)
+            summary_path = self._write_run_summary(2)
+            if summary_path:
+                self._execute_notification_hook(summary_path)
             return 2

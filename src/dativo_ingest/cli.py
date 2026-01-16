@@ -21,7 +21,7 @@ from .cli_connectors import (
     connectors_sync_command,
 )
 from .cli_validate import validate_asset_command, validate_config_command
-from .config import JobConfig, RunnerConfig, SourceConfig
+from .config import JobConfig, NotificationConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import get_logger, setup_logging
 from .metrics_config import resolve_metrics_config
@@ -81,6 +81,21 @@ def run_command(args: argparse.Namespace) -> int:
                 pass
             else:
                 print(f"WARNING: {dry_run_config.clamping_warning}", file=sys.stderr)
+
+    # Load runner config for notifications (optional)
+    runner_config_path = os.getenv("DATIVO_RUNNER_CONFIG", "/app/configs/runner.yaml")
+    notifications = None
+    if os.path.exists(runner_config_path):
+        try:
+            runner_config = RunnerConfig.from_yaml(runner_config_path)
+            notifications = runner_config.notifications
+        except Exception as e:
+            # Only warn if verbose or if explicitly set via env var (avoid noise in default case)
+            if os.getenv("DATIVO_RUNNER_CONFIG") or verbose:
+                print(
+                    f"WARNING: Failed to load runner config from {runner_config_path}: {e}",
+                    file=sys.stderr,
+                )
 
     try:
         manager_config = load_secret_manager_config(args.secret_manager_config)
@@ -144,7 +159,11 @@ def run_command(args: argparse.Namespace) -> int:
         results = []
         for job_config in jobs:
             result = _execute_single_job(
-                job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+                job_config,
+                args.mode,
+                dry_run=dry_run,
+                dry_run_config=dry_run_config,
+                notifications=notifications,
             )
             results.append(result)
 
@@ -226,7 +245,11 @@ def run_command(args: argparse.Namespace) -> int:
                 )
 
         return _execute_single_job(
-            job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+            job_config,
+            args.mode,
+            dry_run=dry_run,
+            dry_run_config=dry_run_config,
+            notifications=notifications,
         )
 
 
@@ -235,6 +258,7 @@ def _execute_single_job(
     mode: str,
     dry_run: bool = False,
     dry_run_config: "DryRunConfig" = None,
+    notifications: Optional[NotificationConfig] = None,
 ) -> int:
     """Execute a single job configuration.
 
@@ -243,12 +267,18 @@ def _execute_single_job(
         mode: Execution mode
         dry_run: If True, perform discovery and sample extraction without writing
         dry_run_config: Optional dry-run configuration with sample size and timeout
+        notifications: Optional notification configuration
 
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
     executor = JobExecutor(
-        job_config, mode=mode, dry_run=dry_run, dry_run_config=dry_run_config
+        job_config,
+        mode=mode,
+        dry_run=dry_run,
+        dry_run_config=dry_run_config,
+        notifications=notifications,
+        config_path=job_config.config_file_path,
     )
     return executor.execute()
 

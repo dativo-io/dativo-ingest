@@ -428,6 +428,107 @@ Metadata is visible in the Dagster UI for monitoring and debugging.
 
 ---
 
+
+## Notification Hooks (v1.4.0+)
+
+Dativo supports runner-level notification hooks triggered on job failure. These hooks are lightweight, external scripts executed by the runner to notify external systems (Slack, Webhooks, etc.).
+
+**Key Principles:**
+- **Runner-level**: Configured globally for the runner, not per job.
+- **Failure-only**: Triggered only when a job fails (exit code 2).
+- **Headless**: Dativo does not include built-in integrations (Slack SDK, Kafka clients). You provide the script (shell + curl).
+- **Safe**: Hook execution is sandboxed, timed out, and does not affect job outcome.
+
+### Configuration
+
+Add a `notifications` block to your `runner.yaml`:
+
+```yaml
+runner:
+  mode: orchestrated
+  # ... other settings ...
+  notifications:
+    on_failure:
+      command: ["/app/examples/scripts/notify_slack.sh"]
+      env:
+        SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+```
+
+**Rules:**
+- `command`: List of strings (argv). Shell expansion is NOT performed by Dativo (use the script for that).
+- `env`: Environment variables to inject. Supports `${VAR}` expansion from the runner's environment.
+
+### Runtime Behavior
+
+When a job fails:
+1. The runner writes a summary JSON file (flat structure) to a deterministic path.
+2. The runner executes the configured command.
+3. The runner injects specific environment variables.
+
+**Injected Environment Variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `DATIVO_TENANT_ID` | Tenant ID of the failed job |
+| `DATIVO_JOB_NAME` | Name of the job/asset |
+| `DATIVO_RUN_ID` | Unique run identifier |
+| `DATIVO_SUMMARY_PATH` | Absolute path to the summary JSON file |
+
+**Summary File Contract:**
+
+The summary file is a flat JSON object containing minimal details for notification:
+
+```json
+{
+  "tenant_id": "acme",
+  "job_name": "stripe_hourly",
+  "run_id": "2026-01-16T10:03:12Z",
+  "status": "failure",
+  "timestamp": "2026-01-16T10:03:12Z",
+  "config_path": "/app/configs/jobs/stripe.yaml",
+  "error": {
+    "message": "Stripe API timeout",
+    "type": "UpstreamError"
+  }
+}
+```
+
+### Example Scripts
+
+Dativo ships with example scripts in `examples/scripts/`:
+
+1.  **Slack Notification** (`notify_slack.sh`)
+    - Uses `SLACK_WEBHOOK_URL`
+    - Posts a formatted message with job details and error.
+
+2.  **Generic Webhook** (`notify_webhook.sh`)
+    - Uses `WEBHOOK_URL`
+    - POSTs the raw summary JSON to the endpoint.
+
+### Explicit Non-Goals
+
+Dativo **does not** ship built-in integrations for Kafka, PagerDuty, Microsoft Teams, or Email.
+If you need these, write a custom shell script that uses `curl`, `kcat`, or other tools to send the notification. The summary file provides all necessary context.
+
+**Kafka Example (Conceptual):**
+
+To publish to Kafka, create a script `notify_kafka.sh`:
+
+```bash
+#!/bin/bash
+# Publish summary to 'job-failures' topic using kcat
+cat "$DATIVO_SUMMARY_PATH" | kcat -P -b kafka-broker:9092 -t job-failures
+```
+
+### Troubleshooting
+
+-   **Hook not running**: Verify `exit_code` is 2. Hooks do not run on success (0) or partial success (1).
+-   **Script not found**: Ensure absolute path in `command`.
+-   **Permission denied**: Ensure script is executable (`chmod +x`).
+-   **Missing env vars**: Check `runner.yaml` configuration and runner process environment.
+
+---
+
 ## Migration from v1.2.0
 
 ### Backward Compatibility

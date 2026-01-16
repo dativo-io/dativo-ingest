@@ -574,6 +574,9 @@ class JobConfig(BaseModel):
     # Metrics configuration
     metrics: Optional[MetricsConfig] = None
 
+    # Runtime metadata (not in schema)
+    config_file_path: Optional[str] = Field(default=None, exclude=True)
+
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":
         """Validate that all required connector paths are provided."""
@@ -1116,7 +1119,9 @@ class JobConfig(BaseModel):
                 )
 
         try:
-            return cls(**data)
+            obj = cls(**data)
+            obj.config_file_path = str(path)
+            return obj
         except Exception as e:
             print(
                 f"ERROR: Invalid job configuration: {path}\nValidation Error: {e}",
@@ -1163,6 +1168,25 @@ class OrchestratorConfig(BaseModel):
     concurrency_per_tenant: int = Field(default=1, ge=1)
 
 
+class NotificationConfig(BaseModel):
+    """Runner-level notification configuration."""
+
+    on_failure: Optional[Dict[str, Any]] = None
+
+    @model_validator(mode="after")
+    def validate_on_failure(self) -> "NotificationConfig":
+        """Validate on_failure configuration."""
+        if self.on_failure:
+            if "command" not in self.on_failure:
+                raise ValueError("notifications.on_failure must contain 'command'")
+            
+            command = self.on_failure["command"]
+            if not isinstance(command, list):
+                raise ValueError("notifications.on_failure.command must be a list of strings (argv)")
+                
+        return self
+
+
 class RunnerConfig(BaseModel):
     """Runner configuration model."""
 
@@ -1170,6 +1194,9 @@ class RunnerConfig(BaseModel):
     orchestrator: OrchestratorConfig
     metrics: Optional[MetricsConfig] = Field(
         default=None, description="Global metrics configuration for orchestrated mode"
+    )
+    notifications: Optional[NotificationConfig] = Field(
+        default=None, description="Runner-level notification hooks"
     )
 
     @classmethod
