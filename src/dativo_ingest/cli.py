@@ -4,6 +4,10 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .dry_run import DryRunConfig
 
 from .cli_commands import (
     ConnectionChecker,
@@ -16,6 +20,7 @@ from .cli_connectors import (
     connectors_list_command,
     connectors_sync_command,
 )
+from .cli_validate import validate_asset_command, validate_config_command
 from .config import JobConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import get_logger, setup_logging
@@ -33,8 +38,50 @@ def run_command(args: argparse.Namespace) -> int:
         args: Parsed command-line arguments
 
     Returns:
-        Exit code (0=success, 1=partial, 2=failure)
+        Exit code (0=success, 1=general failure, 2=usage/validation error)
     """
+    import json as json_module
+
+    from .dry_run import DryRunConfig, create_error_result
+
+    # Check for dry-run mode
+    dry_run = getattr(args, "dry_run", False)
+    json_output = getattr(args, "json", False)
+    verbose = getattr(args, "verbose", False)
+
+    # Validate dry-run options if in dry-run mode
+    dry_run_config = None
+
+    if dry_run:
+        sample_size = getattr(args, "sample_size", DryRunConfig.SAMPLE_SIZE_MAX)
+        timeout = getattr(args, "timeout", DryRunConfig.TIMEOUT_DEFAULT_SECONDS)
+
+        # Validate timeout (hard error if below minimum)
+        is_valid, error_msg = DryRunConfig.validate_timeout(timeout)
+        if not is_valid:
+            if json_output:
+                result = create_error_result(error_msg, exit_code=2)
+                print(result.to_json())
+            else:
+                print(f"ERROR: {error_msg}", file=sys.stderr)
+            return 2
+
+        # Create config (sample size will be clamped with warning, not rejected)
+        dry_run_config = DryRunConfig(
+            sample_size=sample_size,
+            timeout_seconds=timeout,
+            verbose=verbose,
+            json_output=json_output,
+        )
+
+        # Emit clamping warning if sample size was adjusted
+        if dry_run_config.was_sample_size_clamped:
+            if json_output:
+                # Warning will be included in the result
+                pass
+            else:
+                print(f"WARNING: {dry_run_config.clamping_warning}", file=sys.stderr)
+
     try:
         manager_config = load_secret_manager_config(args.secret_manager_config)
     except ValueError as exc:
@@ -96,7 +143,9 @@ def run_command(args: argparse.Namespace) -> int:
         # Execute all jobs sequentially
         results = []
         for job_config in jobs:
-            result = _execute_single_job(job_config, args.mode)
+            result = _execute_single_job(
+                job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+            )
             results.append(result)
 
         # Return 0 if all succeeded, 2 if any failed
@@ -115,7 +164,11 @@ def run_command(args: argparse.Namespace) -> int:
             return 2
 
         # Set up logging for single job execution (no startup_sequence was called)
-        log_level = job_config.logging.level if job_config.logging else "INFO"
+        # --verbose flag overrides to DEBUG level for diagnostic output
+        if verbose:
+            log_level = "DEBUG"
+        else:
+            log_level = job_config.logging.level if job_config.logging else "INFO"
         redact = job_config.logging.redaction if job_config.logging else False
         logger = setup_logging(
             level=log_level, redact_secrets=redact, tenant_id=job_config.tenant_id
@@ -172,20 +225,31 @@ def run_command(args: argparse.Namespace) -> int:
                     },
                 )
 
-        return _execute_single_job(job_config, args.mode)
+        return _execute_single_job(
+            job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+        )
 
 
-def _execute_single_job(job_config: JobConfig, mode: str) -> int:
+def _execute_single_job(
+    job_config: JobConfig,
+    mode: str,
+    dry_run: bool = False,
+    dry_run_config: "DryRunConfig" = None,
+) -> int:
     """Execute a single job configuration.
 
     Args:
         job_config: Job configuration
         mode: Execution mode
+        dry_run: If True, perform discovery and sample extraction without writing
+        dry_run_config: Optional dry-run configuration with sample size and timeout
 
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
-    executor = JobExecutor(job_config, mode=mode)
+    executor = JobExecutor(
+        job_config, mode=mode, dry_run=dry_run, dry_run_config=dry_run_config
+    )
     return executor.execute()
 
 
@@ -446,6 +510,44 @@ def start_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def validate_command(args: argparse.Namespace) -> int:
+    """Validate configuration files and asset definitions.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0=valid, 2=invalid)
+    """
+    if not hasattr(args, "validate_command") or args.validate_command is None:
+        print(
+            "ERROR: Please specify a validation type: 'config' or 'asset'",
+            file=sys.stderr,
+        )
+        print("Usage: dativo validate config --path <job.yaml>", file=sys.stderr)
+        print("       dativo validate asset --path <spec.yaml>", file=sys.stderr)
+        return 2
+
+    if args.validate_command == "config":
+        return validate_config_command(
+            path=args.path,
+            mode=args.mode,
+            json_output=args.json,
+            verbose=args.verbose,
+        )
+    elif args.validate_command == "asset":
+        return validate_asset_command(
+            path=args.path,
+            json_output=args.json,
+            verbose=args.verbose,
+        )
+    else:
+        print(
+            f"ERROR: Unknown validation type: {args.validate_command}", file=sys.stderr
+        )
+        return 2
+
+
 def connectors_command(args: argparse.Namespace) -> int:
     """Manage connector registry and catalogs.
 
@@ -544,6 +646,39 @@ Examples:
         help="Execution mode (default: self_hosted). Database connectors are only "
         "allowed in self_hosted mode.",
     )
+    run_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform discovery and schema negotiation, fetch sample rows, "
+        "but do not write to Iceberg or object storage. Useful for validating "
+        "data contracts before production runs.",
+    )
+    run_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=50,
+        metavar="N",
+        help="Number of sample rows to fetch in dry-run mode (10-50, default: 50). "
+        "Values outside this range will be rejected.",
+    )
+    run_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        metavar="SECONDS",
+        help="Timeout for dry-run execution in seconds (default: 300). "
+        "Values below 30 seconds will trigger a warning.",
+    )
+    run_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with phase timing details (for dry-run mode).",
+    )
+    run_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format (for dry-run mode).",
+    )
 
     # Ingest command (primary, recommended)
     ingest_parser = subparsers.add_parser(
@@ -589,6 +724,39 @@ Examples:
         default="self_hosted",
         help="Execution mode (default: self_hosted). Database connectors are only "
         "allowed in self_hosted mode.",
+    )
+    ingest_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform discovery and schema negotiation, fetch sample rows, "
+        "but do not write to Iceberg or object storage. Useful for validating "
+        "data contracts before production runs.",
+    )
+    ingest_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=50,
+        metavar="N",
+        help="Number of sample rows to fetch in dry-run mode (10-50, default: 50). "
+        "Values outside this range will be rejected.",
+    )
+    ingest_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        metavar="SECONDS",
+        help="Timeout for dry-run execution in seconds (default: 300). "
+        "Values below 30 seconds will trigger a warning.",
+    )
+    ingest_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with phase timing details (for dry-run mode).",
+    )
+    ingest_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format (for dry-run mode).",
     )
 
     # Start command
@@ -651,6 +819,69 @@ Examples:
         help="Output results in JSON format",
     )
     check_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with additional details",
+    )
+
+    # Validate command
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate configuration files and asset definitions",
+        description="Validate job configurations and asset definitions against schemas "
+        "and check connector registry compatibility.",
+    )
+    validate_subparsers = validate_parser.add_subparsers(
+        dest="validate_command", help="Validation type"
+    )
+
+    # validate config
+    validate_config_parser = validate_subparsers.add_parser(
+        "config",
+        help="Validate job configuration file",
+        description="Validate job configuration against JSON schema, check connector "
+        "references, and verify registry compatibility.",
+    )
+    validate_config_parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to job configuration YAML file",
+    )
+    validate_config_parser.add_argument(
+        "--mode",
+        choices=["self_hosted", "cloud"],
+        default="self_hosted",
+        help="Execution mode for connector restriction validation (default: self_hosted)",
+    )
+    validate_config_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    validate_config_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output with additional details",
+    )
+
+    # validate asset
+    validate_asset_parser = validate_subparsers.add_parser(
+        "asset",
+        help="Validate asset definition file",
+        description="Validate asset definition against ODCS v3.0.2 schema with "
+        "Dativo extensions.",
+    )
+    validate_asset_parser.add_argument(
+        "--path",
+        required=True,
+        help="Path to asset definition YAML file",
+    )
+    validate_asset_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format",
+    )
+    validate_asset_parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose output with additional details",
@@ -801,6 +1032,8 @@ Examples:
         return check_command(args)
     elif args.command == "discover":
         return discover_command(args)
+    elif args.command == "validate":
+        return validate_command(args)
     elif args.command == "connectors":
         return connectors_command(args)
     else:

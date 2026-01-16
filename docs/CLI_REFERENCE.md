@@ -11,6 +11,7 @@ dativo <command> [options]
 **Commands:**
 - `ingest` - Run a single job in oneshot mode (recommended)
 - `run` - Legacy alias for `ingest` (backward compatibility)
+- `validate` - Validate configuration files and asset definitions
 - `start` - Start orchestrated mode with Dagster
 - `check` - Test connectivity and credentials
 - `discover` - List available tables/streams from a connector
@@ -41,6 +42,11 @@ dativo run --config <path> --mode <self_hosted|cloud>
 | `--secret-manager-config` | No | Path to YAML/JSON (or inline JSON string) with manager-specific settings. Defaults to `DATIVO_SECRET_MANAGER_CONFIG` |
 | `--secrets-dir` | No | Path to secrets directory (used only when `--secret-manager filesystem`). Default: `/secrets` |
 | `--tenant-id` | No | Tenant ID override (optional; if not provided, inferred from job configurations). If provided, validates all jobs belong to this tenant |
+| `--dry-run` | No | Perform discovery and schema validation without writing to storage |
+| `--sample-size` | No | Number of sample rows to fetch in dry-run mode (10-50, default: 50). Values outside this range are clamped with a warning |
+| `--timeout` | No | Timeout for dry-run execution in seconds (default: 300). Values below 10 seconds are rejected (exit code 2) |
+| `--verbose` | No | Enable DEBUG logging and show phase checklist with timing details |
+| `--json` | No | Output results as flattened JSON for CI/CD integration (always valid JSON, even on errors) |
 
 \* Either `--config` or `--job-dir` is required (mutually exclusive)
 
@@ -70,6 +76,150 @@ dativo ingest --config jobs/mytenant/my_job.yaml \
   --secret-manager vault \
   --secret-manager-config vault-config.yaml \
   --mode self_hosted
+
+# Dry-run mode (validate data contract without writing)
+dativo ingest --config jobs/acme/stripe_customers.yaml \
+  --mode self_hosted \
+  --dry-run
+
+# Dry-run with custom sample size
+dativo ingest --config jobs/acme/stripe_customers.yaml \
+  --mode self_hosted \
+  --dry-run --sample-size 25
+
+# Dry-run with JSON output (for CI/CD)
+dativo ingest --config jobs/acme/stripe_customers.yaml \
+  --mode self_hosted \
+  --dry-run --json
+
+# Dry-run with verbose phase timing
+dativo ingest --config jobs/acme/stripe_customers.yaml \
+  --mode self_hosted \
+  --dry-run --verbose
+```
+
+### Dry-Run Mode
+
+The `--dry-run` flag enables validation mode where:
+
+1. **Discovery**: Source schema and available streams are discovered
+2. **Schema Negotiation**: Source schema is matched against asset definition
+3. **Sample Fetch**: Sample rows are fetched from the source (10-50 rows, configurable)
+4. **Sample Validation**: Sample data is validated against the asset schema
+
+**Safety Guarantees** (enforced at execution level):
+- ❌ Never writes to Iceberg or object storage
+- ❌ Never updates incremental state
+- ❌ Never commits transactions
+
+**Guardrails:**
+- `--sample-size N`: Number of rows to fetch (10-50, default: 50). Values outside this range are **clamped** with a warning (not rejected).
+- `--timeout SECONDS`: Execution timeout (default: 300s). Values below 10s are **rejected** with exit code 2.
+- `--verbose`: Forces DEBUG logging level for diagnostic output plus phase checklist.
+- `--json`: Always outputs **valid JSON**, even on errors. Flattened structure for easy parsing.
+
+**Exit Codes:**
+- `0` = Success
+- `1` = General failure (e.g., validation warnings in warn mode)
+- `2` = Usage/validation error (e.g., timeout too low, schema validation failed in strict mode)
+
+This is useful for:
+- Validating configurations before production runs
+- Testing data contracts with actual source data
+- Debugging schema mismatches
+- Pre-flight checks in CI/CD pipelines
+
+**Dry-Run Output Example (Human-Readable):**
+```
+============================================================
+DRY-RUN RESULTS
+============================================================
+
+Status: ✅ PASSED
+Duration: 0.25s
+
+Phases: 4/4 completed
+
+Sample: 25 records fetched
+  Valid: 25
+  Invalid: 0
+
+Configuration:
+  Source: stripe
+  Target: iceberg
+  Asset: stripe_customers
+
+============================================================
+```
+
+**Dry-Run Output Example (Verbose Mode with Phase Checklist):**
+```
+============================================================
+DRY-RUN RESULTS
+============================================================
+
+Status: ✅ PASSED
+Duration: 0.25s
+
+Dry-run phases:
+  [✓] discovery (0.012s)
+  [✓] schema_negotiation (0.001s)
+  [✓] sample_fetch (0.234s)
+  [✓] sample_validation (0.003s)
+
+Sample: 25 records fetched
+  Valid: 25
+  Invalid: 0
+
+Configuration:
+  Source: stripe
+  Target: iceberg
+  Asset: stripe_customers
+
+============================================================
+```
+
+**Dry-Run Output Example (JSON - Flattened Structure):**
+```json
+{
+  "valid": true,
+  "exit_code": 0,
+  "errors": [],
+  "warnings": [],
+  "phases_completed": ["discovery", "schema_negotiation", "sample_fetch", "sample_validation"],
+  "phases": [
+    {"name": "discovery", "duration_seconds": 0.012},
+    {"name": "schema_negotiation", "duration_seconds": 0.001},
+    {"name": "sample_fetch", "duration_seconds": 0.234},
+    {"name": "sample_validation", "duration_seconds": 0.003}
+  ],
+  "dry_run_duration_seconds": 0.25,
+  "sample_size": 25,
+  "valid_records": 25,
+  "invalid_records": 0,
+  "source_connector": "stripe",
+  "target_connector": "iceberg",
+  "asset_name": "stripe_customers"
+}
+```
+
+**JSON Output on Error (Always Valid JSON):**
+```json
+{
+  "valid": false,
+  "exit_code": 2,
+  "errors": ["Timeout too low; minimum is 10 seconds. Got: 5"],
+  "warnings": [],
+  "phases_completed": [],
+  "phases": [],
+  "dry_run_duration_seconds": 0.0,
+  "sample_size": 0,
+  "valid_records": 0,
+  "invalid_records": 0,
+  "source_connector": null,
+  "target_connector": null,
+  "asset_name": null
+}
 ```
 
 ### Exit Codes
@@ -118,6 +268,141 @@ dativo check --config jobs/acme/stripe_customers.yaml --verbose --mode self_host
 - Source connection and authentication
 - Target connection (S3 bucket access, etc.)
 - Returns detailed error information with retryable flags
+
+## Validate Configuration
+
+Validate job configurations and asset definitions against schemas and check connector registry compatibility. This command performs static validation without connecting to source/target systems.
+
+### Validate Job Configuration
+
+```bash
+dativo validate config --path <job.yaml> [--mode <mode>] [--json] [--verbose]
+```
+
+**Options:**
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--path` | Yes | Path to job configuration YAML file |
+| `--mode` | No | Execution mode for connector restriction validation (`self_hosted` or `cloud`). Default: `self_hosted` |
+| `--json` | No | Output results in JSON format |
+| `--verbose` | No | Show detailed validation information |
+
+**What It Validates:**
+- YAML syntax
+- Job configuration schema compliance
+- Source/target connector file existence
+- Connector type existence in registry
+- Mode restrictions (e.g., database connectors blocked in cloud mode)
+- Asset definition file existence
+
+**Examples:**
+```bash
+# Basic validation
+dativo validate config --path jobs/acme/stripe_customers.yaml
+
+# Validate for cloud mode restrictions
+dativo validate config --path jobs/acme/stripe_customers.yaml --mode cloud
+
+# JSON output for CI/CD integration
+dativo validate config --path jobs/acme/stripe_customers.yaml --json
+
+# Verbose output with all info messages
+dativo validate config --path jobs/acme/stripe_customers.yaml --verbose
+```
+
+### Validate Asset Definition
+
+```bash
+dativo validate asset --path <spec.yaml> [--json] [--verbose]
+```
+
+**Options:**
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--path` | Yes | Path to asset definition YAML file |
+| `--json` | No | Output results in JSON format |
+| `--verbose` | No | Show detailed validation information |
+
+**What It Validates:**
+- YAML syntax
+- ODCS v3.0.2 schema compliance
+- Required ODCS fields (name, version, schema, team)
+- Team owner presence (strong ownership requirement)
+- Dativo extensions (source_type, object)
+- Optional sections (compliance, finops, data_quality)
+
+**Examples:**
+```bash
+# Basic validation
+dativo validate asset --path assets/stripe/customers.yaml
+
+# JSON output
+dativo validate asset --path assets/stripe/customers.yaml --json
+
+# Verbose output with all info messages
+dativo validate asset --path assets/stripe/customers.yaml --verbose
+```
+
+### Validation Output
+
+**Human-readable output:**
+```
+============================================================
+Job Configuration Validation Results
+============================================================
+
+File: jobs/acme/stripe_customers.yaml
+Status: ✅ VALID
+
+Summary: 0 error(s), 1 warning(s)
+
+⚠️  Warnings:
+  - [SCHEMA_FILE_NOT_FOUND] Schema file not found, skipping JSON schema validation
+
+ℹ️  Info:
+  - [CONFIG_STRUCTURE_VALID] Job configuration structure validation passed
+  - [SOURCE_CONNECTOR_REGISTERED] Source connector 'stripe' found in registry
+
+============================================================
+```
+
+**JSON output:**
+```json
+{
+  "valid": true,
+  "errors": [],
+  "warnings": [
+    {
+      "message": "Schema file not found, skipping JSON schema validation",
+      "code": "SCHEMA_FILE_NOT_FOUND",
+      "path": null,
+      "severity": "warning"
+    }
+  ],
+  "info": [
+    {
+      "message": "Job configuration structure validation passed",
+      "code": "CONFIG_STRUCTURE_VALID",
+      "path": null,
+      "severity": "info"
+    }
+  ],
+  "summary": {
+    "error_count": 0,
+    "warning_count": 1,
+    "info_count": 1
+  },
+  "path": "jobs/acme/stripe_customers.yaml",
+  "resource_type": "Job Configuration"
+}
+```
+
+### Exit Codes
+
+- `0`: Validation passed (no errors)
+- `2`: Validation failed (one or more errors)
 
 ## Discover Available Streams
 

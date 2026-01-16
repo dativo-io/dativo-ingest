@@ -6,7 +6,10 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from .dry_run import DryRunConfig, DryRunResult
 
 from .config import (
     AssetDefinition,
@@ -41,15 +44,29 @@ from .wal_manager import WALManager
 class JobExecutor:
     """Executes a single job configuration through the complete ETL pipeline."""
 
-    def __init__(self, job_config: JobConfig, mode: str = "self_hosted"):
+    # Constants for dry-run mode (kept for backward compatibility)
+    DRY_RUN_SAMPLE_MIN = 10
+    DRY_RUN_SAMPLE_MAX = 50
+
+    def __init__(
+        self,
+        job_config: JobConfig,
+        mode: str = "self_hosted",
+        dry_run: bool = False,
+        dry_run_config: Optional["DryRunConfig"] = None,
+    ):
         """Initialize job executor.
 
         Args:
             job_config: Job configuration
             mode: Execution mode (default: self_hosted)
+            dry_run: If True, perform discovery and sample extraction without writing
+            dry_run_config: Optional configuration for dry-run mode (sample size, timeout)
         """
         self.job_config = job_config
         self.mode = mode
+        self.dry_run = dry_run
+        self.dry_run_config = dry_run_config
         self.tenant_id = job_config.tenant_id
         self.logger = None
         self.source_config: Optional[SourceConfig] = None
@@ -65,9 +82,22 @@ class JobExecutor:
         self.metrics_collector: Optional[MetricsCollector] = None
         self.run_summary: Optional[RunSummary] = None
 
+        # Dry-run result tracking (for structured output)
+        self._dry_run_result: Optional["DryRunResult"] = None
+
     def _setup_logging(self) -> None:
-        """Set up logging for the job."""
-        log_level = self.job_config.logging.level if self.job_config.logging else None
+        """Set up logging for the job.
+
+        In dry-run mode with verbose flag, DEBUG level is forced for diagnostic output.
+        """
+        # Dry-run verbose mode forces DEBUG level
+        if self.dry_run and self.dry_run_config and self.dry_run_config.verbose:
+            log_level = "DEBUG"
+        else:
+            log_level = (
+                self.job_config.logging.level if self.job_config.logging else None
+            )
+
         redact = self.job_config.logging.redaction if self.job_config.logging else None
 
         self.logger = update_logging_settings(
@@ -1377,6 +1407,339 @@ class JobExecutor:
             else:
                 print(f"ERROR: Failed to write run summary: {e}", file=sys.stderr)
 
+    def _execute_dry_run(self) -> int:
+        """Execute dry-run mode: discovery, schema negotiation, and sample extraction.
+
+        Performs:
+        - Discovery and schema negotiation (inline phase tracking)
+        - Fetches sample rows from source (inline phase tracking)
+        - Validates data against schema (inline phase tracking)
+        - Does NOT write to Iceberg or object storage
+
+        Safety guarantees:
+        - Never writes to storage
+        - Never updates incremental state
+        - Never commits transactions
+
+        Returns:
+            Exit code (0=success, 1=general failure, 2=usage/validation error)
+        """
+        from .dry_run import (
+            PHASE_DISCOVERY,
+            PHASE_SAMPLE_FETCH,
+            PHASE_SAMPLE_VALIDATION,
+            PHASE_SCHEMA_NEGOTIATION,
+            DryRunConfig,
+            DryRunResult,
+            format_dry_run_output,
+        )
+
+        # Initialize configuration
+        config = self.dry_run_config or DryRunConfig()
+        sample_limit = config.sample_size
+        verbose = config.verbose
+        json_output = config.json_output
+        timeout_seconds = config.timeout_seconds
+
+        # Initialize result with flattened structure
+        result = DryRunResult()
+        result.source_connector = (
+            self.source_config.type if self.source_config else None
+        )
+        result.target_connector = (
+            self.target_config.type if self.target_config else None
+        )
+        result.asset_name = (
+            self.asset_definition.name if self.asset_definition else None
+        )
+
+        # Add clamping warning if sample size was adjusted
+        if config.was_sample_size_clamped:
+            result.add_warning(config.clamping_warning)
+
+        # Store result for potential external access
+        self._dry_run_result = result
+
+        sample_records = []
+        valid_records_list = []
+        dry_run_start_time = time.perf_counter()
+        current_phase = None
+
+        # Helper function to check timeout
+        def check_timeout(phase_name: str) -> None:
+            """Check if timeout has been exceeded and raise TimeoutError if so.
+
+            Args:
+                phase_name: Name of the current phase for error message
+
+            Raises:
+                TimeoutError: If elapsed time exceeds timeout_seconds
+            """
+            elapsed = time.perf_counter() - dry_run_start_time
+            if elapsed >= timeout_seconds:
+                raise TimeoutError(
+                    f"Dry-run timeout exceeded ({timeout_seconds}s) during {phase_name}. "
+                    f"Elapsed: {elapsed:.2f}s"
+                )
+
+        # Log dry-run start
+        self.logger.debug(
+            f"DRY-RUN MODE: Starting (sample_size={sample_limit}, timeout={timeout_seconds}s)",
+            extra={
+                "event_type": "dry_run_started",
+                "sample_size": sample_limit,
+                "timeout_seconds": timeout_seconds,
+            },
+        )
+
+        try:
+            # Phase 1: Discovery
+            check_timeout("discovery")
+            current_phase = PHASE_DISCOVERY
+            phase_start = time.perf_counter()
+            try:
+                self.logger.debug(
+                    f"Phase: {PHASE_DISCOVERY}",
+                    extra={"event_type": "dry_run_phase", "phase": PHASE_DISCOVERY},
+                )
+
+                # Discovery: inspect asset schema
+                if self.asset_definition:
+                    schema_fields = self.asset_definition.schema
+                    self.logger.debug(
+                        f"Asset schema defines {len(schema_fields)} field(s)",
+                        extra={
+                            "event_type": "dry_run_schema_info",
+                            "field_count": len(schema_fields),
+                        },
+                    )
+
+                duration = time.perf_counter() - phase_start
+                result.record_phase(PHASE_DISCOVERY, duration_seconds=duration)
+
+            except Exception as e:
+                result.record_phase(PHASE_DISCOVERY, error=str(e))
+                result.add_error(f"Discovery failed: {e}")
+                raise
+
+            # Phase 2: Schema Negotiation
+            check_timeout("schema_negotiation")
+            current_phase = PHASE_SCHEMA_NEGOTIATION
+            phase_start = time.perf_counter()
+            try:
+                self.logger.debug(
+                    f"Phase: {PHASE_SCHEMA_NEGOTIATION}",
+                    extra={
+                        "event_type": "dry_run_phase",
+                        "phase": PHASE_SCHEMA_NEGOTIATION,
+                    },
+                )
+
+                # Schema negotiation is implicit when asset schema is present
+                if not self.asset_definition:
+                    result.add_warning(
+                        "No asset definition loaded; schema validation skipped"
+                    )
+
+                duration = time.perf_counter() - phase_start
+                result.record_phase(PHASE_SCHEMA_NEGOTIATION, duration_seconds=duration)
+
+            except Exception as e:
+                result.record_phase(PHASE_SCHEMA_NEGOTIATION, error=str(e))
+                result.add_error(f"Schema negotiation failed: {e}")
+                raise
+
+            # Phase 3: Sample Fetch
+            check_timeout("sample_fetch")
+            current_phase = PHASE_SAMPLE_FETCH
+            phase_start = time.perf_counter()
+            try:
+                self.logger.debug(
+                    f"Phase: {PHASE_SAMPLE_FETCH} (limit={sample_limit})",
+                    extra={
+                        "event_type": "dry_run_phase",
+                        "phase": PHASE_SAMPLE_FETCH,
+                        "limit": sample_limit,
+                    },
+                )
+
+                batch_count = 0
+                total_fetched = 0
+
+                # SAFETY: Explicitly pass None for state_manager and checkpoint_context
+                # to prevent any state updates during dry-run
+                for batch_records in self.extractor.extract(
+                    state_manager=None,  # SAFETY: Don't use state manager in dry-run
+                    checkpoint_context=None,  # SAFETY: Don't use checkpoints in dry-run
+                ):
+                    # Check timeout after each batch to prevent hanging on slow sources
+                    check_timeout("sample_fetch")
+
+                    batch_count += 1
+                    sample_records.extend(batch_records)
+                    total_fetched = len(sample_records)
+
+                    self.logger.debug(
+                        f"Batch {batch_count}: {len(batch_records)} records (total: {total_fetched})",
+                        extra={
+                            "event_type": "dry_run_batch",
+                            "batch": batch_count,
+                            "batch_size": len(batch_records),
+                            "total": total_fetched,
+                        },
+                    )
+
+                    # Stop after collecting enough samples
+                    if total_fetched >= sample_limit:
+                        sample_records = sample_records[:sample_limit]
+                        break
+
+                result.sample_size = len(sample_records)
+
+                if not sample_records:
+                    result.add_warning("No records extracted from source")
+
+                duration = time.perf_counter() - phase_start
+                result.record_phase(PHASE_SAMPLE_FETCH, duration_seconds=duration)
+
+            except Exception as e:
+                result.record_phase(PHASE_SAMPLE_FETCH, error=str(e))
+                result.add_error(f"Sample fetch failed: {e}")
+                raise
+
+            # Phase 4: Sample Validation
+            check_timeout("sample_validation")
+            current_phase = PHASE_SAMPLE_VALIDATION
+            phase_start = time.perf_counter()
+            try:
+                self.logger.debug(
+                    f"Phase: {PHASE_SAMPLE_VALIDATION}",
+                    extra={
+                        "event_type": "dry_run_phase",
+                        "phase": PHASE_SAMPLE_VALIDATION,
+                    },
+                )
+
+                validation_passed = True
+
+                if sample_records and self.validator:
+                    valid_records_list, validation_errors = (
+                        self.validator.validate_batch(sample_records)
+                    )
+
+                    result.valid_records = len(valid_records_list)
+                    result.invalid_records = len(sample_records) - len(
+                        valid_records_list
+                    )
+
+                    validation_passed = result.invalid_records == 0
+
+                    self.logger.debug(
+                        f"Validation: {result.valid_records}/{len(sample_records)} valid",
+                        extra={
+                            "event_type": "dry_run_validation",
+                            "valid": result.valid_records,
+                            "invalid": result.invalid_records,
+                        },
+                    )
+
+                    if not validation_passed:
+                        validation_mode = (
+                            self.job_config.schema_validation_mode or "strict"
+                        )
+                        if validation_mode == "strict":
+                            result.add_error(
+                                f"Data contract validation failed: {result.invalid_records} invalid records"
+                            )
+                        else:
+                            result.add_warning(
+                                f"Validation warnings: {result.invalid_records} invalid records"
+                            )
+                else:
+                    result.valid_records = len(sample_records)
+                    result.invalid_records = 0
+
+                duration = time.perf_counter() - phase_start
+                result.record_phase(PHASE_SAMPLE_VALIDATION, duration_seconds=duration)
+
+            except Exception as e:
+                result.record_phase(PHASE_SAMPLE_VALIDATION, error=str(e))
+                result.add_error(f"Sample validation failed: {e}")
+                raise
+
+            # Calculate total duration
+            result.dry_run_duration_seconds = time.perf_counter() - dry_run_start_time
+
+            # Determine exit code based on errors and warnings
+            # 0 = success, 1 = general failure (e.g., validation in warn mode), 2 = validation/usage error
+            validation_mode = self.job_config.schema_validation_mode or "strict"
+
+            # Check for validation warnings in warn mode first
+            # (warnings are added instead of errors in warn mode)
+            if (
+                validation_mode == "warn"
+                and result.warnings
+                and any("validation" in w.lower() for w in result.warnings)
+            ):
+                # Validation warnings in warn mode: exit 1 (general failure)
+                result.valid = True
+                result.exit_code = 1
+            elif not result.errors:
+                result.valid = True
+                result.exit_code = 0
+            elif validation_mode == "warn" and all(
+                "validation" in e.lower() for e in result.errors
+            ):
+                # Validation errors in warn mode: exit 1 (general failure)
+                result.valid = True
+                result.exit_code = 1
+            else:
+                result.valid = False
+                result.exit_code = 2
+
+            # Output result (always valid JSON when --json)
+            if json_output:
+                print(result.to_json())
+            else:
+                output = format_dry_run_output(
+                    result, json_output=False, verbose=verbose
+                )
+                print(output)
+
+            return result.exit_code
+
+        except Exception as e:
+            # Catch-all: ensure we always output valid JSON when requested
+            result.dry_run_duration_seconds = time.perf_counter() - dry_run_start_time
+
+            if current_phase and current_phase not in [
+                p["name"] for p in result.phases
+            ]:
+                # Record the failed phase if not already recorded
+                result.record_phase(current_phase, error=str(e))
+
+            if f"Unexpected error: {e}" not in result.errors:
+                result.add_error(f"Unexpected error: {e}")
+
+            result.valid = False
+            result.exit_code = 2
+
+            if json_output:
+                # Always output valid JSON, even on error
+                print(result.to_json())
+            else:
+                self.logger.error(
+                    f"Dry-run failed: {e}",
+                    extra={"event_type": "dry_run_error"},
+                    exc_info=True,
+                )
+                output = format_dry_run_output(
+                    result, json_output=False, verbose=verbose
+                )
+                print(output)
+
+            return 2
+
     def _push_to_catalog(self) -> None:
         """Push lineage and metadata to catalog if configured."""
         if not self.job_config.catalog:
@@ -1579,6 +1942,13 @@ class JobExecutor:
             exit_code = self._initialize_validator()
             if exit_code != 0:
                 # Ensure metrics gauge is reset on early return
+                self._finish_metrics(exit_code)
+                self._write_run_summary(exit_code)
+                return exit_code
+
+            # Dry-run mode: skip writer/committer initialization and use dry-run execution
+            if self.dry_run:
+                exit_code = self._execute_dry_run()
                 self._finish_metrics(exit_code)
                 self._write_run_summary(exit_code)
                 return exit_code
