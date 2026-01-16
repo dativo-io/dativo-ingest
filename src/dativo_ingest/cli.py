@@ -290,26 +290,42 @@ def _execute_single_job(
 
     # Trigger failure notification hook if configured (only for exit_code = 2)
     if exit_code == 2 and notifications_config and not dry_run:
-        run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
         # Get error message from run summary if available
-        error_message = "Job execution failed"
-        error_type = "JobExecutionError"
+        failure_reason = "Job execution failed"
         if executor.run_summary and executor.run_summary.ingestion.error:
             error_info = executor.run_summary.ingestion.error
             if error_info.error_message:
-                error_message = error_info.error_message
-            if error_info.error_type:
-                error_type = error_info.error_type
+                failure_reason = error_info.error_message
+
+        # Get summary path if available
+        summary_path = None
+        if executor.run_summary:
+            # Try to determine summary path from state directory
+            state_dir = os.getenv("STATE_DIR", ".local/state")
+            if not os.path.isabs(state_dir):
+                state_dir = os.path.abspath(state_dir)
+            job_name = job_config.asset or "unknown-job"
+            tenant_safe = job_config.tenant_id.replace("/", "_")
+            job_safe = job_name.replace("/", "_")
+            run_timestamp = executor.run_summary.run.id
+            summary_file = (
+                Path(state_dir)
+                / tenant_safe
+                / job_safe
+                / "runs"
+                / f"run-{run_timestamp}.json"
+            )
+            if summary_file.exists():
+                summary_path = str(summary_file.absolute())
 
         execute_failure_notification(
             config=notifications_config,
             tenant_id=job_config.tenant_id,
             job_name=job_config.asset or "unknown",
-            run_id=run_id,
             config_path=config_path or "unknown",
-            error_message=error_message,
-            error_type=error_type,
+            exit_code=exit_code,
+            failure_reason=failure_reason,
+            summary_path=summary_path,
         )
 
     return exit_code

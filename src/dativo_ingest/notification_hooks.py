@@ -1,25 +1,18 @@
 """Notification hooks for runner-level failure notifications.
 
-This module implements the notification hook system that executes external
-commands when jobs fail. It follows Dativo's philosophy:
-- Headless, config-only
-- No embedded services
-- No opinionated integrations in core logic
-
-Hooks are triggered only on job failure (exit_code = 2).
+Hooks execute external scripts when jobs fail (exit_code = 2).
+Minimal, safe implementation that never compromises ingestion correctness.
 """
 
 import json
 import os
 import re
 import subprocess
-import time
-from datetime import datetime, timezone
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .logging import get_logger
-
 
 # Patterns for redacting sensitive values in logs
 SECRET_PATTERNS = [
@@ -63,6 +56,8 @@ def _redact_env_for_logging(env: Dict[str, str]) -> Dict[str, str]:
 def _expand_env_variable(value: str) -> str:
     """Expand ${VAR} style environment variable references.
 
+    Supports ${VAR} and ${VAR:-default} syntax.
+
     Args:
         value: String potentially containing ${VAR} references
 
@@ -72,10 +67,25 @@ def _expand_env_variable(value: str) -> str:
     pattern = re.compile(r"\$\{([^}]+)\}")
 
     def replace(match: re.Match) -> str:
-        var_name = match.group(1)
-        return os.environ.get(var_name, "")
+        var_spec = match.group(1)
+        if ":-" in var_spec:
+            var_name, default = var_spec.split(":-", 1)
+            return os.environ.get(var_name, default)
+        return os.environ.get(var_spec, "")
 
     return pattern.sub(replace, value)
+
+
+def _expand_command_args(args: List[str]) -> List[str]:
+    """Expand ${VAR} references in command arguments.
+
+    Args:
+        args: Command arguments with potential ${VAR} references
+
+    Returns:
+        List with all ${VAR} references expanded
+    """
+    return [_expand_env_variable(arg) for arg in args]
 
 
 def expand_hook_env(
@@ -101,418 +111,298 @@ def expand_hook_env(
     return expanded
 
 
-class FailureSummary:
-    """Generates failure summary JSON for notification hooks.
+def _redact_command_args(args: List[str]) -> List[str]:
+    """Redact sensitive values in command arguments for logging.
 
-    The summary file contains minimal, stable information about the failed run.
-    It never includes secrets and follows a stable schema contract.
+    Args:
+        args: Command arguments
+
+    Returns:
+        List with sensitive values redacted
     """
+    redacted = []
+    for arg in args:
+        # Check if arg contains secret patterns (e.g., --token=secret)
+        should_redact = False
+        for pattern in SECRET_PATTERNS:
+            if pattern.search(arg):
+                should_redact = True
+                break
 
-    def __init__(
-        self,
-        tenant_id: str,
-        job_name: str,
-        run_id: str,
-        config_path: str,
-        error_message: str,
-        error_type: str = "UnknownError",
-        timestamp: Optional[datetime] = None,
-    ):
-        """Initialize failure summary.
+        if should_redact:
+            # Redact value after = or : separator
+            if "=" in arg:
+                key, _ = arg.split("=", 1)
+                redacted.append(f"{key}=[REDACTED]")
+            elif ":" in arg and not arg.startswith("http"):
+                key, _ = arg.split(":", 1)
+                redacted.append(f"{key}:[REDACTED]")
+            else:
+                redacted.append("[REDACTED]")
+        else:
+            redacted.append(arg)
 
-        Args:
-            tenant_id: Tenant identifier
-            job_name: Job/schedule name
-            run_id: Unique run identifier (timestamp-based)
-            config_path: Path to job configuration file
-            error_message: Human-readable error message
-            error_type: Error type classification
-            timestamp: Failure timestamp (defaults to now)
-        """
-        self.tenant_id = tenant_id
-        self.job_name = job_name
-        self.run_id = run_id
-        self.config_path = config_path
-        self.error_message = error_message
-        self.error_type = error_type
-        self.timestamp = timestamp or datetime.now(timezone.utc)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation.
-
-        Returns:
-            Dict with summary fields
-        """
-        return {
-            "tenant_id": self.tenant_id,
-            "job_name": self.job_name,
-            "run_id": self.run_id,
-            "status": "failure",
-            "timestamp": self.timestamp.isoformat(),
-            "config_path": self.config_path,
-            "error": {
-                "message": self.error_message,
-                "type": self.error_type,
-            },
-        }
-
-    def to_json(self, indent: int = 2) -> str:
-        """Convert to JSON string.
-
-        Args:
-            indent: JSON indentation level
-
-        Returns:
-            JSON string representation
-        """
-        return json.dumps(self.to_dict(), indent=indent)
-
-    def write_to_file(self, base_dir: str = "/logs/runs") -> Path:
-        """Write summary to a deterministic file path.
-
-        Creates directory structure if needed:
-        {base_dir}/{run_id}/summary.json
-
-        Args:
-            base_dir: Base directory for run logs
-
-        Returns:
-            Path to written summary file
-        """
-        # Use run_id for directory name (sanitize for filesystem)
-        run_dir_name = self.run_id.replace(":", "-").replace("/", "-")
-        summary_dir = Path(base_dir) / run_dir_name
-        summary_dir.mkdir(parents=True, exist_ok=True)
-
-        summary_path = summary_dir / "summary.json"
-        with open(summary_path, "w") as f:
-            f.write(self.to_json())
-
-        return summary_path
+    return redacted
 
 
-class NotificationHookExecutor:
-    """Executes notification hooks for job failures.
+def _create_hook_payload(
+    tenant_id: str,
+    job_name: str,
+    config_path: str,
+    exit_code: int,
+    failure_reason: str,
+    summary_path: Optional[str] = None,
+) -> Path:
+    """Create JSON payload file for hook execution.
 
-    This class handles:
-    - Command execution (argv-based, no shell)
-    - Environment variable injection
-    - Timeout handling
-    - Graceful failure (never crashes the runner)
-    - Secret redaction in logs
+    Args:
+        tenant_id: Tenant identifier
+        job_name: Job name
+        config_path: Path to job configuration
+        exit_code: Job exit code (should be 2 for failures)
+        failure_reason: Human-readable failure reason
+        summary_path: Optional path to run summary file
+
+    Returns:
+        Path to temporary payload file
     """
+    payload = {
+        "tenant_id": tenant_id,
+        "job_name": job_name,
+        "config_path": config_path,
+        "exit_code": exit_code,
+        "failure_reason": failure_reason,
+    }
+    if summary_path:
+        payload["summary_path"] = summary_path
 
-    # Required DATIVO_* environment variables injected by runner
-    REQUIRED_ENV_VARS = [
-        "DATIVO_TENANT_ID",
-        "DATIVO_JOB_NAME",
-        "DATIVO_RUN_ID",
-        "DATIVO_SUMMARY_PATH",
-    ]
+    # Create temporary file that will be cleaned up after hook execution
+    fd, payload_path = tempfile.mkstemp(suffix=".json", prefix="dativo_hook_")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(payload, f, indent=2)
+        return Path(payload_path)
+    except Exception:
+        os.close(fd)
+        raise
 
-    def __init__(
-        self,
-        command: List[str],
-        user_env: Optional[Dict[str, str]] = None,
-        timeout_seconds: int = 15,
-    ):
-        """Initialize hook executor.
 
-        Args:
-            command: Command to execute as argv array
-            user_env: User-provided environment variables (supports ${VAR} expansion)
-            timeout_seconds: Timeout for hook execution
-        """
-        self.command = command
-        self.user_env = user_env or {}
-        self.timeout_seconds = timeout_seconds
-        self.logger = get_logger()
+def _execute_hook(
+    command: List[str],
+    payload_path: Path,
+    user_env: Optional[Dict[str, str]] = None,
+    timeout_seconds: int = 15,
+    hook_name: str = "unknown",
+) -> Tuple[bool, Optional[str]]:
+    """Execute a notification hook command.
 
-    def _build_environment(
-        self,
-        tenant_id: str,
-        job_name: str,
-        run_id: str,
-        summary_path: str,
-    ) -> Dict[str, str]:
-        """Build environment for hook execution.
+    Hook execution follows these rules:
+    - Always fails gracefully (never raises exceptions)
+    - Logs structured warnings/errors with redacted secrets
+    - Does not affect job outcome
 
-        Environment precedence (highest to lowest):
-        1. Required DATIVO_* variables (always set, override user values)
-        2. User-provided env (after ${VAR} expansion)
-        3. Existing process environment
+    Args:
+        command: Command to execute as argv array (supports ${VAR} expansion)
+        payload_path: Path to JSON payload file
+        user_env: User-provided environment variables (supports ${VAR} expansion)
+        timeout_seconds: Timeout for hook execution
+        hook_name: Hook name for logging
 
-        Args:
-            tenant_id: Tenant identifier
-            job_name: Job name
-            run_id: Run identifier
-            summary_path: Absolute path to summary JSON file
+    Returns:
+        Tuple of (success: bool, error_message: Optional[str])
+    """
+    logger = get_logger()
 
-        Returns:
-            Complete environment dict for subprocess
-        """
-        # Start with existing process environment
-        env = os.environ.copy()
+    # Expand env vars in command arguments
+    expanded_command = _expand_command_args(command)
 
-        # Apply user-provided env (after expansion)
-        expanded_user_env = expand_hook_env(self.user_env)
-        env.update(expanded_user_env)
-
-        # Apply required DATIVO_* variables (highest precedence)
-        env["DATIVO_TENANT_ID"] = tenant_id
-        env["DATIVO_JOB_NAME"] = job_name
-        env["DATIVO_RUN_ID"] = run_id
-        env["DATIVO_SUMMARY_PATH"] = summary_path
-
-        return env
-
-    def execute(
-        self,
-        tenant_id: str,
-        job_name: str,
-        run_id: str,
-        summary_path: str,
-    ) -> Tuple[bool, Optional[str]]:
-        """Execute the notification hook.
-
-        Hook execution follows these rules:
-        - Always fails gracefully (never raises exceptions)
-        - Logs structured warnings/errors with redacted secrets
-        - Does not affect job outcome
-
-        Args:
-            tenant_id: Tenant identifier
-            job_name: Job name
-            run_id: Run identifier
-            summary_path: Absolute path to summary JSON file
-
-        Returns:
-            Tuple of (success: bool, error_message: Optional[str])
-        """
-        # Validate command exists and is executable
-        command_path = Path(self.command[0])
-        if not command_path.exists():
-            error_msg = f"Hook command not found: {self.command[0]}"
-            self.logger.error(
-                error_msg,
-                extra={
-                    "event_type": "notification_hook_error",
-                    "error_type": "CommandNotFound",
-                    "command": self.command[0],
-                    "tenant_id": tenant_id,
-                    "job_name": job_name,
-                },
-            )
-            return False, error_msg
-
-        if not os.access(self.command[0], os.X_OK):
-            error_msg = f"Hook command not executable: {self.command[0]}"
-            self.logger.error(
-                error_msg,
-                extra={
-                    "event_type": "notification_hook_error",
-                    "error_type": "PermissionDenied",
-                    "command": self.command[0],
-                    "tenant_id": tenant_id,
-                    "job_name": job_name,
-                },
-            )
-            return False, error_msg
-
-        # Build environment
-        env = self._build_environment(tenant_id, job_name, run_id, summary_path)
-
-        # Log execution start (with redacted env)
-        redacted_user_env = _redact_env_for_logging(self.user_env)
-        self.logger.info(
-            f"Executing notification hook: {self.command[0]}",
+    # Validate command exists and is executable
+    if not Path(expanded_command[0]).exists():
+        error_msg = f"Hook command not found: {expanded_command[0]}"
+        logger.error(
+            error_msg,
             extra={
-                "event_type": "notification_hook_started",
-                "command": self.command,
-                "timeout_seconds": self.timeout_seconds,
-                "user_env": redacted_user_env,
-                "tenant_id": tenant_id,
-                "job_name": job_name,
-                "run_id": run_id,
+                "event_type": "notification_hook_error",
+                "error_type": "CommandNotFound",
+                "hook_name": hook_name,
+                "command": expanded_command[0],
             },
         )
+        return False, error_msg
 
-        try:
-            # Execute command with timeout
-            result = subprocess.run(
-                self.command,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_seconds,
-            )
+    if not os.access(expanded_command[0], os.X_OK):
+        error_msg = f"Hook command not executable: {expanded_command[0]}"
+        logger.error(
+            error_msg,
+            extra={
+                "event_type": "notification_hook_error",
+                "error_type": "PermissionDenied",
+                "hook_name": hook_name,
+                "command": expanded_command[0],
+            },
+        )
+        return False, error_msg
 
-            if result.returncode == 0:
-                self.logger.info(
-                    "Notification hook executed successfully",
-                    extra={
-                        "event_type": "notification_hook_success",
-                        "command": self.command[0],
-                        "tenant_id": tenant_id,
-                        "job_name": job_name,
-                        "run_id": run_id,
-                    },
-                )
-                return True, None
-            else:
-                # Non-zero exit - log warning but don't fail
-                stderr_snippet = (
-                    result.stderr[:500] if result.stderr else "(no stderr)"
-                )
-                # Redact potential secrets in stderr
-                for pattern in SECRET_PATTERNS:
-                    stderr_snippet = pattern.sub("[REDACTED]", stderr_snippet)
+    # Build environment
+    env = os.environ.copy()
+    expanded_user_env = expand_hook_env(user_env)
+    env.update(expanded_user_env)
+    env["DATIVO_HOOK_PAYLOAD"] = str(payload_path.absolute())
 
-                error_msg = f"Hook exited with code {result.returncode}"
-                self.logger.warning(
-                    error_msg,
-                    extra={
-                        "event_type": "notification_hook_failed",
-                        "command": self.command[0],
-                        "exit_code": result.returncode,
-                        "stderr_snippet": stderr_snippet,
-                        "tenant_id": tenant_id,
-                        "job_name": job_name,
-                        "run_id": run_id,
-                    },
-                )
-                return False, f"{error_msg}: {stderr_snippet}"
+    # Log execution start (with redacted command and env)
+    redacted_command = _redact_command_args(expanded_command)
+    redacted_user_env = _redact_env_for_logging(user_env or {})
+    logger.info(
+        f"Executing notification hook: {hook_name}",
+        extra={
+            "event_type": "notification_hook_started",
+            "hook_name": hook_name,
+            "command": redacted_command,
+            "timeout_seconds": timeout_seconds,
+            "user_env": redacted_user_env,
+        },
+    )
 
-        except subprocess.TimeoutExpired:
-            error_msg = f"Hook timed out after {self.timeout_seconds}s"
-            self.logger.warning(
-                error_msg,
+    try:
+        # Execute command with timeout
+        result = subprocess.run(
+            expanded_command,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+
+        if result.returncode == 0:
+            logger.info(
+                "Notification hook executed successfully",
                 extra={
-                    "event_type": "notification_hook_timeout",
-                    "command": self.command[0],
-                    "timeout_seconds": self.timeout_seconds,
-                    "tenant_id": tenant_id,
-                    "job_name": job_name,
-                    "run_id": run_id,
+                    "event_type": "notification_hook_success",
+                    "hook_name": hook_name,
                 },
             )
-            return False, error_msg
+            return True, None
+        else:
+            # Non-zero exit - log warning but don't fail
+            stderr_snippet = result.stderr[:500] if result.stderr else "(no stderr)"
+            # Redact potential secrets in stderr
+            for pattern in SECRET_PATTERNS:
+                stderr_snippet = pattern.sub("[REDACTED]", stderr_snippet)
 
-        except Exception as e:
-            error_msg = f"Hook execution error: {type(e).__name__}: {str(e)}"
-            self.logger.error(
+            error_msg = f"Hook exited with code {result.returncode}"
+            logger.warning(
                 error_msg,
                 extra={
-                    "event_type": "notification_hook_error",
-                    "error_type": type(e).__name__,
-                    "command": self.command[0],
-                    "tenant_id": tenant_id,
-                    "job_name": job_name,
-                    "run_id": run_id,
+                    "event_type": "notification_hook_failed",
+                    "hook_name": hook_name,
+                    "exit_code": result.returncode,
+                    "stderr_snippet": stderr_snippet,
                 },
             )
-            return False, error_msg
+            return False, f"{error_msg}: {stderr_snippet}"
+
+    except subprocess.TimeoutExpired:
+        error_msg = f"Hook timed out after {timeout_seconds}s"
+        logger.warning(
+            error_msg,
+            extra={
+                "event_type": "notification_hook_timeout",
+                "hook_name": hook_name,
+                "timeout_seconds": timeout_seconds,
+            },
+        )
+        return False, error_msg
+
+    except Exception as e:
+        error_msg = f"Hook execution error: {type(e).__name__}: {str(e)}"
+        logger.error(
+            error_msg,
+            extra={
+                "event_type": "notification_hook_error",
+                "error_type": type(e).__name__,
+                "hook_name": hook_name,
+            },
+        )
+        return False, error_msg
 
 
 def execute_failure_notification(
     config: "NotificationsConfig",
     tenant_id: str,
     job_name: str,
-    run_id: str,
     config_path: str,
-    error_message: str,
-    error_type: str = "UnknownError",
-    summary_base_dir: str = "/logs/runs",
+    exit_code: int,
+    failure_reason: str,
+    summary_path: Optional[str] = None,
 ) -> bool:
     """Execute failure notification hook if configured.
 
     This is the main entry point for triggering notification hooks.
-    It handles the complete flow:
-    1. Writes failure summary to file
-    2. Executes the configured hook command
-    3. Returns success/failure status
+    Hooks execute only when exit_code is 2 (hard failure).
 
     Args:
         config: NotificationsConfig from runner config
         tenant_id: Tenant identifier
         job_name: Job/schedule name
-        run_id: Unique run identifier
         config_path: Path to job configuration file
-        error_message: Human-readable error message
-        error_type: Error type classification
-        summary_base_dir: Base directory for summary files
+        exit_code: Job exit code (must be 2 to trigger hooks)
+        failure_reason: Human-readable failure reason
+        summary_path: Optional path to run summary file
 
     Returns:
-        True if hook executed successfully, False otherwise
+        True if hook executed successfully or not configured, False on hook error
     """
-    # Import here to avoid circular imports
-    from .config import NotificationsConfig
-
     logger = get_logger()
 
     # Check if notifications are configured
     if not config or not config.on_failure:
-        logger.debug(
-            "No failure notification hook configured",
-            extra={
-                "event_type": "notification_hook_skipped",
-                "reason": "not_configured",
-                "tenant_id": tenant_id,
-                "job_name": job_name,
-            },
-        )
         return True  # Not an error - just not configured
+
+    # Only execute on exit_code 2 (hard failure)
+    if exit_code != 2:
+        return True
 
     on_failure = config.on_failure
 
-    # Generate failure summary
-    summary = FailureSummary(
-        tenant_id=tenant_id,
-        job_name=job_name,
-        run_id=run_id,
-        config_path=config_path,
-        error_message=error_message,
-        error_type=error_type,
-    )
-
-    # Write summary to file
+    # Create hook payload file
+    payload_path = None
     try:
-        summary_path = summary.write_to_file(base_dir=summary_base_dir)
-        logger.info(
-            f"Failure summary written to {summary_path}",
-            extra={
-                "event_type": "failure_summary_written",
-                "summary_path": str(summary_path),
-                "tenant_id": tenant_id,
-                "job_name": job_name,
-                "run_id": run_id,
-            },
+        payload_path = _create_hook_payload(
+            tenant_id=tenant_id,
+            job_name=job_name,
+            config_path=config_path,
+            exit_code=exit_code,
+            failure_reason=failure_reason,
+            summary_path=summary_path,
         )
+
+        # Execute hook
+        success, error = _execute_hook(
+            command=on_failure.command,
+            payload_path=payload_path,
+            user_env=on_failure.env,
+            timeout_seconds=on_failure.timeout_seconds,
+            hook_name="on_failure",
+        )
+
+        return success
+
     except Exception as e:
         logger.error(
-            f"Failed to write failure summary: {e}",
+            f"Failed to execute notification hook: {e}",
             extra={
-                "event_type": "failure_summary_error",
+                "event_type": "notification_hook_error",
                 "error": str(e),
                 "tenant_id": tenant_id,
                 "job_name": job_name,
             },
         )
-        # Continue anyway - try to execute hook with empty summary path
-        summary_path = Path("")
+        return False
 
-    # Execute notification hook
-    executor = NotificationHookExecutor(
-        command=on_failure.command,
-        user_env=on_failure.env,
-        timeout_seconds=on_failure.timeout_seconds,
-    )
-
-    success, error = executor.execute(
-        tenant_id=tenant_id,
-        job_name=job_name,
-        run_id=run_id,
-        summary_path=str(summary_path.absolute()) if summary_path else "",
-    )
-
-    return success
+    finally:
+        # Clean up payload file
+        if payload_path and payload_path.exists():
+            try:
+                payload_path.unlink()
+            except Exception:
+                pass  # Best effort cleanup

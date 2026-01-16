@@ -158,16 +158,15 @@ def _execute_job_with_retry(
 
     # Trigger failure notification hook if configured (only for exit_code = 2)
     if last_exit_code == 2 and notifications_config:
-        run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        error_message = last_error[:500] if last_error else "Unknown error"
+        failure_reason = last_error[:500] if last_error else "Unknown error"
         execute_failure_notification(
             config=notifications_config,
             tenant_id=tenant_id,
             job_name=schedule_config.name,
-            run_id=run_id,
             config_path=schedule_config.config,
-            error_message=error_message,
-            error_type="JobExecutionError",
+            exit_code=last_exit_code,
+            failure_reason=failure_reason,
+            summary_path=None,  # Summary path not available in orchestrated mode
         )
 
     raise Exception(
@@ -271,7 +270,10 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
 
                 # Execute job with retry logic
                 result = _execute_job_with_retry(
-                    schedule_config, job_config, custom_retry_policy, notifications_config
+                    schedule_config,
+                    job_config,
+                    custom_retry_policy,
+                    notifications_config,
                 )
 
                 # Calculate execution time
