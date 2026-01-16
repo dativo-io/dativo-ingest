@@ -19,6 +19,7 @@ from .config import JobConfig, RunnerConfig
 from .logging import get_logger, setup_logging
 from .metrics_otel import configure_otel_metrics
 from .metrics_server import start_metrics_server_from_config
+from .notification_hooks import execute_notification_hooks
 from .retry_policy import RetryPolicy as CustomRetryPolicy
 from .validator import ConnectorValidator
 
@@ -49,6 +50,7 @@ def _execute_job_with_retry(
     schedule_config: Any,
     job_config: JobConfig,
     custom_retry_policy: Optional[CustomRetryPolicy],
+    runner_config: Optional[RunnerConfig] = None,
 ) -> Dict[str, Any]:
     """Execute job with retry logic.
 
@@ -109,6 +111,23 @@ def _execute_job_with_retry(
                     "tenant_id": tenant_id,
                     "attempt": attempt + 1,
                 }
+
+            # Execute notification hooks if configured (after job execution, before retry check)
+            if (
+                runner_config
+                and runner_config.notifications
+                and runner_config.notifications.on_failure
+            ):
+                failure_reason = result.stderr[:500] if result.stderr else None
+                execute_notification_hooks(
+                    hooks=runner_config.notifications.on_failure,
+                    tenant_id=tenant_id,
+                    job_name=schedule_config.name,
+                    config_path=schedule_config.config,
+                    exit_code=last_exit_code,
+                    failure_reason=failure_reason,
+                    summary_path=None,  # Summary path not easily accessible from subprocess
+                )
 
             # Check if we should retry
             if custom_retry_policy and custom_retry_policy.should_retry(
@@ -247,7 +266,7 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
 
                 # Execute job with retry logic
                 result = _execute_job_with_retry(
-                    schedule_config, job_config, custom_retry_policy
+                    schedule_config, job_config, custom_retry_policy, runner_config
                 )
 
                 # Calculate execution time

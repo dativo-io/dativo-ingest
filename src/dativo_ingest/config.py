@@ -1163,6 +1163,32 @@ class OrchestratorConfig(BaseModel):
     concurrency_per_tenant: int = Field(default=1, ge=1)
 
 
+class NotificationHookConfig(BaseModel):
+    """Configuration for a single notification hook."""
+
+    name: str = Field(..., description="Hook name for logging")
+    command: List[str] = Field(..., description="Command and arguments (argv array)")
+    timeout_seconds: int = Field(
+        default=15, ge=1, le=60, description="Timeout in seconds"
+    )
+    env: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Additional environment variables (supports ${VAR} expansion)",
+    )
+    trigger_on_exit_codes: List[int] = Field(
+        default=[2],
+        description="Exit codes that trigger this hook (default: [2] for hard failures)",
+    )
+
+
+class NotificationConfig(BaseModel):
+    """Notification hooks configuration."""
+
+    on_failure: Optional[List[NotificationHookConfig]] = Field(
+        default=None, description="Hooks to execute on job failure"
+    )
+
+
 class RunnerConfig(BaseModel):
     """Runner configuration model."""
 
@@ -1170,6 +1196,9 @@ class RunnerConfig(BaseModel):
     orchestrator: OrchestratorConfig
     metrics: Optional[MetricsConfig] = Field(
         default=None, description="Global metrics configuration for orchestrated mode"
+    )
+    notifications: Optional[NotificationConfig] = Field(
+        default=None, description="Notification hooks configuration"
     )
 
     @classmethod

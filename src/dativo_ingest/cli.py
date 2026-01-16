@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .dry_run import DryRunConfig
@@ -26,6 +26,7 @@ from .job_executor import JobExecutor
 from .logging import get_logger, setup_logging
 from .metrics_config import resolve_metrics_config
 from .metrics_otel import configure_otel_metrics
+from .notification_hooks import execute_notification_hooks
 from .secrets import load_secret_manager_config, load_secrets_and_set_env
 from .startup import startup_sequence
 from .validator import ConnectorValidator
@@ -140,11 +141,29 @@ def run_command(args: argparse.Namespace) -> int:
                         },
                     )
 
+        # Try to load runner config for notification hooks (optional)
+        runner_config = None
+        for path in [
+            Path(args.job_dir) / ".." / "configs" / "runner.yaml",
+            Path(args.job_dir) / ".." / "runner.yaml",
+        ]:
+            if path.exists():
+                try:
+                    runner_config = RunnerConfig.from_yaml(path)
+                    break
+                except Exception:
+                    pass
+
         # Execute all jobs sequentially
         results = []
         for job_config in jobs:
             result = _execute_single_job(
-                job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+                job_config,
+                args.mode,
+                dry_run=dry_run,
+                dry_run_config=dry_run_config,
+                runner_config=runner_config,
+                config_path=getattr(job_config, "_config_path", None),
             )
             results.append(result)
 
@@ -225,8 +244,29 @@ def run_command(args: argparse.Namespace) -> int:
                     },
                 )
 
+        # Try to load runner config for notification hooks (optional)
+        runner_config = None
+        config_dir = Path(args.config).parent
+        for path in [
+            config_dir / ".." / "configs" / "runner.yaml",
+            config_dir / ".." / "runner.yaml",
+            Path("configs/runner.yaml"),
+            Path("runner.yaml"),
+        ]:
+            if path.resolve().exists():
+                try:
+                    runner_config = RunnerConfig.from_yaml(path.resolve())
+                    break
+                except Exception:
+                    pass
+
         return _execute_single_job(
-            job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+            job_config,
+            args.mode,
+            dry_run=dry_run,
+            dry_run_config=dry_run_config,
+            runner_config=runner_config,
+            config_path=str(args.config),
         )
 
 
@@ -235,6 +275,8 @@ def _execute_single_job(
     mode: str,
     dry_run: bool = False,
     dry_run_config: "DryRunConfig" = None,
+    runner_config: Optional[RunnerConfig] = None,
+    config_path: Optional[str] = None,
 ) -> int:
     """Execute a single job configuration.
 
@@ -243,6 +285,8 @@ def _execute_single_job(
         mode: Execution mode
         dry_run: If True, perform discovery and sample extraction without writing
         dry_run_config: Optional dry-run configuration with sample size and timeout
+        runner_config: Optional runner configuration for notification hooks
+        config_path: Optional path to job configuration file
 
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
@@ -250,7 +294,35 @@ def _execute_single_job(
     executor = JobExecutor(
         job_config, mode=mode, dry_run=dry_run, dry_run_config=dry_run_config
     )
-    return executor.execute()
+    exit_code = executor.execute()
+
+    # Execute notification hooks if configured
+    if (
+        runner_config
+        and runner_config.notifications
+        and runner_config.notifications.on_failure
+    ):
+        error_info = (
+            executor.run_summary.ingestion.error
+            if (executor.run_summary and executor.run_summary.ingestion.error)
+            else None
+        )
+        failure_reason = (
+            error_info.error_message
+            if error_info
+            else ("Job execution failed" if exit_code == 2 else None)
+        )
+        execute_notification_hooks(
+            hooks=runner_config.notifications.on_failure,
+            tenant_id=job_config.tenant_id,
+            job_name=job_config.asset or "unknown-job",
+            config_path=config_path or "unknown",
+            exit_code=exit_code,
+            failure_reason=failure_reason,
+            summary_path=executor._summary_path,
+        )
+
+    return exit_code
 
 
 def check_command(args: argparse.Namespace) -> int:

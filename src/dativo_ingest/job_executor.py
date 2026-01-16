@@ -81,6 +81,7 @@ class JobExecutor:
         self.source_tags: Optional[Dict[str, Any]] = None
         self.metrics_collector: Optional[MetricsCollector] = None
         self.run_summary: Optional[RunSummary] = None
+        self._summary_path: Optional[str] = None  # Path to written summary file
 
         # Dry-run result tracking (for structured output)
         self._dry_run_result: Optional["DryRunResult"] = None
@@ -1388,6 +1389,8 @@ class JobExecutor:
             # Write to file
             with open(summary_file, "w") as f:
                 f.write(self.run_summary.model_dump_json(indent=2, by_alias=True))
+
+            self._summary_path = str(summary_file)
 
             self.logger.info(
                 f"Run summary written to {summary_file}",
