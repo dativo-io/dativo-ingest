@@ -403,6 +403,212 @@ Metadata is visible in the Dagster UI for monitoring and debugging.
 
 ---
 
+## Notification Hooks (v1.4.0+)
+
+Notification hooks provide runner-level, failure-only external notifications via simple command hooks.
+
+### Philosophy
+
+Dativo follows a headless, config-only approach for notifications:
+
+- **No embedded services**: Dativo does not implement Slack, Kafka, PagerDuty, etc. internally
+- **User-controlled**: You provide external scripts that integrate with your systems
+- **Failure-only**: Hooks are triggered only when jobs fail (exit code = 2)
+- **Graceful failure**: Hook failures never affect job outcomes
+
+### Configuration
+
+Add a `notifications` block to your `runner.yaml`:
+
+```yaml
+runner:
+  mode: orchestrated
+  orchestrator:
+    type: dagster
+    schedules:
+      - name: stripe_hourly
+        config: /app/jobs/acme/stripe.yaml
+        cron: "0 * * * *"
+  
+  # Notification hooks (optional)
+  notifications:
+    on_failure:
+      command: ["/app/scripts/notify_slack.sh"]
+      env:
+        SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+      timeout_seconds: 15
+```
+
+#### Configuration Fields
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `notifications` | No | - | Top-level notifications block |
+| `on_failure` | No | - | Hook configuration for job failures |
+| `command` | Yes* | - | Command as argv array (no shell). Required if `on_failure` is present |
+| `env` | No | - | Environment variables with `${VAR}` expansion |
+| `timeout_seconds` | No | 15 | Hook execution timeout (1-60 seconds) |
+
+### Environment Contract
+
+When a hook executes, these environment variables are always injected by the runner:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DATIVO_TENANT_ID` | Tenant identifier | `acme` |
+| `DATIVO_JOB_NAME` | Job/schedule name | `stripe_hourly` |
+| `DATIVO_RUN_ID` | Unique run identifier | `2026-01-16T10:03:12Z` |
+| `DATIVO_SUMMARY_PATH` | Absolute path to summary JSON | `/logs/runs/.../summary.json` |
+
+**Environment Precedence** (highest to lowest):
+1. Required `DATIVO_*` variables (always set, override user values)
+2. User-provided `env` (after `${VAR}` expansion)
+3. Existing process environment
+
+### Summary File
+
+For each failed run, a summary JSON file is written:
+
+```json
+{
+  "tenant_id": "acme",
+  "job_name": "stripe_hourly",
+  "run_id": "2026-01-16T10:03:12Z",
+  "status": "failure",
+  "timestamp": "2026-01-16T10:03:12Z",
+  "config_path": "/app/configs/jobs/stripe.yaml",
+  "error": {
+    "message": "Stripe API timeout",
+    "type": "UpstreamError"
+  }
+}
+```
+
+**Rules:**
+- Schema is minimal and stable
+- Never includes secrets
+- Hook scripts may read this file directly
+
+### Example Scripts
+
+Dativo ships example scripts in `examples/scripts/`:
+
+#### Slack Webhook (`notify_slack.sh`)
+
+```yaml
+notifications:
+  on_failure:
+    command: ["/app/scripts/notify_slack.sh"]
+    env:
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+      SLACK_CHANNEL: "#alerts"  # Optional override
+```
+
+#### Generic HTTP Webhook (`notify_webhook.sh`)
+
+```yaml
+notifications:
+  on_failure:
+    command: ["/app/scripts/notify_webhook.sh"]
+    env:
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      WEBHOOK_HEADERS: "Authorization: Bearer ${API_TOKEN}"
+```
+
+### Oneshot Mode
+
+Notification hooks also work in oneshot mode when you provide the runner config:
+
+```bash
+dativo run --config /app/jobs/stripe.yaml --runner-config /app/configs/runner.yaml
+```
+
+### Writing Custom Hook Scripts
+
+Requirements:
+1. **Executable**: Script must be executable (`chmod +x`)
+2. **No shell**: Command is invoked as argv array (no shell interpolation)
+3. **Pure shell + curl**: Avoid external dependencies for portability
+4. **Graceful**: Handle missing summary file gracefully
+5. **Timeout-aware**: Complete within configured timeout
+
+### Explicit Non-Goals
+
+Dativo does **not** ship built-in integrations for:
+- Slack, Teams, Discord
+- Kafka, RabbitMQ
+- PagerDuty, OpsGenie
+- Email, SMS
+
+**If you need Kafka**, write a custom hook script:
+
+```bash
+#!/bin/sh
+# notify_kafka.sh
+cat "$DATIVO_SUMMARY_PATH" | \
+    kafka-console-producer \
+        --broker-list "$KAFKA_BROKERS" \
+        --topic "$KAFKA_TOPIC"
+```
+
+### Failure & Safety Semantics
+
+Hook execution is designed to fail gracefully:
+
+| Condition | Behavior |
+|-----------|----------|
+| Command not found | Log error, continue |
+| Command not executable | Log error, continue |
+| Command times out | Log warning, continue |
+| Command exits non-zero | Log warning, continue |
+
+**Key principle**: The ingestion job failed because ingestion failed — not because notification failed.
+
+### Troubleshooting Notification Hooks
+
+#### Script not found
+
+```
+ERROR: Hook command not found: /app/scripts/notify_slack.sh
+```
+
+- Check that the script exists in your Docker container
+- Verify the path is absolute or relative to working directory
+
+#### Permission denied
+
+```
+ERROR: Hook command not executable: /app/scripts/notify_slack.sh
+```
+
+- Run `chmod +x /app/scripts/notify_slack.sh`
+- Ensure the script has a valid shebang (`#!/bin/sh`)
+
+#### Missing environment variables
+
+```
+ERROR: SLACK_WEBHOOK_URL environment variable is not set
+```
+
+- Add the variable to your `runner.yaml` `env` block
+- Ensure the source environment variable is set
+
+#### Webhook errors
+
+- Check HTTP response codes in logs
+- 401/403: Authentication issues
+- 404: Incorrect URL
+- 5xx: Target service issues
+
+#### Finding summary.json
+
+The summary path is logged when hooks are triggered. Default pattern:
+```
+/logs/runs/{run_id}/summary.json
+```
+
+---
+
 ## Best Practices
 
 ### Retry Configuration
@@ -425,6 +631,15 @@ Metadata is visible in the Dagster UI for monitoring and debugging.
 - Track `records_per_second` for throughput monitoring
 - Alert on high `retry_count` values
 - Use tags for filtering and organization
+
+### Notification Hooks
+
+- Keep hook scripts simple and fast (< 15 seconds)
+- Use pure shell + curl for portability
+- Handle missing summary file gracefully
+- Test hooks independently before deploying
+- Use structured logging in custom scripts
+- Never include secrets in logs or error messages
 
 ---
 
