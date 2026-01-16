@@ -4,6 +4,10 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .dry_run import DryRunConfig
 
 from .cli_commands import (
     ConnectionChecker,

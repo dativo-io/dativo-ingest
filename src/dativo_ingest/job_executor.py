@@ -6,7 +6,10 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from .dry_run import DryRunConfig, DryRunResult
 
 from .config import (
     AssetDefinition,
