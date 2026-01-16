@@ -15,6 +15,7 @@ from .config import (
     AssetDefinition,
     JobConfig,
     MetricsConfig,
+    NotificationsConfig,
     SourceConfig,
     TargetConfig,
 )
@@ -36,6 +37,13 @@ from .run_summary import (
     VolumeInfo,
 )
 from .schema_validator import SchemaValidator
+from .notifications import (
+    build_failure_summary,
+    build_notification_env,
+    execute_notification_hook,
+    redact_notification_text,
+    write_failure_summary,
+)
 from .utils import expand_env_variable
 from .validator import ConnectorValidator, IncrementalStateManager
 from .wal_manager import WALManager
@@ -54,6 +62,8 @@ class JobExecutor:
         mode: str = "self_hosted",
         dry_run: bool = False,
         dry_run_config: Optional["DryRunConfig"] = None,
+        runner_notifications: Optional[NotificationsConfig] = None,
+        config_path: Optional[str] = None,
     ):
         """Initialize job executor.
 
@@ -81,6 +91,10 @@ class JobExecutor:
         self.source_tags: Optional[Dict[str, Any]] = None
         self.metrics_collector: Optional[MetricsCollector] = None
         self.run_summary: Optional[RunSummary] = None
+        self.runner_notifications = runner_notifications
+        self.config_path = config_path
+        self.failure_summary_path: Optional[str] = None
+        self.failure_summary_context: Optional[Dict[str, Any]] = None
 
         # Dry-run result tracking (for structured output)
         self._dry_run_result: Optional["DryRunResult"] = None
@@ -168,6 +182,100 @@ class JobExecutor:
         if self.metrics_collector:
             status_map = {0: "success", 1: "partial", 2: "failure"}
             self.metrics_collector.finish(status_map.get(exit_code, "failure"))
+
+    def _finalize_run(self, exit_code: int) -> int:
+        """Finalize metrics, summaries, and notifications."""
+        self._finish_metrics(exit_code)
+        self._write_run_summary(exit_code)
+        if exit_code == 2:
+            self._write_failure_notification_summary()
+            self._trigger_failure_notifications()
+        return exit_code
+
+    def _build_failure_context(self) -> Dict[str, Any]:
+        """Build failure context for notifications."""
+        if self.failure_summary_context:
+            return self.failure_summary_context
+
+        tenant_id = self.tenant_id or "unknown"
+        job_name = self.job_config.asset or "unknown"
+        run_id = None
+        timestamp = None
+
+        if self.run_summary:
+            if self.run_summary.run.tenant_id:
+                tenant_id = self.run_summary.run.tenant_id
+            if self.run_summary.run.job_name:
+                job_name = self.run_summary.run.job_name
+            run_id = self.run_summary.run.id
+            timestamp = self.run_summary.run.end_time or self.run_summary.run.start_time
+
+        if not run_id:
+            run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+        config_path = self.config_path or self.job_config.get_config_path() or "unknown"
+        if config_path != "unknown" and not os.path.isabs(config_path):
+            config_path = os.path.abspath(config_path)
+
+        error_message = "Job failed"
+        error_type = "JobError"
+        if self.run_summary and self.run_summary.ingestion.error:
+            error = self.run_summary.ingestion.error
+            if error.error_message:
+                error_message = error.error_message
+            if error.error_type:
+                error_type = error.error_type
+
+        error_message = redact_notification_text(error_message) or "Job failed"
+
+        self.failure_summary_context = {
+            "tenant_id": tenant_id,
+            "job_name": job_name,
+            "run_id": run_id,
+            "timestamp": timestamp,
+            "config_path": config_path,
+            "error_message": error_message,
+            "error_type": error_type,
+        }
+        return self.failure_summary_context
+
+    def _write_failure_notification_summary(self) -> str:
+        """Write minimal failure summary for notifications."""
+        context = self._build_failure_context()
+        summary = build_failure_summary(
+            tenant_id=context["tenant_id"],
+            job_name=context["job_name"],
+            run_id=context["run_id"],
+            config_path=context["config_path"],
+            error_message=context["error_message"],
+            error_type=context["error_type"],
+            timestamp=context["timestamp"],
+        )
+        self.failure_summary_path = write_failure_summary(
+            summary,
+            context["run_id"],
+            logger=self.logger,
+        )
+        return self.failure_summary_path
+
+    def _trigger_failure_notifications(self) -> None:
+        """Execute configured failure notifications."""
+        if not self.runner_notifications or not self.runner_notifications.on_failure:
+            return
+
+        context = self._build_failure_context()
+        summary_path = self.failure_summary_path or self._write_failure_notification_summary()
+
+        required_env = {
+            "DATIVO_TENANT_ID": context["tenant_id"],
+            "DATIVO_JOB_NAME": context["job_name"],
+            "DATIVO_RUN_ID": context["run_id"],
+            "DATIVO_SUMMARY_PATH": summary_path,
+        }
+
+        hook = self.runner_notifications.on_failure
+        env = build_notification_env(hook.env, required_env)
+        execute_notification_hook(hook, env, logger=self.logger)
 
     def _validate_job(self) -> int:
         """Validate job configuration.
@@ -1835,7 +1943,7 @@ class JobExecutor:
                     extra={"event_type": "config_error"},
                     exc_info=True,
                 )
-                return 2
+                return self._finalize_run(2)
             except Exception as e:
                 error_msg = f"Failed to resolve source/target configuration: {e}"
                 print(f"ERROR: {error_msg}", file=sys.stderr)
@@ -1848,7 +1956,7 @@ class JobExecutor:
                     extra={"event_type": "config_error"},
                     exc_info=True,
                 )
-                return 2
+                return self._finalize_run(2)
 
             # Set up logging
             self._setup_logging()
@@ -1903,18 +2011,12 @@ class JobExecutor:
             # Validate job
             exit_code = self._validate_job()
             if exit_code != 0:
-                # Ensure metrics gauge is reset on early return
-                self._finish_metrics(exit_code)
-                self._write_run_summary(exit_code)
-                return exit_code
+                return self._finalize_run(exit_code)
 
             # Load asset
             exit_code = self._load_asset()
             if exit_code != 0:
-                # Ensure metrics gauge is reset on early return
-                self._finish_metrics(exit_code)
-                self._write_run_summary(exit_code)
-                return exit_code
+                return self._finalize_run(exit_code)
 
             if self.run_summary and self.asset_definition:
                 self.run_summary.asset = RunAssetInfo(
@@ -1930,10 +2032,7 @@ class JobExecutor:
             # Initialize extractor
             exit_code = self._initialize_extractor()
             if exit_code != 0:
-                # Ensure metrics gauge is reset on early return
-                self._finish_metrics(exit_code)
-                self._write_run_summary(exit_code)
-                return exit_code
+                return self._finalize_run(exit_code)
 
             # Initialize WAL manager (after extractor is initialized for metadata)
             self._initialize_wal_manager()
@@ -1941,25 +2040,17 @@ class JobExecutor:
             # Initialize validator
             exit_code = self._initialize_validator()
             if exit_code != 0:
-                # Ensure metrics gauge is reset on early return
-                self._finish_metrics(exit_code)
-                self._write_run_summary(exit_code)
-                return exit_code
+                return self._finalize_run(exit_code)
 
             # Dry-run mode: skip writer/committer initialization and use dry-run execution
             if self.dry_run:
                 exit_code = self._execute_dry_run()
-                self._finish_metrics(exit_code)
-                self._write_run_summary(exit_code)
-                return exit_code
+                return self._finalize_run(exit_code)
 
             # Initialize writer
             exit_code = self._initialize_writer()
             if exit_code != 0:
-                # Ensure metrics gauge is reset on early return
-                self._finish_metrics(exit_code)
-                self._write_run_summary(exit_code)
-                return exit_code
+                return self._finalize_run(exit_code)
 
             # Initialize committer
             self._initialize_committer()
@@ -1969,19 +2060,13 @@ class JobExecutor:
             # Only return early for actual failures (exit_code == 2)
             # Partial success (exit_code == 1) should still push to catalog
             if exit_code == 2:
-                # Ensure metrics gauge is reset on early return
-                self._finish_metrics(exit_code)
-                self._write_run_summary(exit_code)
-                return exit_code
+                return self._finalize_run(exit_code)
 
             # Push to catalog (for both success and partial success)
             self._push_to_catalog()
 
             # Finalize metrics
-            self._finish_metrics(exit_code)
-            self._write_run_summary(exit_code)
-
-            return exit_code
+            return self._finalize_run(exit_code)
 
         except Exception as e:
             if self.logger:
@@ -1998,9 +2083,4 @@ class JobExecutor:
                     has_errors=True, error_message=str(e), error_type=type(e).__name__
                 )
 
-            # Record error in metrics (ensure finish is called even on exception)
-            if self.metrics_collector:
-                self.metrics_collector.finish("failure")
-
-            self._write_run_summary(2)
-            return 2
+            return self._finalize_run(2)

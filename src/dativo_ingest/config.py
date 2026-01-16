@@ -9,7 +9,14 @@ from typing import Any, Dict, List, Optional, Union
 
 import jsonschema
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 
 class ConnectorRecipe(BaseModel):
@@ -574,6 +581,8 @@ class JobConfig(BaseModel):
     # Metrics configuration
     metrics: Optional[MetricsConfig] = None
 
+    _config_path: Optional[str] = PrivateAttr(default=None)
+
     @model_validator(mode="after")
     def validate_source_target(self) -> "JobConfig":
         """Validate that all required connector paths are provided."""
@@ -584,6 +593,10 @@ class JobConfig(BaseModel):
         if not self.asset_path:
             raise ValueError("asset_path is required")
         return self
+
+    def get_config_path(self) -> Optional[str]:
+        """Return the loaded config path if available."""
+        return self._config_path
 
     def _resolve_source_recipe(self) -> Union[ConnectorRecipe, SourceConnectorRecipe]:
         """Resolve source connector recipe (supports unified and legacy formats)."""
@@ -1116,7 +1129,9 @@ class JobConfig(BaseModel):
                 )
 
         try:
-            return cls(**data)
+            job = cls(**data)
+            job._config_path = str(path.resolve())
+            return job
         except Exception as e:
             print(
                 f"ERROR: Invalid job configuration: {path}\nValidation Error: {e}",
@@ -1163,6 +1178,19 @@ class OrchestratorConfig(BaseModel):
     concurrency_per_tenant: int = Field(default=1, ge=1)
 
 
+class NotificationHookConfig(BaseModel):
+    """Notification hook configuration."""
+
+    command: List[str] = Field(..., min_length=1)
+    env: Optional[Dict[str, str]] = None
+
+
+class NotificationsConfig(BaseModel):
+    """Runner-level notifications configuration."""
+
+    on_failure: Optional[NotificationHookConfig] = None
+
+
 class RunnerConfig(BaseModel):
     """Runner configuration model."""
 
@@ -1171,6 +1199,8 @@ class RunnerConfig(BaseModel):
     metrics: Optional[MetricsConfig] = Field(
         default=None, description="Global metrics configuration for orchestrated mode"
     )
+    notifications: Optional[NotificationsConfig] = None
+    config_path: Optional[str] = Field(default=None, exclude=True)
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "RunnerConfig":
@@ -1210,8 +1240,13 @@ class RunnerConfig(BaseModel):
             print(f"ERROR: Runner config file is empty: {path}", file=sys.stderr)
             sys.exit(2)
 
+        if isinstance(data, dict) and isinstance(data.get("runner"), dict):
+            data = data["runner"]
+
         try:
-            return cls(**data)
+            runner_config = cls(**data)
+            runner_config.config_path = str(path.resolve())
+            return runner_config
         except Exception as e:
             print(
                 f"ERROR: Invalid runner configuration: {path}\nValidation Error: {e}",

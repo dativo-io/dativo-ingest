@@ -7,9 +7,10 @@ This guide describes how the dativo-ingest Docker image runs jobs in two executi
 1. [Overview](#overview)
 2. [Execution Modes](#execution-modes)
 3. [Runner Configuration](#runner-configuration)
-4. [Logging and Exit Codes](#logging-and-exit-codes)
-5. [Docker Deployment](#docker-deployment)
-6. [Additional Resources](#additional-resources)
+4. [Notification Hooks](#notification-hooks)
+5. [Logging and Exit Codes](#logging-and-exit-codes)
+6. [Docker Deployment](#docker-deployment)
+7. [Additional Resources](#additional-resources)
 
 ---
 
@@ -106,6 +107,107 @@ Cron expressions use standard 5-field format:
 - `"15 2 * * *"` - Daily at 2:15 AM
 - `"0 0 * * 0"` - Weekly on Sunday at midnight
 - `"*/15 * * * *"` - Every 15 minutes
+
+---
+
+## Notification Hooks
+
+Runner-level notification hooks let you invoke an external command when a job fails
+(exit code `2`). Hooks are headless, config-only, and do not embed any third-party
+integrations in core logic.
+
+### Configuration
+
+Add an optional `notifications` block to `runner.yaml`:
+
+```yaml
+runner:
+  notifications:
+    on_failure:
+      command: ["/app/examples/scripts/notify_slack.sh"]
+      env:
+        SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+```
+
+Notes:
+- `notifications` is optional.
+- `on_failure` is optional.
+- `command` is required if `on_failure` is present.
+- `command` is executed as an argv array (no shell).
+- `env` supports `${ENV_VAR}` expansion.
+
+For oneshot runs, pass `--runner-config` (or set `DATIVO_RUNNER_CONFIG`) to enable
+runner-level notifications.
+
+### Environment contract
+
+The runner always injects and overrides these variables for the hook:
+- `DATIVO_TENANT_ID`
+- `DATIVO_JOB_NAME` (schedule name or job identifier)
+- `DATIVO_RUN_ID`
+- `DATIVO_SUMMARY_PATH` (absolute path to `summary.json`)
+
+Precedence order:
+1. Existing process environment
+2. `notifications.on_failure.env` (after expansion)
+3. Required `DATIVO_*` variables (highest precedence)
+
+### Summary JSON
+
+On failure, a minimal summary file is written to:
+
+`/logs/runs/<run_id>/summary.json`
+
+Minimum fields:
+```json
+{
+  "tenant_id": "acme",
+  "job_name": "stripe_hourly",
+  "run_id": "2026-01-16T10:03:12Z",
+  "status": "failure",
+  "timestamp": "2026-01-16T10:03:12Z",
+  "config_path": "/app/configs/jobs/stripe.yaml",
+  "error": {
+    "message": "Stripe API timeout",
+    "type": "UpstreamError"
+  }
+}
+```
+
+Secrets are never included. Hooks can read this file directly.
+
+### Example scripts
+
+Official examples are shipped under `examples/scripts/`:
+- `notify_slack.sh` (incoming webhook)
+- `notify_webhook.sh` (generic HTTP webhook; supports `WEBHOOK_METHOD` and `WEBHOOK_HEADERS`)
+
+`WEBHOOK_HEADERS` expects comma-separated header entries (for example: `Authorization: Bearer ...`).
+
+Mount the scripts into the container and reference them in `runner.yaml`.
+
+### Troubleshooting
+
+- Script not found: verify `command` path and mount.
+- Permission denied: ensure the script is executable (`chmod +x`).
+- Missing env vars: set `SLACK_WEBHOOK_URL` or `WEBHOOK_URL`.
+- Webhook errors: inspect hook stderr logs (redacted) for curl failures.
+- Summary location: check `/logs/runs/<run_id>/summary.json`.
+
+### Explicit non-goals
+
+Dativo does not ship built-in Kafka, PagerDuty, Teams, or email integrations.
+If you need Kafka, write a custom hook script that publishes `summary.json`:
+
+```yaml
+runner:
+  notifications:
+    on_failure:
+      command: ["/app/scripts/notify_kafka.sh"]
+```
+
+Example external script behavior (not in core):
+`kafka-console-producer --broker-list $KAFKA_BROKERS --topic $KAFKA_TOPIC < "$DATIVO_SUMMARY_PATH"`
 
 ---
 

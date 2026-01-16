@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .dry_run import DryRunConfig
@@ -29,6 +29,44 @@ from .metrics_otel import configure_otel_metrics
 from .secrets import load_secret_manager_config, load_secrets_and_set_env
 from .startup import startup_sequence
 from .validator import ConnectorValidator
+
+
+def _resolve_runner_config_path(args: argparse.Namespace) -> Optional[str]:
+    path = getattr(args, "runner_config", None) or os.getenv("DATIVO_RUNNER_CONFIG")
+    if not path:
+        return None
+    return os.path.expandvars(path)
+
+
+def _load_runner_notifications(runner_config_path: Optional[str]):
+    if not runner_config_path:
+        return None
+
+    logger = get_logger()
+    try:
+        runner_config = RunnerConfig.from_yaml(runner_config_path)
+    except SystemExit as exc:
+        logger.warning(
+            "Failed to load runner config for notifications",
+            extra={
+                "event_type": "notification_config_error",
+                "runner_config": runner_config_path,
+                "exit_code": exc.code,
+            },
+        )
+        return None
+    except Exception as exc:
+        logger.warning(
+            "Failed to load runner config for notifications",
+            extra={
+                "event_type": "notification_config_error",
+                "runner_config": runner_config_path,
+                "error": str(exc),
+            },
+        )
+        return None
+
+    return runner_config.notifications
 
 
 def run_command(args: argparse.Namespace) -> int:
@@ -88,6 +126,9 @@ def run_command(args: argparse.Namespace) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
+    runner_config_path = _resolve_runner_config_path(args)
+    runner_notifications = _load_runner_notifications(runner_config_path)
+
     # Check if running from directory or single file
     if args.job_dir:
         # Run startup sequence and execute all jobs
@@ -144,7 +185,12 @@ def run_command(args: argparse.Namespace) -> int:
         results = []
         for job_config in jobs:
             result = _execute_single_job(
-                job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+                job_config,
+                args.mode,
+                dry_run=dry_run,
+                dry_run_config=dry_run_config,
+                runner_notifications=runner_notifications,
+                config_path=job_config.get_config_path(),
             )
             results.append(result)
 
@@ -226,7 +272,12 @@ def run_command(args: argparse.Namespace) -> int:
                 )
 
         return _execute_single_job(
-            job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+            job_config,
+            args.mode,
+            dry_run=dry_run,
+            dry_run_config=dry_run_config,
+            runner_notifications=runner_notifications,
+            config_path=args.config,
         )
 
 
@@ -235,6 +286,8 @@ def _execute_single_job(
     mode: str,
     dry_run: bool = False,
     dry_run_config: "DryRunConfig" = None,
+    runner_notifications=None,
+    config_path: Optional[str] = None,
 ) -> int:
     """Execute a single job configuration.
 
@@ -248,7 +301,12 @@ def _execute_single_job(
         Exit code (0=success, 1=partial, 2=failure)
     """
     executor = JobExecutor(
-        job_config, mode=mode, dry_run=dry_run, dry_run_config=dry_run_config
+        job_config,
+        mode=mode,
+        dry_run=dry_run,
+        dry_run_config=dry_run_config,
+        runner_notifications=runner_notifications,
+        config_path=config_path,
     )
     return executor.execute()
 
@@ -640,6 +698,10 @@ Examples:
         "Falls back to DATIVO_SECRET_MANAGER_CONFIG when omitted.",
     )
     run_parser.add_argument(
+        "--runner-config",
+        help="Optional runner configuration file (enables runner-level notifications).",
+    )
+    run_parser.add_argument(
         "--mode",
         choices=["self_hosted", "cloud"],
         default="self_hosted",
@@ -717,6 +779,10 @@ Examples:
         "--secret-manager-config",
         help="Path to YAML/JSON file or inline JSON blob with secret manager configuration. "
         "Falls back to DATIVO_SECRET_MANAGER_CONFIG when omitted.",
+    )
+    ingest_parser.add_argument(
+        "--runner-config",
+        help="Optional runner configuration file (enables runner-level notifications).",
     )
     ingest_parser.add_argument(
         "--mode",

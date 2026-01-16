@@ -49,6 +49,7 @@ def _execute_job_with_retry(
     schedule_config: Any,
     job_config: JobConfig,
     custom_retry_policy: Optional[CustomRetryPolicy],
+    runner_config_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Execute job with retry logic.
 
@@ -75,17 +76,21 @@ def _execute_job_with_retry(
     while True:
         try:
             # Execute job via CLI run command
+            command = [
+                sys.executable,
+                "-m",
+                "dativo_ingest.cli",
+                "run",
+                "--config",
+                schedule_config.config,
+                "--mode",
+                "self_hosted",
+            ]
+            if runner_config_path:
+                command.extend(["--runner-config", runner_config_path])
+
             result = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "dativo_ingest.cli",
-                    "run",
-                    "--config",
-                    schedule_config.config,
-                    "--mode",
-                    "self_hosted",
-                ],
+                command,
                 capture_output=True,
                 text=True,
             )
@@ -247,7 +252,10 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
 
                 # Execute job with retry logic
                 result = _execute_job_with_retry(
-                    schedule_config, job_config, custom_retry_policy
+                    schedule_config,
+                    job_config,
+                    custom_retry_policy,
+                    runner_config_path=runner_config.config_path,
                 )
 
                 # Calculate execution time

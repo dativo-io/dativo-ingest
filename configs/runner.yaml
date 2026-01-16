@@ -48,3 +48,9 @@ runner:
           priority: "low"
     
     concurrency_per_tenant: 1         # Serialize per-tenant to protect Nessie commits
+
+  notifications:
+    on_failure:
+      command: ["/app/examples/scripts/notify_slack.sh"]
+      env:
+        SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}

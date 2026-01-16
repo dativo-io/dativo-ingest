@@ -30,3 +30,9 @@ runner:
     
     concurrency_per_tenant: 1  # Serialize per-tenant to protect Nessie commits
 
+  notifications:
+    on_failure:
+      command: ["/app/examples/scripts/notify_webhook.sh"]
+      env:
+        WEBHOOK_URL: ${WEBHOOK_URL}
+
