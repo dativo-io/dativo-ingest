@@ -173,7 +173,10 @@ def _create_hook_payload(
         "exit_code": exit_code,
         "failure_reason": failure_reason,
     }
-    if summary_path:
+    # Only add summary_path if it's a non-empty string
+    # This handles the case where summary_path might be Path("") which is truthy
+    # but should not be used as a valid path
+    if summary_path and isinstance(summary_path, str) and summary_path.strip():
         payload["summary_path"] = summary_path
 
     # Create temporary file that will be cleaned up after hook execution
@@ -248,6 +251,29 @@ def _execute_hook(
     expanded_user_env = expand_hook_env(user_env)
     env.update(expanded_user_env)
     env["DATIVO_HOOK_PAYLOAD"] = str(payload_path.absolute())
+
+    # Extract summary_path from payload and set DATIVO_SUMMARY_PATH
+    # Only set if summary_path exists and is a non-empty string
+    # This handles the case where summary_path might be Path("") which is truthy
+    # but should not be used as a valid path
+    try:
+        with open(payload_path, "r") as f:
+            payload_data = json.load(f)
+        summary_path_value = payload_data.get("summary_path")
+        # Only set if summary_path is a non-empty string
+        # Check explicitly for string type and non-empty to avoid Path("") issues
+        if (
+            summary_path_value
+            and isinstance(summary_path_value, str)
+            and summary_path_value.strip()
+        ):
+            env["DATIVO_SUMMARY_PATH"] = summary_path_value
+    except Exception as e:
+        # If we can't read the payload, log but don't fail
+        logger.warning(
+            f"Failed to read payload for DATIVO_SUMMARY_PATH: {e}",
+            extra={"event_type": "notification_hook_payload_read_warning"},
+        )
 
     # Log execution start (with redacted command and env)
     redacted_command = _redact_command_args(expanded_command)

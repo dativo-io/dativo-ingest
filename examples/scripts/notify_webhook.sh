@@ -86,32 +86,40 @@ EOF
 )
 fi
 
-# Build curl command
-CURL_CMD="curl -s -o /dev/null -w \"%{http_code}\" -X $WEBHOOK_METHOD"
-CURL_CMD="$CURL_CMD -H \"Content-Type: application/json\""
-
-# Add custom headers if provided
-if [ -n "$WEBHOOK_HEADERS" ]; then
-    # Parse comma-separated headers
-    echo "$WEBHOOK_HEADERS" | tr ',' '\n' | while read -r header; do
-        header=$(echo "$header" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        if [ -n "$header" ]; then
-            CURL_CMD="$CURL_CMD -H \"$header\""
-        fi
-    done
-fi
-
 # Execute request
 # Note: Using a temp file to avoid issues with special characters in payload
 TEMP_PAYLOAD=$(mktemp)
 echo "$PAYLOAD" > "$TEMP_PAYLOAD"
 
-HTTP_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-    -X "$WEBHOOK_METHOD" \
-    -H "Content-Type: application/json" \
-    ${WEBHOOK_HEADERS:+-H "$WEBHOOK_HEADERS"} \
-    -d @"$TEMP_PAYLOAD" \
-    "$WEBHOOK_URL")
+# Build and execute curl command with properly parsed headers
+if [ -n "$WEBHOOK_HEADERS" ]; then
+    # Parse comma-separated headers and build curl command
+    # Save original IFS and set to comma for splitting
+    OLD_IFS="$IFS"
+    IFS=','
+    # Start building curl command arguments
+    set -- curl -s -o /dev/null -w "%{http_code}" -X "$WEBHOOK_METHOD" -H "Content-Type: application/json"
+    # Add each header as a separate -H argument
+    for header in $WEBHOOK_HEADERS; do
+        # Trim whitespace from header
+        header=$(echo "$header" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [ -n "$header" ]; then
+            set -- "$@" -H "$header"
+        fi
+    done
+    # Restore IFS
+    IFS="$OLD_IFS"
+    # Add payload and URL, then execute
+    set -- "$@" -d @"$TEMP_PAYLOAD" "$WEBHOOK_URL"
+    HTTP_RESPONSE=$("$@")
+else
+    # No custom headers - simple curl command
+    HTTP_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X "$WEBHOOK_METHOD" \
+        -H "Content-Type: application/json" \
+        -d @"$TEMP_PAYLOAD" \
+        "$WEBHOOK_URL")
+fi
 
 # Cleanup
 rm -f "$TEMP_PAYLOAD"
