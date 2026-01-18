@@ -1163,6 +1163,51 @@ class OrchestratorConfig(BaseModel):
     concurrency_per_tenant: int = Field(default=1, ge=1)
 
 
+class OnFailureHookConfig(BaseModel):
+    """Configuration for on_failure notification hook.
+
+    This defines an external command to execute when a job fails.
+    The command receives environment variables with job context.
+    """
+
+    command: List[str] = Field(
+        ...,
+        min_length=1,
+        description="Command to execute as argv array (no shell). "
+        "Example: ['/app/scripts/notify_slack.sh']",
+    )
+    env: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Environment variables to pass to the hook. "
+        "Supports ${VAR} expansion from process environment. "
+        "Example: {'SLACK_WEBHOOK_URL': '${SLACK_WEBHOOK_URL}'}",
+    )
+    timeout_seconds: int = Field(
+        default=15,
+        ge=1,
+        le=60,
+        description="Timeout for hook execution in seconds (default: 15, max: 60)",
+    )
+
+
+class NotificationsConfig(BaseModel):
+    """Notification hooks configuration for runner-level notifications.
+
+    Notifications are triggered only on job failure (exit_code = 2).
+    They execute external commands provided by the user.
+
+    Dativo does NOT implement internal Slack, Kafka, PagerDuty, etc. integrations.
+    Instead, it provides a hook mechanism for users to integrate with any system
+    via custom scripts.
+    """
+
+    on_failure: Optional[OnFailureHookConfig] = Field(
+        default=None,
+        description="Hook configuration for job failure notifications. "
+        "Triggered when a job exits with code 2 (failure).",
+    )
+
+
 class RunnerConfig(BaseModel):
     """Runner configuration model."""
 
@@ -1170,6 +1215,11 @@ class RunnerConfig(BaseModel):
     orchestrator: OrchestratorConfig
     metrics: Optional[MetricsConfig] = Field(
         default=None, description="Global metrics configuration for orchestrated mode"
+    )
+    notifications: Optional[NotificationsConfig] = Field(
+        default=None,
+        description="Notification hooks configuration. "
+        "Hooks are triggered on job failure to notify external systems.",
     )
 
     @classmethod
@@ -1209,6 +1259,12 @@ class RunnerConfig(BaseModel):
         if data is None:
             print(f"ERROR: Runner config file is empty: {path}", file=sys.stderr)
             sys.exit(2)
+
+        # Support both formats:
+        # 1. Direct format: { mode: ..., orchestrator: ... }
+        # 2. Wrapped format: { runner: { mode: ..., orchestrator: ... } }
+        if "runner" in data and isinstance(data["runner"], dict):
+            data = data["runner"]
 
         try:
             return cls(**data)

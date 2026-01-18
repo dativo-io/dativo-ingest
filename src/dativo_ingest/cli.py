@@ -21,11 +21,12 @@ from .cli_connectors import (
     connectors_sync_command,
 )
 from .cli_validate import validate_asset_command, validate_config_command
-from .config import JobConfig, RunnerConfig, SourceConfig
+from .config import JobConfig, NotificationsConfig, RunnerConfig, SourceConfig
 from .job_executor import JobExecutor
 from .logging import get_logger, setup_logging
 from .metrics_config import resolve_metrics_config
 from .metrics_otel import configure_otel_metrics
+from .notification_hooks import execute_failure_notification
 from .secrets import load_secret_manager_config, load_secrets_and_set_env
 from .startup import startup_sequence
 from .validator import ConnectorValidator
@@ -88,6 +89,25 @@ def run_command(args: argparse.Namespace) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
+    # Load notifications config from runner config if provided
+    notifications_config = None
+    runner_config_path = getattr(args, "runner_config", None)
+    if runner_config_path:
+        try:
+            runner_config = RunnerConfig.from_yaml(runner_config_path)
+            notifications_config = runner_config.notifications
+        except SystemExit:
+            # RunnerConfig.from_yaml already prints error to stderr
+            print(
+                "WARNING: Failed to load runner config, notifications disabled",
+                file=sys.stderr,
+            )
+        except Exception as e:
+            print(
+                f"WARNING: Failed to load runner config: {e}, notifications disabled",
+                file=sys.stderr,
+            )
+
     # Check if running from directory or single file
     if args.job_dir:
         # Run startup sequence and execute all jobs
@@ -144,7 +164,12 @@ def run_command(args: argparse.Namespace) -> int:
         results = []
         for job_config in jobs:
             result = _execute_single_job(
-                job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+                job_config,
+                args.mode,
+                dry_run=dry_run,
+                dry_run_config=dry_run_config,
+                notifications_config=notifications_config,
+                config_path=str(args.job_dir),
             )
             results.append(result)
 
@@ -226,7 +251,12 @@ def run_command(args: argparse.Namespace) -> int:
                 )
 
         return _execute_single_job(
-            job_config, args.mode, dry_run=dry_run, dry_run_config=dry_run_config
+            job_config,
+            args.mode,
+            dry_run=dry_run,
+            dry_run_config=dry_run_config,
+            notifications_config=notifications_config,
+            config_path=args.config,
         )
 
 
@@ -235,6 +265,8 @@ def _execute_single_job(
     mode: str,
     dry_run: bool = False,
     dry_run_config: "DryRunConfig" = None,
+    notifications_config: NotificationsConfig = None,
+    config_path: str = None,
 ) -> int:
     """Execute a single job configuration.
 
@@ -243,14 +275,60 @@ def _execute_single_job(
         mode: Execution mode
         dry_run: If True, perform discovery and sample extraction without writing
         dry_run_config: Optional dry-run configuration with sample size and timeout
+        notifications_config: Optional notifications config for failure hooks
+        config_path: Path to the job config file (for error reporting)
 
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
+    from datetime import datetime, timezone
+
     executor = JobExecutor(
         job_config, mode=mode, dry_run=dry_run, dry_run_config=dry_run_config
     )
-    return executor.execute()
+    exit_code = executor.execute()
+
+    # Trigger failure notification hook if configured (only for exit_code = 2)
+    if exit_code == 2 and notifications_config and not dry_run:
+        # Get error message from run summary if available
+        failure_reason = "Job execution failed"
+        if executor.run_summary and executor.run_summary.ingestion.error:
+            error_info = executor.run_summary.ingestion.error
+            if error_info.error_message:
+                failure_reason = error_info.error_message
+
+        # Get summary path if available
+        summary_path = None
+        if executor.run_summary:
+            # Try to determine summary path from state directory
+            state_dir = os.getenv("STATE_DIR", ".local/state")
+            if not os.path.isabs(state_dir):
+                state_dir = os.path.abspath(state_dir)
+            job_name = job_config.asset or "unknown-job"
+            tenant_safe = job_config.tenant_id.replace("/", "_")
+            job_safe = job_name.replace("/", "_")
+            run_timestamp = executor.run_summary.run.id
+            summary_file = (
+                Path(state_dir)
+                / tenant_safe
+                / job_safe
+                / "runs"
+                / f"run-{run_timestamp}.json"
+            )
+            if summary_file.exists():
+                summary_path = str(summary_file.absolute())
+
+        execute_failure_notification(
+            config=notifications_config,
+            tenant_id=job_config.tenant_id,
+            job_name=job_config.asset or "unknown",
+            config_path=config_path or "unknown",
+            exit_code=exit_code,
+            failure_reason=failure_reason,
+            summary_path=summary_path,
+        )
+
+    return exit_code
 
 
 def check_command(args: argparse.Namespace) -> int:
@@ -679,6 +757,11 @@ Examples:
         action="store_true",
         help="Output results in JSON format (for dry-run mode).",
     )
+    run_parser.add_argument(
+        "--runner-config",
+        help="Path to runner configuration YAML file. If provided, notification hooks "
+        "will be loaded from this config and executed on job failure.",
+    )
 
     # Ingest command (primary, recommended)
     ingest_parser = subparsers.add_parser(
@@ -757,6 +840,11 @@ Examples:
         "--json",
         action="store_true",
         help="Output results in JSON format (for dry-run mode).",
+    )
+    ingest_parser.add_argument(
+        "--runner-config",
+        help="Path to runner configuration YAML file. If provided, notification hooks "
+        "will be loaded from this config and executed on job failure.",
     )
 
     # Start command

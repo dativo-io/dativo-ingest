@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from dagster import (
@@ -15,10 +16,11 @@ from dagster import (
     define_asset_job,
 )
 
-from .config import JobConfig, RunnerConfig
+from .config import JobConfig, NotificationsConfig, RunnerConfig
 from .logging import get_logger, setup_logging
 from .metrics_otel import configure_otel_metrics
 from .metrics_server import start_metrics_server_from_config
+from .notification_hooks import execute_failure_notification
 from .retry_policy import RetryPolicy as CustomRetryPolicy
 from .validator import ConnectorValidator
 
@@ -49,6 +51,7 @@ def _execute_job_with_retry(
     schedule_config: Any,
     job_config: JobConfig,
     custom_retry_policy: Optional[CustomRetryPolicy],
+    notifications_config: Optional[NotificationsConfig] = None,
 ) -> Dict[str, Any]:
     """Execute job with retry logic.
 
@@ -56,6 +59,7 @@ def _execute_job_with_retry(
         schedule_config: Schedule configuration
         job_config: Job configuration
         custom_retry_policy: Custom retry policy instance
+        notifications_config: Optional notifications configuration for failure hooks
 
     Returns:
         Job execution result
@@ -134,7 +138,9 @@ def _execute_job_with_retry(
                 custom_retry_policy.wait_for_retry(attempt)
                 attempt += 1
                 continue
-            raise
+            # Set exit code for notification
+            last_exit_code = 2
+            break
 
     # All retries exhausted or non-retryable error
     job_logger.error(
@@ -149,6 +155,20 @@ def _execute_job_with_retry(
             "stderr": last_error[:500] if last_error else None,
         },
     )
+
+    # Trigger failure notification hook if configured (only for exit_code = 2)
+    if last_exit_code == 2 and notifications_config:
+        failure_reason = last_error[:500] if last_error else "Unknown error"
+        execute_failure_notification(
+            config=notifications_config,
+            tenant_id=tenant_id,
+            job_name=schedule_config.name,
+            config_path=schedule_config.config,
+            exit_code=last_exit_code,
+            failure_reason=failure_reason,
+            summary_path=None,  # Summary path not available in orchestrated mode
+        )
+
     raise Exception(
         f"Job execution failed after {attempt + 1} attempt(s): {last_error}"
     )
@@ -193,6 +213,9 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
 
             # Create Dagster retry policy
             dagster_retry_policy = _create_dagster_retry_policy(job_config)
+
+            # Get notifications config from runner (runner-level, not job-level)
+            notifications_config = runner_config.notifications
 
         except Exception as e:
             logger.error(
@@ -247,7 +270,10 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
 
                 # Execute job with retry logic
                 result = _execute_job_with_retry(
-                    schedule_config, job_config, custom_retry_policy
+                    schedule_config,
+                    job_config,
+                    custom_retry_policy,
+                    notifications_config,
                 )
 
                 # Calculate execution time
