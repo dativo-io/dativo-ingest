@@ -9,8 +9,9 @@ Complete reference guide for configuring jobs, assets, connectors, and storage o
 3. [Source Configuration](#source-configuration)
 4. [Markdown-KV Storage](#markdown-kv-storage)
 5. [Plugin Configuration](#plugin-configuration)
-6. [Architecture Overview](#architecture-overview)
-7. [Additional Resources](#additional-resources)
+6. [Notification Hooks](#notification-hooks)
+7. [Architecture Overview](#architecture-overview)
+8. [Additional Resources](#additional-resources)
 
 ---
 
@@ -350,6 +351,34 @@ For detailed WAL documentation, see [WAL_CHECKPOINTING.md](WAL_CHECKPOINTING.md)
 - **Custom Plugins**: Proprietary APIs, custom formats, need maximum performance, complex business logic
 
 See [CUSTOM_PLUGINS.md](CUSTOM_PLUGINS.md#connectors-vs-custom-readerswriters) for detailed guidance.
+
+---
+
+## Notification Hooks
+
+Dativo supports external notification hooks that execute when a job fails,
+enabling integration with Slack, PagerDuty, email, or any custom alerting system.
+
+### Quick Start
+
+Add to `runner.yaml` or a job YAML:
+
+```yaml
+notifications:
+  on_failure:
+    command: ["/app/scripts/notify_slack.sh"]
+    timeout_seconds: 30
+    env:
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+```
+
+Hook processes receive `DATIVO_TENANT_ID`, `DATIVO_JOB_NAME`, `DATIVO_RUN_ID`,
+`DATIVO_EXIT_CODE`, `DATIVO_SUMMARY_PATH`, and other context variables.
+
+Hook failures are logged but **never change the job's exit code**.
+
+For full details, examples, and troubleshooting, see
+[NOTIFICATIONS.md](NOTIFICATIONS.md).
 
 ---
 
