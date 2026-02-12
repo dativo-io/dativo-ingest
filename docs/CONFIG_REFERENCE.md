@@ -5,12 +5,13 @@ Complete reference guide for configuring jobs, assets, connectors, and storage o
 ## Table of Contents
 
 1. [Job Configuration](#job-configuration)
-2. [Asset Definitions](#asset-definitions)
-3. [Source Configuration](#source-configuration)
-4. [Markdown-KV Storage](#markdown-kv-storage)
-5. [Plugin Configuration](#plugin-configuration)
-6. [Architecture Overview](#architecture-overview)
-7. [Additional Resources](#additional-resources)
+2. [Runner Configuration](#runner-configuration)
+3. [Asset Definitions](#asset-definitions)
+4. [Source Configuration](#source-configuration)
+5. [Markdown-KV Storage](#markdown-kv-storage)
+6. [Plugin Configuration](#plugin-configuration)
+7. [Architecture Overview](#architecture-overview)
+8. [Additional Resources](#additional-resources)
 
 ---
 
@@ -83,6 +84,55 @@ logging:
 - `target`: Target-specific configuration overrides
 - `schema_validation_mode`: Validation mode (`strict` or `warn`, defaults to `strict`)
 - `logging`: Logging configuration (level, redaction)
+
+---
+
+## Runner Configuration
+
+Runner configuration (`runner.yaml`) controls orchestration schedules and optional failure notification hooks.
+
+```yaml
+runner:
+  mode: orchestrated
+  orchestrator:
+    type: dagster
+    schedules:
+      - name: stripe_customers_hourly
+        config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
+        cron: "0 * * * *"
+    concurrency_per_tenant: 1
+
+  notifications:
+    on_failure:
+      command: ["/app/examples/scripts/slack_failure_notifier.sh"]
+      env:
+        SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+```
+
+### Notification Hook Fields
+
+- `notifications.on_failure.command` (required when `on_failure` is used): Non-empty command array
+- `notifications.on_failure.env` (optional): Additional environment variables passed to the command
+
+### Failure Hook Runtime Environment
+
+On failed runs, the runner adds:
+
+- `DATIVO_TENANT_ID`
+- `DATIVO_JOB_NAME`
+- `DATIVO_SCHEDULE_NAME`
+- `DATIVO_RUN_ID`
+- `DATIVO_SUMMARY_PATH`
+- `DATIVO_RUN_EXIT_CODE`
+
+The hook is best-effort: if the script is missing, non-executable, or returns non-zero, the orchestrator logs a warning and continues.
+
+### Troubleshooting Notification Hooks
+
+- Confirm `notifications` is nested under `runner:`
+- Verify command path exists in the runtime container
+- Ensure script is executable (`chmod +x ...`)
+- Check logs for `failure_notification_sent` and `failure_notification_error`
 
 ---
 

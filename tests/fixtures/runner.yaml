@@ -30,3 +30,10 @@ runner:
     
     concurrency_per_tenant: 1  # Serialize per-tenant to protect Nessie commits
 
+  # Optional failure notification hook (used in production, usually disabled in tests)
+  # notifications:
+  #   on_failure:
+  #     command: ["/app/examples/scripts/slack_failure_notifier.sh"]
+  #     env:
+  #       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+

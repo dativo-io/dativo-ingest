@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from dativo_ingest.config import (
+    FailureNotificationConfig,
+    NotificationsConfig,
     OrchestratorConfig,
     RetryConfig,
     RunnerConfig,
@@ -329,3 +331,170 @@ class TestOrchestratedIntegration:
         # Should create schedule with interval
         defs = create_dagster_assets(runner_config)
         assert len(defs.schedules) == 1
+
+
+class TestFailureNotificationHooks:
+    """Tests for runner-level failure notification hooks."""
+
+    def test_runner_config_loads_notifications_with_env_expansion(
+        self, tmp_path, monkeypatch
+    ):
+        """Test RunnerConfig supports notifications and expands env variables."""
+        monkeypatch.setenv(
+            "SLACK_WEBHOOK_URL", "https://hooks.slack.example/services/test"
+        )
+
+        runner_path = tmp_path / "runner.yaml"
+        runner_path.write_text(
+            """
+runner:
+  mode: orchestrated
+  orchestrator:
+    type: dagster
+    schedules:
+      - name: orders_hourly
+        config: /app/jobs/orders.yaml
+        cron: "0 * * * *"
+  notifications:
+    on_failure:
+      command: ["/app/scripts/notify.sh"]
+      env:
+        SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+"""
+        )
+
+        runner_config = RunnerConfig.from_yaml(runner_path)
+
+        assert runner_config.notifications is not None
+        assert runner_config.notifications.on_failure is not None
+        assert runner_config.notifications.on_failure.command == [
+            "/app/scripts/notify.sh"
+        ]
+        assert runner_config.notifications.on_failure.env["SLACK_WEBHOOK_URL"] == (
+            "https://hooks.slack.example/services/test"
+        )
+
+    @patch("dativo_ingest.orchestrated.subprocess.run")
+    def test_failure_notification_hook_receives_required_env(self, mock_subprocess):
+        """Test failure hook command receives required dativo context variables."""
+        from dativo_ingest.orchestrated import _run_failure_notification_hook
+
+        schedule = ScheduleConfig(
+            name="orders_hourly", config="/app/jobs/orders.yaml", cron="0 * * * *"
+        )
+        runner_config = RunnerConfig(
+            orchestrator=OrchestratorConfig(schedules=[schedule]),
+            notifications=NotificationsConfig(
+                on_failure=FailureNotificationConfig(
+                    command=["/app/scripts/notify.sh"],
+                    env={"SLACK_WEBHOOK_URL": "${SLACK_WEBHOOK_URL}"},
+                )
+            ),
+        )
+
+        mock_subprocess.return_value = Mock(returncode=0, stderr="", stdout="ok")
+        summary_path = Path("/tmp/state/acme/orders/runs/run-20260212T120000Z.json")
+
+        with patch.dict(
+            "os.environ",
+            {"SLACK_WEBHOOK_URL": "https://hooks.slack.example/services/test"},
+            clear=False,
+        ):
+            _run_failure_notification_hook(
+                runner_config=runner_config,
+                tenant_id="acme",
+                schedule_name="orders_hourly",
+                job_name="orders",
+                run_id="20260212T120000Z",
+                summary_path=summary_path,
+                exit_code=2,
+                error_message="Job failed",
+            )
+
+        assert mock_subprocess.call_count == 1
+        command = mock_subprocess.call_args.args[0]
+        hook_env = mock_subprocess.call_args.kwargs["env"]
+        assert command == ["/app/scripts/notify.sh"]
+        assert hook_env["SLACK_WEBHOOK_URL"] == (
+            "https://hooks.slack.example/services/test"
+        )
+        assert hook_env["DATIVO_TENANT_ID"] == "acme"
+        assert hook_env["DATIVO_JOB_NAME"] == "orders"
+        assert hook_env["DATIVO_RUN_ID"] == "20260212T120000Z"
+        assert hook_env["DATIVO_SUMMARY_PATH"].endswith("run-20260212T120000Z.json")
+
+    @patch("dativo_ingest.orchestrated.get_logger")
+    @patch("dativo_ingest.orchestrated.subprocess.run")
+    def test_missing_failure_notification_script_is_graceful(
+        self, mock_subprocess, mock_get_logger
+    ):
+        """Test missing notification command logs warning and does not raise."""
+        from dativo_ingest.orchestrated import _run_failure_notification_hook
+
+        schedule = ScheduleConfig(
+            name="orders_hourly", config="/app/jobs/orders.yaml", cron="0 * * * *"
+        )
+        runner_config = RunnerConfig(
+            orchestrator=OrchestratorConfig(schedules=[schedule]),
+            notifications=NotificationsConfig(
+                on_failure=FailureNotificationConfig(command=["/missing/notify.sh"])
+            ),
+        )
+
+        mock_subprocess.side_effect = FileNotFoundError("script not found")
+        mock_logger = Mock()
+        mock_get_logger.return_value = mock_logger
+
+        _run_failure_notification_hook(
+            runner_config=runner_config,
+            tenant_id="acme",
+            schedule_name="orders_hourly",
+            job_name="orders",
+            run_id=None,
+            summary_path=None,
+            exit_code=2,
+            error_message="Job failed",
+        )
+
+        assert mock_logger.warning.called
+
+    @patch("dativo_ingest.orchestrated.subprocess.run")
+    def test_execute_job_with_retry_tracks_run_summary_on_failure(
+        self, mock_subprocess, tmp_path
+    ):
+        """Test failed execution captures run_id and summary path metadata."""
+        from dativo_ingest.orchestrated import JobExecutionFailure, _execute_job_with_retry
+
+        schedule = Mock()
+        schedule.name = "orders_hourly"
+        schedule.config = "/app/jobs/orders.yaml"
+
+        source_config = Mock()
+        source_config.type = "csv"
+        source_config.object = "orders"
+
+        job_config = Mock()
+        job_config.tenant_id = "acme"
+        job_config.get_source.return_value = source_config
+
+        def _failed_run(*args, **kwargs):
+            summary_dir = tmp_path / "acme" / "orders" / "runs"
+            summary_dir.mkdir(parents=True, exist_ok=True)
+            (summary_dir / "run-20260212T130000Z.json").write_text("{}")
+            return Mock(returncode=2, stderr="boom")
+
+        mock_subprocess.side_effect = _failed_run
+
+        with patch.dict("os.environ", {"STATE_DIR": str(tmp_path)}, clear=False):
+            with pytest.raises(JobExecutionFailure) as exc:
+                _execute_job_with_retry(
+                    schedule_config=schedule,
+                    job_config=job_config,
+                    custom_retry_policy=None,
+                    summary_job_name="orders",
+                )
+
+        assert exc.value.exit_code == 2
+        assert exc.value.run_id == "20260212T130000Z"
+        assert exc.value.summary_path is not None
+        assert str(exc.value.summary_path).endswith("run-20260212T130000Z.json")

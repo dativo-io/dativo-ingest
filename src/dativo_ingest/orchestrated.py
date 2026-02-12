@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from dagster import (
@@ -21,6 +22,204 @@ from .metrics_otel import configure_otel_metrics
 from .metrics_server import start_metrics_server_from_config
 from .retry_policy import RetryPolicy as CustomRetryPolicy
 from .validator import ConnectorValidator
+
+
+class JobExecutionFailure(Exception):
+    """Represents a failed job execution after retries."""
+
+    def __init__(
+        self,
+        message: str,
+        exit_code: Optional[int] = None,
+        run_id: Optional[str] = None,
+        summary_path: Optional[Path] = None,
+    ) -> None:
+        super().__init__(message)
+        self.exit_code = exit_code
+        self.run_id = run_id
+        self.summary_path = summary_path
+
+
+def _sanitize_path_component(value: str) -> str:
+    """Sanitize tenant/job name for file-system paths."""
+    return value.replace("/", "_")
+
+
+def _resolve_summary_job_name(job_config: JobConfig, source_config: Any) -> str:
+    """Resolve job name used by run-summary artifact path."""
+    return job_config.asset or source_config.object or "unknown_job"
+
+
+def _extract_run_id(summary_path: Optional[Path]) -> Optional[str]:
+    """Extract run_id from run summary filename."""
+    if not summary_path:
+        return None
+    filename = summary_path.name
+    if filename.startswith("run-") and filename.endswith(".json"):
+        return filename[len("run-") : -len(".json")]
+    return None
+
+
+def _get_run_summary_dir(tenant_id: str, job_name: str) -> Path:
+    """Return run summary directory for tenant/job."""
+    state_dir = Path(os.getenv("STATE_DIR", ".local/state"))
+    return (
+        state_dir
+        / _sanitize_path_component(tenant_id)
+        / _sanitize_path_component(job_name)
+        / "runs"
+    )
+
+
+def _list_summary_file_names(summary_dir: Path) -> set[str]:
+    """List run summary file names in a directory."""
+    if not summary_dir.exists():
+        return set()
+    try:
+        return {
+            path.name for path in summary_dir.glob("run-*.json") if path.is_file()
+        }
+    except OSError:
+        return set()
+
+
+def _resolve_new_summary_path(
+    summary_dir: Path, before_summary_names: set[str]
+) -> Optional[Path]:
+    """Resolve the newest run summary generated during an attempt."""
+    if not summary_dir.exists():
+        return None
+    try:
+        candidates = [
+            path
+            for path in summary_dir.glob("run-*.json")
+            if path.is_file() and path.name not in before_summary_names
+        ]
+    except OSError:
+        return None
+
+    if not candidates:
+        return None
+
+    def _mtime(path: Path) -> int:
+        try:
+            return path.stat().st_mtime_ns
+        except OSError:
+            return 0
+
+    newest = max(candidates, key=_mtime)
+    try:
+        return newest.resolve()
+    except OSError:
+        return newest
+
+
+def _run_failure_notification_hook(
+    runner_config: RunnerConfig,
+    tenant_id: str,
+    schedule_name: str,
+    job_name: str,
+    run_id: Optional[str],
+    summary_path: Optional[Path],
+    exit_code: Optional[int],
+    error_message: Optional[str],
+) -> None:
+    """Execute on-failure notification hook (best effort, never raises)."""
+    notifications = runner_config.notifications
+    if not notifications or not notifications.on_failure:
+        return
+
+    job_logger = get_logger()
+    hook = notifications.on_failure
+
+    summary_path_value = ""
+    if summary_path:
+        try:
+            summary_path_value = str(summary_path.resolve())
+        except OSError:
+            summary_path_value = str(summary_path)
+
+    hook_env = os.environ.copy()
+    for key, value in hook.env.items():
+        hook_env[key] = os.path.expandvars(value)
+
+    hook_env.update(
+        {
+            "DATIVO_TENANT_ID": tenant_id,
+            "DATIVO_JOB_NAME": job_name,
+            "DATIVO_SCHEDULE_NAME": schedule_name,
+            "DATIVO_RUN_ID": run_id or "",
+            "DATIVO_SUMMARY_PATH": summary_path_value,
+            "DATIVO_RUN_EXIT_CODE": str(exit_code) if exit_code is not None else "",
+            "DATIVO_ERROR_MESSAGE": error_message or "",
+        }
+    )
+
+    try:
+        result = subprocess.run(
+            hook.command,
+            capture_output=True,
+            text=True,
+            env=hook_env,
+        )
+    except FileNotFoundError:
+        job_logger.warning(
+            "Failure notification hook command not found",
+            extra={
+                "event_type": "failure_notification_error",
+                "tenant_id": tenant_id,
+                "job_name": schedule_name,
+                "hook_command": hook.command,
+            },
+        )
+        return
+    except PermissionError:
+        job_logger.warning(
+            "Failure notification hook is not executable",
+            extra={
+                "event_type": "failure_notification_error",
+                "tenant_id": tenant_id,
+                "job_name": schedule_name,
+                "hook_command": hook.command,
+            },
+        )
+        return
+    except Exception as e:
+        job_logger.warning(
+            f"Failure notification hook execution error: {e}",
+            extra={
+                "event_type": "failure_notification_error",
+                "tenant_id": tenant_id,
+                "job_name": schedule_name,
+                "hook_command": hook.command,
+            },
+        )
+        return
+
+    if result.returncode != 0:
+        job_logger.warning(
+            "Failure notification hook exited with non-zero status",
+            extra={
+                "event_type": "failure_notification_error",
+                "tenant_id": tenant_id,
+                "job_name": schedule_name,
+                "hook_command": hook.command,
+                "hook_exit_code": result.returncode,
+                "hook_stderr": result.stderr[:500] if result.stderr else "",
+            },
+        )
+        return
+
+    job_logger.info(
+        "Failure notification hook executed successfully",
+        extra={
+            "event_type": "failure_notification_sent",
+            "tenant_id": tenant_id,
+            "job_name": schedule_name,
+            "hook_command": hook.command,
+            "run_id": run_id,
+        },
+    )
 
 
 def _create_dagster_retry_policy(job_config: JobConfig) -> Optional[RetryPolicy]:
@@ -49,6 +248,7 @@ def _execute_job_with_retry(
     schedule_config: Any,
     job_config: JobConfig,
     custom_retry_policy: Optional[CustomRetryPolicy],
+    summary_job_name: str,
 ) -> Dict[str, Any]:
     """Execute job with retry logic.
 
@@ -71,9 +271,14 @@ def _execute_job_with_retry(
     attempt = 0
     last_exit_code = None
     last_error = None
+    last_run_id = None
+    last_summary_path = None
+    summary_dir = _get_run_summary_dir(tenant_id, summary_job_name)
 
     while True:
         try:
+            before_summary_names = _list_summary_file_names(summary_dir)
+
             # Execute job via CLI run command
             result = subprocess.run(
                 [
@@ -91,6 +296,12 @@ def _execute_job_with_retry(
             )
 
             last_exit_code = result.returncode
+            latest_summary_path = _resolve_new_summary_path(
+                summary_dir, before_summary_names
+            )
+            if latest_summary_path:
+                last_summary_path = latest_summary_path
+                last_run_id = _extract_run_id(latest_summary_path)
 
             if result.returncode == 0:
                 job_logger.info(
@@ -134,7 +345,12 @@ def _execute_job_with_retry(
                 custom_retry_policy.wait_for_retry(attempt)
                 attempt += 1
                 continue
-            raise
+            raise JobExecutionFailure(
+                f"Job execution failed after {attempt + 1} attempt(s): {last_error}",
+                exit_code=2,
+                run_id=last_run_id,
+                summary_path=last_summary_path,
+            ) from e
 
     # All retries exhausted or non-retryable error
     job_logger.error(
@@ -149,8 +365,11 @@ def _execute_job_with_retry(
             "stderr": last_error[:500] if last_error else None,
         },
     )
-    raise Exception(
-        f"Job execution failed after {attempt + 1} attempt(s): {last_error}"
+    raise JobExecutionFailure(
+        f"Job execution failed after {attempt + 1} attempt(s): {last_error}",
+        exit_code=last_exit_code,
+        run_id=last_run_id,
+        summary_path=last_summary_path,
     )
 
 
@@ -185,6 +404,7 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
             tenant_id = job_config.tenant_id
             source_config = job_config.get_source()
             connector_type = source_config.type
+            summary_job_name = _resolve_summary_job_name(job_config, source_config)
 
             # Create custom retry policy if configured
             custom_retry_policy = None
@@ -247,7 +467,10 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
 
                 # Execute job with retry logic
                 result = _execute_job_with_retry(
-                    schedule_config, job_config, custom_retry_policy
+                    schedule_config,
+                    job_config,
+                    custom_retry_policy,
+                    summary_job_name,
                 )
 
                 # Calculate execution time
@@ -267,6 +490,26 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
 
             except Exception as e:
                 execution_time = time.time() - start_time
+                failure_exit_code = 2
+                failure_run_id = None
+                failure_summary_path = None
+
+                if isinstance(e, JobExecutionFailure):
+                    failure_exit_code = e.exit_code if e.exit_code is not None else 2
+                    failure_run_id = e.run_id
+                    failure_summary_path = e.summary_path
+
+                _run_failure_notification_hook(
+                    runner_config=runner_config,
+                    tenant_id=tenant_id,
+                    schedule_name=schedule_config.name,
+                    job_name=summary_job_name,
+                    run_id=failure_run_id,
+                    summary_path=failure_summary_path,
+                    exit_code=failure_exit_code,
+                    error_message=str(e),
+                )
+
                 job_logger.error(
                     f"Job execution error: {e}",
                     extra={
@@ -274,6 +517,11 @@ def create_dagster_assets(runner_config: RunnerConfig) -> Definitions:
                         "tenant_id": tenant_id,
                         "execution_time_seconds": execution_time,
                         "event_type": "job_error",
+                        "exit_code": failure_exit_code,
+                        "run_id": failure_run_id,
+                        "summary_path": (
+                            str(failure_summary_path) if failure_summary_path else None
+                        ),
                     },
                 )
                 raise

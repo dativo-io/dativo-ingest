@@ -75,6 +75,11 @@ runner:
         config: /app/jobs/acme/hubspot_contacts_to_iceberg.yaml
         cron: "15 2 * * *"  # Daily at 2:15 AM
     concurrency_per_tenant: 1  # Serial execution per tenant
+  notifications:
+    on_failure:
+      command: ["/app/examples/scripts/slack_failure_notifier.sh"]
+      env:
+        SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
 ```
 
 ### Configuration Fields
@@ -87,6 +92,7 @@ runner:
 **Optional:**
 - `concurrency_per_tenant`: Maximum concurrent jobs per tenant (default: 1)
 - `retry_config`: Retry configuration for failed jobs
+- `notifications.on_failure`: Command hook executed when a scheduled run fails
 
 ### Cron Expression Format
 
@@ -242,6 +248,37 @@ retry_config:
     - "Connection timeout"
 ```
 
+### Failure Notification Hooks
+
+Use `notifications.on_failure` to call an external script when a scheduled run fails.
+
+```yaml
+runner:
+  mode: orchestrated
+  orchestrator:
+    type: dagster
+    schedules:
+      - name: stripe_customers_hourly
+        config: /app/jobs/acme/stripe_customers_to_iceberg.yaml
+        cron: "0 * * * *"
+  notifications:
+    on_failure:
+      command: ["/app/examples/scripts/slack_failure_notifier.sh"]
+      env:
+        SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+```
+
+When the hook executes, the runner injects these environment variables:
+
+- `DATIVO_TENANT_ID`
+- `DATIVO_JOB_NAME` (job name used for run summaries)
+- `DATIVO_SCHEDULE_NAME`
+- `DATIVO_RUN_ID` (empty when unavailable)
+- `DATIVO_SUMMARY_PATH` (empty when unavailable)
+- `DATIVO_RUN_EXIT_CODE`
+
+Hook execution is best-effort. A missing script, permission issue, or non-zero hook exit code is logged as a warning and does not crash the orchestrator.
+
 ### Enhanced Schedule Management
 
 Schedules support additional features for production use:
@@ -388,6 +425,19 @@ Metadata is visible in the Dagster UI for monitoring and debugging.
 2. **Validate cron/interval**: Ensure either `cron` or `interval_seconds` is set
 3. **Check timezone**: Verify timezone is correct for your schedule
 4. **Review Dagster logs**: Check orchestrator logs for schedule registration
+
+### Failure Hooks Not Triggering
+
+1. **Check runner path**: Ensure `notifications` is defined inside `runner:`
+2. **Check command array**: `command` must be a non-empty list, for example `["/app/scripts/notify.sh"]`
+3. **Check file permissions**: Ensure the script is executable (`chmod +x /app/scripts/notify.sh`)
+4. **Check logs**: Look for `failure_notification_sent` or `failure_notification_error` events
+
+### Missing Script or Slack Webhook Issues
+
+1. **Script not found**: Verify the path is mounted inside the container and matches the runner config
+2. **Webhook env not set**: Confirm `SLACK_WEBHOOK_URL` is available in the runtime environment
+3. **Hook failures are non-blocking**: The ingestion run still reports its original failure status even if the hook fails
 
 ### Tenant Isolation Issues
 

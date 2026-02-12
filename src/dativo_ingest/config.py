@@ -1163,6 +1163,37 @@ class OrchestratorConfig(BaseModel):
     concurrency_per_tenant: int = Field(default=1, ge=1)
 
 
+class FailureNotificationConfig(BaseModel):
+    """Notification hook configuration for failed runs."""
+
+    command: List[str] = Field(
+        ..., min_length=1, description="Command array executed on failure"
+    )
+    env: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Additional environment variables for the hook command",
+    )
+
+    @field_validator("command")
+    @classmethod
+    def validate_command(cls, value: List[str]) -> List[str]:
+        """Validate command entries are non-empty strings."""
+        if not value:
+            raise ValueError("notifications.on_failure.command cannot be empty")
+        for part in value:
+            if not isinstance(part, str) or not part.strip():
+                raise ValueError(
+                    "notifications.on_failure.command must contain non-empty strings"
+                )
+        return value
+
+
+class NotificationsConfig(BaseModel):
+    """Runner-level notification configuration."""
+
+    on_failure: Optional[FailureNotificationConfig] = None
+
+
 class RunnerConfig(BaseModel):
     """Runner configuration model."""
 
@@ -1170,6 +1201,10 @@ class RunnerConfig(BaseModel):
     orchestrator: OrchestratorConfig
     metrics: Optional[MetricsConfig] = Field(
         default=None, description="Global metrics configuration for orchestrated mode"
+    )
+    notifications: Optional[NotificationsConfig] = Field(
+        default=None,
+        description="Optional command hooks for runner-level notifications",
     )
 
     @classmethod
@@ -1209,6 +1244,34 @@ class RunnerConfig(BaseModel):
         if data is None:
             print(f"ERROR: Runner config file is empty: {path}", file=sys.stderr)
             sys.exit(2)
+
+        # Support both root-level and wrapped runner config styles:
+        # runner:
+        #   mode: orchestrated
+        #   orchestrator: ...
+        if isinstance(data, dict) and "runner" in data:
+            if not isinstance(data["runner"], dict):
+                print(
+                    f"ERROR: Invalid runner configuration: {path}\nValidation Error: 'runner' must be an object",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            data = data["runner"]
+
+        # Expand environment variables in notification hook env values
+        if isinstance(data, dict):
+            notifications = data.get("notifications")
+            if isinstance(notifications, dict):
+                on_failure = notifications.get("on_failure")
+                if isinstance(on_failure, dict):
+                    hook_env = on_failure.get("env")
+                    if isinstance(hook_env, dict):
+                        on_failure["env"] = {
+                            key: os.path.expandvars(value)
+                            if isinstance(value, str)
+                            else value
+                            for key, value in hook_env.items()
+                        }
 
         try:
             return cls(**data)
