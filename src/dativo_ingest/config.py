@@ -530,6 +530,50 @@ class MetricsConfig(BaseModel):
     labels: MetricsLabelsConfig = Field(default_factory=MetricsLabelsConfig)
 
 
+class NotificationHookConfig(BaseModel):
+    """Configuration for a single notification hook."""
+
+    command: List[str] = Field(
+        ..., description="Command and arguments to execute (e.g. ['/app/scripts/notify.sh'])"
+    )
+    env: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Additional environment variables. Values may contain ${VAR} references.",
+    )
+    timeout_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=300,
+        description="Maximum seconds to wait for hook to complete (default: 30)",
+    )
+
+
+class NotificationsConfig(BaseModel):
+    """Notifications configuration for job lifecycle events."""
+
+    on_failure: Optional[Union[NotificationHookConfig, List[NotificationHookConfig]]] = Field(
+        default=None,
+        description="Hook(s) to execute when a job fails. "
+        "Accepts a single hook or a list of hooks.",
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict suitable for NotificationManager.from_config().
+
+        Returns:
+            Dictionary with the notifications configuration.
+        """
+        result: Dict[str, Any] = {}
+        if self.on_failure is not None:
+            if isinstance(self.on_failure, list):
+                result["on_failure"] = [
+                    hook.model_dump(exclude_none=True) for hook in self.on_failure
+                ]
+            else:
+                result["on_failure"] = self.on_failure.model_dump(exclude_none=True)
+        return result
+
+
 class JobConfig(BaseModel):
     """Complete job configuration model - new architecture only."""
 
@@ -1126,50 +1170,6 @@ class JobConfig(BaseModel):
                 file=sys.stderr,
             )
             sys.exit(2)
-
-
-class NotificationHookConfig(BaseModel):
-    """Configuration for a single notification hook."""
-
-    command: List[str] = Field(
-        ..., description="Command and arguments to execute (e.g. ['/app/scripts/notify.sh'])"
-    )
-    env: Optional[Dict[str, str]] = Field(
-        default=None,
-        description="Additional environment variables. Values may contain ${VAR} references.",
-    )
-    timeout_seconds: int = Field(
-        default=30,
-        ge=1,
-        le=300,
-        description="Maximum seconds to wait for hook to complete (default: 30)",
-    )
-
-
-class NotificationsConfig(BaseModel):
-    """Notifications configuration for job lifecycle events."""
-
-    on_failure: Optional[Union[NotificationHookConfig, List[NotificationHookConfig]]] = Field(
-        default=None,
-        description="Hook(s) to execute when a job fails. "
-        "Accepts a single hook or a list of hooks.",
-    )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dict suitable for NotificationManager.from_config().
-
-        Returns:
-            Dictionary with the notifications configuration.
-        """
-        result: Dict[str, Any] = {}
-        if self.on_failure is not None:
-            if isinstance(self.on_failure, list):
-                result["on_failure"] = [
-                    hook.model_dump(exclude_none=True) for hook in self.on_failure
-                ]
-            else:
-                result["on_failure"] = self.on_failure.model_dump(exclude_none=True)
-        return result
 
 
 class ScheduleConfig(BaseModel):
