@@ -235,6 +235,7 @@ def _execute_single_job(
     mode: str,
     dry_run: bool = False,
     dry_run_config: "DryRunConfig" = None,
+    notifications_config=None,
 ) -> int:
     """Execute a single job configuration.
 
@@ -243,12 +244,18 @@ def _execute_single_job(
         mode: Execution mode
         dry_run: If True, perform discovery and sample extraction without writing
         dry_run_config: Optional dry-run configuration with sample size and timeout
+        notifications_config: Optional runner-level notifications configuration.
+            Job-level config (in job_config.notifications) takes precedence.
 
     Returns:
         Exit code (0=success, 1=partial, 2=failure)
     """
     executor = JobExecutor(
-        job_config, mode=mode, dry_run=dry_run, dry_run_config=dry_run_config
+        job_config,
+        mode=mode,
+        dry_run=dry_run,
+        dry_run_config=dry_run_config,
+        notifications_config=notifications_config,
     )
     return executor.execute()
 

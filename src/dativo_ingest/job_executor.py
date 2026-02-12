@@ -15,9 +15,11 @@ from .config import (
     AssetDefinition,
     JobConfig,
     MetricsConfig,
+    NotificationsConfig,
     SourceConfig,
     TargetConfig,
 )
+from .notifications import NotificationManager
 from .connectors.factory import ExtractorFactory
 from .logging import get_logger, update_logging_settings
 from .metrics import MetricsCollector
@@ -54,6 +56,7 @@ class JobExecutor:
         mode: str = "self_hosted",
         dry_run: bool = False,
         dry_run_config: Optional["DryRunConfig"] = None,
+        notifications_config: Optional[NotificationsConfig] = None,
     ):
         """Initialize job executor.
 
@@ -62,6 +65,8 @@ class JobExecutor:
             mode: Execution mode (default: self_hosted)
             dry_run: If True, perform discovery and sample extraction without writing
             dry_run_config: Optional configuration for dry-run mode (sample size, timeout)
+            notifications_config: Optional notifications configuration from runner
+                or job config. Job-level config takes precedence over runner-level.
         """
         self.job_config = job_config
         self.mode = mode
@@ -84,6 +89,12 @@ class JobExecutor:
 
         # Dry-run result tracking (for structured output)
         self._dry_run_result: Optional["DryRunResult"] = None
+
+        # Notification hooks: job-level config takes precedence over runner-level
+        effective_notifications = job_config.notifications or notifications_config
+        self.notification_manager = NotificationManager.from_config(
+            effective_notifications.to_dict() if effective_notifications else None
+        )
 
     def _setup_logging(self) -> None:
         """Set up logging for the job.
@@ -1740,6 +1751,75 @@ class JobExecutor:
 
             return 2
 
+    def _trigger_failure_notifications(self, exit_code: int) -> None:
+        """Trigger on_failure notification hooks if applicable.
+
+        Called after the run summary has been written so that the summary
+        path is available to hook scripts.
+
+        Hook failures are logged but never change the job's exit code.
+
+        Args:
+            exit_code: The job's exit code (notifications only fire for 1 or 2).
+        """
+        if exit_code == 0:
+            return
+
+        if not self.notification_manager or not self.notification_manager.has_failure_hooks:
+            return
+
+        # Determine summary path (matches _write_run_summary logic)
+        summary_path = None
+        try:
+            state_dir = os.getenv("STATE_DIR", ".local/state")
+            if not os.path.isabs(state_dir):
+                state_dir = os.path.abspath(state_dir)
+
+            job_name = self.job_config.asset or "unknown-job"
+            if self.run_summary and self.run_summary.run.id:
+                tenant_safe = self.tenant_id.replace("/", "_")
+                job_safe = job_name.replace("/", "_")
+                run_timestamp = self.run_summary.run.id
+                summary_path = str(
+                    Path(state_dir) / tenant_safe / job_safe / "runs" / f"run-{run_timestamp}.json"
+                )
+        except Exception:
+            pass  # summary_path stays None
+
+        # Extract error message from run summary
+        error_message = None
+        if (
+            self.run_summary
+            and self.run_summary.ingestion.error
+            and self.run_summary.ingestion.error.error_message
+        ):
+            error_message = self.run_summary.ingestion.error.error_message
+
+        run_id = self.run_summary.run.id if self.run_summary else "unknown"
+        job_name = self.job_config.asset or "unknown-job"
+        environment = self.job_config.environment or os.getenv("DATIVO_ENV", "dev")
+
+        try:
+            self.notification_manager.notify_failure(
+                tenant_id=self.tenant_id,
+                job_name=job_name,
+                run_id=run_id,
+                exit_code=exit_code,
+                summary_path=summary_path,
+                error_message=error_message,
+                environment=environment,
+            )
+        except Exception as e:
+            # Absolute safety net: notification failures must never propagate
+            if self.logger:
+                self.logger.warning(
+                    f"Notification dispatch failed unexpectedly: {e}",
+                    extra={
+                        "event_type": "notification_dispatch_error",
+                        "error": str(e),
+                    },
+                )
+
     def _push_to_catalog(self) -> None:
         """Push lineage and metadata to catalog if configured."""
         if not self.job_config.catalog:
@@ -1906,6 +1986,7 @@ class JobExecutor:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
                 self._write_run_summary(exit_code)
+                self._trigger_failure_notifications(exit_code)
                 return exit_code
 
             # Load asset
@@ -1914,6 +1995,7 @@ class JobExecutor:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
                 self._write_run_summary(exit_code)
+                self._trigger_failure_notifications(exit_code)
                 return exit_code
 
             if self.run_summary and self.asset_definition:
@@ -1933,6 +2015,7 @@ class JobExecutor:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
                 self._write_run_summary(exit_code)
+                self._trigger_failure_notifications(exit_code)
                 return exit_code
 
             # Initialize WAL manager (after extractor is initialized for metadata)
@@ -1944,6 +2027,7 @@ class JobExecutor:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
                 self._write_run_summary(exit_code)
+                self._trigger_failure_notifications(exit_code)
                 return exit_code
 
             # Dry-run mode: skip writer/committer initialization and use dry-run execution
@@ -1951,6 +2035,7 @@ class JobExecutor:
                 exit_code = self._execute_dry_run()
                 self._finish_metrics(exit_code)
                 self._write_run_summary(exit_code)
+                self._trigger_failure_notifications(exit_code)
                 return exit_code
 
             # Initialize writer
@@ -1959,6 +2044,7 @@ class JobExecutor:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
                 self._write_run_summary(exit_code)
+                self._trigger_failure_notifications(exit_code)
                 return exit_code
 
             # Initialize committer
@@ -1972,6 +2058,7 @@ class JobExecutor:
                 # Ensure metrics gauge is reset on early return
                 self._finish_metrics(exit_code)
                 self._write_run_summary(exit_code)
+                self._trigger_failure_notifications(exit_code)
                 return exit_code
 
             # Push to catalog (for both success and partial success)
@@ -1980,6 +2067,9 @@ class JobExecutor:
             # Finalize metrics
             self._finish_metrics(exit_code)
             self._write_run_summary(exit_code)
+
+            # Trigger failure notifications for partial failures (exit_code == 1)
+            self._trigger_failure_notifications(exit_code)
 
             return exit_code
 
@@ -2003,4 +2093,5 @@ class JobExecutor:
                 self.metrics_collector.finish("failure")
 
             self._write_run_summary(2)
+            self._trigger_failure_notifications(2)
             return 2

@@ -239,6 +239,55 @@
       "additionalProperties": false
     }
   },
+    "notifications": {
+      "type": "object",
+      "description": "Notification hooks for job lifecycle events (optional, overrides runner-level config)",
+      "properties": {
+        "on_failure": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/notification_hook"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/notification_hook"
+              }
+            }
+          ],
+          "description": "Hook(s) to execute when a job fails"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "notification_hook": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1,
+          "description": "Command and arguments to execute"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "Additional environment variables (values may contain ${VAR} references)"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300,
+          "default": 30,
+          "description": "Maximum seconds to wait for hook completion"
+        }
+      },
+      "required": ["command"],
+      "additionalProperties": false
+    }
+  },
   "additionalProperties": false
 }
 

@@ -48,3 +48,13 @@ runner:
           priority: "low"
     
     concurrency_per_tenant: 1         # Serialize per-tenant to protect Nessie commits
+
+  # Optional: Notification hooks for job lifecycle events
+  # Hooks execute external commands when specific events occur.
+  # Hook failures are logged but never change the job's exit code.
+  notifications:
+    on_failure:
+      command: ["/app/scripts/notify.sh"]
+      timeout_seconds: 30               # Max wait time for hook (default: 30)
+      env:
+        SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}  # Expanded from process env
